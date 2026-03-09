@@ -1,0 +1,97 @@
+# Common schema definitions shared across all domain profiles.
+#
+# This file defines base fields present on every artifact and the common
+# link types used for cross-domain traceability.  Domain schemas (STPA,
+# ASPICE, …) extend these definitions with domain-specific artifact types
+# and link types.
+#
+# The schemas are both human-readable documentation AND machine-parseable
+# rules consumed by `trace validate`.
+
+schema:
+  name: common
+  version: "0.1.0"
+  description: >
+    Base field definitions and common link types for lifecycle traceability.
+    All domain schemas implicitly extend this schema.
+
+# ──────────────────────────────────────────────────────────────────────────
+# Base fields — present on every artifact regardless of type.
+# The trace-core model enforces these structurally (they are not in the
+# free-form `fields` map but are first-class struct members).
+# ──────────────────────────────────────────────────────────────────────────
+base-fields:
+  - name: id
+    type: string
+    required: true
+    description: Unique identifier for the artifact
+
+  - name: title
+    type: string
+    required: true
+    description: Human-readable title
+
+  - name: description
+    type: text
+    required: false
+    description: Detailed description (supports markdown)
+
+  - name: status
+    type: enum
+    required: false
+    description: Current lifecycle status
+
+  - name: tags
+    type: list<string>
+    required: false
+    description: Arbitrary tags for categorization
+
+# ──────────────────────────────────────────────────────────────────────────
+# Common link types — reusable across all domains.
+#
+# Each link type defines:
+#   name          — predicate name used in YAML files
+#   inverse       — auto-computed backlink name
+#   description   — what this relationship means
+#   source-types  — (optional) restrict which artifact types may originate
+#   target-types  — (optional) restrict which artifact types may be targeted
+#
+# When source/target-types are omitted the link type is unrestricted and
+# any artifact type may use it.  Domain schemas may add restrictions.
+# ──────────────────────────────────────────────────────────────────────────
+link-types:
+  - name: traces-to
+    inverse: traced-from
+    description: General traceability link between any two artifacts
+
+  - name: satisfies
+    inverse: satisfied-by
+    description: Source satisfies or fulfils the target
+
+  - name: refines
+    inverse: refined-by
+    description: Source is a refinement or decomposition of the target
+
+  - name: verifies
+    inverse: verified-by
+    description: Source verifies or validates the target
+
+  - name: implements
+    inverse: implemented-by
+    description: Source implements the target
+
+  - name: derives-from
+    inverse: derived-into
+    description: Source is derived from the target
+
+  - name: mitigates
+    inverse: mitigated-by
+    description: Source mitigates or prevents the target
+
+  - name: allocated-to
+    inverse: allocated-from
+    description: Source is allocated to the target (e.g. requirement to architecture component)
+
+  - name: constrained-by
+    inverse: constrains
+    description: Source is constrained by the target

@@ -1,0 +1,249 @@
+load("@rules_verus//verus:defs.bzl", "verus_library", "verus_test")
+load("//bzl:defs.bzl",
+    "cargo_bench_test",
+    "cargo_fuzz_test",
+    "cargo_mutants_test",
+    "cargo_test",
+    "clippy_test",
+    "kani_test",
+    "miri_test",
+    "pre_commit_install",
+    "rustfmt_test",
+    "sanitizer_test",
+)
+
+# =========================================================================
+# Source file groups
+# =========================================================================
+
+VERUS_SRCS = [
+    "src/lib.rs",
+    "src/error.rs",
+    "src/priority.rs",
+    "src/thread.rs",
+    "src/wait_queue.rs",
+    "src/sem.rs",
+]
+
+PLAIN_SRCS = glob(["plain/src/**/*.rs"])
+
+TEST_SRCS = glob(["tests/**/*.rs"])
+
+BENCH_SRCS = glob(["benches/**/*.rs"])
+
+FUZZ_SRCS = glob(["fuzz/**/*.rs", "fuzz/Cargo.toml"])
+
+ALL_CARGO_SRCS = PLAIN_SRCS + TEST_SRCS + BENCH_SRCS
+
+CARGO_DATA = [
+    "Cargo.toml",
+    "rust-toolchain.toml",
+    ".cargo/config.toml",
+]
+
+# =========================================================================
+# Track 1: Verus verification (SMT/Z3)
+# =========================================================================
+
+verus_library(
+    name = "kernel_verified",
+    srcs = VERUS_SRCS,
+    crate_name = "gale",
+)
+
+verus_test(
+    name = "verus_test",
+    srcs = VERUS_SRCS,
+    crate_name = "gale",
+)
+
+# =========================================================================
+# Track 2: Cargo test — unit + integration + proptest
+# =========================================================================
+
+cargo_test(
+    name = "cargo_test",
+    manifest = "Cargo.toml",
+    srcs = ALL_CARGO_SRCS,
+    data = CARGO_DATA,
+)
+
+# =========================================================================
+# Track 3: Formatting
+# =========================================================================
+
+rustfmt_test(
+    name = "fmt_test",
+    manifest = "Cargo.toml",
+    srcs = ALL_CARGO_SRCS,
+)
+
+# =========================================================================
+# Track 4: Clippy — safety-critical lint profile
+# =========================================================================
+
+clippy_test(
+    name = "clippy_test",
+    manifest = "Cargo.toml",
+    srcs = ALL_CARGO_SRCS,
+    data = CARGO_DATA,
+    extra_args = ["-D", "warnings"],
+)
+
+# =========================================================================
+# Track 5: Miri — memory safety / UB detection
+# =========================================================================
+
+miri_test(
+    name = "miri_test",
+    manifest = "Cargo.toml",
+    srcs = ALL_CARGO_SRCS,
+    data = CARGO_DATA,
+)
+
+# =========================================================================
+# Track 6: Sanitizers (nightly)
+# =========================================================================
+
+sanitizer_test(
+    name = "asan_test",
+    manifest = "Cargo.toml",
+    srcs = ALL_CARGO_SRCS,
+    data = CARGO_DATA,
+    sanitizer = "address",
+)
+
+sanitizer_test(
+    name = "tsan_test",
+    manifest = "Cargo.toml",
+    srcs = ALL_CARGO_SRCS,
+    data = CARGO_DATA,
+    sanitizer = "thread",
+)
+
+sanitizer_test(
+    name = "lsan_test",
+    manifest = "Cargo.toml",
+    srcs = ALL_CARGO_SRCS,
+    data = CARGO_DATA,
+    sanitizer = "leak",
+)
+
+# =========================================================================
+# Track 7: Kani — bounded model checking
+# =========================================================================
+
+kani_test(
+    name = "kani_test",
+    manifest = "Cargo.toml",
+    srcs = ALL_CARGO_SRCS,
+    data = CARGO_DATA,
+)
+
+# =========================================================================
+# Track 8: Fuzzing (bounded duration per target)
+# =========================================================================
+
+cargo_fuzz_test(
+    name = "fuzz_sem",
+    manifest = "Cargo.toml",
+    srcs = ALL_CARGO_SRCS + FUZZ_SRCS,
+    data = CARGO_DATA,
+    fuzz_target = "sem_fuzz",
+    duration_secs = 60,
+)
+
+cargo_fuzz_test(
+    name = "fuzz_sem_api",
+    manifest = "Cargo.toml",
+    srcs = ALL_CARGO_SRCS + FUZZ_SRCS,
+    data = CARGO_DATA,
+    fuzz_target = "sem_api_fuzz",
+    duration_secs = 60,
+)
+
+# =========================================================================
+# Track 9: Benchmarks
+# =========================================================================
+
+cargo_bench_test(
+    name = "bench_test",
+    manifest = "Cargo.toml",
+    srcs = ALL_CARGO_SRCS + BENCH_SRCS,
+    data = CARGO_DATA,
+)
+
+# =========================================================================
+# Track 10: Mutation testing
+# =========================================================================
+
+cargo_mutants_test(
+    name = "mutants_test",
+    manifest = "Cargo.toml",
+    srcs = ALL_CARGO_SRCS,
+    data = CARGO_DATA,
+)
+
+# =========================================================================
+# Test suites — tiered by speed
+# =========================================================================
+
+test_suite(
+    name = "precommit",
+    tags = ["precommit"],
+    tests = [
+        ":fmt_test",
+        ":clippy_test",
+        ":cargo_test",
+    ],
+)
+
+test_suite(
+    name = "ci",
+    tags = ["ci"],
+    tests = [
+        ":fmt_test",
+        ":clippy_test",
+        ":cargo_test",
+        ":miri_test",
+        ":asan_test",
+        ":tsan_test",
+        ":verus_test",
+        "//proofs:sem_proofs_test",
+    ],
+)
+
+test_suite(
+    name = "nightly",
+    tags = ["nightly"],
+    tests = [
+        ":fmt_test",
+        ":clippy_test",
+        ":cargo_test",
+        ":miri_test",
+        ":asan_test",
+        ":tsan_test",
+        ":lsan_test",
+        ":kani_test",
+        ":fuzz_sem",
+        ":fuzz_sem_api",
+        ":bench_test",
+        ":mutants_test",
+        ":verus_test",
+        "//proofs:sem_proofs_test",
+    ],
+)
+
+# =========================================================================
+# Pre-commit hook installer
+# =========================================================================
+
+pre_commit_install(
+    name = "install_precommit",
+    tests = [
+        ":fmt_test",
+        ":clippy_test",
+        ":cargo_test",
+    ],
+    test_suite = "//:precommit",
+)

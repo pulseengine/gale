@@ -1,0 +1,24 @@
+# Build artifacts
+/target/
+/bazel-*
+
+# Editor
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Rivet generated
+/.rivet/
+
+# Fuzz corpus/artifacts
+/fuzz/corpus/
+/fuzz/artifacts/
+
+# Test results
+/results/

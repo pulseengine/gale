@@ -1,0 +1,37 @@
+# Pre-commit hooks backed by Bazel test targets.
+#
+# Install: pre-commit install
+# Or use: bazel run //:install_precommit (for native git hook)
+#
+# All hooks delegate to Bazel — single source of truth.
+
+repos:
+  - repo: local
+    hooks:
+      - id: fmt
+        name: rustfmt
+        entry: bazel test //:fmt_test
+        language: system
+        pass_filenames: false
+        files: '\.rs$'
+
+      - id: clippy
+        name: clippy -D warnings
+        entry: bazel test //:clippy_test
+        language: system
+        pass_filenames: false
+        files: '\.rs$'
+
+      - id: test
+        name: cargo test
+        entry: bazel test //:cargo_test
+        language: system
+        pass_filenames: false
+        files: '\.rs$'
+
+      - id: precommit
+        name: full precommit suite
+        entry: bazel test //:precommit
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

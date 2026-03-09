@@ -1,0 +1,42 @@
+"""Gale — formally verified Zephyr kernel primitives for ASIL-D safety-critical systems.
+
+Zephyr's wind, hardened through formal verification.
+Verus (SMT/Z3) + Rocq (theorem proving).
+"""
+
+module(
+    name = "gale",
+    version = "0.1.0",
+    compatibility_level = 1,
+)
+
+# Verus verification rules
+bazel_dep(name = "rules_verus", version = "0.1.0")
+local_path_override(
+    module_name = "rules_verus",
+    path = "../pulseengine/rules_verus",
+)
+
+# Rocq + coq-of-rust rules
+bazel_dep(name = "rules_rocq_rust", version = "0.1.0")
+local_path_override(
+    module_name = "rules_rocq_rust",
+    path = "../pulseengine/rules_rocq_rust",
+)
+
+# Nix integration for Rocq toolchain
+bazel_dep(name = "rules_nixpkgs_core", version = "0.13.0")
+
+# Configure nixpkgs
+nix_repo = use_extension(
+    "@rules_nixpkgs_core//extensions:repository.bzl",
+    "nix_repo",
+)
+nix_repo.github(
+    name = "nixpkgs",
+    org = "NixOS",
+    repo = "nixpkgs",
+    commit = "88d3861acdd3d2f0e361767018218e51810df8a1",
+    sha256 = "",
+)
+use_repo(nix_repo, "nixpkgs")

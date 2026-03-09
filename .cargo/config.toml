@@ -1,0 +1,21 @@
+# Sanitizer profiles — run with:
+#   RUSTFLAGS="-Zsanitizer=address" cargo +nightly test --target aarch64-apple-darwin
+#   RUSTFLAGS="-Zsanitizer=thread"  cargo +nightly test --target aarch64-apple-darwin
+#   RUSTFLAGS="-Zsanitizer=leak"    cargo +nightly test --target aarch64-apple-darwin
+#
+# Note: MSan requires a custom-built std; see Makefile target `test-msan`.
+
+[build]
+# Default target for local development (macOS ARM)
+# CI should override this per-platform.
+
+[target.aarch64-apple-darwin]
+rustflags = []
+
+# ASan profile
+[target.'cfg(sanitizer = "address")']
+rustflags = ["-Zsanitizer=address"]
+
+# TSan profile
+[target.'cfg(sanitizer = "thread")']
+rustflags = ["-Zsanitizer=thread"]

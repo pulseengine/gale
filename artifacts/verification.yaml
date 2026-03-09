@@ -1,0 +1,238 @@
+# Verification measures — ASPICE SWE.4 through SWE.6.
+#
+# Maps every test/proof artifact to the design elements and requirements
+# it verifies.  This is the right side of the ASPICE V-model.
+
+artifacts:
+  # ── SWE.4: Unit verification ────────────────────────────────────────────
+
+  - id: UV-SEM-001
+    type: unit-verification
+    title: Semaphore unit tests (cargo test --lib)
+    status: approved
+    description: >
+      25 unit tests in plain/src/sem.rs and plain/src/wait_queue.rs.
+      Covers init validation, give increment/saturate/wake, try_take
+      available/unavailable, take_blocking, reset, give-take roundtrip,
+      invariant preservation, priority ordering.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-SEM-INIT
+      - type: verifies
+        target: SWDD-SEM-GIVE
+      - type: verifies
+        target: SWDD-SEM-TRY-TAKE
+      - type: verifies
+        target: SWDD-SEM-TAKE-BLOCKING
+      - type: verifies
+        target: SWDD-SEM-RESET
+      - type: verifies
+        target: SWDD-WQ-PEND
+
+  - id: UV-SEM-002
+    type: unit-verification
+    title: Property-based tests (proptest)
+    status: approved
+    description: >
+      4 proptest properties in tests/proptest_sem.rs:
+      invariant_holds_under_random_ops (200 random ops),
+      give_take_roundtrip, gives_saturate_at_limit, takes_bottom_at_zero.
+    tags: [testing, proptest, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-SEM-GIVE
+      - type: verifies
+        target: SWDD-SEM-TRY-TAKE
+
+  - id: UV-SEM-003
+    type: unit-verification
+    title: Kani bounded model checking harnesses
+    status: approved
+    description: >
+      6 Kani harnesses in tests/kani_harnesses.rs:
+      init parameter validation, give/take/reset invariant preservation,
+      give-take roundtrip, 4-operation sequence invariant.
+      Exhaustive exploration of bounded state space.
+    tags: [testing, kani, model-checking, swe-4]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWDD-SEM-INIT
+      - type: verifies
+        target: SWDD-SEM-GIVE
+      - type: verifies
+        target: SWDD-SEM-TRY-TAKE
+      - type: verifies
+        target: SWDD-SEM-RESET
+
+  - id: UV-SEM-004
+    type: unit-verification
+    title: Miri undefined behavior detection
+    status: approved
+    description: >
+      Run full test suite under Miri to detect undefined behavior,
+      use-after-free, out-of-bounds access, and uninitialized memory reads.
+      Executed via: cargo +nightly miri test
+    tags: [testing, miri, safety, swe-4]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWDD-SEM-INIT
+      - type: verifies
+        target: SWDD-SEM-GIVE
+      - type: verifies
+        target: SWDD-SEM-TRY-TAKE
+      - type: verifies
+        target: SWDD-SEM-RESET
+
+  - id: UV-SEM-005
+    type: unit-verification
+    title: Fuzz testing (cargo-fuzz)
+    status: approved
+    description: >
+      2 fuzz targets in fuzz/fuzz_targets/:
+      sem_fuzz (random operation sequences on semaphore),
+      sem_api_fuzz (init boundary conditions with random count/limit).
+      Coverage-guided mutation testing.
+    tags: [testing, fuzz, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-SEM-INIT
+      - type: verifies
+        target: SWDD-SEM-GIVE
+      - type: verifies
+        target: SWDD-SEM-TRY-TAKE
+
+  # ── SWE.5: Integration verification ─────────────────────────────────────
+
+  - id: IV-SEM-001
+    type: sw-integration-verification
+    title: Semaphore integration tests
+    status: approved
+    description: >
+      13 integration tests in tests/sem_integration.rs exercising the full
+      API surface across module boundaries.  Tests all 10 ASIL-D properties
+      (P1-P10) including invariant preservation, overflow safety, wait queue
+      ordering, and compositional behavior.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-SEM-001
+      - type: verifies
+        target: SWARCH-WQ-001
+
+  - id: IV-SEM-002
+    type: sw-integration-verification
+    title: Benchmark regression tests (criterion)
+    status: approved
+    description: >
+      7 criterion benchmarks in benches/sem_bench.rs:
+      init, give_increment, give_saturated, try_take, give_take_cycle,
+      give_wake_thread, reset_10_waiters.  Serve as performance regression
+      detection across the full module integration.
+    tags: [testing, benchmark, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-SEM-001
+
+  # ── SWE.6: Software verification (against SW requirements) ──────────────
+
+  - id: FV-SEM-001
+    type: sw-verification
+    title: Verus formal verification (SMT/Z3)
+    status: draft
+    description: >
+      Verus specifications in src/sem.rs with requires/ensures clauses
+      that formally verify all 10 properties (P1-P10) via SMT solving.
+      Proves absence of panics, overflow, and invariant violations.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-SEM-P01
+      - type: verifies
+        target: SWREQ-SEM-P02
+      - type: verifies
+        target: SWREQ-SEM-P03
+      - type: verifies
+        target: SWREQ-SEM-P04
+      - type: verifies
+        target: SWREQ-SEM-P05
+      - type: verifies
+        target: SWREQ-SEM-P06
+      - type: verifies
+        target: SWREQ-SEM-P07
+      - type: verifies
+        target: SWREQ-SEM-P08
+      - type: verifies
+        target: SWREQ-SEM-P09
+      - type: verifies
+        target: SWREQ-SEM-P10
+
+  - id: FV-SEM-002
+    type: sw-verification
+    title: Rocq theorem proofs (coq_of_rust)
+    status: draft
+    description: >
+      Rocq proof scripts in proofs/sem_proofs.v that formally prove all 10
+      properties via theorem proving on the coq_of_rust translation of the
+      plain Rust code.  Independent verification path from Verus.
+      Executed via: bazel test //proofs:sem_proofs_test
+    tags: [formal-verification, rocq, theorem-proving, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-SEM-P01
+      - type: verifies
+        target: SWREQ-SEM-P02
+      - type: verifies
+        target: SWREQ-SEM-P03
+      - type: verifies
+        target: SWREQ-SEM-P04
+      - type: verifies
+        target: SWREQ-SEM-P05
+      - type: verifies
+        target: SWREQ-SEM-P06
+      - type: verifies
+        target: SWREQ-SEM-P07
+      - type: verifies
+        target: SWREQ-SEM-P08
+      - type: verifies
+        target: SWREQ-SEM-P09
+      - type: verifies
+        target: SWREQ-SEM-P10
+
+  - id: FV-SEM-003
+    type: sw-verification
+    title: Clippy safety-critical lint profile
+    status: approved
+    description: >
+      cargo clippy --all-targets -- -D warnings with ASIL-D lint profile:
+      deny arithmetic_side_effects, unwrap_used, expect_used, panic,
+      indexing_slicing, cast_possible_truncation, cast_possible_wrap,
+      cast_sign_loss, wildcard_enum_match_arm, mem_forget.
+      Configured in Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-SEM-P09
+      - type: verifies
+        target: SWREQ-SEM-P01

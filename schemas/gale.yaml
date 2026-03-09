@@ -1,0 +1,81 @@
+# Gale-specific schema extensions for source provenance tracking.
+#
+# Adds a source-provenance artifact type that pins the exact upstream C files
+# being replaced, with checksums and version info.  This is the auditable
+# anchor proving "this is exactly what we replaced".
+
+schema:
+  name: gale
+  version: "0.1.0"
+  extends: [common, aspice]
+  description: >
+    Extensions for formally verified Rust kernel porting.
+    Adds source provenance tracking for ASIL-D audit trail.
+
+artifact-types:
+  - name: source-provenance
+    description: >
+      Pins an upstream source file being replaced.  Records the exact file path,
+      version, checksum, and the corresponding Gale Rust file that replaces it.
+      This is the root of the traceability chain — every requirement ultimately
+      traces back to a provenance record proving what original code is replaced.
+    fields:
+      - name: upstream-project
+        type: string
+        required: true
+        description: Name of the upstream project (e.g. "zephyr")
+      - name: upstream-version
+        type: string
+        required: true
+        description: Exact version string of the upstream source
+      - name: upstream-file
+        type: string
+        required: true
+        description: Path within the upstream source tree
+      - name: upstream-sha256
+        type: string
+        required: true
+        description: SHA-256 checksum of the upstream file
+      - name: upstream-lines
+        type: number
+        required: false
+        description: Total line count of the upstream file
+      - name: upstream-functions
+        type: list<string>
+        required: false
+        description: Specific C functions being ported from this file
+      - name: gale-file
+        type: string
+        required: true
+        description: Corresponding Gale Rust source file
+      - name: gale-module
+        type: string
+        required: false
+        description: Rust module path
+      - name: scope
+        type: string
+        required: false
+        allowed-values: [full-file, partial-functions, struct-definition]
+        description: Whether we port the entire file or specific functions
+    link-fields: []
+
+link-types:
+  - name: replaces
+    inverse: replaced-by
+    description: >
+      Gale artifact replaces the upstream source identified by the target
+      provenance record.  This is the fundamental porting relationship.
+
+  - name: function-maps-to
+    inverse: function-mapped-from
+    description: >
+      A detailed design element maps to a specific C function in the
+      upstream source.  Used for line-level traceability.
+
+traceability-rules:
+  - name: sw-req-has-provenance
+    description: Every SW requirement should trace to a source provenance record
+    source-type: sw-req
+    required-link: derives-from
+    target-types: [source-provenance, system-req]
+    severity: warning

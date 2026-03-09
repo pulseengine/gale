@@ -1,0 +1,35 @@
+# Rocq-of-Rust translation and compilation (Track 2: Theorem Proving)
+#
+# Translates plain Rust to Rocq, then compiles for formal verification.
+
+load("@rules_rocq_rust//coq_of_rust:defs.bzl", "coq_of_rust_library", "rocq_rust_verified_library")
+load("@rules_rocq_rust//rocq:defs.bzl", "rocq_library", "rocq_proof_test")
+
+# RocqOfRust library alias
+alias(
+    name = "rocq_of_rust_lib",
+    actual = "@rocq_of_rust_source//:rocq_of_rust_main",
+)
+
+# Step 1: Translate sem.rs to Rocq
+coq_of_rust_library(
+    name = "sem_translated",
+    rust_sources = ["sem.rs"],
+    edition = "2021",
+)
+
+# Step 2: Compile the translated Rocq code
+rocq_library(
+    name = "sem_compiled",
+    srcs = [":sem_translated"],
+    deps = [":rocq_of_rust_lib"],
+    extra_flags = ["-impredicative-set"],
+)
+
+# Convenience: one-step translate + compile
+rocq_rust_verified_library(
+    name = "sem_verified",
+    rust_sources = ["sem.rs"],
+    edition = "2021",
+    extra_flags = ["-impredicative-set"],
+)

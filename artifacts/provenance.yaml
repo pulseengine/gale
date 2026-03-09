@@ -1,0 +1,80 @@
+# Source provenance — exact upstream files being replaced.
+#
+# Every checksum was computed with: shasum -a 256 <file>
+# These are the auditable anchors for the entire traceability chain.
+
+artifacts:
+  - id: PROV-SEM-001
+    type: source-provenance
+    title: "Zephyr kernel/sem.c — counting semaphore implementation"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's counting semaphore.
+      Contains z_impl_k_sem_init, z_impl_k_sem_give, z_impl_k_sem_take,
+      z_impl_k_sem_reset, plus userspace wrappers and poll event handling.
+      Lines 45-192 contain the core logic; the rest is userspace verification,
+      poll support, and OBJ_CORE infrastructure not in scope for Gale.
+    tags: [upstream, sem, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/sem.c
+      upstream-sha256: "7731c241d90e49a93afaeeb35714ac3489a9ae165fb98b25d3b0e1cccf35c878"
+      upstream-lines: 237
+      upstream-functions:
+        - "z_impl_k_sem_init (lines 45-73)"
+        - "z_impl_k_sem_give (lines 95-121)"
+        - "z_impl_k_sem_take (lines 132-164)"
+        - "z_impl_k_sem_reset (lines 166-192)"
+      gale-file: plain/src/sem.rs
+      gale-module: gale::sem
+      scope: partial-functions
+
+  - id: PROV-SEM-002
+    type: source-provenance
+    title: "Zephyr include/zephyr/kernel.h — struct k_sem definition"
+    status: approved
+    description: >
+      Contains the struct k_sem definition (line 3607) and inline
+      k_sem_count_get function.  The struct has wait_q, count, limit
+      as core fields; poll_events and obj_core are config-dependent
+      and out of scope for Gale.
+    tags: [upstream, sem, kernel, header]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: include/zephyr/kernel.h
+      upstream-sha256: "9985a6280f39f9ee3c9901ecb9b3b9520147fb873c23b7c462c87aaedd6dfbb6"
+      upstream-lines: 6913
+      upstream-functions:
+        - "struct k_sem (line 3607)"
+        - "k_sem_count_get (inline)"
+      gale-file: plain/src/sem.rs
+      gale-module: gale::sem::Semaphore
+      scope: struct-definition
+
+  - id: PROV-WQ-001
+    type: source-provenance
+    title: "Zephyr kernel wait_q — priority-ordered wait queue"
+    status: approved
+    description: >
+      Zephyr's _wait_q_t is a doubly-linked sorted list used by all
+      blocking kernel objects.  The Gale port replaces the linked-list
+      implementation with a heapless::Vec<Thread, 64> sorted array,
+      preserving identical priority ordering semantics.
+      The original is spread across multiple headers and kernel internals
+      (include/zephyr/kernel_structs.h, kernel/include/wait_q.h).
+    tags: [upstream, wait-queue, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/include/wait_q.h
+      upstream-sha256: "n/a — internal header, semantics ported not byte-for-byte"
+      upstream-lines: 0
+      upstream-functions:
+        - "z_unpend_first_thread"
+        - "z_pend_curr"
+        - "z_waitq_init"
+      gale-file: plain/src/wait_queue.rs
+      gale-module: gale::wait_queue
+      scope: full-file

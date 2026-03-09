@@ -1,0 +1,268 @@
+# Requirements — ASPICE V-model traceability from stakeholder through SW level.
+#
+# Hierarchy:
+#   STKH-001 (stakeholder) → SYSREQ-SEM-001 (system) → SWREQ-SEM-P01..P10 (software)
+#
+# The 10 software requirements (P1-P10) are the ASIL-D verified properties.
+# Each maps directly to a property in the Verus/Rocq formal specifications.
+
+artifacts:
+  # ── Stakeholder requirement ──────────────────────────────────────────────
+  - id: STKH-001
+    type: stakeholder-req
+    title: Formally verified kernel semaphore for ASIL-D
+    status: approved
+    description: >
+      Replace Zephyr kernel/sem.c with a formally verified Rust implementation
+      that preserves identical functional behavior while proving safety properties
+      to ASIL-D level via SMT solving (Verus) and theorem proving (Rocq).
+    tags: [safety, asil-d, formal-verification]
+    fields:
+      priority: must
+      source: "ISO 26262 ASIL-D — highest automotive safety integrity level"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  # ── System requirement ───────────────────────────────────────────────────
+  - id: SYSREQ-SEM-001
+    type: system-req
+    title: Counting semaphore with init/give/take/reset
+    status: approved
+    description: >
+      A counting semaphore that matches the Zephyr k_sem API semantics:
+      initialization with count and limit, give (signal), take (wait),
+      and reset.  Must maintain priority-ordered wait queue for blocked
+      threads and never exhibit undefined behavior or arithmetic overflow.
+    tags: [sem, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 10 properties (P1-P10) verified by Verus SMT proofs,
+        Rocq theorem proofs, and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  # ── Software requirements: the 10 ASIL-D properties ─────────────────────
+  #
+  # Each traces to SYSREQ-SEM-001 AND the specific Zephyr upstream SRS
+  # requirements it satisfies (from zephyrproject-rtos/reqmgmt semaphore.sdoc).
+
+  - id: SWREQ-SEM-P01
+    type: sw-req
+    title: "P1: 0 <= count <= limit (always)"
+    status: approved
+    description: >
+      The semaphore count is always between 0 and limit inclusive.
+      This is the fundamental invariant — it must hold after init, give,
+      take, reset, and any interleaving of operations.
+    tags: [sem, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures/invariant clause. Proptest random op sequences.
+        Integration tests for init, give, take boundaries.
+    links:
+      - type: derives-from
+        target: SYSREQ-SEM-001
+      - type: satisfies
+        target: ZEP-SRS-5-4
+      - type: satisfies
+        target: ZEP-SRS-5-5
+
+  - id: SWREQ-SEM-P02
+    type: sw-req
+    title: "P2: limit > 0 (always)"
+    status: approved
+    description: >
+      The semaphore limit is always strictly positive.
+      Enforced by init rejecting limit == 0 with -EINVAL.
+    tags: [sem, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus requires clause on init. Unit test for zero limit rejection.
+    links:
+      - type: derives-from
+        target: SYSREQ-SEM-001
+      - type: satisfies
+        target: ZEP-SRS-5-18
+
+  - id: SWREQ-SEM-P03
+    type: sw-req
+    title: "P3: give with no waiters increments count, capped at limit"
+    status: approved
+    description: >
+      When give is called and the wait queue is empty:
+      if count < limit, count increments by 1 (GiveResult::Incremented).
+      If count == limit, count is unchanged (GiveResult::Saturated).
+      Maps to z_impl_k_sem_give lines 109-111 in kernel/sem.c.
+    tags: [sem, give, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on give(). Unit tests for increment and saturation.
+        Proptest gives_saturate_at_limit.
+    links:
+      - type: derives-from
+        target: SYSREQ-SEM-001
+      - type: satisfies
+        target: ZEP-SRS-5-12
+      - type: satisfies
+        target: ZEP-SRS-5-13
+
+  - id: SWREQ-SEM-P04
+    type: sw-req
+    title: "P4: give with waiters wakes highest-priority thread, count unchanged"
+    status: approved
+    description: >
+      When give is called and the wait queue is non-empty, the
+      highest-priority (numerically lowest) waiting thread is woken with
+      return value 0 (OK).  The count does not change.
+      Maps to z_impl_k_sem_give lines 103-108 in kernel/sem.c.
+    tags: [sem, give, wake, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on give(). Integration test give_wakes_highest_priority_thread.
+        Wait queue ordering test.
+    links:
+      - type: derives-from
+        target: SYSREQ-SEM-001
+      - type: satisfies
+        target: ZEP-SRS-5-14
+
+  - id: SWREQ-SEM-P05
+    type: sw-req
+    title: "P5: take when count > 0 decrements by exactly 1"
+    status: approved
+    description: >
+      When take is called and count > 0, count decrements by 1 and
+      returns 0 (OK).
+      Maps to z_impl_k_sem_take lines 143-148 in kernel/sem.c.
+    tags: [sem, take, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on try_take(). Unit test take_decrements_by_one.
+    links:
+      - type: derives-from
+        target: SYSREQ-SEM-001
+      - type: satisfies
+        target: ZEP-SRS-5-6
+      - type: satisfies
+        target: ZEP-SRS-5-7
+
+  - id: SWREQ-SEM-P06
+    type: sw-req
+    title: "P6: take when count == 0, no wait, returns -EBUSY"
+    status: approved
+    description: >
+      When take is called with K_NO_WAIT and count == 0, returns -EBUSY
+      without modifying the semaphore.
+      Maps to z_impl_k_sem_take lines 150-154 in kernel/sem.c.
+    tags: [sem, take, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on try_take(). Unit test take_empty_returns_ebusy.
+    links:
+      - type: derives-from
+        target: SYSREQ-SEM-001
+      - type: satisfies
+        target: ZEP-SRS-5-11
+
+  - id: SWREQ-SEM-P07
+    type: sw-req
+    title: "P7: take when count == 0, with wait, blocks calling thread"
+    status: approved
+    description: >
+      When take is called with a timeout and count == 0, the calling
+      thread is blocked and inserted into the wait queue in priority order.
+      Maps to z_impl_k_sem_take line 158 (z_pend_curr) in kernel/sem.c.
+    tags: [sem, take, blocking, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on take_blocking(). Unit test take_blocking_enqueues_thread.
+    links:
+      - type: derives-from
+        target: SYSREQ-SEM-001
+      - type: satisfies
+        target: ZEP-SRS-5-8
+
+  - id: SWREQ-SEM-P08
+    type: sw-req
+    title: "P8: reset sets count to 0, wakes all waiters with -EAGAIN"
+    status: approved
+    description: >
+      Reset clears count to 0 and wakes every waiting thread with
+      return value -EAGAIN.  Returns the number of threads woken.
+      Maps to z_impl_k_sem_reset lines 166-192 in kernel/sem.c.
+    tags: [sem, reset, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on reset(). Integration test reset_clears_everything.
+    links:
+      - type: derives-from
+        target: SYSREQ-SEM-001
+      - type: satisfies
+        target: ZEP-SRS-5-16
+      - type: satisfies
+        target: ZEP-SRS-5-17
+
+  - id: SWREQ-SEM-P09
+    type: sw-req
+    title: "P9: no arithmetic overflow in any operation"
+    status: approved
+    description: >
+      No arithmetic operation on count or limit causes integer overflow
+      or underflow.  Give at limit saturates; take at 0 returns error.
+      The C code uses (count != limit) ? 1U : 0U pattern (line 110).
+      Gale uses checked_add/saturating_sub.
+    tags: [sem, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Miri UB detection. Clippy
+        arithmetic_side_effects lint (deny). Integration test
+        no_overflow_at_u32_max_limit.
+    links:
+      - type: derives-from
+        target: SYSREQ-SEM-001
+
+  - id: SWREQ-SEM-P10
+    type: sw-req
+    title: "P10: wait queue ordering preserved across all operations"
+    status: approved
+    description: >
+      The wait queue maintains priority ordering (numerically lowest
+      priority value = highest priority) at all times.  Threads are
+      woken strictly in priority order.
+    tags: [sem, wait-queue, ordering, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus sorted-invariant on WaitQueue. Integration test
+        wait_queue_ordering_across_operations. Unit test
+        pend_maintains_priority_order.
+    links:
+      - type: derives-from
+        target: SYSREQ-SEM-001
+      - type: satisfies
+        target: ZEP-SRS-5-14

@@ -1,0 +1,4 @@
+# Stable for default builds. Miri/sanitizers/fuzz Bazel rules use +nightly explicitly.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

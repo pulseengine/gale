@@ -1,0 +1,500 @@
+# Automotive SPICE V-model schema
+#
+# Defines artifact types and traceability rules for the full ASPICE V-model.
+# Based on Automotive SPICE PAM v4.0.
+#
+# Left side of V (specification/design):
+#   SYS.1  Stakeholder Requirements Analysis
+#   SYS.2  System Requirements Analysis
+#   SYS.3  System Architectural Design
+#   SWE.1  Software Requirements Analysis
+#   SWE.2  Software Architectural Design
+#   SWE.3  Software Detailed Design and Unit Construction
+#
+# Right side of V (verification):
+#   SWE.4  Software Unit Verification
+#   SWE.5  Software Component Verification and Integration Verification
+#   SWE.6  Software Verification
+#   SYS.4  System Integration and Integration Verification
+#   SYS.5  System Verification
+#
+# Verification execution results (per-version evidence):
+#   verification-execution  — a run against a specific version
+#   verification-verdict    — pass/fail verdict for a single measure
+#
+# ASPICE 4.0 key terminology changes:
+#   - "test" is now "verification measure" (broader: includes review,
+#     static analysis, formal verification, simulation, not just testing)
+#   - SWE.5 scope expanded to include component verification
+#   - SWE.6/SYS.5 renamed from "qualification test" to "verification"
+#
+# This schema is reusable across any automotive project.
+
+schema:
+  name: aspice
+  version: "0.2.0"
+  namespace: "http://pulseengine.dev/ns/aspice#"
+  extends: [common]
+  description: >
+    Automotive SPICE v4.0 V-model artifact types and traceability rules.
+
+# ──────────────────────────────────────────────────────────────────────────
+# Artifact types
+# ──────────────────────────────────────────────────────────────────────────
+artifact-types:
+
+  # ── System level (left) ─────────────────────────────────────────────────
+
+  - name: stakeholder-req
+    description: Stakeholder requirement (SYS.1)
+    aspice-process: SYS.1
+    fields:
+      - name: priority
+        type: string
+        required: false
+        allowed-values: [must, should, could, wont]
+      - name: source
+        type: string
+        required: false
+        description: Origin of the requirement (customer, regulation, standard)
+    link-fields: []
+
+  - name: system-req
+    description: System requirement derived from stakeholder needs (SYS.2)
+    aspice-process: SYS.2
+    fields:
+      - name: req-type
+        type: string
+        required: false
+        allowed-values: [functional, performance, interface, constraint, safety]
+      - name: priority
+        type: string
+        required: false
+      - name: verification-criteria
+        type: text
+        required: false
+        description: Criteria for verifying this requirement (ASPICE 4.0 — verification measures)
+    link-fields:
+      - name: derived-from
+        link-type: derives-from
+        target-types: [stakeholder-req]
+        required: true
+        cardinality: one-or-many
+
+  - name: system-arch-component
+    description: System architectural element (SYS.3)
+    aspice-process: SYS.3
+    fields:
+      - name: component-type
+        type: string
+        required: false
+        allowed-values: [hardware, software, mechanical, electrical, mixed]
+      - name: interfaces
+        type: structured
+        required: false
+        description: Provided and required interfaces
+    link-fields:
+      - name: allocated-from
+        link-type: allocated-from
+        target-types: [system-req]
+        required: true
+        cardinality: one-or-many
+
+  # ── Software level (left) ───────────────────────────────────────────────
+
+  - name: sw-req
+    description: Software requirement (SWE.1)
+    aspice-process: SWE.1
+    fields:
+      - name: req-type
+        type: string
+        required: false
+        allowed-values: [functional, performance, interface, constraint, safety]
+      - name: priority
+        type: string
+        required: false
+      - name: verification-criteria
+        type: text
+        required: false
+        description: Criteria for verifying this requirement (ASPICE 4.0 — verification measures)
+    link-fields:
+      - name: derived-from
+        link-type: derives-from
+        target-types: [system-req, system-arch-component]
+        required: true
+        cardinality: one-or-many
+
+  - name: sw-arch-component
+    description: Software architectural element (SWE.2)
+    aspice-process: SWE.2
+    fields:
+      - name: interfaces
+        type: structured
+        required: false
+        description: Provided and required interfaces (can reference WIT, IDL, etc.)
+      - name: concurrency
+        type: string
+        required: false
+      - name: resource-budgets
+        type: structured
+        required: false
+    link-fields:
+      - name: allocated-from
+        link-type: allocated-from
+        target-types: [sw-req, system-arch-component]
+        required: true
+        cardinality: one-or-many
+
+  - name: sw-detail-design
+    description: Software detailed design or unit specification (SWE.3)
+    aspice-process: SWE.3
+    fields:
+      - name: unit
+        type: string
+        required: false
+        description: Source file path (validated against codebase)
+      - name: function
+        type: string
+        required: false
+        description: Function or method name
+      - name: algorithm
+        type: text
+        required: false
+        description: Algorithm or state machine description
+    link-fields:
+      - name: refines
+        link-type: refines
+        target-types: [sw-arch-component]
+        required: true
+        cardinality: one-or-many
+      - name: satisfies
+        link-type: satisfies
+        target-types: [sw-req]
+        required: false
+        cardinality: zero-or-many
+
+  # ── Verification specifications (right side of V) ──────────────────────
+  #
+  # ASPICE 4.0: "verification measure" replaces "test case".
+  # Methods now include static analysis, formal verification, simulation,
+  # review, inspection — not just automated/manual testing.
+
+  - name: unit-verification
+    description: Unit verification measure (SWE.4 — Software Unit Verification)
+    aspice-process: SWE.4
+    fields:
+      - name: method
+        type: string
+        required: false
+        allowed-values:
+          - automated-test
+          - manual-test
+          - review
+          - static-analysis
+          - formal-verification
+          - simulation
+          - inspection
+          - walkthrough
+      - name: preconditions
+        type: list<string>
+        required: false
+      - name: steps
+        type: structured
+        required: false
+    link-fields:
+      - name: verifies
+        link-type: verifies
+        target-types: [sw-detail-design]
+        required: true
+        cardinality: one-or-many
+
+  - name: sw-integration-verification
+    description: >
+      Software component and integration verification measure
+      (SWE.5 — Software Component Verification and Integration Verification)
+    aspice-process: SWE.5
+    fields:
+      - name: method
+        type: string
+        required: false
+        allowed-values:
+          - automated-test
+          - manual-test
+          - review
+          - static-analysis
+          - formal-verification
+          - simulation
+          - inspection
+          - walkthrough
+      - name: preconditions
+        type: list<string>
+        required: false
+      - name: steps
+        type: structured
+        required: false
+    link-fields:
+      - name: verifies
+        link-type: verifies
+        target-types: [sw-arch-component, sw-detail-design]
+        required: true
+        cardinality: one-or-many
+
+  - name: sw-verification
+    description: >
+      Software verification measure against SW requirements
+      (SWE.6 — Software Verification)
+    aspice-process: SWE.6
+    fields:
+      - name: method
+        type: string
+        required: false
+        allowed-values:
+          - automated-test
+          - manual-test
+          - review
+          - static-analysis
+          - formal-verification
+          - simulation
+          - inspection
+          - walkthrough
+      - name: priority
+        type: string
+        required: false
+      - name: preconditions
+        type: list<string>
+        required: false
+      - name: steps
+        type: structured
+        required: false
+    link-fields:
+      - name: verifies
+        link-type: verifies
+        target-types: [sw-req]
+        required: true
+        cardinality: one-or-many
+
+  - name: sys-integration-verification
+    description: >
+      System integration and integration verification measure
+      (SYS.4 — System Integration and Integration Verification)
+    aspice-process: SYS.4
+    fields:
+      - name: method
+        type: string
+        required: false
+        allowed-values:
+          - automated-test
+          - manual-test
+          - review
+          - static-analysis
+          - formal-verification
+          - simulation
+          - inspection
+          - walkthrough
+      - name: preconditions
+        type: list<string>
+        required: false
+      - name: steps
+        type: structured
+        required: false
+    link-fields:
+      - name: verifies
+        link-type: verifies
+        target-types: [system-arch-component, system-req]
+        required: true
+        cardinality: one-or-many
+
+  - name: sys-verification
+    description: >
+      System verification measure against system requirements
+      (SYS.5 — System Verification)
+    aspice-process: SYS.5
+    fields:
+      - name: method
+        type: string
+        required: false
+        allowed-values:
+          - automated-test
+          - manual-test
+          - review
+          - static-analysis
+          - formal-verification
+          - simulation
+          - inspection
+          - walkthrough
+      - name: preconditions
+        type: list<string>
+        required: false
+      - name: steps
+        type: structured
+        required: false
+    link-fields:
+      - name: verifies
+        link-type: verifies
+        target-types: [system-req]
+        required: true
+        cardinality: one-or-many
+
+  # ── Verification execution results (per-version evidence) ──────────────
+
+  - name: verification-execution
+    description: A verification execution run against a specific version
+    fields:
+      - name: version
+        type: string
+        required: true
+        description: Version or release identifier
+      - name: commit
+        type: string
+        required: false
+      - name: timestamp
+        type: string
+        required: true
+      - name: executor
+        type: string
+        required: false
+        description: Who or what ran the verification (CI system, person)
+      - name: environment
+        type: structured
+        required: false
+        description: OS, toolchain, runtime versions
+    link-fields: []
+
+  - name: verification-verdict
+    description: Pass/fail verdict for a single verification measure in an execution run
+    fields:
+      - name: verdict
+        type: string
+        required: true
+        allowed-values: [pass, fail, blocked, skipped, error]
+      - name: duration-ms
+        type: number
+        required: false
+      - name: evidence
+        type: string
+        required: false
+        description: Path to log file or artifact
+      - name: defect
+        type: string
+        required: false
+        description: Issue tracker reference for failures
+      - name: failure-reason
+        type: text
+        required: false
+    link-fields:
+      - name: measure
+        link-type: result-of
+        target-types:
+          - unit-verification
+          - sw-integration-verification
+          - sw-verification
+          - sys-integration-verification
+          - sys-verification
+        required: true
+        cardinality: exactly-one
+      - name: execution
+        link-type: part-of-execution
+        target-types: [verification-execution]
+        required: true
+        cardinality: exactly-one
+
+# ──────────────────────────────────────────────────────────────────────────
+# ASPICE-specific link types
+# ──────────────────────────────────────────────────────────────────────────
+link-types:
+  - name: result-of
+    inverse: has-result
+    description: Verification verdict is the result of executing a verification measure
+    source-types: [verification-verdict]
+    target-types:
+      - unit-verification
+      - sw-integration-verification
+      - sw-verification
+      - sys-integration-verification
+      - sys-verification
+
+  - name: part-of-execution
+    inverse: contains-verdict
+    description: Verification verdict belongs to a verification execution run
+    source-types: [verification-verdict]
+    target-types: [verification-execution]
+
+# ──────────────────────────────────────────────────────────────────────────
+# ASPICE traceability rules
+#
+# These encode the bidirectional traceability requirements from the
+# Automotive SPICE PAM v4.0.  `rivet validate` checks these automatically.
+# ──────────────────────────────────────────────────────────────────────────
+traceability-rules:
+  # Forward traceability (left side of V, top-down)
+  - name: sys2-derives-from-sys1
+    description: Every system requirement must derive from a stakeholder requirement
+    source-type: system-req
+    required-link: derives-from
+    target-types: [stakeholder-req]
+    severity: error
+
+  - name: swe1-derives-from-sys
+    description: Every SW requirement must derive from a system req or arch component
+    source-type: sw-req
+    required-link: derives-from
+    target-types: [system-req, system-arch-component]
+    severity: error
+
+  - name: swe2-allocated-from-swe1
+    description: Every SW arch component must be allocated from a SW requirement
+    source-type: sw-arch-component
+    required-link: allocated-from
+    target-types: [sw-req, system-arch-component]
+    severity: error
+
+  - name: swe3-refines-swe2
+    description: Every detailed design must refine an architecture component
+    source-type: sw-detail-design
+    required-link: refines
+    target-types: [sw-arch-component]
+    severity: error
+
+  # Reverse traceability (right side of V, bottom-up verification)
+  - name: swe4-verifies-swe3
+    description: Every unit verification measure must verify a detailed design element
+    source-type: unit-verification
+    required-link: verifies
+    target-types: [sw-detail-design]
+    severity: error
+
+  - name: swe6-verifies-swe1
+    description: Every SW verification measure must verify a SW requirement
+    source-type: sw-verification
+    required-link: verifies
+    target-types: [sw-req]
+    severity: error
+
+  - name: sys5-verifies-sys2
+    description: Every system verification measure must verify a system requirement
+    source-type: sys-verification
+    required-link: verifies
+    target-types: [system-req]
+    severity: error
+
+  # Coverage rules (every requirement should be verified)
+  - name: swe1-has-verification
+    description: Every SW requirement should be verified by at least one verification measure
+    source-type: sw-req
+    required-backlink: verifies
+    from-types: [sw-verification, unit-verification, sw-integration-verification]
+    severity: warning
+
+  - name: sys2-has-verification
+    description: Every system requirement should be verified by at least one verification measure
+    source-type: system-req
+    required-backlink: verifies
+    from-types: [sys-verification, sys-integration-verification]
+    severity: warning
+
+  - name: swe3-has-verification
+    description: Every detailed design element should be verified by at least one unit verification measure
+    source-type: sw-detail-design
+    required-backlink: verifies
+    from-types: [unit-verification]
+    severity: warning

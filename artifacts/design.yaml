@@ -1,0 +1,224 @@
+# Architecture and detailed design — ASPICE SWE.2 and SWE.3.
+#
+# Maps Gale Rust modules/functions to their upstream C counterparts
+# and traces to provenance records and SW requirements.
+
+artifacts:
+  # ── Software architecture (SWE.2) ───────────────────────────────────────
+
+  - id: SWARCH-SEM-001
+    type: sw-arch-component
+    title: Semaphore module (gale::sem)
+    status: approved
+    description: >
+      Counting semaphore with init/give/try_take/take_blocking/reset.
+      Owns a WaitQueue for blocked threads, a u32 count, and a u32 limit.
+      No unsafe code. no_std compatible via heapless.
+    tags: [sem, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "Semaphore::init(count, limit) -> Result<Self, i32>"
+          - "Semaphore::give() -> GiveResult"
+          - "Semaphore::try_take() -> i32"
+          - "Semaphore::take_blocking(Thread) -> bool"
+          - "Semaphore::reset() -> usize"
+          - "Semaphore::count_get() -> u32"
+          - "Semaphore::limit_get() -> u32"
+        required:
+          - "gale::wait_queue::WaitQueue"
+          - "gale::thread::Thread"
+          - "gale::error::{OK, EINVAL, EBUSY, EAGAIN}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-SEM-P01
+      - type: allocated-from
+        target: SWREQ-SEM-P03
+      - type: allocated-from
+        target: SWREQ-SEM-P05
+      - type: replaces
+        target: PROV-SEM-001
+
+  - id: SWARCH-WQ-001
+    type: sw-arch-component
+    title: Wait queue module (gale::wait_queue)
+    status: approved
+    description: >
+      Priority-ordered wait queue using heapless::Vec<Thread, 64>.
+      Provides pend (sorted insert), unpend_first (dequeue highest-priority),
+      and unpend_all (wake everyone).  Replaces Zephyr's _wait_q_t linked list.
+    tags: [wait-queue, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "WaitQueue::new() -> Self"
+          - "WaitQueue::pend(Thread) -> bool"
+          - "WaitQueue::unpend_first(i32) -> Option<Thread>"
+          - "WaitQueue::unpend_all(i32) -> usize"
+          - "WaitQueue::len() -> usize"
+          - "WaitQueue::is_empty() -> bool"
+        required:
+          - "heapless::Vec<Thread, 64>"
+          - "gale::thread::Thread"
+      resource-budgets:
+        max-waiters: 64
+        stack-allocation: "heapless — no heap, fixed-size array on stack"
+    links:
+      - type: allocated-from
+        target: SWREQ-SEM-P10
+      - type: allocated-from
+        target: SWREQ-SEM-P07
+      - type: replaces
+        target: PROV-WQ-001
+
+  # ── Software detailed design (SWE.3) ────────────────────────────────────
+  # One artifact per C function being ported.
+
+  - id: SWDD-SEM-INIT
+    type: sw-detail-design
+    title: "Semaphore::init — z_impl_k_sem_init port"
+    status: approved
+    description: >
+      Validates limit > 0 and initial_count <= limit (returns -EINVAL otherwise).
+      Constructs Semaphore with empty WaitQueue.
+      C source: kernel/sem.c lines 45-73.
+    tags: [sem, init]
+    fields:
+      unit: plain/src/sem.rs
+      function: "Semaphore::init"
+      algorithm: >
+        if limit == 0 || initial_count > limit: return Err(EINVAL).
+        Ok(Semaphore { wait_q: WaitQueue::new(), count: initial_count, limit })
+    links:
+      - type: refines
+        target: SWARCH-SEM-001
+      - type: satisfies
+        target: SWREQ-SEM-P01
+      - type: satisfies
+        target: SWREQ-SEM-P02
+      - type: function-maps-to
+        target: PROV-SEM-001
+
+  - id: SWDD-SEM-GIVE
+    type: sw-detail-design
+    title: "Semaphore::give — z_impl_k_sem_give port"
+    status: approved
+    description: >
+      If wait queue non-empty: unpend first thread with OK → WokeThread.
+      Else if count < limit: count += 1 → Incremented.
+      Else: no-op → Saturated.
+      C source: kernel/sem.c lines 95-121.
+    tags: [sem, give]
+    fields:
+      unit: plain/src/sem.rs
+      function: "Semaphore::give"
+      algorithm: >
+        1. unpend_first(OK) → Some(thread) → WokeThread(thread)
+        2. count != limit → count = count.checked_add(1) → Incremented
+        3. else → Saturated
+    links:
+      - type: refines
+        target: SWARCH-SEM-001
+      - type: satisfies
+        target: SWREQ-SEM-P03
+      - type: satisfies
+        target: SWREQ-SEM-P04
+      - type: satisfies
+        target: SWREQ-SEM-P09
+      - type: function-maps-to
+        target: PROV-SEM-001
+
+  - id: SWDD-SEM-TRY-TAKE
+    type: sw-detail-design
+    title: "Semaphore::try_take — z_impl_k_sem_take (K_NO_WAIT) port"
+    status: approved
+    description: >
+      If count > 0: count -= 1, return OK.
+      Else: return -EBUSY.
+      C source: kernel/sem.c lines 132-154 (non-blocking path).
+    tags: [sem, take]
+    fields:
+      unit: plain/src/sem.rs
+      function: "Semaphore::try_take"
+      algorithm: >
+        if count > 0: count = count.saturating_sub(1); OK
+        else: EBUSY
+    links:
+      - type: refines
+        target: SWARCH-SEM-001
+      - type: satisfies
+        target: SWREQ-SEM-P05
+      - type: satisfies
+        target: SWREQ-SEM-P06
+      - type: satisfies
+        target: SWREQ-SEM-P09
+      - type: function-maps-to
+        target: PROV-SEM-001
+
+  - id: SWDD-SEM-TAKE-BLOCKING
+    type: sw-detail-design
+    title: "Semaphore::take_blocking — z_impl_k_sem_take (with timeout) port"
+    status: approved
+    description: >
+      If count > 0: decrement and return true (acquired immediately).
+      Else: block thread, insert into wait queue in priority order, return false.
+      C source: kernel/sem.c line 158 (z_pend_curr path).
+    tags: [sem, take, blocking]
+    fields:
+      unit: plain/src/sem.rs
+      function: "Semaphore::take_blocking"
+      algorithm: >
+        if count > 0: count = count.saturating_sub(1); true
+        else: thread.block(); wait_q.pend(thread); false
+    links:
+      - type: refines
+        target: SWARCH-SEM-001
+      - type: satisfies
+        target: SWREQ-SEM-P07
+      - type: function-maps-to
+        target: PROV-SEM-001
+
+  - id: SWDD-SEM-RESET
+    type: sw-detail-design
+    title: "Semaphore::reset — z_impl_k_sem_reset port"
+    status: approved
+    description: >
+      Wake all waiting threads with -EAGAIN, set count to 0.
+      Returns number of threads woken.
+      C source: kernel/sem.c lines 166-192.
+    tags: [sem, reset]
+    fields:
+      unit: plain/src/sem.rs
+      function: "Semaphore::reset"
+      algorithm: >
+        woken = wait_q.unpend_all(EAGAIN); count = 0; woken
+    links:
+      - type: refines
+        target: SWARCH-SEM-001
+      - type: satisfies
+        target: SWREQ-SEM-P08
+      - type: function-maps-to
+        target: PROV-SEM-001
+
+  - id: SWDD-WQ-PEND
+    type: sw-detail-design
+    title: "WaitQueue::pend — sorted insert by priority"
+    status: approved
+    description: >
+      Insert thread into the wait queue maintaining priority order
+      (lowest numeric value = highest priority comes first).
+      Returns false if queue is full (MAX_WAITERS = 64).
+    tags: [wait-queue, pend]
+    fields:
+      unit: plain/src/wait_queue.rs
+      function: "WaitQueue::pend"
+      algorithm: >
+        if full: return false.
+        Find position where thread.priority < entries[pos].priority.
+        Insert at that position (shifts right). true
+    links:
+      - type: refines
+        target: SWARCH-WQ-001
+      - type: satisfies
+        target: SWREQ-SEM-P10

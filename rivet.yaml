@@ -1,0 +1,19 @@
+project:
+  name: gale
+  version: "0.1.0"
+  schemas:
+    - common
+    - aspice
+    - gale
+  description: >
+    Formally verified Rust port of Zephyr RTOS kernel primitives.
+    ASIL-D targeted. Dual-track verification: Verus (SMT/Z3) + Rocq (theorem proving).
+
+sources:
+  - path: artifacts
+    format: generic-yaml
+
+docs:
+  - docs
+
+results: results

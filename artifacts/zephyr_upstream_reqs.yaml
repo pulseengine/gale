@@ -1,0 +1,269 @@
+# Zephyr upstream requirements — auto-imported from reqmgmt via StrictDoc JSON export.
+#
+# Source: https://github.com/zephyrproject-rtos/reqmgmt
+# File:   docs/software_requirements/semaphore.sdoc
+# Tool:   strictdoc export --formats json | python3 convert.py
+#
+# DO NOT EDIT MANUALLY — regenerate from source.
+
+artifacts:
+  - id: ZEP-SRS-5-1
+    type: stakeholder-req
+    title: "Zephyr: Counting Semaphore Definition At Compile Time"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide a mechanism to define and initialize a semaphore at compile time.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-2
+    type: stakeholder-req
+    title: "Zephyr: Counting Semaphore Definition At Run Time"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide a mechanism to define and initialize a semaphore at runtime.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-3
+    type: stakeholder-req
+    title: "Zephyr: Maximum limit of a semaphore"
+    status: approved
+    description: >
+      The Zephyr RTOS shall define the maximum limit of a semaphore when the semaphore is used for counting purposes and does not have an explicit limit.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-3"
+
+  - id: ZEP-SRS-5-4
+    type: stakeholder-req
+    title: "Zephyr: Initialialization with maximum count value"
+    status: approved
+    description: >
+      When initializing a counting semaphore, the maximum permitted count a semaphore can have shall be set.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-4"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-5
+    type: stakeholder-req
+    title: "Zephyr: Initial semaphore value"
+    status: approved
+    description: >
+      When initializing a counting semaphore, the initial semaphore value shall be set.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-5"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-6
+    type: stakeholder-req
+    title: "Zephyr: Semaphore acquisition mechanism"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide a mechanism allowing threads to acquire a semaphore.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-6"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-7
+    type: stakeholder-req
+    title: "Zephyr: Semaphore acquisition with count greater than zero"
+    status: approved
+    description: >
+      While the semaphore's count is greater than zero, the requesting thread shall acquire the semaphore and decrement its count.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-7"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-8
+    type: stakeholder-req
+    title: "Zephyr: Semaphore acquisition with zero count"
+    status: approved
+    description: >
+      While the semaphore's count is zero, the requesting thread shall be blocked until the semaphore is released by another thread.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-8"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-9
+    type: stakeholder-req
+    title: "Zephyr: Semaphore acquisition timeout"
+    status: approved
+    description: >
+      When attempting to acquire a semaphore, the Zephyr RTOS shall accept options that specify timeout periods, allowing threads to set a maximum wait time for semaphore acquisition.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-9"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-10
+    type: stakeholder-req
+    title: "Zephyr: Semaphore acquisition timeout error handling"
+    status: approved
+    description: >
+      When attempting to acquire a semaphore, where the semaphore is not acquired within the specified time, the Zephyr RTOS shall return an error indicating a timeout.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-10"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-11
+    type: stakeholder-req
+    title: "Zephyr: Semaphore acquisition no wait error handling"
+    status: approved
+    description: >
+      When attempting to acquire a semaphore, where the current count is zero and no timeout time was provided, the Zephyr RTOS shall return an error indicating the semaphore is busy.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-11"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-12
+    type: stakeholder-req
+    title: "Zephyr: Semaphore release"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide a mechanism allowing threads to release a semaphore.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-12"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-13
+    type: stakeholder-req
+    title: "Zephyr: Semaphore release"
+    status: approved
+    description: >
+      The Zephyr RTOS shall increment the semaphore's count upon release.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-13"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-14
+    type: stakeholder-req
+    title: "Zephyr: Semaphore release with priority inheritance"
+    status: approved
+    description: >
+      When there are threads waiting on the semaphore, the highest-priority waiting thread shall be unblocked and acquire the semaphore.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-14"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-15
+    type: stakeholder-req
+    title: "Zephyr: Checking semaphore count"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide a mechanism for threads to check the current count of a semaphore without acquiring it.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-15"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-16
+    type: stakeholder-req
+    title: "Zephyr: Semaphore reset"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide a mechanism that resets the semaphore count to zero.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-16"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-17
+    type: stakeholder-req
+    title: "Zephyr: Semaphore acquisitions abort after reset"
+    status: approved
+    description: >
+      When a semaphore is reset, the Zephyr RTOS shall abort all existing acquisitions of the semaphore returning a resource contention error code.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-17"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SRS-5-18
+    type: stakeholder-req
+    title: "Zephyr: Semaphore Initialization Option Validation"
+    status: approved
+    description: >
+      When initializing a counting semaphore, where the maximum permitted count of a semaphore is invalid, then the Zephyr RTOS shall return an error indicating invalid values.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SRS-5-18"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-14
+
+  - id: ZEP-SYRS-14
+    type: stakeholder-req
+    title: "Zephyr: Counting Semaphore"
+    status: approved
+    description: >
+      The system shall implement a semaphore synchronization primitive for coordinating access to shared resources among multiple threads.
+    tags: [zephyr, upstream, semaphore]
+    fields:
+      priority: must
+      source: "reqmgmt/semaphore.sdoc ZEP-SYRS-14"
+

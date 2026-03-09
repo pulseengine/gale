@@ -1,0 +1,97 @@
+[package]
+name = "gale"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Gale — formally verified Zephyr kernel primitives for ASIL-D safety-critical systems"
+publish = false
+
+[lib]
+path = "plain/src/lib.rs"
+
+# Standard tests use the plain (non-Verus) code.
+# Verus verification is done via Bazel (BUILD.bazel).
+
+[dependencies]
+heapless = "0.8"
+
+[dev-dependencies]
+# Property-based testing
+proptest = "1"
+# Benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[features]
+default = []
+
+[[bench]]
+name = "sem_bench"
+harness = false
+
+[profile.release]
+# Safety-critical: overflow checks always on
+overflow-checks = true
+# LTO for production
+lto = true
+
+[profile.bench]
+overflow-checks = true
+
+[profile.dev]
+overflow-checks = true
+
+[profile.test]
+overflow-checks = true
+
+[lints.rust]
+# Core safety lints
+unsafe_code = "deny"
+# TODO: enable missing_docs = "warn" once all items are documented
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
+[lints.clippy]
+# === DENY: Correctness & safety-critical ===
+# Integer overflow / wrapping
+arithmetic_side_effects = "deny"
+cast_possible_truncation = "deny"
+cast_possible_wrap = "deny"
+cast_sign_loss = "deny"
+checked_conversions = "deny"
+# Panicking paths — forbidden in safety-critical code
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unreachable = "deny"
+todo = "deny"
+unimplemented = "deny"
+indexing_slicing = "deny"
+# Memory / resource
+large_stack_arrays = "deny"
+mem_forget = "deny"
+# Logic errors
+bool_comparison = "deny"
+erasing_op = "deny"
+misrefactored_assign_op = "deny"
+# Fallibility
+fallible_impl_from = "deny"
+# Shadowing (can hide bugs in safety-critical code)
+shadow_unrelated = "deny"
+# Float issues (not used, but deny preemptively)
+float_arithmetic = "deny"
+float_cmp_const = "deny"
+# Verbose/explicitness (catches subtle bugs)
+implicit_clone = "deny"
+# Exhaustive matching
+wildcard_enum_match_arm = "deny"
+
+# === WARN: Style & maintainability ===
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+# Allow some pedantic lints that conflict with our style
+must_use_candidate = "allow"
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+doc_markdown = "allow"
+missing_const_for_fn = "allow"
+use_self = "allow"

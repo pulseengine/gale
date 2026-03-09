@@ -1,0 +1,26 @@
+[package]
+name = "gale-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+rust-version = "1.85"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+
+[dependencies.gale]
+path = ".."
+
+[[bin]]
+name = "sem_fuzz"
+path = "fuzz_targets/sem_fuzz.rs"
+doc = false
+
+[[bin]]
+name = "sem_api_fuzz"
+path = "fuzz_targets/sem_api_fuzz.rs"
+doc = false
