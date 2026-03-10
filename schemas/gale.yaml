@@ -13,6 +13,13 @@ schema:
     Adds source provenance tracking for ASIL-D audit trail.
 
 artifact-types:
+  - name: documentation
+    description: >
+      Upstream document structure (sections, text blocks) imported from ReqIF.
+      Not requirements — kept for context and traceability completeness.
+    fields: []
+    link-fields: []
+
   - name: source-provenance
     description: >
       Pins an upstream source file being replaced.  Records the exact file path,

@@ -1,24 +1,9 @@
-# Build artifacts
-/target/
-/bazel-*
+# Rust build artifacts
+target/
+ffi/target/
 
-# Editor
-*.swp
-*.swo
-*~
-.idea/
-.vscode/
+# StrictDoc cache
+upstream-reqif/_cache/
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Rivet generated
-/.rivet/
-
-# Fuzz corpus/artifacts
-/fuzz/corpus/
-/fuzz/artifacts/
-
-# Test results
-/results/
+# Bazel
+bazel-*

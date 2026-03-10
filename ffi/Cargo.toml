@@ -12,6 +12,10 @@ crate-type = ["staticlib"]
 [dependencies]
 gale = { path = ".." }
 
+[profile.dev]
+panic = "abort"
+overflow-checks = true
+
 [profile.release]
 opt-level = "s"
 lto = true

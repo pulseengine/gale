@@ -1,27 +1,27 @@
 /*
+ * Copyright (c) 2010-2016 Wind River Systems, Inc.
  * Copyright (c) 2026 PulseEngine
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Gale semaphore — C shim bridging Zephyr's k_sem API to the
- * formally verified Rust implementation.
+ * Gale semaphore — phase 1: verified count arithmetic.
  *
- * This file replaces kernel/sem.c when CONFIG_GALE_KERNEL_SEM=y.
- * It handles Zephyr-specific concerns (spinlocks, scheduling,
- * tracing, poll events) and delegates count/wait-queue logic
- * to the verified Rust code via the gale_sem FFI.
+ * This is kernel/sem.c with the count operations replaced by calls
+ * to the formally verified Rust implementation.  Wait queue,
+ * scheduling, tracing, and poll handling remain native Zephyr.
  *
- * Source mapping (Zephyr → Gale):
- *   z_impl_k_sem_init  → gale_sem_init      (verified: P1, P2)
- *   z_impl_k_sem_give  → gale_sem_give      (verified: P3, P4, P9)
- *   z_impl_k_sem_take  → gale_sem_try_take   (verified: P5, P6, P9)
- *   z_impl_k_sem_reset → gale_sem_reset      (verified: P8)
+ * Verified operations (Verus + Rocq proofs):
+ *   gale_sem_count_give  — P3 (increment capped at limit), P9 (no overflow)
+ *   gale_sem_count_take  — P5 (decrement by 1), P6 (-EBUSY), P9 (no underflow)
+ *   gale_sem_count_init  — P1 (0 <= count <= limit), P2 (limit > 0)
  */
 
 #include <zephyr/kernel.h>
 #include <zephyr/kernel_structs.h>
+
 #include <zephyr/toolchain.h>
 #include <wait_q.h>
+#include <zephyr/sys/dlist.h>
 #include <ksched.h>
 #include <zephyr/init.h>
 #include <zephyr/internal/syscall_handler.h>
@@ -30,69 +30,47 @@
 
 #include "gale_sem.h"
 
-/*
- * System-wide spinlock — same pattern as original kernel/sem.c.
- * The Rust code is called under this lock, so the static mutable
- * pool access in Rust is safe (single-threaded).
- */
 static struct k_spinlock lock;
 
 #ifdef CONFIG_OBJ_CORE_SEM
 static struct k_obj_type obj_type_sem;
-#endif
-
-/*
- * The gale_sem handle is embedded in the k_sem's wait_q field.
- * Since we replace the wait queue entirely, we repurpose those bytes.
- * _wait_q_t is at least sizeof(sys_dlist_t) = 2 pointers >= 8 bytes,
- * and struct gale_sem is 4 bytes, so this always fits.
- */
-#define GALE_HANDLE(sem) ((struct gale_sem *)&(sem)->wait_q)
+#endif /* CONFIG_OBJ_CORE_SEM */
 
 static inline bool handle_poll_events(struct k_sem *sem)
 {
 #ifdef CONFIG_POLL
-	return z_handle_obj_poll_events(&sem->poll_events,
-					K_POLL_STATE_SEM_AVAILABLE);
+	return z_handle_obj_poll_events(&sem->poll_events, K_POLL_STATE_SEM_AVAILABLE);
 #else
 	ARG_UNUSED(sem);
 	return false;
-#endif
+#endif /* CONFIG_POLL */
 }
 
 int z_impl_k_sem_init(struct k_sem *sem, unsigned int initial_count,
 		      unsigned int limit)
 {
-	int ret;
-
-	CHECKIF(limit == 0U || initial_count > limit) {
+	/*
+	 * Validated by Gale: P1 (0 <= count <= limit), P2 (limit > 0).
+	 */
+	if (gale_sem_count_init(initial_count, limit) != 0) {
 		SYS_PORT_TRACING_OBJ_FUNC(k_sem, init, sem, -EINVAL);
 		return -EINVAL;
 	}
 
-	ret = gale_sem_init(GALE_HANDLE(sem), initial_count, limit);
-	if (ret != 0) {
-		SYS_PORT_TRACING_OBJ_FUNC(k_sem, init, sem, ret);
-		return ret;
-	}
-
-	/*
-	 * Keep count/limit in the C struct too for k_sem_count_get()
-	 * which is an inline in kernel.h and reads sem->count directly.
-	 */
 	sem->count = initial_count;
 	sem->limit = limit;
 
 	SYS_PORT_TRACING_OBJ_FUNC(k_sem, init, sem, 0);
 
+	z_waitq_init(&sem->wait_q);
 #if defined(CONFIG_POLL)
 	sys_dlist_init(&sem->poll_events);
-#endif
+#endif /* CONFIG_POLL */
 	k_object_init(sem);
 
 #ifdef CONFIG_OBJ_CORE_SEM
 	k_obj_core_init_and_link(K_OBJ_CORE(sem), &obj_type_sem);
-#endif
+#endif /* CONFIG_OBJ_CORE_SEM */
 
 	return 0;
 }
@@ -105,48 +83,29 @@ int z_vrfy_k_sem_init(struct k_sem *sem, unsigned int initial_count,
 	return z_impl_k_sem_init(sem, initial_count, limit);
 }
 #include <zephyr/syscalls/k_sem_init_mrsh.c>
-#endif
+#endif /* CONFIG_USERSPACE */
 
 void z_impl_k_sem_give(struct k_sem *sem)
 {
 	k_spinlock_key_t key = k_spin_lock(&lock);
-	struct gale_give_result gale_result;
-	bool resched = false;
+	struct k_thread *thread;
+	bool resched;
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_sem, give, sem);
 
-	gale_sem_give(GALE_HANDLE(sem), &gale_result);
+	thread = z_unpend_first_thread(&sem->wait_q);
 
-	switch (gale_result.kind) {
-	case 1: {
-		/*
-		 * Gale woke a thread from its internal wait queue.
-		 * We need to find the corresponding Zephyr thread and
-		 * ready it.  The thread_id stored in Gale maps to the
-		 * Zephyr thread that was pended via z_pend_curr().
-		 *
-		 * For the initial integration, we use Zephyr's native
-		 * wait queue (z_unpend_first_thread) in parallel.
-		 * TODO: unify the wait queue so Gale is the single
-		 * source of truth.
-		 */
-		struct k_thread *thread = z_unpend_first_thread(
-			(_wait_q_t *)&sem->wait_q);
-		if (thread != NULL) {
-			arch_thread_return_value_set(thread, 0);
-			z_ready_thread(thread);
-		}
+	if (unlikely(thread != NULL)) {
+		arch_thread_return_value_set(thread, 0);
+		z_ready_thread(thread);
 		resched = true;
-		break;
-	}
-	case 0:
-		/* Incremented — update the C-side shadow copy */
-		sem->count = gale_sem_count_get(GALE_HANDLE(sem));
+	} else {
+		/*
+		 * Verified by Gale: P3 (increment capped at limit),
+		 * P9 (no arithmetic overflow).
+		 */
+		sem->count = gale_sem_count_give(sem->count, sem->limit);
 		resched = handle_poll_events(sem);
-		break;
-	case 2:
-		/* Saturated — nothing to do */
-		break;
 	}
 
 	if (unlikely(resched)) {
@@ -165,7 +124,7 @@ static inline void z_vrfy_k_sem_give(struct k_sem *sem)
 	z_impl_k_sem_give(sem);
 }
 #include <zephyr/syscalls/k_sem_give_mrsh.c>
-#endif
+#endif /* CONFIG_USERSPACE */
 
 int z_impl_k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 {
@@ -178,16 +137,17 @@ int z_impl_k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_sem, take, sem, timeout);
 
-	ret = gale_sem_try_take(GALE_HANDLE(sem));
+	/*
+	 * Verified by Gale: P5 (decrement by 1 when count > 0),
+	 * P6 (-EBUSY when count == 0), P9 (no underflow).
+	 */
+	ret = gale_sem_count_take(&sem->count);
 
 	if (ret == 0) {
-		/* Acquired — update C-side shadow */
-		sem->count = gale_sem_count_get(GALE_HANDLE(sem));
 		k_spin_unlock(&lock, key);
 		goto out;
 	}
 
-	/* Count is zero — check timeout */
 	if (K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
 		k_spin_unlock(&lock, key);
 		ret = -EBUSY;
@@ -196,28 +156,22 @@ int z_impl_k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 
 	SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_sem, take, sem, timeout);
 
-	/*
-	 * Block the calling thread.  We use Zephyr's native z_pend_curr
-	 * for thread management (scheduling, timeouts).
-	 *
-	 * TODO: also enqueue in Gale's wait queue for verified ordering.
-	 */
-	ret = z_pend_curr(&lock, key, (_wait_q_t *)&sem->wait_q, timeout);
+	ret = z_pend_curr(&lock, key, &sem->wait_q, timeout);
 
 out:
 	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_sem, take, sem, timeout, ret);
+
 	return ret;
 }
 
 void z_impl_k_sem_reset(struct k_sem *sem)
 {
+	struct k_thread *thread;
 	k_spinlock_key_t key = k_spin_lock(&lock);
 	bool resched = false;
-	struct k_thread *thread;
 
-	/* Wake all waiters via Zephyr's native wait queue */
 	while (true) {
-		thread = z_unpend_first_thread((_wait_q_t *)&sem->wait_q);
+		thread = z_unpend_first_thread(&sem->wait_q);
 		if (thread == NULL) {
 			break;
 		}
@@ -225,9 +179,6 @@ void z_impl_k_sem_reset(struct k_sem *sem)
 		arch_thread_return_value_set(thread, -EAGAIN);
 		z_ready_thread(thread);
 	}
-
-	/* Reset Gale's verified state */
-	gale_sem_reset(GALE_HANDLE(sem));
 	sem->count = 0;
 
 	SYS_PORT_TRACING_OBJ_FUNC(k_sem, reset, sem);
@@ -262,7 +213,8 @@ static inline unsigned int z_vrfy_k_sem_count_get(struct k_sem *sem)
 	return z_impl_k_sem_count_get(sem);
 }
 #include <zephyr/syscalls/k_sem_count_get_mrsh.c>
-#endif
+
+#endif /* CONFIG_USERSPACE */
 
 #ifdef CONFIG_OBJ_CORE_SEM
 static int init_sem_obj_core_list(void)
@@ -279,4 +231,4 @@ static int init_sem_obj_core_list(void)
 
 SYS_INIT(init_sem_obj_core_list, PRE_KERNEL_1,
 	 CONFIG_KERNEL_INIT_PRIORITY_OBJECTS);
-#endif
+#endif /* CONFIG_OBJ_CORE_SEM */

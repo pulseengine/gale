@@ -76,10 +76,6 @@ add_custom_command(
   DEPENDS
     ${GALE_FFI_DIR}/Cargo.toml
     ${GALE_FFI_DIR}/src/lib.rs
-    ${GALE_DIR}/plain/src/sem.rs
-    ${GALE_DIR}/plain/src/wait_queue.rs
-    ${GALE_DIR}/plain/src/thread.rs
-    ${GALE_DIR}/plain/src/priority.rs
     ${GALE_DIR}/plain/src/error.rs
     ${GALE_DIR}/plain/src/lib.rs
   COMMENT "Building Gale FFI static library for ${RUST_TARGET}"

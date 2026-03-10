@@ -13,6 +13,19 @@ sources:
   - path: artifacts
     format: generic-yaml
 
+# Upstream Zephyr requirements are available via ReqIF import.
+# Currently using curated artifacts/zephyr_upstream_reqs.yaml instead,
+# which has correct ASPICE types (system-req vs sw-req) for the
+# semaphore requirements we care about.
+#
+# To import all upstream requirements:
+#  - path: upstream-reqif/reqif
+#    format: reqif
+#    config:
+#      type-map.requirement: sw-req
+#      type-map.section: documentation
+#      type-map.text: documentation
+
 docs:
   - docs
 

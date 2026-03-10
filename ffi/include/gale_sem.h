@@ -3,8 +3,11 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * C header for the Gale verified semaphore FFI.
- * Generated from ffi/src/lib.rs — keep in sync.
+ * Phase 1 FFI: verified count arithmetic for Zephyr's k_sem.
+ *
+ * These three functions replace the count arithmetic from kernel/sem.c.
+ * All other semaphore logic (wait queue, scheduling, tracing, poll)
+ * remains native Zephyr C.
  */
 
 #ifndef GALE_SEM_H_
@@ -17,51 +20,29 @@ extern "C" {
 #endif
 
 /**
- * Opaque semaphore handle — stored inside struct k_sem.
- * Contains a pool index into the static Rust semaphore table.
+ * Validate semaphore initialization parameters.
+ * Returns 0 if valid, -EINVAL if limit == 0 or initial_count > limit.
+ *
+ * Verified: P1 (0 <= count <= limit), P2 (limit > 0).
  */
-struct gale_sem {
-	uint32_t pool_index;
-};
+int32_t gale_sem_count_init(uint32_t initial_count, uint32_t limit);
 
 /**
- * Result of gale_sem_give().
- *   kind 0 = incremented (no waiters, count went up)
- *   kind 1 = woke thread (a waiter was unblocked)
- *   kind 2 = saturated (count was already at limit)
+ * Compute new count after give (signal) with no waiters.
+ * Returns count + 1 if count < limit, else count (saturation).
+ *
+ * Verified: P3 (increment capped at limit), P9 (no overflow).
  */
-struct gale_give_result {
-	uint32_t kind;
-	uint32_t woken_thread_id;
-	uint32_t woken_thread_priority;
-};
+uint32_t gale_sem_count_give(uint32_t count, uint32_t limit);
 
-/** Initialize a semaphore. Returns 0 on success. */
-int32_t gale_sem_init(struct gale_sem *handle, uint32_t initial_count,
-		      uint32_t limit);
-
-/** Give (signal). Fills result struct. Returns 0 on success. */
-int32_t gale_sem_give(const struct gale_sem *handle,
-		      struct gale_give_result *result);
-
-/** Non-blocking take. Returns 0 if acquired, -EBUSY if empty. */
-int32_t gale_sem_try_take(const struct gale_sem *handle);
-
-/** Enqueue a thread as waiter. Returns 1=acquired, 2=enqueued, 0=error. */
-int32_t gale_sem_pend_thread(const struct gale_sem *handle,
-			     uint32_t thread_id, uint32_t priority);
-
-/** Reset: count → 0, returns number of woken waiters. */
-uint32_t gale_sem_reset(const struct gale_sem *handle);
-
-/** Get current count. */
-uint32_t gale_sem_count_get(const struct gale_sem *handle);
-
-/** Get limit. */
-uint32_t gale_sem_limit_get(const struct gale_sem *handle);
-
-/** Free a semaphore slot. */
-void gale_sem_free(const struct gale_sem *handle);
+/**
+ * Attempt to decrement count for take (acquire).
+ * If *count > 0: decrements *count by 1, returns 0.
+ * If *count == 0: leaves *count unchanged, returns -EBUSY.
+ *
+ * Verified: P5 (decrement by 1), P6 (-EBUSY), P9 (no underflow).
+ */
+int32_t gale_sem_count_take(uint32_t *count);
 
 #ifdef __cplusplus
 }
