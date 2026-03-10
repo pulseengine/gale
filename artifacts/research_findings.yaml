@@ -1,0 +1,205 @@
+# Research Findings — External projects and techniques relevant to Gale.
+#
+# These are tracked as findings that may generate requirements or inform
+# design decisions. Each finding links to stakeholder requirements it could
+# serve.
+
+artifacts:
+  # ── DARPA TRACTOR ─────────────────────────────────────────────────────────
+
+  - id: FIND-001
+    type: finding
+    title: "DARPA TRACTOR: Automated C-to-Rust translation with verification"
+    status: active
+    description: >
+      DARPA's TRACTOR program (TRanslating All C TO Rust, $14M, 7 performer
+      teams) develops automated methods to translate legacy C codebases into
+      safe, idiomatic Rust with correctness guarantees. Key techniques:
+
+      1. **Verified Lifting** (ForCLift team, $5M — UW-Madison, UC Berkeley,
+         UIUC, Edinburgh): combines formal methods, program analysis, and LLMs
+         to produce verified C-to-Rust translations. Builds formal semantic
+         models of both C and Rust with certification tools.
+
+      2. **Translation Validation** (VERT): uses WASM as oracle — compiles C
+         to WASM, uses LLM to generate idiomatic Rust candidate, then verifies
+         equivalence via property-based testing and Kani bounded model checking.
+         Improved correctness from 31% to 54% (PBT) and 1% to 42% (BMC).
+
+      3. **Evaluation**: MIT Lincoln Lab runs benchmarks every 6 months.
+         Battery 01 tests pointer lifetimes, pass-by-reference → borrow model.
+         Public test corpus on GitHub (DARPA-TRACTOR-Program/PUBLIC-Test-Corpus).
+
+      Relevance to Gale: our manual rewriting approach produces higher-quality
+      verified code, but TRACTOR techniques could help us:
+      - Validate that our Rust preserves C semantics (translation validation)
+      - Automate the plain/ mirror generation from Verus code
+      - Apply VERT-style bounded model checking as additional confidence layer
+      - Use ForCLift's formal semantic models as reference for our C ↔ Rust
+        semantic equivalence arguments in ISO 26262 audits
+    tags: [research, c2rust, darpa, tractor, verification]
+    fields:
+      source: "DARPA TRACTOR program (HR001124S0029), announced July 2024"
+      relevance: high
+      action-required: true
+    links:
+      - type: informs
+        target: STKH-001
+      - type: informs
+        target: STKH-002
+      - type: generates
+        target: REQ-TRACTOR-001
+      - type: generates
+        target: REQ-TRACTOR-002
+      - type: generates
+        target: REQ-TRACTOR-003
+
+  - id: FIND-002
+    type: finding
+    title: "Zephyr C kernel code is not formally verified"
+    status: active
+    description: >
+      The original Zephyr kernel C code (sem.c, mutex.c, etc.) has no formal
+      verification. It is tested (unit tests, Zephyr test framework, IEC 61508
+      SIL 3 certification tests) but correctness is not machine-proven.
+
+      This creates three gaps for Gale:
+
+      1. **No formal C spec**: Zephyr's requirements (reqmgmt/) are natural
+         language. Our Verus specs are the first formal specifications of
+         these primitives. We derived them by reading C code, not from a
+         pre-existing formal spec.
+
+      2. **No mechanized C↔Rust equivalence**: We prove properties of the
+         Rust code, but cannot mechanically prove our Rust matches the C
+         behavior. The correspondence is established by:
+         - Code review (C source mapped in comments)
+         - Running Zephyr's own test suite against our implementation
+         - Structural similarity between C and Rust code
+         But none of these are formal proofs.
+
+      3. **Latent C bugs may be replicated**: If the C code has a bug that
+         passes Zephyr's test suite, we might faithfully replicate it in Rust
+         and then "prove" the buggy behavior correct. Our formal specs could
+         be wrong if the C code we derived them from is wrong.
+
+      Mitigation: Our Verus specs are independent safety properties (e.g.,
+      "count never exceeds limit") that are correct regardless of the C code.
+      They aren't derived from C behavior — they're derived from the
+      mathematical definition of a counting semaphore / reentrant mutex.
+      This makes them robust against C bugs.
+    tags: [research, c-code-quality, verification-gap, safety]
+    fields:
+      source: "Analysis of Zephyr kernel verification status"
+      relevance: critical
+      action-required: true
+    links:
+      - type: informs
+        target: STKH-001
+      - type: generates
+        target: REQ-TRACTOR-003
+
+  # ── Requirements generated from TRACTOR finding ──────────────────────────
+
+  - id: REQ-TRACTOR-001
+    type: sw-req
+    title: "Translation validation: verify Gale Rust preserves Zephyr C semantics"
+    status: draft
+    description: >
+      For each kernel primitive ported from C to Rust, establish a formal or
+      semi-formal argument that the Rust implementation preserves the observable
+      behavior of the original C code. Approaches (in order of rigor):
+
+      1. **Functional equivalence testing** (existing): run Zephyr's own test
+         suite against both C and Gale implementations, compare results.
+      2. **VERT-style bounded model checking**: compile both C and Rust to a
+         common IR (WASM or LLVM), use Kani BMC to prove equivalence within
+         bounded inputs.
+      3. **Refinement proof** (aspirational): prove in Rocq that the Rust model
+         refines the C specification, using formal C semantics (CompCert Clight
+         or similar) as source model.
+
+      Level (1) is implemented. Level (2) should be added as a CI check.
+      Level (3) is a long-term goal tied to Rocq proof development.
+    tags: [translation-validation, equivalence, safety]
+    fields:
+      req-type: safety
+      priority: should
+      verification-criteria: >
+        Level 1: Zephyr test suite passes with Gale (24/24 for sem, TBD for mutex).
+        Level 2: Kani BMC proves C↔Rust equivalence for init/give/take/reset
+        within bounded state space.
+    links:
+      - type: derives-from
+        target: FIND-001
+      - type: derives-from
+        target: FIND-002
+      - type: related-to
+        target: SYSREQ-SEM-001
+      - type: related-to
+        target: SYSREQ-MUT-001
+
+  - id: REQ-TRACTOR-002
+    type: sw-req
+    title: "Automated plain/ mirror generation from Verus source"
+    status: draft
+    description: >
+      Develop a tool or preprocessor that mechanically strips Verus annotations
+      from src/*.rs to produce plain/*.rs, eliminating manual mirror maintenance.
+
+      The tool should:
+      - Remove verus! {} macro wrappers
+      - Strip requires/ensures/invariant/decreases clauses
+      - Remove proof fn blocks and spec fn blocks
+      - Remove ghost/tracked parameters
+      - Preserve all executable code unchanged
+      - Produce compilable plain Rust output
+
+      This eliminates the sync-divergence risk between Verus and plain code,
+      which is currently the weakest link in the verification chain.
+      TRACTOR's ForCLift work on formal code transformation could inform
+      the design of this tool.
+    tags: [tooling, automation, mirror, verus]
+    fields:
+      req-type: process
+      priority: should
+      verification-criteria: >
+        Generated plain/ code compiles and passes all cargo tests.
+        Diff between generated and hand-written plain/ code is empty
+        (modulo formatting).
+    links:
+      - type: derives-from
+        target: FIND-001
+
+  - id: REQ-TRACTOR-003
+    type: sw-req
+    title: "Specification independence: verify specs are mathematically sound"
+    status: draft
+    description: >
+      For each ASIL-D property, establish that the specification is
+      independently correct — not merely a transcription of C behavior.
+
+      Approach:
+      1. **Mathematical foundation**: Each spec should trace to a textbook
+         definition (e.g., counting semaphore from Dijkstra 1965, mutex from
+         Lampson/Redell 1980) or an industry standard (POSIX, AUTOSAR OS).
+      2. **Differential testing**: Run the same property-based tests against
+         multiple implementations (Zephyr C, Gale Rust, FreeRTOS, seL4) to
+         detect spec bugs that pass one implementation but fail another.
+      3. **Independent review**: Specs should be reviewed by domain experts
+         who did NOT write the Rust code, to catch confirmation bias.
+
+      This addresses the "replicated bug" risk from FIND-002.
+    tags: [specification, independence, safety, audit]
+    fields:
+      req-type: safety
+      priority: should
+      verification-criteria: >
+        Each ASIL-D property has a reference to external specification
+        (textbook/standard). Differential testing covers at least 2
+        independent implementations.
+    links:
+      - type: derives-from
+        target: FIND-002
+      - type: derives-from
+        target: FIND-001

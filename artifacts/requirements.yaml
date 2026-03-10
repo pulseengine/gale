@@ -1,21 +1,24 @@
 # Requirements — ASPICE V-model traceability from stakeholder through SW level.
 #
 # Hierarchy:
-#   STKH-001 (stakeholder) → SYSREQ-SEM-001 (system) → SWREQ-SEM-P01..P10 (software)
+#   STKH-001 (stakeholder)
+#     → SYSREQ-SEM-001 (system) → SWREQ-SEM-P01..P10 (software)
+#     → SYSREQ-MUT-001 (system) → SWREQ-MUT-M01..M11 (software)
 #
-# The 10 software requirements (P1-P10) are the ASIL-D verified properties.
-# Each maps directly to a property in the Verus/Rocq formal specifications.
+# The verified properties are the ASIL-D formal specifications.
+# Each maps directly to a property in the Verus/Rocq specs.
 
 artifacts:
   # ── Stakeholder requirement ──────────────────────────────────────────────
   - id: STKH-001
     type: stakeholder-req
-    title: Formally verified kernel semaphore for ASIL-D
+    title: Formally verified kernel primitives for ASIL-D
     status: approved
     description: >
-      Replace Zephyr kernel/sem.c with a formally verified Rust implementation
-      that preserves identical functional behavior while proving safety properties
-      to ASIL-D level via SMT solving (Verus) and theorem proving (Rocq).
+      Replace Zephyr kernel synchronization primitives (sem.c, mutex.c, etc.)
+      with formally verified Rust implementations that preserve identical
+      functional behavior while proving safety properties to ASIL-D level
+      via SMT solving (Verus) and theorem proving (Rocq).
     tags: [safety, asil-d, formal-verification]
     fields:
       priority: must
@@ -270,3 +273,231 @@ artifacts:
         target: SYSREQ-SEM-001
       - type: satisfies
         target: ZEP-SRS-5-14
+
+  # ── Mutex: System requirement ─────────────────────────────────────────────
+
+  - id: SYSREQ-MUT-001
+    type: system-req
+    title: Reentrant mutex with ownership tracking
+    status: approved
+    description: >
+      A reentrant mutex that matches the Zephyr k_mutex API semantics:
+      initialization, lock (reentrant), unlock with ownership checks,
+      and priority-ordered wait queue for blocked threads.  Must maintain
+      the owner/lock_count correspondence invariant and never exhibit
+      undefined behavior or arithmetic overflow.
+    tags: [mutex, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 11 properties (M1-M11) verified by Verus SMT proofs,
+        Rocq theorem proofs, and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Mutex: Software requirements (11 ASIL-D properties) ──────────────────
+
+  - id: SWREQ-MUT-M01
+    type: sw-req
+    title: "M1: lock_count > 0 iff owner.is_some() (always)"
+    status: approved
+    description: >
+      The fundamental mutex invariant: the lock count is positive if and only
+      if the mutex has an owner.  This must hold after init, lock, unlock,
+      and any interleaving of operations.
+    tags: [mutex, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus biconditional in inv(). Integration tests m1_invariant_*.
+    links:
+      - type: derives-from
+        target: SYSREQ-MUT-001
+
+  - id: SWREQ-MUT-M02
+    type: sw-req
+    title: "M2: wait_q non-empty implies mutex is locked (always)"
+    status: approved
+    description: >
+      Waiters can only exist when the mutex is locked.  An unlocked mutex
+      always has an empty wait queue.
+    tags: [mutex, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus implication in inv(). Integration test m2_waiters_implies_locked.
+    links:
+      - type: derives-from
+        target: SYSREQ-MUT-001
+
+  - id: SWREQ-MUT-M03
+    type: sw-req
+    title: "M3: try_lock when unlocked sets owner, lock_count = 1"
+    status: approved
+    description: >
+      When try_lock is called on an unlocked mutex, the caller becomes the
+      owner and lock_count is set to 1.
+      Maps to z_impl_k_mutex_lock lines 121-131 in kernel/mutex.c.
+    tags: [mutex, lock, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on try_lock(). Integration test m3_lock_unlocked_mutex.
+    links:
+      - type: derives-from
+        target: SYSREQ-MUT-001
+
+  - id: SWREQ-MUT-M04
+    type: sw-req
+    title: "M4: try_lock by same owner increments lock_count (reentrant)"
+    status: approved
+    description: >
+      When try_lock is called by the current owner, lock_count is incremented.
+      The owner remains the same.
+      Maps to z_impl_k_mutex_lock line 129 in kernel/mutex.c.
+    tags: [mutex, lock, reentrant, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on try_lock(). Integration test m4_reentrant_lock.
+    links:
+      - type: derives-from
+        target: SYSREQ-MUT-001
+
+  - id: SWREQ-MUT-M05
+    type: sw-req
+    title: "M5: try_lock by different thread returns WouldBlock"
+    status: approved
+    description: >
+      When try_lock is called by a thread other than the owner, it returns
+      WouldBlock without modifying the mutex state.
+      Maps to z_impl_k_mutex_lock line 148 in kernel/mutex.c.
+    tags: [mutex, lock, contention, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on try_lock(). Integration test m5_lock_contention.
+    links:
+      - type: derives-from
+        target: SYSREQ-MUT-001
+
+  - id: SWREQ-MUT-M06
+    type: sw-req
+    title: "M6: unlock by non-owner returns error (EINVAL/EPERM)"
+    status: approved
+    description: >
+      Unlocking a mutex that is not locked returns -EINVAL.  Unlocking a
+      mutex owned by a different thread returns -EPERM.  In both cases,
+      the mutex state is unchanged.
+      Maps to z_impl_k_mutex_unlock lines 238-250 in kernel/mutex.c.
+    tags: [mutex, unlock, error, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on unlock(). Integration tests m6a/m6b_unlock_not_*.
+    links:
+      - type: derives-from
+        target: SYSREQ-MUT-001
+
+  - id: SWREQ-MUT-M07
+    type: sw-req
+    title: "M7: unlock when lock_count > 1 decrements count, owner unchanged"
+    status: approved
+    description: >
+      When unlock is called by the owner and lock_count > 1, the count
+      is decremented and the owner remains the same (reentrant release).
+      Maps to z_impl_k_mutex_unlock lines 266-269 in kernel/mutex.c.
+    tags: [mutex, unlock, reentrant, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on unlock(). Integration test m7_reentrant_unlock.
+    links:
+      - type: derives-from
+        target: SYSREQ-MUT-001
+
+  - id: SWREQ-MUT-M08
+    type: sw-req
+    title: "M8: unlock with waiters transfers ownership to highest-priority"
+    status: approved
+    description: >
+      When unlock is called by the owner and lock_count == 1 with waiters
+      present, ownership is transferred to the highest-priority waiting
+      thread.  lock_count stays at 1, the waiter is woken with return
+      value 0 (OK).
+      Maps to z_impl_k_mutex_unlock lines 278-296 in kernel/mutex.c.
+    tags: [mutex, unlock, transfer, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on unlock(). Integration test m8_ownership_transfer.
+    links:
+      - type: derives-from
+        target: SYSREQ-MUT-001
+
+  - id: SWREQ-MUT-M09
+    type: sw-req
+    title: "M9: unlock with no waiters fully unlocks (count=0, owner=None)"
+    status: approved
+    description: >
+      When unlock is called by the owner and lock_count == 1 with no
+      waiters, the mutex is fully unlocked: owner cleared to None and
+      lock_count set to 0.
+      Maps to z_impl_k_mutex_unlock lines 297-299 in kernel/mutex.c.
+    tags: [mutex, unlock, full-release, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on unlock(). Integration test m9_full_unlock.
+    links:
+      - type: derives-from
+        target: SYSREQ-MUT-001
+
+  - id: SWREQ-MUT-M10
+    type: sw-req
+    title: "M10: no arithmetic overflow in lock_count"
+    status: approved
+    description: >
+      No arithmetic operation on lock_count causes integer overflow.
+      The Verus code requires lock_count < u32::MAX as precondition.
+      The plain code uses checked_add.
+    tags: [mutex, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof (requires clause). Integration test
+        m10_no_overflow. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-MUT-001
+
+  - id: SWREQ-MUT-M11
+    type: sw-req
+    title: "M11: wait queue ordering preserved across all operations"
+    status: approved
+    description: >
+      The wait queue maintains priority ordering at all times.  Threads
+      waiting on the mutex are unblocked strictly in priority order
+      (numerically lowest value first).
+    tags: [mutex, wait-queue, ordering, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus sorted-invariant via WaitQueue::inv(). Integration test
+        m11_priority_ordering.
+    links:
+      - type: derives-from
+        target: SYSREQ-MUT-001
