@@ -1,0 +1,25 @@
+config GALE_KERNEL_SEM
+	bool "Use Gale formally verified semaphore"
+	depends on MULTITHREADING
+	help
+	  Replace kernel/sem.c with the Gale formally verified Rust
+	  implementation. Requires a Rust toolchain for the target
+	  architecture.
+
+if GALE_KERNEL_SEM
+
+config GALE_MAX_SEMS
+	int "Maximum number of Gale semaphores"
+	default 32
+	help
+	  Maximum number of concurrently active semaphores. Each
+	  semaphore is pre-allocated from a static pool at build time.
+
+config GALE_MAX_WAITERS
+	int "Maximum waiters per semaphore"
+	default 16
+	help
+	  Maximum number of threads that can block on a single
+	  semaphore. Bounded by the heapless::Vec in gale::WaitQueue.
+
+endif # GALE_KERNEL_SEM
