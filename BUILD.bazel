@@ -33,6 +33,8 @@ BENCH_SRCS = glob(["benches/**/*.rs"])
 
 FUZZ_SRCS = glob(["fuzz/**/*.rs", "fuzz/Cargo.toml"])
 
+FFI_SRCS = glob(["ffi/src/**/*.rs"])
+
 ALL_CARGO_SRCS = PLAIN_SRCS + TEST_SRCS + BENCH_SRCS
 
 CARGO_DATA = [
@@ -140,6 +142,13 @@ kani_test(
     data = CARGO_DATA,
 )
 
+kani_test(
+    name = "kani_ffi_test",
+    manifest = "ffi/Cargo.toml",
+    srcs = FFI_SRCS + PLAIN_SRCS,
+    data = CARGO_DATA + ["ffi/Cargo.toml"],
+)
+
 # =========================================================================
 # Track 8: Fuzzing (bounded duration per target)
 # =========================================================================
@@ -169,7 +178,7 @@ cargo_fuzz_test(
 cargo_bench_test(
     name = "bench_test",
     manifest = "Cargo.toml",
-    srcs = ALL_CARGO_SRCS + BENCH_SRCS,
+    srcs = ALL_CARGO_SRCS,
     data = CARGO_DATA,
 )
 
@@ -225,6 +234,7 @@ test_suite(
         ":tsan_test",
         ":lsan_test",
         ":kani_test",
+        ":kani_ffi_test",
         ":fuzz_sem",
         ":fuzz_sem_api",
         ":bench_test",

@@ -65,13 +65,13 @@ pub enum TakeResult {
 pub struct Semaphore {
     /// Wait queue for threads blocked on this semaphore.
     /// Corresponds to sem->wait_q.
-    wait_q: WaitQueue,
+    pub wait_q: WaitQueue,
     /// Current available count.
     /// Corresponds to sem->count.
-    count: u32,
+    pub count: u32,
     /// Maximum count (upper bound).
     /// Corresponds to sem->limit.
-    limit: u32,
+    pub limit: u32,
 }
 
 impl Semaphore {
@@ -289,7 +289,7 @@ impl Semaphore {
             old(self).inv(),
             old(self).count == 0,
             thread.inv(),
-            thread.state == ThreadState::Running,
+            thread.state === ThreadState::Running,
             old(self).wait_q.len_spec() < crate::wait_queue::MAX_WAITERS as nat,
         ensures
             self.inv(),

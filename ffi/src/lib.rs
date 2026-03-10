@@ -17,7 +17,7 @@
 //!   P6: take: -EBUSY when ==0    (gale_sem_count_take)
 //!   P9: no overflow/underflow    (all three)
 
-#![no_std]
+#![cfg_attr(not(any(test, kani)), no_std)]
 // FFI boundary crate — unsafe is inherent (no_mangle, raw pointers).
 // The verified pure logic lives in the `gale` crate which denies unsafe.
 
@@ -87,8 +87,109 @@ pub extern "C" fn gale_sem_count_take(count: *mut u32) -> i32 {
 }
 
 // Panic handler for no_std
-#[cfg(not(test))]
+#[cfg(not(any(test, kani)))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// P1/P2: init rejects limit==0 and initial_count > limit,
+    /// accepts all valid combinations.
+    #[kani::proof]
+    fn init_validates_all_params() {
+        let initial: u32 = kani::any();
+        let limit: u32 = kani::any();
+        let ret = gale_sem_count_init(initial, limit);
+        if limit == 0 || initial > limit {
+            assert!(ret == EINVAL);
+        } else {
+            assert!(ret == OK);
+        }
+    }
+
+    /// P3/P9: give never overflows and saturates at limit.
+    #[kani::proof]
+    fn give_no_overflow() {
+        let count: u32 = kani::any();
+        let limit: u32 = kani::any();
+        // Pre: valid semaphore state
+        kani::assume(limit > 0);
+        kani::assume(count <= limit);
+
+        let new_count = gale_sem_count_give(count, limit);
+
+        // Post: result in bounds
+        assert!(new_count <= limit);
+        // Post: correct arithmetic
+        if count < limit {
+            assert!(new_count == count + 1);
+        } else {
+            assert!(new_count == count);
+        }
+    }
+
+    /// P5/P6/P9: take never underflows and returns correct status.
+    #[kani::proof]
+    fn take_no_underflow() {
+        let mut count: u32 = kani::any();
+        let original = count;
+
+        let ret = gale_sem_count_take(&mut count);
+
+        if original > 0 {
+            assert!(ret == OK);
+            assert!(count == original - 1);
+        } else {
+            assert!(ret == EBUSY);
+            assert!(count == 0);
+        }
+    }
+
+    /// Null pointer returns EINVAL.
+    #[kani::proof]
+    fn take_null_returns_einval() {
+        let ret = gale_sem_count_take(core::ptr::null_mut());
+        assert!(ret == EINVAL);
+    }
+
+    /// Give-take roundtrip: giving then taking returns to original count.
+    #[kani::proof]
+    fn give_take_roundtrip() {
+        let count: u32 = kani::any();
+        let limit: u32 = kani::any();
+        kani::assume(limit > 0);
+        kani::assume(count < limit); // below limit so give increments
+
+        let mut after_give = gale_sem_count_give(count, limit);
+        assert!(after_give == count + 1);
+
+        let ret = gale_sem_count_take(&mut after_give);
+        assert!(ret == OK);
+        assert!(after_give == count);
+    }
+
+    /// Repeated gives saturate at limit.
+    #[kani::proof]
+    #[kani::unwind(4)]
+    fn repeated_give_saturates() {
+        let limit: u32 = kani::any();
+        kani::assume(limit > 0 && limit <= 8); // bound for tractability
+        let mut count = limit; // start at limit
+
+        // 3 gives should all saturate
+        let mut i: u32 = 0;
+        while i < 3 {
+            count = gale_sem_count_give(count, limit);
+            assert!(count == limit);
+            i += 1;
+        }
+    }
 }

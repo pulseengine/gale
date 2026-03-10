@@ -9,6 +9,9 @@ license = "Apache-2.0"
 [lib]
 crate-type = ["staticlib"]
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
 [dependencies]
 gale = { path = ".." }
 

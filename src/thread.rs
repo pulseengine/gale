@@ -14,6 +14,7 @@ verus! {
 /// Unique thread identifier.
 /// In Zephyr this is the pointer to the k_thread struct;
 /// here we use a simple index for verifiability.
+#[derive(Copy, Clone)]
 pub struct ThreadId {
     pub id: u32,
 }
@@ -28,7 +29,8 @@ impl ThreadId {
 ///
 /// Models the relevant subset of Zephyr's _THREAD_* flags.
 /// Blocked carries a return_value that gets set when the thread is woken.
-#[derive(PartialEq, Eq)]
+#[derive(Copy, Clone)]
+#[allow(dead_code)]
 pub enum ThreadState {
     /// Thread is ready to run (in the ready queue).
     Ready,
@@ -45,6 +47,7 @@ pub enum ThreadState {
 ///
 /// We intentionally omit: stack, arch context, thread options, swap_data,
 /// timeout, and all fields not relevant to synchronization primitive correctness.
+#[derive(Copy, Clone)]
 pub struct Thread {
     /// Unique identifier.
     pub id: ThreadId,
@@ -70,7 +73,7 @@ impl Thread {
         ensures
             t.inv(),
             t.id.id == id,
-            t.state == ThreadState::Ready,
+            t.state === ThreadState::Ready,
             t.return_value == 0,
     {
         Thread {
@@ -85,10 +88,10 @@ impl Thread {
     pub fn dispatch(&mut self)
         requires
             old(self).inv(),
-            old(self).state == ThreadState::Ready,
+            old(self).state === ThreadState::Ready,
         ensures
             self.inv(),
-            self.state == ThreadState::Running,
+            self.state === ThreadState::Running,
             self.id == old(self).id,
             self.priority == old(self).priority,
     {
@@ -100,10 +103,10 @@ impl Thread {
     pub fn block(&mut self)
         requires
             old(self).inv(),
-            old(self).state == ThreadState::Running,
+            old(self).state === ThreadState::Running,
         ensures
             self.inv(),
-            self.state == ThreadState::Blocked,
+            self.state === ThreadState::Blocked,
             self.id == old(self).id,
             self.priority == old(self).priority,
     {
@@ -115,10 +118,10 @@ impl Thread {
     pub fn wake(&mut self, return_value: i32)
         requires
             old(self).inv(),
-            old(self).state == ThreadState::Blocked,
+            old(self).state === ThreadState::Blocked,
         ensures
             self.inv(),
-            self.state == ThreadState::Ready,
+            self.state === ThreadState::Ready,
             self.return_value == return_value,
             self.id == old(self).id,
             self.priority == old(self).priority,
@@ -130,9 +133,9 @@ impl Thread {
     /// Check if thread is blocked.
     pub fn is_blocked(&self) -> (result: bool)
         ensures
-            result == (self.state == ThreadState::Blocked),
+            result == (self.state === ThreadState::Blocked),
     {
-        self.state == ThreadState::Blocked
+        matches!(self.state, ThreadState::Blocked)
     }
 }
 
@@ -155,7 +158,7 @@ pub proof fn lemma_valid_transitions(t: &Thread)
 pub proof fn lemma_wake_preserves_identity(t: Thread, ret: i32)
     requires
         t.inv(),
-        t.state == ThreadState::Blocked,
+        t.state === ThreadState::Blocked,
     ensures
         // After wake, id and priority are unchanged.
         // This is critical for wait queue integrity.
