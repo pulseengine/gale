@@ -23,6 +23,7 @@ VERUS_SRCS = [
     "src/thread.rs",
     "src/wait_queue.rs",
     "src/sem.rs",
+    "src/mutex.rs",
 ]
 
 PLAIN_SRCS = ["//plain:srcs"]

@@ -14,6 +14,7 @@
 
 pub mod error;
 pub mod priority;
+pub mod mutex;
 pub mod sem;
 pub mod thread;
 pub mod wait_queue;
