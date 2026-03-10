@@ -23,3 +23,13 @@ config GALE_MAX_WAITERS
 	  semaphore. Bounded by the heapless::Vec in gale::WaitQueue.
 
 endif # GALE_KERNEL_SEM
+
+config GALE_KERNEL_MUTEX
+	bool "Use Gale formally verified mutex"
+	depends on MULTITHREADING
+	help
+	  Replace kernel/mutex.c with the Gale formally verified Rust
+	  implementation. The ownership validation and lock_count
+	  arithmetic are handled by verified Rust code. Wait queue,
+	  scheduling, and priority inheritance remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.

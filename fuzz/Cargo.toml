@@ -24,3 +24,13 @@ doc = false
 name = "sem_api_fuzz"
 path = "fuzz_targets/sem_api_fuzz.rs"
 doc = false
+
+[[bin]]
+name = "mutex_fuzz"
+path = "fuzz_targets/mutex_fuzz.rs"
+doc = false
+
+[[bin]]
+name = "mutex_api_fuzz"
+path = "fuzz_targets/mutex_api_fuzz.rs"
+doc = false

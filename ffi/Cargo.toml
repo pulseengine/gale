@@ -3,7 +3,7 @@ name = "gale-ffi"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
-description = "C FFI bindings for the Gale verified kernel semaphore"
+description = "C FFI bindings for Gale verified kernel primitives (semaphore, mutex)"
 license = "Apache-2.0"
 
 [lib]

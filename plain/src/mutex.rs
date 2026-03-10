@@ -10,7 +10,9 @@
 //!   z_impl_k_mutex_unlock -> Mutex::unlock        (mutex.c:230-307)
 
 use crate::error::{EINVAL, EPERM, OK};
-use crate::thread::{Thread, ThreadState};
+#[cfg(test)]
+use crate::thread::ThreadState;
+use crate::thread::Thread;
 use crate::wait_queue::WaitQueue;
 
 /// Result of a lock attempt.

@@ -148,3 +148,170 @@ mod kani_proofs {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Mutex harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_mutex_proofs {
+    use gale::error::*;
+    use gale::mutex::{LockResult, Mutex, UnlockResult};
+
+    /// M1: invariant holds after init.
+    #[kani::proof]
+    fn mutex_init_invariant() {
+        let m = Mutex::init();
+        assert!(!m.is_locked());
+        assert_eq!(m.lock_count_get(), 0);
+        assert!(m.owner_get().is_none());
+    }
+
+    /// M3: lock on unlocked mutex acquires.
+    #[kani::proof]
+    fn mutex_lock_unlocked() {
+        let thread_id: u32 = kani::any();
+        let mut m = Mutex::init();
+
+        assert_eq!(m.try_lock(thread_id), LockResult::Acquired);
+        assert_eq!(m.owner_get(), Some(thread_id));
+        assert_eq!(m.lock_count_get(), 1);
+    }
+
+    /// M4: reentrant lock increments count.
+    #[kani::proof]
+    fn mutex_lock_reentrant() {
+        let thread_id: u32 = kani::any();
+        let mut m = Mutex::init();
+        m.try_lock(thread_id);
+
+        let depth: u32 = kani::any();
+        kani::assume(depth > 0 && depth <= 5);
+
+        for _ in 0..depth {
+            assert_eq!(m.try_lock(thread_id), LockResult::Acquired);
+        }
+        assert_eq!(m.lock_count_get(), depth + 1);
+        assert_eq!(m.owner_get(), Some(thread_id));
+    }
+
+    /// M5: different thread gets WouldBlock.
+    #[kani::proof]
+    fn mutex_lock_contended() {
+        let owner: u32 = kani::any();
+        let other: u32 = kani::any();
+        kani::assume(owner != other);
+
+        let mut m = Mutex::init();
+        m.try_lock(owner);
+
+        assert_eq!(m.try_lock(other), LockResult::WouldBlock);
+        assert_eq!(m.owner_get(), Some(owner));
+        assert_eq!(m.lock_count_get(), 1);
+    }
+
+    /// M6a: unlock with no owner returns EINVAL.
+    #[kani::proof]
+    fn mutex_unlock_not_locked() {
+        let thread_id: u32 = kani::any();
+        let mut m = Mutex::init();
+        assert!(matches!(m.unlock(thread_id), Err(EINVAL)));
+    }
+
+    /// M6b: unlock by non-owner returns EPERM.
+    #[kani::proof]
+    fn mutex_unlock_not_owner() {
+        let owner: u32 = kani::any();
+        let other: u32 = kani::any();
+        kani::assume(owner != other);
+
+        let mut m = Mutex::init();
+        m.try_lock(owner);
+        assert!(matches!(m.unlock(other), Err(EPERM)));
+        assert_eq!(m.lock_count_get(), 1);
+    }
+
+    /// M7: reentrant unlock decrements count.
+    #[kani::proof]
+    fn mutex_unlock_reentrant() {
+        let thread_id: u32 = kani::any();
+        let mut m = Mutex::init();
+        m.try_lock(thread_id);
+        m.try_lock(thread_id);
+        m.try_lock(thread_id);
+
+        assert!(matches!(m.unlock(thread_id), Ok(UnlockResult::Released)));
+        assert_eq!(m.lock_count_get(), 2);
+        assert_eq!(m.owner_get(), Some(thread_id));
+    }
+
+    /// M9: final unlock fully releases mutex.
+    #[kani::proof]
+    fn mutex_unlock_final() {
+        let thread_id: u32 = kani::any();
+        let mut m = Mutex::init();
+        m.try_lock(thread_id);
+
+        assert!(matches!(m.unlock(thread_id), Ok(UnlockResult::Unlocked)));
+        assert!(!m.is_locked());
+        assert_eq!(m.lock_count_get(), 0);
+        assert!(m.owner_get().is_none());
+    }
+
+    /// Lock-unlock roundtrip returns to init state.
+    #[kani::proof]
+    fn mutex_lock_unlock_roundtrip() {
+        let thread_id: u32 = kani::any();
+        let mut m = Mutex::init();
+        m.try_lock(thread_id);
+        m.unlock(thread_id).unwrap();
+        assert!(!m.is_locked());
+        assert_eq!(m.lock_count_get(), 0);
+    }
+
+    /// Reentrant full unwind: N locks followed by N unlocks.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn mutex_reentrant_full_unwind() {
+        let thread_id: u32 = kani::any();
+        let depth: u32 = kani::any();
+        kani::assume(depth > 0 && depth <= 5);
+
+        let mut m = Mutex::init();
+        let mut i: u32 = 0;
+        while i < depth {
+            m.try_lock(thread_id);
+            i += 1;
+        }
+        assert_eq!(m.lock_count_get(), depth);
+
+        i = 0;
+        while i < depth {
+            m.unlock(thread_id).unwrap();
+            i += 1;
+        }
+        assert!(!m.is_locked());
+    }
+
+    /// M1 invariant holds after arbitrary operation sequence.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn mutex_operation_sequence_m1() {
+        let mut m = Mutex::init();
+
+        for _ in 0..5 {
+            let op: u8 = kani::any();
+            let tid: u32 = kani::any();
+            kani::assume(op < 3);
+
+            match op {
+                0 => { m.try_lock(tid); }
+                1 => { let _ = m.unlock(tid); }
+                _ => { m.is_locked(); }
+            }
+
+            // M1 check
+            assert!((m.lock_count_get() > 0) == m.owner_get().is_some());
+        }
+    }
+}
