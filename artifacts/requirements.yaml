@@ -71,9 +71,13 @@ artifacts:
       - type: derives-from
         target: SYSREQ-SEM-001
       - type: satisfies
+        target: ZEP-SRS-5-2
+      - type: satisfies
         target: ZEP-SRS-5-4
       - type: satisfies
         target: ZEP-SRS-5-5
+      - type: satisfies
+        target: ZEP-SRS-5-15
 
   - id: SWREQ-SEM-P02
     type: sw-req

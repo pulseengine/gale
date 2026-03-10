@@ -90,6 +90,11 @@ add_custom_target(gale_ffi_build DEPENDS ${GALE_FFI_LIB})
 zephyr_library_named(gale_sem)
 zephyr_library_sources(gale_sem.c)
 zephyr_library_include_directories(${GALE_DIR}/ffi/include)
+# Kernel-internal headers needed by the C shim (wait_q.h, ksched.h)
+zephyr_library_include_directories(
+  ${ZEPHYR_BASE}/kernel/include
+  ${ARCH_DIR}/${ARCH}/include
+)
 
 # Link the Rust static library
 zephyr_library_link_libraries(${GALE_FFI_LIB})

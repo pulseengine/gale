@@ -152,9 +152,7 @@ impl WaitQueue {
     /// - Queue remains sorted after removal
     /// - Queue length decreases by exactly 1
     ///
-    /// Body trusted (external_body): array shift invariants require detailed
-    /// per-element tracking; specs verified at call sites.
-    #[verifier::external_body]
+    /// Verified: array shift preserves sorted order and slot validity.
     pub fn unpend_first(&mut self, return_value: i32) -> (result: Option<Thread>)
         requires
             old(self).inv(),
@@ -174,8 +172,7 @@ impl WaitQueue {
         }
 
         // Take the first thread (highest priority).
-        // Thread is Copy, so we can read directly and then clear.
-        let mut thread = self.entries[0];
+        let thread = self.entries[0];
         self.entries[0] = None;
 
         // Shift remaining entries down by one.
@@ -183,7 +180,22 @@ impl WaitQueue {
         while i < self.len - 1
             invariant
                 0 <= i <= self.len - 1,
+                self.len == old(self).len,
                 self.len <= MAX_WAITERS,
+                self.len > 0,
+                // Shifted portion: entries[0..i) contain old entries[1..i+1)
+                forall|k: int| 0 <= k < i as int
+                    ==> (#[trigger] self.entries[k]) === old(self).entries[k + 1],
+                // Current position is None
+                (#[trigger] self.entries[i as int]).is_none(),
+                // Unshifted portion: entries[i+1..len) unchanged
+                forall|k: int| (i as int) + 1 <= k < self.len as int
+                    ==> (#[trigger] self.entries[k]) === old(self).entries[k],
+                // Tail is None
+                forall|k: int| self.len as int <= k < 64
+                    ==> (#[trigger] self.entries[k]).is_none(),
+                // Thread saved from position 0
+                thread === old(self).entries[0int],
             decreases
                 self.len - 1 - i,
         {
@@ -192,7 +204,38 @@ impl WaitQueue {
             i = i + 1;
         }
 
+        // After shift: entries[0..len-2] == old entries[1..len-1], entries[len-1..63] are None.
+        // Hint: all entries in [0, len-1) match old entries shifted by 1.
+        assert(forall|k: int| 0 <= k < (self.len - 1) as int
+            ==> (#[trigger] self.entries[k]) === old(self).entries[k + 1]);
+
         self.len = self.len - 1;
+
+        // Prove slots_valid: occupied slots [0..new_len) are Some, rest are None.
+        assert(forall|k: int| 0 <= k < self.len as int
+            ==> (#[trigger] self.entries[k]).is_some());
+        assert(forall|k: int| self.len as int <= k < 64
+            ==> (#[trigger] self.entries[k]).is_none());
+
+        // Prove is_sorted: shifted entries preserve original ordering.
+        assert(forall|i1: int, j1: int| 0 <= i1 < j1 < self.len as int
+            ==> (#[trigger] self.entries[i1]).is_some()
+            && (#[trigger] self.entries[j1]).is_some()
+            && self.entries[i1].unwrap().priority.view()
+                <= self.entries[j1].unwrap().priority.view());
+
+        // Prove threads_valid: all threads are valid and Blocked.
+        assert(forall|k: int| 0 <= k < self.len as int
+            ==> (#[trigger] self.entries[k]).is_some()
+            && self.entries[k].unwrap().inv()
+            && self.entries[k].unwrap().state === ThreadState::Blocked);
+
+        // Prove no_duplicates: subset of original, no new IDs introduced.
+        assert(forall|i1: int, j1: int| 0 <= i1 < j1 < self.len as int
+            ==> (#[trigger] self.entries[i1]).is_some()
+            && (#[trigger] self.entries[j1]).is_some()
+            && self.entries[i1].unwrap().id.id
+                != self.entries[j1].unwrap().id.id);
 
         // Set the thread's state to Ready with the return value.
         match thread {
@@ -216,15 +259,17 @@ impl WaitQueue {
     /// - Queue length increases by exactly 1
     /// - Returns false if queue is full
     ///
-    /// Body trusted (external_body): sorted-insertion proof requires
-    /// per-element shift tracking; specs verified at call sites.
-    #[verifier::external_body]
+    /// Verified: sorted insertion with per-element shift tracking.
     pub fn pend(&mut self, thread: Thread) -> (result: bool)
         requires
             old(self).inv(),
             thread.inv(),
             thread.state === ThreadState::Blocked,
             old(self).len < MAX_WAITERS,
+            // New thread's ID must not already be in the queue.
+            forall|k: int| 0 <= k < old(self).len as int
+                ==> (#[trigger] old(self).entries[k]).is_some()
+                && old(self).entries[k].unwrap().id.id != thread.id.id,
         ensures
             self.inv(),
             result == true ==> self.len == old(self).len + 1,
@@ -237,23 +282,48 @@ impl WaitQueue {
         // Find insertion point: first entry with lower priority (higher value).
         let mut insert_pos: u32 = self.len;
         let mut i: u32 = 0;
-        while i < self.len
+        let mut found: bool = false;
+        while i < self.len && !found
             invariant
                 0 <= i <= self.len,
                 self.len < MAX_WAITERS,
-                insert_pos == self.len,
+                self.len == old(self).len,
                 self.inv(),
+                // Queue unchanged during search
+                forall|k: int| 0 <= k < 64
+                    ==> (#[trigger] self.entries[k]) === old(self).entries[k],
+                // Found state tracking
+                !found ==> insert_pos == self.len,
+                found ==> insert_pos == i && insert_pos < self.len,
+                // When found: entry at insert_pos has priority > thread
+                found ==> self.entries[insert_pos as int].is_some()
+                    && thread.priority.view()
+                        < self.entries[insert_pos as int].unwrap().priority.view(),
+                // All entries before current scan position have priority <= thread
+                forall|k: int| 0 <= k < i as int
+                    ==> (#[trigger] self.entries[k]).is_some()
+                    && self.entries[k].unwrap().priority.view()
+                        <= thread.priority.view(),
+                // Thread invariant preserved (not modified by loop)
+                thread.inv(),
+                thread.priority.inv(),
             decreases
-                self.len - i,
+                (self.len - i) * 2 + if !found { 1int } else { 0int },
         {
-            if let Some(ref entry) = self.entries[i as usize] {
-                if thread.priority.get() < entry.priority.get() {
-                    insert_pos = i;
-                    break;
-                }
+            // Access priority directly to help the solver with preconditions.
+            let entry_pri = self.entries[i as usize].unwrap().priority.get();
+            let thr_pri = thread.priority.get();
+            if thr_pri < entry_pri {
+                insert_pos = i;
+                found = true;
             }
-            i = i + 1;
+            if !found {
+                i = i + 1;
+            }
         }
+
+        // After search: insert_pos is the correct insertion point.
+        // entries[0..insert_pos) have priority <= thread.priority.
 
         // Shift entries from insert_pos to len-1 right by one.
         let mut j: u32 = self.len;
@@ -261,6 +331,22 @@ impl WaitQueue {
             invariant
                 insert_pos <= j <= self.len,
                 self.len < MAX_WAITERS,
+                self.len == old(self).len,
+                0 <= insert_pos <= self.len,
+                // Entries before insert_pos unchanged
+                forall|k: int| 0 <= k < insert_pos as int
+                    ==> (#[trigger] self.entries[k]) === old(self).entries[k],
+                // Entries between insert_pos and j unchanged
+                forall|k: int| insert_pos as int <= k < j as int
+                    ==> (#[trigger] self.entries[k]) === old(self).entries[k],
+                // Position j is None
+                (#[trigger] self.entries[j as int]).is_none(),
+                // Shifted portion: entries[j+1..len+1) are old entries[j..len)
+                forall|k: int| (j as int) + 1 <= k <= self.len as int
+                    ==> (#[trigger] self.entries[k]) === old(self).entries[k - 1],
+                // Tail beyond len+1 is None
+                forall|k: int| (self.len as int) + 1 <= k < 64
+                    ==> (#[trigger] self.entries[k]).is_none(),
             decreases
                 j - insert_pos,
         {
@@ -269,9 +355,42 @@ impl WaitQueue {
             j = j - 1;
         }
 
+        // After shift: entries[insert_pos] is None, ready for insertion.
+        // entries[0..insert_pos) = original, entries[insert_pos+1..len+1) = old shifted.
+
         // Insert the thread at the correct position.
         self.entries[insert_pos as usize] = Some(thread);
         self.len = self.len + 1;
+
+        // Prove slots_valid: [0..new_len) are Some, [new_len..64) are None.
+        assert(forall|k: int| 0 <= k < self.len as int
+            ==> (#[trigger] self.entries[k]).is_some());
+        assert(forall|k: int| self.len as int <= k < 64
+            ==> (#[trigger] self.entries[k]).is_none());
+
+        // Prove threads_valid.
+        assert(forall|k: int| 0 <= k < self.len as int
+            ==> (#[trigger] self.entries[k]).is_some()
+            && self.entries[k].unwrap().inv()
+            && self.entries[k].unwrap().state === ThreadState::Blocked);
+
+        // Prove is_sorted: break into cases around insert_pos.
+        // Case 1: both indices < insert_pos (original entries, unchanged, sorted).
+        // Case 2: i1 < insert_pos, j1 == insert_pos (entry[i1] <= thread).
+        // Case 3: i1 == insert_pos, j1 > insert_pos (thread <= shifted entry).
+        // Case 4: both indices > insert_pos (shifted from originals, sorted).
+        assert(forall|i1: int, j1: int| 0 <= i1 < j1 < self.len as int
+            ==> (#[trigger] self.entries[i1]).is_some()
+            && (#[trigger] self.entries[j1]).is_some()
+            && self.entries[i1].unwrap().priority.view()
+                <= self.entries[j1].unwrap().priority.view());
+
+        // Prove no_duplicates.
+        assert(forall|i1: int, j1: int| 0 <= i1 < j1 < self.len as int
+            ==> (#[trigger] self.entries[i1]).is_some()
+            && (#[trigger] self.entries[j1]).is_some()
+            && self.entries[i1].unwrap().id.id
+                != self.entries[j1].unwrap().id.id);
 
         true
     }
@@ -282,9 +401,8 @@ impl WaitQueue {
     ///
     /// Returns the number of threads that were woken.
     ///
-    /// Body trusted (external_body): clearing loop proof is straightforward
-    /// but requires per-slot None tracking; specs verified at call sites.
-    #[verifier::external_body]
+    /// Remove all threads from the queue, waking each with the given return value.
+    /// Verified: clearing loop sets all slots to None, restoring empty-queue invariant.
     pub fn unpend_all(&mut self, return_value: i32) -> (woken: u32)
         requires
             old(self).inv(),
@@ -299,13 +417,23 @@ impl WaitQueue {
             invariant
                 0 <= i <= count,
                 count <= MAX_WAITERS,
+                count == old(self).len,
+                self.len == old(self).len,
+                // Cleared slots are None
+                forall|k: int| 0 <= k < i as int
+                    ==> (#[trigger] self.entries[k]).is_none(),
+                // Slots beyond original length remain None
+                forall|k: int| count as int <= k < 64
+                    ==> (#[trigger] self.entries[k]).is_none(),
             decreases
                 count - i,
         {
-            // Thread is Copy — read, modify, discard (we clear the slot anyway).
             self.entries[i as usize] = None;
             i = i + 1;
         }
+        // Hint: combine the two cleared ranges [0,count) and [count,64) into [0,64).
+        assert(forall|k: int| 0 <= k < 64
+            ==> (#[trigger] self.entries[k]).is_none());
         self.len = 0;
         count
     }

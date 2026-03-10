@@ -25,7 +25,7 @@ VERUS_SRCS = [
     "src/sem.rs",
 ]
 
-PLAIN_SRCS = glob(["plain/src/**/*.rs"])
+PLAIN_SRCS = ["//plain:srcs"]
 
 TEST_SRCS = glob(["tests/**/*.rs"])
 

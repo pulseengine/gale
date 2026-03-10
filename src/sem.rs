@@ -291,6 +291,11 @@ impl Semaphore {
             thread.inv(),
             thread.state === ThreadState::Running,
             old(self).wait_q.len_spec() < crate::wait_queue::MAX_WAITERS as nat,
+            // Thread must not already be in the wait queue (system invariant:
+            // a thread can only block on one object at a time).
+            forall|k: int| 0 <= k < old(self).wait_q.len as int
+                ==> (#[trigger] old(self).wait_q.entries[k]).is_some()
+                && old(self).wait_q.entries[k].unwrap().id.id != thread.id.id,
         ensures
             self.inv(),
             self.limit == old(self).limit,
