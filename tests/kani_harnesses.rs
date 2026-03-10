@@ -315,3 +315,121 @@ mod kani_mutex_proofs {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Condition variable harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_condvar_proofs {
+    use gale::condvar::{CondVar, SignalResult};
+    use gale::priority::Priority;
+    use gale::thread::Thread;
+
+    fn make_thread(id: u32, prio: u32) -> Thread {
+        let p = Priority::new(prio % 32).unwrap();
+        let mut t = Thread::new(id, p);
+        t.dispatch();
+        t
+    }
+
+    /// C1: init creates empty condvar.
+    #[kani::proof]
+    fn condvar_init_empty() {
+        let cv = CondVar::init();
+        assert_eq!(cv.num_waiters(), 0);
+        assert!(!cv.has_waiters());
+    }
+
+    /// C3: signal on empty is a no-op.
+    #[kani::proof]
+    fn condvar_signal_empty() {
+        let mut cv = CondVar::init();
+        assert!(matches!(cv.signal(), SignalResult::Empty));
+        assert_eq!(cv.num_waiters(), 0);
+    }
+
+    /// C5: broadcast on empty returns 0.
+    #[kani::proof]
+    fn condvar_broadcast_empty() {
+        let mut cv = CondVar::init();
+        assert_eq!(cv.broadcast(), 0);
+        assert_eq!(cv.num_waiters(), 0);
+    }
+
+    /// C2: signal wakes exactly one.
+    #[kani::proof]
+    fn condvar_signal_wakes_one() {
+        let id1: u32 = kani::any();
+        let id2: u32 = kani::any();
+        kani::assume(id1 != id2);
+
+        let mut cv = CondVar::init();
+        cv.wait_blocking(make_thread(id1, 5));
+        cv.wait_blocking(make_thread(id2, 3));
+        assert_eq!(cv.num_waiters(), 2);
+
+        cv.signal();
+        assert_eq!(cv.num_waiters(), 1);
+    }
+
+    /// C4: broadcast wakes all and returns correct count.
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn condvar_broadcast_wakes_all() {
+        let mut cv = CondVar::init();
+        let n: u32 = kani::any();
+        kani::assume(n <= 4);
+
+        let mut i: u32 = 0;
+        while i < n {
+            cv.wait_blocking(make_thread(i, i % 32));
+            i += 1;
+        }
+        assert_eq!(cv.num_waiters() as u32, n);
+
+        let woken = cv.broadcast();
+        assert_eq!(woken, n as usize);
+        assert_eq!(cv.num_waiters(), 0);
+    }
+
+    /// C6: wait_blocking adds thread.
+    #[kani::proof]
+    fn condvar_wait_adds_thread() {
+        let id: u32 = kani::any();
+        let prio: u32 = kani::any();
+        kani::assume(prio < 32);
+
+        let mut cv = CondVar::init();
+        let result = cv.wait_blocking(make_thread(id, prio));
+        assert!(result);
+        assert_eq!(cv.num_waiters(), 1);
+    }
+
+    /// Broadcast idempotence.
+    #[kani::proof]
+    fn condvar_broadcast_idempotent() {
+        let mut cv = CondVar::init();
+        assert_eq!(cv.broadcast(), 0);
+        assert_eq!(cv.broadcast(), 0);
+        assert_eq!(cv.num_waiters(), 0);
+    }
+
+    /// Signal-broadcast equivalence: N signals then broadcast == broadcast.
+    #[kani::proof]
+    fn condvar_signal_broadcast_equivalence() {
+        let id1: u32 = kani::any();
+        let id2: u32 = kani::any();
+        kani::assume(id1 != id2);
+
+        let mut cv = CondVar::init();
+        cv.wait_blocking(make_thread(id1, 5));
+        cv.wait_blocking(make_thread(id2, 3));
+
+        // Signal one, broadcast rest
+        cv.signal();
+        let woken = cv.broadcast();
+        assert_eq!(woken, 1);
+        assert_eq!(cv.num_waiters(), 0);
+    }
+}

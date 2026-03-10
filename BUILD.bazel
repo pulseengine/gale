@@ -24,6 +24,7 @@ VERUS_SRCS = [
     "src/wait_queue.rs",
     "src/sem.rs",
     "src/mutex.rs",
+    "src/condvar.rs",
 ]
 
 PLAIN_SRCS = ["//plain:srcs"]

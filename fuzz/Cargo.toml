@@ -34,3 +34,8 @@ doc = false
 name = "mutex_api_fuzz"
 path = "fuzz_targets/mutex_api_fuzz.rs"
 doc = false
+
+[[bin]]
+name = "condvar_fuzz"
+path = "fuzz_targets/condvar_fuzz.rs"
+doc = false
