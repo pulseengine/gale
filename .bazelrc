@@ -1,0 +1,14 @@
+# Gale Bazel configuration
+# =======================
+
+# Test parallelism: run independent tests concurrently.
+# Tests with tags=["exclusive"] (tsan, bench) run alone.
+test --test_output=errors
+test --jobs=auto
+
+# Increase test timeout for long-running verification tasks
+test --test_timeout=300
+
+# CI configuration
+test:ci --test_output=all
+test:ci --jobs=auto

@@ -5,8 +5,16 @@ run with no-sandbox to access host cargo/rustup, resolve the real workspace
 from runfiles symlinks.
 """
 
-def _cargo_preamble(toolchain = ""):
+def _cargo_preamble(toolchain = "", isolate_target = False):
     """Common shell preamble: find real HOME, cargo, rustup, workspace."""
+    isolate_snippet = ""
+    if isolate_target:
+        # Use per-test CARGO_TARGET_DIR to avoid Cargo lock contention
+        # when multiple tests run in parallel on the same workspace.
+        isolate_snippet = """\
+# Isolate Cargo target dir for parallel execution
+export CARGO_TARGET_DIR="$WS/target/bazel-${{TEST_TARGET##*:}}"
+"""
     return """\
 #!/bin/bash
 set -euo pipefail
@@ -27,7 +35,20 @@ if [ -L "$MANIFEST" ]; then
 fi
 WS="$(dirname "$MANIFEST")"
 cd "$WS"
-""" + ("""\
+
+# Ensure macOS SDK is discoverable for linking (libiconv, libSystem, etc.)
+if [ "$(uname -s)" = "Darwin" ] && [ -z "${{SDKROOT:-}}" ]; then
+    for sdk_candidate in \
+        "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk" \
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"; do
+        if [ -d "$sdk_candidate" ]; then
+            export SDKROOT="$sdk_candidate"
+            export LIBRARY_PATH="${{LIBRARY_PATH:+$LIBRARY_PATH:}}$sdk_candidate/usr/lib"
+            break
+        fi
+    done
+fi
+""" + isolate_snippet + ("""\
 # Select Rust toolchain
 TOOLCHAIN="{toolchain}"
 """.format(toolchain = toolchain) if toolchain else "")
@@ -49,7 +70,7 @@ else TARGET="x86_64-unknown-linux-gnu"; fi
 
 def _cargo_test_impl(ctx):
     manifest = ctx.file.manifest
-    script_content = _cargo_preamble().format(
+    script_content = _cargo_preamble(isolate_target = True).format(
         manifest_short_path = manifest.short_path,
     ) + """\
 echo "=== cargo test ==="
@@ -120,7 +141,7 @@ rustfmt_test = rule(
 def _clippy_test_impl(ctx):
     manifest = ctx.file.manifest
     extra = " ".join(ctx.attr.extra_args) if ctx.attr.extra_args else "-D warnings"
-    script_content = _cargo_preamble().format(
+    script_content = _cargo_preamble(isolate_target = True).format(
         manifest_short_path = manifest.short_path,
     ) + """\
 echo "=== cargo clippy ==="
@@ -154,10 +175,13 @@ clippy_test = rule(
 
 def _miri_test_impl(ctx):
     manifest = ctx.file.manifest
-    script_content = _cargo_preamble().format(
+    script_content = _cargo_preamble(isolate_target = True).format(
         manifest_short_path = manifest.short_path,
     ) + """\
 echo "=== cargo miri test ==="
+export MIRIFLAGS="${{MIRIFLAGS:-}} -Zmiri-disable-isolation"
+# Limit proptest cases under Miri — interpretation is ~1000x slower than native.
+export PROPTEST_CASES="${{PROPTEST_CASES:-10}}"
 exec cargo +nightly miri test {extra_args}
 """.format(extra_args = " ".join(ctx.attr.extra_args))
 
@@ -188,7 +212,7 @@ miri_test = rule(
 
 def _kani_test_impl(ctx):
     manifest = ctx.file.manifest
-    script_content = _cargo_preamble().format(
+    script_content = _cargo_preamble(isolate_target = True).format(
         manifest_short_path = manifest.short_path,
     ) + """\
 echo "=== cargo kani ==="
@@ -223,7 +247,7 @@ kani_test = rule(
 def _sanitizer_test_impl(ctx):
     manifest = ctx.file.manifest
     sanitizer = ctx.attr.sanitizer
-    script_content = _cargo_preamble().format(
+    script_content = _cargo_preamble(isolate_target = True).format(
         manifest_short_path = manifest.short_path,
     ) + _detect_target() + """\
 echo "=== {sanitizer} ==="
@@ -262,7 +286,7 @@ sanitizer_test = rule(
 
 def _cargo_fuzz_test_impl(ctx):
     manifest = ctx.file.manifest
-    script_content = _cargo_preamble().format(
+    script_content = _cargo_preamble(isolate_target = True).format(
         manifest_short_path = manifest.short_path,
     ) + """\
 echo "=== cargo fuzz: {target} ({duration}s) ==="
@@ -300,7 +324,7 @@ cargo_fuzz_test = rule(
 
 def _cargo_bench_test_impl(ctx):
     manifest = ctx.file.manifest
-    script_content = _cargo_preamble().format(
+    script_content = _cargo_preamble(isolate_target = True).format(
         manifest_short_path = manifest.short_path,
     ) + """\
 echo "=== cargo bench ==="
@@ -334,7 +358,7 @@ cargo_bench_test = rule(
 
 def _cargo_mutants_test_impl(ctx):
     manifest = ctx.file.manifest
-    script_content = _cargo_preamble().format(
+    script_content = _cargo_preamble(isolate_target = True).format(
         manifest_short_path = manifest.short_path,
     ) + """\
 echo "=== cargo mutants ==="

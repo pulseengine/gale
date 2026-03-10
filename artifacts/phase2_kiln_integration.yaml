@@ -1,0 +1,220 @@
+# Phase 2 Requirements — Kiln Direct Integration
+#
+# Replaces the C FFI boundary with direct Rust calls from Kiln runtime.
+# Gale becomes a Kiln host module; kernel objects are exposed as WASM
+# component model interfaces.
+#
+# Hierarchy:
+#   STKH-002 (stakeholder)
+#     → SYSREQ-KILN-001..002 (system)
+#       → SWREQ-KILN-001..006 (software)
+
+artifacts:
+  # ── Stakeholder requirement ──────────────────────────────────────────────
+
+  - id: STKH-002
+    type: stakeholder-req
+    title: Eliminate C FFI via PulseEngine Kiln integration
+    status: draft
+    description: >
+      Replace the Phase 1 C FFI boundary (extern "C" functions + C shim)
+      with direct Rust calls from the Kiln WASM runtime.  Gale's verified
+      kernel primitives become Kiln host functions, eliminating the unsafe
+      FFI layer and enabling end-to-end verified compilation from source
+      to ARM binary via the Meld → Loom → Synth pipeline.
+    tags: [kiln, integration, phase-2]
+    fields:
+      priority: must
+      source: >
+        PulseEngine architecture — verified compilation pipeline.
+        Kiln interprets WASM and serves as base runtime for Synth-compiled code.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── System requirements ─────────────────────────────────────────────────
+
+  - id: SYSREQ-KILN-001
+    type: system-req
+    title: Gale as Kiln host module with direct Rust calls
+    status: draft
+    description: >
+      Gale's verified kernel primitives (semaphore, mutex, condvar, etc.)
+      are linked directly into Kiln as a Rust crate — no C FFI, no
+      extern "C", no #[no_mangle].  Kiln registers these as WASM host
+      functions that running components can import.  The call path from
+      WASM application to kernel primitive is: WASM import → Kiln host
+      dispatch → Gale Rust method call.  No ABI boundary crossing.
+    tags: [kiln, host-module, direct-call]
+    fields:
+      req-type: interface
+      priority: must
+      verification-criteria: >
+        Kiln can instantiate Gale semaphore as host function.
+        WASM component calling sem.give() results in direct Rust call
+        to Semaphore::give() with zero FFI overhead.
+        All ASIL-D properties (P1-P10) preserved end-to-end.
+    links:
+      - type: derives-from
+        target: STKH-002
+
+  - id: SYSREQ-KILN-002
+    type: system-req
+    title: End-to-end verified compilation pipeline
+    status: draft
+    description: >
+      The compilation pipeline from Gale source to ARM binary is formally
+      verified at every stage: Gale source (Verus/Rocq) → WASM (Meld
+      fusion) → optimized WASM (Loom Z3 validation) → ARM ELF (Synth
+      Rocq proofs).  No unverified transformation gap exists between
+      verified source and deployed binary.
+    tags: [verified-pipeline, end-to-end, synth, loom]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Connected proof chain: Gale Verus proofs cover source semantics,
+        Loom Z3 translation validation covers optimization,
+        Synth Rocq proofs cover codegen.
+        ARM binary matches source semantics transitively.
+    links:
+      - type: derives-from
+        target: STKH-002
+
+  # ── Software requirements ───────────────────────────────────────────────
+
+  - id: SWREQ-KILN-001
+    type: sw-req
+    title: WIT interfaces for kernel objects
+    status: draft
+    description: >
+      Define WebAssembly Component Model (WIT) interfaces for each kernel
+      object type: semaphore (resource sem), mutex, condvar, message queue.
+      Each interface specifies the operations, error types, and capability
+      requirements.  These WIT definitions are the contract between
+      application components and the Kiln runtime.
+    tags: [wit, component-model, interface]
+    fields:
+      req-type: interface
+      priority: must
+      verification-criteria: >
+        WIT interfaces compile with wit-bindgen.
+        Generated bindings match Gale's Rust API signatures.
+        Canonical ABI round-trip preserves all parameter values.
+    links:
+      - type: derives-from
+        target: SYSREQ-KILN-001
+
+  - id: SWREQ-KILN-002
+    type: sw-req
+    title: Kiln host function registration for Gale primitives
+    status: draft
+    description: >
+      Kiln's host function registry accepts Gale kernel objects and
+      exposes them to WASM components as importable functions.  Host
+      functions are registered at runtime initialization and map
+      directly to Gale's Rust methods without serialization or
+      ABI translation beyond the WASM canonical ABI.
+    tags: [kiln, host-functions, registration]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Kiln instantiates a WASM component that imports kernel-sem.
+        Component can call give/take/reset through the import.
+        Operations return correct results matching Gale unit tests.
+    links:
+      - type: derives-from
+        target: SYSREQ-KILN-001
+
+  - id: SWREQ-KILN-003
+    type: sw-req
+    title: Synth ARM codegen for WASM application components
+    status: draft
+    description: >
+      Application WASM components using kernel object imports are compiled
+      to ARM Cortex-M native code by Synth.  Host function calls (to Gale
+      kernel primitives) become direct function calls in the ARM binary.
+      The Synth codegen for host calls preserves all safety invariants.
+    tags: [synth, arm, codegen]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Synth compiles a WASM component with kernel-sem imports to ARM ELF.
+        ARM binary executes correctly on Renode Cortex-M4 emulator.
+        Semaphore operations produce identical results to interpreted path.
+    links:
+      - type: derives-from
+        target: SYSREQ-KILN-002
+
+  - id: SWREQ-KILN-004
+    type: sw-req
+    title: Connected verification chain from source to binary
+    status: draft
+    description: >
+      The proof chain connecting source-level verification to binary
+      correctness is fully closed:
+      (1) Gale Verus/Rocq proofs establish semantic correctness.
+      (2) Loom Z3 translation validation proves optimization preserves
+          semantics of the WASM application code.
+      (3) Synth Rocq proofs prove ARM codegen matches WASM semantics.
+      No Admitted lemmas or assumed axioms in the chain.
+    tags: [proof-chain, verified-compilation, safety]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        All Rocq proofs are Qed (no Admitted).
+        All Verus proofs pass (no assume(false)).
+        All Loom Z3 checks pass.
+        Rocq extraction test produces runnable binary.
+    links:
+      - type: derives-from
+        target: SYSREQ-KILN-002
+
+  - id: SWREQ-KILN-005
+    type: sw-req
+    title: Capability-based hardware access for kernel primitives
+    status: draft
+    description: >
+      Hardware resources required by kernel primitives (spinlocks,
+      interrupt control, MPU configuration) are exposed through the
+      WASM component model as capabilities.  A kernel object can only
+      access hardware it has been explicitly granted.  This prevents
+      kernel components from accessing hardware outside their scope
+      and enables compositional security analysis.
+    tags: [capabilities, hardware, security]
+    fields:
+      req-type: constraint
+      priority: should
+      verification-criteria: >
+        A kernel component without spinlock capability cannot acquire locks.
+        Hardware access is mediated through WIT-defined capability interfaces.
+        Capability violations produce compile-time errors (component linking)
+        or deterministic runtime traps.
+    links:
+      - type: derives-from
+        target: SYSREQ-KILN-001
+
+  - id: SWREQ-KILN-006
+    type: sw-req
+    title: No Zephyr C dependency for verified kernel primitives
+    status: draft
+    description: >
+      Gale's verified kernel primitives are standalone — they do not
+      depend on Zephyr C headers, Zephyr build system, or any Zephyr
+      runtime.  The entire kernel object implementation is in verified
+      Rust, callable directly from Kiln.  Zephyr compatibility is
+      optional and provided by a thin adapter layer, not by the core.
+    tags: [standalone, no-zephyr, independence]
+    fields:
+      req-type: constraint
+      priority: must
+      verification-criteria: >
+        Gale crate compiles and tests pass without any Zephyr headers or
+        C toolchain.  Kiln can host Gale kernel objects on any platform
+        (Linux, macOS, bare-metal ARM).
+    links:
+      - type: derives-from
+        target: SYSREQ-KILN-001

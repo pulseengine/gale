@@ -121,6 +121,7 @@ sanitizer_test(
     srcs = ALL_CARGO_SRCS,
     data = CARGO_DATA,
     sanitizer = "thread",
+    tags = ["exclusive"],
 )
 
 sanitizer_test(
@@ -180,6 +181,7 @@ cargo_bench_test(
     manifest = "Cargo.toml",
     srcs = ALL_CARGO_SRCS,
     data = CARGO_DATA,
+    tags = ["exclusive"],
 )
 
 # =========================================================================
