@@ -4,6 +4,10 @@
 #   STKH-001 (stakeholder)
 #     → SYSREQ-SEM-001 (system) → SWREQ-SEM-P01..P10 (software)
 #     → SYSREQ-MUT-001 (system) → SWREQ-MUT-M01..M11 (software)
+#     → SYSREQ-CV-001  (system) → SWREQ-CV-C01..C08  (software)
+#     → SYSREQ-MQ-001  (system) → SWREQ-MQ-MQ01..MQ13 (software)
+#     → SYSREQ-SK-001  (system) → SWREQ-SK-SK01..SK09 (software)
+#     → SYSREQ-PP-001  (system) → SWREQ-PP-PP01..PP10 (software)
 #
 # The verified properties are the ASIL-D formal specifications.
 # Each maps directly to a property in the Verus/Rocq specs.
@@ -501,3 +505,814 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MUT-001
+
+  # ── CondVar: System requirement ──────────────────────────────────────────
+
+  - id: SYSREQ-CV-001
+    type: system-req
+    title: Condition variable with signal/broadcast/wait
+    status: approved
+    description: >
+      A condition variable that matches the Zephyr k_condvar API semantics:
+      initialization, signal (wake one), broadcast (wake all), and wait
+      (block on condition).  Must maintain priority-ordered wait queue
+      and never exhibit undefined behavior or arithmetic overflow.
+    tags: [condvar, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 8 properties (C1-C8) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── CondVar: Software requirements (8 ASIL-D properties) ────────────────
+
+  - id: SWREQ-CV-C01
+    type: sw-req
+    title: "C1: after init, wait queue is empty"
+    status: approved
+    description: >
+      After initialization, the condition variable's wait queue has
+      zero entries and the invariant holds.
+      Maps to condvar.c:21-30.
+    tags: [condvar, init, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on init(). Unit test condvar_init_empty.
+    links:
+      - type: derives-from
+        target: SYSREQ-CV-001
+
+  - id: SWREQ-CV-C02
+    type: sw-req
+    title: "C2: signal wakes at most one waiter (highest priority)"
+    status: approved
+    description: >
+      When signal is called and the wait queue is non-empty, exactly
+      one thread (the highest-priority waiter) is woken and the wait
+      queue length decreases by 1.
+      Maps to condvar.c:44-61.
+    tags: [condvar, signal, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on signal(). Integration test signal_wakes_one.
+    links:
+      - type: derives-from
+        target: SYSREQ-CV-001
+
+  - id: SWREQ-CV-C03
+    type: sw-req
+    title: "C3: signal on empty condvar is a no-op"
+    status: approved
+    description: >
+      When signal is called and the wait queue is empty, the condvar
+      state is unchanged.
+      Maps to condvar.c:44-61.
+    tags: [condvar, signal, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on signal(). Unit test signal_empty_noop.
+    links:
+      - type: derives-from
+        target: SYSREQ-CV-001
+
+  - id: SWREQ-CV-C04
+    type: sw-req
+    title: "C4: broadcast wakes all waiters, returns woken count"
+    status: approved
+    description: >
+      Broadcast clears the wait queue entirely and returns the number
+      of threads woken, equal to the previous queue length.
+      Maps to condvar.c:73-96.
+    tags: [condvar, broadcast, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on broadcast(). Integration test broadcast_wakes_all.
+    links:
+      - type: derives-from
+        target: SYSREQ-CV-001
+
+  - id: SWREQ-CV-C05
+    type: sw-req
+    title: "C5: broadcast on empty condvar returns 0"
+    status: approved
+    description: >
+      When broadcast is called on an empty wait queue, zero threads
+      are woken and the condvar state is unchanged.
+      Maps to condvar.c:73-96.
+    tags: [condvar, broadcast, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on broadcast(). Unit test broadcast_empty_returns_zero.
+    links:
+      - type: derives-from
+        target: SYSREQ-CV-001
+
+  - id: SWREQ-CV-C06
+    type: sw-req
+    title: "C6: wait adds thread to wait queue (blocking path)"
+    status: approved
+    description: >
+      When wait_blocking is called, the thread is blocked and inserted
+      into the wait queue in priority order.  Queue length increases by 1.
+      Maps to condvar.c:99-121.
+    tags: [condvar, wait, blocking, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on wait_blocking(). Unit test wait_enqueues_thread.
+    links:
+      - type: derives-from
+        target: SYSREQ-CV-001
+
+  - id: SWREQ-CV-C07
+    type: sw-req
+    title: "C7: signal/broadcast preserve wait queue ordering"
+    status: approved
+    description: >
+      After signal or broadcast, the condvar invariant (wait queue
+      sorted by priority) is maintained.
+      Maps to condvar.c:44-96.
+    tags: [condvar, wait-queue, ordering, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus inv() maintained across signal/broadcast.
+        Integration test ordering_preserved.
+    links:
+      - type: derives-from
+        target: SYSREQ-CV-001
+
+  - id: SWREQ-CV-C08
+    type: sw-req
+    title: "C8: no arithmetic overflow in broadcast woken count"
+    status: approved
+    description: >
+      The broadcast woken count cannot overflow because it is bounded
+      by MAX_WAITERS (64), which fits in u32.
+    tags: [condvar, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus bounded proof (woken <= 64). Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-CV-001
+
+  # ── MsgQ: System requirement ─────────────────────────────────────────────
+
+  - id: SYSREQ-MQ-001
+    type: system-req
+    title: Message queue with ring buffer semantics
+    status: approved
+    description: >
+      A message queue that matches the Zephyr k_msgq API semantics:
+      initialization, put (enqueue), put_front (priority enqueue),
+      get (dequeue), peek, and purge.  Must maintain ring buffer index
+      consistency and never exhibit undefined behavior or arithmetic overflow.
+    tags: [msgq, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 13 properties (MQ1-MQ13) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── MsgQ: Software requirements (13 ASIL-D properties) ──────────────────
+
+  - id: SWREQ-MQ-MQ01
+    type: sw-req
+    title: "MQ1: 0 <= used_msgs <= max_msgs (capacity invariant)"
+    status: approved
+    description: >
+      The message count is always between 0 and max_msgs inclusive.
+      This is the fundamental invariant maintained across all operations.
+      Maps to msg_q.c:43-470.
+    tags: [msgq, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures/invariant on all methods. Proptest random op sequences.
+    links:
+      - type: derives-from
+        target: SYSREQ-MQ-001
+
+  - id: SWREQ-MQ-MQ02
+    type: sw-req
+    title: "MQ2: read_idx < max_msgs (index bounds)"
+    status: approved
+    description: >
+      The read index is always strictly less than max_msgs, ensuring
+      valid ring buffer access.
+      Maps to msg_q.c:43-470.
+    tags: [msgq, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus invariant on all methods.
+    links:
+      - type: derives-from
+        target: SYSREQ-MQ-001
+
+  - id: SWREQ-MQ-MQ03
+    type: sw-req
+    title: "MQ3: write_idx < max_msgs (index bounds)"
+    status: approved
+    description: >
+      The write index is always strictly less than max_msgs, ensuring
+      valid ring buffer access.
+      Maps to msg_q.c:43-470.
+    tags: [msgq, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus invariant on all methods.
+    links:
+      - type: derives-from
+        target: SYSREQ-MQ-001
+
+  - id: SWREQ-MQ-MQ04
+    type: sw-req
+    title: "MQ4: msg_size > 0, max_msgs > 0 (always)"
+    status: approved
+    description: >
+      Both message size and maximum count are always strictly positive.
+      Enforced by init rejecting zero values with -EINVAL.
+      Maps to msg_q.c:43-71.
+    tags: [msgq, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus requires on init(). Unit test init_rejects_zero.
+    links:
+      - type: derives-from
+        target: SYSREQ-MQ-001
+
+  - id: SWREQ-MQ-MQ05
+    type: sw-req
+    title: "MQ5: put on non-full queue increments used_msgs, advances write_idx"
+    status: approved
+    description: >
+      When put is called and the queue is not full, used_msgs increments
+      by 1 and write_idx advances to the next ring buffer slot.
+      Maps to msg_q.c:130-228.
+    tags: [msgq, put, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on put(). Unit test put_increments_count.
+    links:
+      - type: derives-from
+        target: SYSREQ-MQ-001
+
+  - id: SWREQ-MQ-MQ06
+    type: sw-req
+    title: "MQ6: put on full queue returns ENOMSG, state unchanged"
+    status: approved
+    description: >
+      When put is called and the queue is full, returns -ENOMSG
+      without modifying the queue state.
+      Maps to msg_q.c:130-228.
+    tags: [msgq, put, error, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on put(). Unit test put_full_returns_enomsg.
+    links:
+      - type: derives-from
+        target: SYSREQ-MQ-001
+
+  - id: SWREQ-MQ-MQ07
+    type: sw-req
+    title: "MQ7: put_front on non-full queue retreats read_idx correctly"
+    status: approved
+    description: >
+      When put_front is called and the queue is not full, used_msgs
+      increments by 1 and read_idx retreats to the previous ring buffer slot.
+      Maps to msg_q.c:236-239.
+    tags: [msgq, put-front, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on put_front(). Unit test put_front_retreats_read_idx.
+    links:
+      - type: derives-from
+        target: SYSREQ-MQ-001
+
+  - id: SWREQ-MQ-MQ08
+    type: sw-req
+    title: "MQ8: get on non-empty queue decrements used_msgs, advances read_idx"
+    status: approved
+    description: >
+      When get is called and the queue is not empty, used_msgs decrements
+      by 1 and read_idx advances to the next ring buffer slot.
+      Maps to msg_q.c:280-349.
+    tags: [msgq, get, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on get(). Unit test get_decrements_count.
+    links:
+      - type: derives-from
+        target: SYSREQ-MQ-001
+
+  - id: SWREQ-MQ-MQ09
+    type: sw-req
+    title: "MQ9: get on empty queue returns ENOMSG, state unchanged"
+    status: approved
+    description: >
+      When get is called and the queue is empty, returns -ENOMSG
+      without modifying the queue state.
+      Maps to msg_q.c:280-349.
+    tags: [msgq, get, error, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on get(). Unit test get_empty_returns_enomsg.
+    links:
+      - type: derives-from
+        target: SYSREQ-MQ-001
+
+  - id: SWREQ-MQ-MQ10
+    type: sw-req
+    title: "MQ10: peek_at computes correct slot index"
+    status: approved
+    description: >
+      peek_at returns the correct ring buffer slot index for a given
+      logical position within the occupied entries.
+      Maps to msg_q.c:397-430.
+    tags: [msgq, peek, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on peek_at(). Unit test peek_at_correct_index.
+    links:
+      - type: derives-from
+        target: SYSREQ-MQ-001
+
+  - id: SWREQ-MQ-MQ11
+    type: sw-req
+    title: "MQ11: purge resets to empty (used_msgs=0, read_idx=write_idx)"
+    status: approved
+    description: >
+      Purge clears all messages, setting used_msgs to 0 and aligning
+      read_idx with write_idx.
+      Maps to msg_q.c:443-470.
+    tags: [msgq, purge, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on purge(). Unit test purge_empties_queue.
+    links:
+      - type: derives-from
+        target: SYSREQ-MQ-001
+
+  - id: SWREQ-MQ-MQ12
+    type: sw-req
+    title: "MQ12: no arithmetic overflow in any operation"
+    status: approved
+    description: >
+      No arithmetic operation on indices or counts causes integer
+      overflow.  Uses u64 intermediate for index calculations that
+      may exceed u32 range.
+    tags: [msgq, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-MQ-001
+
+  - id: SWREQ-MQ-MQ13
+    type: sw-req
+    title: "MQ13: ring buffer consistency (write_idx tracks read_idx + used_msgs)"
+    status: approved
+    description: >
+      The ring buffer maintains the consistency invariant:
+      write_idx == (read_idx + used_msgs) % max_msgs.
+      This is verified across all operations.
+      Maps to msg_q.c:43-470.
+    tags: [msgq, invariant, ring-buffer, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ring_consistent() invariant on all methods.
+    links:
+      - type: derives-from
+        target: SYSREQ-MQ-001
+
+  # ── Stack: System requirement ────────────────────────────────────────────
+
+  - id: SYSREQ-SK-001
+    type: system-req
+    title: LIFO stack with push/pop semantics
+    status: approved
+    description: >
+      A LIFO stack that matches the Zephyr k_stack API semantics:
+      initialization with capacity, push (increment), and pop (decrement).
+      Must maintain count/capacity bounds and never exhibit undefined
+      behavior or arithmetic overflow.
+    tags: [stack, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 9 properties (SK1-SK9) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Stack: Software requirements (9 ASIL-D properties) ──────────────────
+
+  - id: SWREQ-SK-SK01
+    type: sw-req
+    title: "SK1: 0 <= count <= capacity (bounds invariant)"
+    status: approved
+    description: >
+      The stack count is always between 0 and capacity inclusive.
+      This is the fundamental invariant maintained across all operations.
+      Maps to stack.c:27-190.
+    tags: [stack, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures/invariant on all methods. Proptest random op sequences.
+    links:
+      - type: derives-from
+        target: SYSREQ-SK-001
+
+  - id: SWREQ-SK-SK02
+    type: sw-req
+    title: "SK2: capacity > 0 (always after init)"
+    status: approved
+    description: >
+      The stack capacity is always strictly positive.
+      Enforced by init rejecting capacity == 0 with -EINVAL.
+      Maps to stack.c:27-42.
+    tags: [stack, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus requires on init(). Unit test init_rejects_zero.
+    links:
+      - type: derives-from
+        target: SYSREQ-SK-001
+
+  - id: SWREQ-SK-SK03
+    type: sw-req
+    title: "SK3: push when not full increments count by 1"
+    status: approved
+    description: >
+      When push is called and count < capacity, count increments by 1
+      and returns OK.
+      Maps to stack.c:101-136.
+    tags: [stack, push, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on push(). Unit test push_increments_count.
+    links:
+      - type: derives-from
+        target: SYSREQ-SK-001
+
+  - id: SWREQ-SK-SK04
+    type: sw-req
+    title: "SK4: push when full returns ENOMEM, state unchanged"
+    status: approved
+    description: >
+      When push is called and count >= capacity, returns ENOMEM
+      without modifying the stack state.
+      Maps to stack.c:101-136.
+    tags: [stack, push, error, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on push(). Unit test push_full_returns_enomem.
+    links:
+      - type: derives-from
+        target: SYSREQ-SK-001
+
+  - id: SWREQ-SK-SK05
+    type: sw-req
+    title: "SK5: pop when not empty decrements count by 1"
+    status: approved
+    description: >
+      When pop is called and count > 0, count decrements by 1
+      and returns OK.
+      Maps to stack.c:148-190.
+    tags: [stack, pop, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on pop(). Unit test pop_decrements_count.
+    links:
+      - type: derives-from
+        target: SYSREQ-SK-001
+
+  - id: SWREQ-SK-SK06
+    type: sw-req
+    title: "SK6: pop when empty returns EBUSY, state unchanged"
+    status: approved
+    description: >
+      When pop is called and count == 0, returns EBUSY
+      without modifying the stack state.
+      Maps to stack.c:148-190.
+    tags: [stack, pop, error, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on pop(). Unit test pop_empty_returns_ebusy.
+    links:
+      - type: derives-from
+        target: SYSREQ-SK-001
+
+  - id: SWREQ-SK-SK07
+    type: sw-req
+    title: "SK7: num_free + num_used == capacity (conservation)"
+    status: approved
+    description: >
+      The sum of free and used slots always equals the capacity.
+      Maps to stack.c:27-190.
+    tags: [stack, conservation, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on num_free()/num_used(). Proptest conservation check.
+    links:
+      - type: derives-from
+        target: SYSREQ-SK-001
+
+  - id: SWREQ-SK-SK08
+    type: sw-req
+    title: "SK8: no arithmetic overflow in any operation"
+    status: approved
+    description: >
+      No arithmetic operation on count or capacity causes integer
+      overflow.  All arithmetic is guarded by bounds checks.
+    tags: [stack, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-SK-001
+
+  - id: SWREQ-SK-SK09
+    type: sw-req
+    title: "SK9: push-pop roundtrip preserves state"
+    status: approved
+    description: >
+      A push followed by a pop returns count to its original value.
+    tags: [stack, roundtrip, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on push() then pop(). Proptest roundtrip check.
+    links:
+      - type: derives-from
+        target: SYSREQ-SK-001
+
+  # ── Pipe: System requirement ─────────────────────────────────────────────
+
+  - id: SYSREQ-PP-001
+    type: system-req
+    title: Byte stream pipe with read/write/reset/close
+    status: approved
+    description: >
+      A byte stream pipe that matches the Zephyr k_pipe API semantics:
+      initialization, write_check (validate and commit bytes),
+      read_check (validate and consume bytes), reset, and close.
+      Must maintain used/size capacity bounds and never exhibit undefined
+      behavior or arithmetic overflow.
+    tags: [pipe, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 10 properties (PP1-PP10) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Pipe: Software requirements (10 ASIL-D properties) ──────────────────
+
+  - id: SWREQ-PP-PP01
+    type: sw-req
+    title: "PP1: 0 <= used <= size (capacity invariant)"
+    status: approved
+    description: >
+      The used byte count is always between 0 and size inclusive.
+      This is the fundamental invariant maintained across all operations.
+      Maps to pipe.c:67-296.
+    tags: [pipe, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures/invariant on all methods. Proptest random op sequences.
+    links:
+      - type: derives-from
+        target: SYSREQ-PP-001
+
+  - id: SWREQ-PP-PP02
+    type: sw-req
+    title: "PP2: size > 0 (always after init)"
+    status: approved
+    description: >
+      The pipe buffer size is always strictly positive.
+      Enforced by init rejecting size == 0 with -EINVAL.
+      Maps to pipe.c:67-85.
+    tags: [pipe, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus requires on init(). Unit test init_rejects_zero.
+    links:
+      - type: derives-from
+        target: SYSREQ-PP-001
+
+  - id: SWREQ-PP-PP03
+    type: sw-req
+    title: "PP3: write_check on closed pipe returns EPIPE"
+    status: approved
+    description: >
+      When write_check is called on a pipe that is not open,
+      returns -EPIPE without modifying state.
+      Maps to pipe.c:147-218.
+    tags: [pipe, write, error, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on write_check(). Unit test write_closed_returns_epipe.
+    links:
+      - type: derives-from
+        target: SYSREQ-PP-001
+
+  - id: SWREQ-PP-PP04
+    type: sw-req
+    title: "PP4: write/read on resetting pipe returns ECANCELED"
+    status: approved
+    description: >
+      When write_check or read_check is called on a pipe with the
+      reset flag set, returns -ECANCELED without modifying state.
+      Maps to pipe.c:147-271.
+    tags: [pipe, reset, error, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on write_check()/read_check(). Unit test resetting_returns_ecanceled.
+    links:
+      - type: derives-from
+        target: SYSREQ-PP-001
+
+  - id: SWREQ-PP-PP05
+    type: sw-req
+    title: "PP5: write_check computes correct byte count (min of request and free)"
+    status: approved
+    description: >
+      On success, write_check returns n > 0 where n <= request_len
+      and n <= free space.  used is incremented by n.
+      Maps to pipe.c:147-218.
+    tags: [pipe, write, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on write_check(). Unit test write_clamped_to_free_space.
+    links:
+      - type: derives-from
+        target: SYSREQ-PP-001
+
+  - id: SWREQ-PP-PP06
+    type: sw-req
+    title: "PP6: read_check computes correct byte count (min of request and used)"
+    status: approved
+    description: >
+      On success, read_check returns n > 0 where n <= request_len
+      and n <= used bytes.  used is decremented by n.
+      Maps to pipe.c:220-271.
+    tags: [pipe, read, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on read_check(). Unit test read_clamped_to_available.
+    links:
+      - type: derives-from
+        target: SYSREQ-PP-001
+
+  - id: SWREQ-PP-PP07
+    type: sw-req
+    title: "PP7: reset sets used to 0"
+    status: approved
+    description: >
+      Reset clears the used count to zero and sets the reset flag.
+      Maps to pipe.c:273-285.
+    tags: [pipe, reset, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on reset(). Unit test reset_empties_pipe.
+    links:
+      - type: derives-from
+        target: SYSREQ-PP-001
+
+  - id: SWREQ-PP-PP08
+    type: sw-req
+    title: "PP8: close clears all flags"
+    status: approved
+    description: >
+      Close sets flags to 0, meaning the pipe is neither open nor
+      resetting.
+      Maps to pipe.c:287-296.
+    tags: [pipe, close, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on close(). Unit test close_clears_flags.
+    links:
+      - type: derives-from
+        target: SYSREQ-PP-001
+
+  - id: SWREQ-PP-PP09
+    type: sw-req
+    title: "PP9: conservation: used + free == size"
+    status: approved
+    description: >
+      The sum of used bytes and free space always equals the buffer size.
+    tags: [pipe, conservation, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on space_get()/data_get(). Proptest conservation check.
+    links:
+      - type: derives-from
+        target: SYSREQ-PP-001
+
+  - id: SWREQ-PP-PP10
+    type: sw-req
+    title: "PP10: no arithmetic overflow in any operation"
+    status: approved
+    description: >
+      No arithmetic operation on used or size causes integer overflow.
+      All arithmetic is guarded by min() operations with capacity checks.
+    tags: [pipe, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-PP-001
