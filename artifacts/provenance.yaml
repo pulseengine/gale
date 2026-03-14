@@ -78,3 +78,127 @@ artifacts:
       gale-file: plain/src/wait_queue.rs
       gale-module: gale::wait_queue
       scope: full-file
+
+  - id: PROV-MUT-001
+    type: source-provenance
+    title: "Zephyr kernel/mutex.c — recursive mutex implementation"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's mutex.  Contains
+      z_impl_k_mutex_init, z_impl_k_mutex_lock, z_impl_k_mutex_unlock,
+      plus priority ceiling support and userspace wrappers.
+    tags: [upstream, mutex, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/mutex.c
+      upstream-sha256: "4ae6ed3099b536c54186d8358ec17e04ba63ef16eb751af2663c832d6424de74"
+      upstream-lines: 337
+      upstream-functions:
+        - "z_impl_k_mutex_init"
+        - "z_impl_k_mutex_lock (lines 96-224)"
+        - "z_impl_k_mutex_unlock (lines 236-307)"
+      gale-file: plain/src/mutex.rs
+      gale-module: gale::mutex
+      scope: partial-functions
+
+  - id: PROV-CV-001
+    type: source-provenance
+    title: "Zephyr kernel/condvar.c — condition variable implementation"
+    status: approved
+    description: >
+      Zephyr's condition variable built on top of wait queue primitives.
+      Contains z_impl_k_condvar_signal, z_impl_k_condvar_broadcast,
+      z_impl_k_condvar_wait.  The Gale port is a pure wait queue wrapper
+      with no FFI — safety by composition.
+    tags: [upstream, condvar, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/condvar.c
+      upstream-sha256: "a2821164552bcc8bd2dd7b89c018cb223647c74570ff0b857bdc221e19bc18f2"
+      upstream-lines: 171
+      upstream-functions:
+        - "z_impl_k_condvar_signal"
+        - "z_impl_k_condvar_broadcast"
+        - "z_impl_k_condvar_wait"
+      gale-file: plain/src/condvar.rs
+      gale-module: gale::condvar
+      scope: partial-functions
+
+  - id: PROV-MQ-001
+    type: source-provenance
+    title: "Zephyr kernel/msg_q.c — message queue implementation"
+    status: approved
+    description: >
+      Zephyr's FIFO message queue with fixed-size messages.  Contains
+      k_msgq_init, put/get/peek/purge operations with ring buffer index
+      management.  The Gale port models ring buffer index arithmetic
+      only — actual data copy stays in C.
+    tags: [upstream, msgq, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/msg_q.c
+      upstream-sha256: "4531c7655786d6f6b7e5b95bb4aaf91682606efb8fef3feedf24b4e8ac7fb6ed"
+      upstream-lines: 516
+      upstream-functions:
+        - "k_msgq_init"
+        - "z_impl_k_msgq_put"
+        - "z_impl_k_msgq_get"
+        - "z_impl_k_msgq_peek_at"
+        - "z_impl_k_msgq_purge"
+      gale-file: plain/src/msgq.rs
+      gale-module: gale::msgq
+      scope: partial-functions
+
+  - id: PROV-SK-001
+    type: source-provenance
+    title: "Zephyr kernel/stack.c — LIFO stack implementation"
+    status: approved
+    description: >
+      Zephyr's thread-safe LIFO stack for stack_data_t values.  Contains
+      k_stack_init, z_impl_k_stack_push, z_impl_k_stack_pop.  The Gale
+      port models a bounded counter (count/capacity) — actual data
+      stays in C.
+    tags: [upstream, stack, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/stack.c
+      upstream-sha256: "0e23742673ad9ec6b403af6971a0aa6a99ac046e3cfeb9a7ce1ffa093499354c"
+      upstream-lines: 222
+      upstream-functions:
+        - "k_stack_init"
+        - "z_impl_k_stack_push (lines 111-153)"
+        - "z_impl_k_stack_pop (lines 165-214)"
+      gale-file: plain/src/stack.rs
+      gale-module: gale::stack
+      scope: partial-functions
+
+  - id: PROV-PP-001
+    type: source-provenance
+    title: "Zephyr kernel/pipe.c — byte-stream pipe implementation"
+    status: approved
+    description: >
+      Zephyr's byte-stream pipe with ring buffer backend.  Contains
+      z_impl_k_pipe_init, z_impl_k_pipe_write, z_impl_k_pipe_read,
+      z_impl_k_pipe_reset, z_impl_k_pipe_close.  The Gale port models
+      the state machine (OPEN/CLOSED/RESETTING flags) and byte count —
+      ring buffer management stays in C.
+    tags: [upstream, pipe, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/pipe.c
+      upstream-sha256: "af7da7150bdfe28318a89ebe840068cb04904725ea615c4a040e1578b596aba8"
+      upstream-lines: 358
+      upstream-functions:
+        - "z_impl_k_pipe_init"
+        - "z_impl_k_pipe_write (lines 138-220)"
+        - "z_impl_k_pipe_read (lines 222-289)"
+        - "z_impl_k_pipe_reset (lines 291-303)"
+        - "z_impl_k_pipe_close (lines 305-314)"
+      gale-file: plain/src/pipe.rs
+      gale-module: gale::pipe
+      scope: partial-functions

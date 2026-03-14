@@ -20,9 +20,9 @@ artifacts:
         provided:
           - "Semaphore::init(count, limit) -> Result<Self, i32>"
           - "Semaphore::give() -> GiveResult"
-          - "Semaphore::try_take() -> i32"
+          - "Semaphore::try_take() -> TakeResult"
           - "Semaphore::take_blocking(Thread) -> bool"
-          - "Semaphore::reset() -> usize"
+          - "Semaphore::reset() -> u32"
           - "Semaphore::count_get() -> u32"
           - "Semaphore::limit_get() -> u32"
         required:
@@ -55,8 +55,8 @@ artifacts:
           - "WaitQueue::new() -> Self"
           - "WaitQueue::pend(Thread) -> bool"
           - "WaitQueue::unpend_first(i32) -> Option<Thread>"
-          - "WaitQueue::unpend_all(i32) -> usize"
-          - "WaitQueue::len() -> usize"
+          - "WaitQueue::unpend_all(i32) -> u32"
+          - "WaitQueue::len() -> u32"
           - "WaitQueue::is_empty() -> bool"
         required:
           - "heapless::Vec<Thread, 64>"
@@ -222,3 +222,728 @@ artifacts:
         target: SWARCH-WQ-001
       - type: satisfies
         target: SWREQ-SEM-P10
+
+  # ── Software architecture — Mutex (SWE.2) ──────────────────────────────
+
+  - id: SWARCH-MUT-001
+    type: sw-arch-component
+    title: Mutex module (gale::mutex)
+    status: approved
+    description: >
+      Recursive mutex with init/try_lock/lock_blocking/unlock.
+      Owns a WaitQueue for blocked threads, an Option<ThreadId> owner,
+      and u32 lock_count. Supports reentrant locking and priority-ordered
+      ownership transfer. No unsafe code.
+    tags: [mutex, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "Mutex::init() -> Self"
+          - "Mutex::try_lock(ThreadId) -> LockResult"
+          - "Mutex::lock_blocking(Thread) -> bool"
+          - "Mutex::unlock(ThreadId) -> Result<UnlockResult, i32>"
+          - "Mutex::is_locked() -> bool"
+          - "Mutex::lock_count_get() -> u32"
+          - "Mutex::owner_get() -> Option<ThreadId>"
+          - "Mutex::num_waiters() -> u32"
+        required:
+          - "gale::wait_queue::WaitQueue"
+          - "gale::thread::{Thread, ThreadId}"
+          - "gale::error::{OK, EINVAL, EPERM}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-MUT-M01
+      - type: allocated-from
+        target: SWREQ-MUT-M03
+      - type: allocated-from
+        target: SWREQ-MUT-M05
+      - type: replaces
+        target: PROV-MUT-001
+
+  # ── Software architecture — CondVar (SWE.2) ────────────────────────────
+
+  - id: SWARCH-CV-001
+    type: sw-arch-component
+    title: CondVar module (gale::condvar)
+    status: approved
+    description: >
+      Condition variable as a pure wait queue wrapper. Provides signal
+      (wake one), broadcast (wake all), and wait (block). No FFI layer —
+      safety by composition via Zephyr's existing condvar.c. No unsafe code.
+    tags: [condvar, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "CondVar::init() -> Self"
+          - "CondVar::signal() -> SignalResult"
+          - "CondVar::broadcast() -> u32"
+          - "CondVar::wait_blocking(Thread) -> bool"
+          - "CondVar::num_waiters() -> u32"
+          - "CondVar::has_waiters() -> bool"
+        required:
+          - "gale::wait_queue::WaitQueue"
+          - "gale::thread::Thread"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-CV-C01
+      - type: allocated-from
+        target: SWREQ-CV-C02
+      - type: allocated-from
+        target: SWREQ-CV-C04
+      - type: replaces
+        target: PROV-CV-001
+
+  # ── Software architecture — MsgQ (SWE.2) ───────────────────────────────
+
+  - id: SWARCH-MQ-001
+    type: sw-arch-component
+    title: MsgQ module (gale::msgq)
+    status: approved
+    description: >
+      Message queue ring buffer index model. Models read_idx/write_idx/used_msgs
+      arithmetic for FIFO message passing with fixed-size messages. Actual data
+      copy stays in C — Gale verifies index safety only. No unsafe code.
+    tags: [msgq, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "MsgQ::init(u32, u32) -> Result<Self, i32>"
+          - "MsgQ::put() -> Result<u32, i32>"
+          - "MsgQ::put_front() -> Result<u32, i32>"
+          - "MsgQ::get() -> Result<u32, i32>"
+          - "MsgQ::peek_at(u32) -> Result<u32, i32>"
+          - "MsgQ::purge() -> u32"
+          - "MsgQ::num_free_get() -> u32"
+          - "MsgQ::num_used_get() -> u32"
+          - "MsgQ::msg_size_get() -> u32"
+          - "MsgQ::max_msgs_get() -> u32"
+          - "MsgQ::is_full() -> bool"
+          - "MsgQ::is_empty() -> bool"
+        required:
+          - "gale::error::{OK, EINVAL, ENOMSG}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-MQ-MQ01
+      - type: allocated-from
+        target: SWREQ-MQ-MQ02
+      - type: allocated-from
+        target: SWREQ-MQ-MQ05
+      - type: replaces
+        target: PROV-MQ-001
+
+  # ── Software architecture — Stack (SWE.2) ──────────────────────────────
+
+  - id: SWARCH-SK-001
+    type: sw-arch-component
+    title: Stack module (gale::stack)
+    status: approved
+    description: >
+      LIFO stack bounded counter model. Tracks count and capacity for
+      push/pop validation. Actual data storage stays in C — Gale verifies
+      bounds safety only. No unsafe code.
+    tags: [stack, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "Stack::init(u32) -> Result<Self, i32>"
+          - "Stack::push() -> i32"
+          - "Stack::pop() -> i32"
+          - "Stack::num_free() -> u32"
+          - "Stack::num_used() -> u32"
+          - "Stack::is_full() -> bool"
+          - "Stack::is_empty() -> bool"
+          - "Stack::capacity() -> u32"
+        required:
+          - "gale::error::{OK, EINVAL, ENOMEM, EBUSY}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-SK-SK01
+      - type: allocated-from
+        target: SWREQ-SK-SK02
+      - type: allocated-from
+        target: SWREQ-SK-SK03
+      - type: replaces
+        target: PROV-SK-001
+
+  # ── Software architecture — Pipe (SWE.2) ───────────────────────────────
+
+  - id: SWARCH-PP-001
+    type: sw-arch-component
+    title: Pipe module (gale::pipe)
+    status: approved
+    description: >
+      Byte-stream pipe state machine and byte count model. Tracks used bytes,
+      size capacity, and flags (FLAG_OPEN=1, FLAG_RESET=2) for write/read/reset/close
+      validation. Ring buffer management stays in C — Gale verifies state and
+      capacity safety only. No unsafe code.
+    tags: [pipe, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "Pipe::init(u32) -> Result<Self, i32>"
+          - "Pipe::write_check(u32) -> Result<u32, i32>"
+          - "Pipe::read_check(u32) -> Result<u32, i32>"
+          - "Pipe::reset()"
+          - "Pipe::close()"
+          - "Pipe::clear_reset()"
+          - "Pipe::space_get() -> u32"
+          - "Pipe::data_get() -> u32"
+          - "Pipe::is_empty() -> bool"
+          - "Pipe::is_full() -> bool"
+          - "Pipe::is_open() -> bool"
+          - "Pipe::is_resetting() -> bool"
+          - "Pipe::size() -> u32"
+        required:
+          - "gale::error::{OK, EINVAL, EPIPE, EAGAIN, ECANCELED, ENOMSG}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-PP-PP01
+      - type: allocated-from
+        target: SWREQ-PP-PP02
+      - type: allocated-from
+        target: SWREQ-PP-PP03
+      - type: replaces
+        target: PROV-PP-001
+
+  # ── Software detailed design — Mutex (SWE.3) ───────────────────────────
+
+  - id: SWDD-MUT-INIT
+    type: sw-detail-design
+    title: "Mutex::init — z_impl_k_mutex_init port"
+    status: approved
+    description: >
+      Constructs a mutex with empty WaitQueue, owner=None, lock_count=0.
+    tags: [mutex, init]
+    fields:
+      unit: plain/src/mutex.rs
+      function: "Mutex::init"
+      algorithm: >
+        Ok(Mutex { wait_q: WaitQueue::new(), owner: None, lock_count: 0 })
+    links:
+      - type: refines
+        target: SWARCH-MUT-001
+      - type: satisfies
+        target: SWREQ-MUT-M01
+      - type: function-maps-to
+        target: PROV-MUT-001
+
+  - id: SWDD-MUT-LOCK
+    type: sw-detail-design
+    title: "Mutex::try_lock — z_impl_k_mutex_lock non-blocking port"
+    status: approved
+    description: >
+      If unlocked (owner is None): set owner=current_id, lock_count=1,
+      return Acquired. If owner matches current_id: reentrant lock,
+      lock_count+=1, return Acquired. If owned by another thread:
+      return WouldBlock.
+    tags: [mutex, lock]
+    fields:
+      unit: plain/src/mutex.rs
+      function: "Mutex::try_lock"
+      algorithm: >
+        match self.owner { None => acquire, Some(id) if id == current =>
+        reentrant, Some(_) => WouldBlock }
+    links:
+      - type: refines
+        target: SWARCH-MUT-001
+      - type: satisfies
+        target: SWREQ-MUT-M03
+      - type: satisfies
+        target: SWREQ-MUT-M04
+      - type: satisfies
+        target: SWREQ-MUT-M05
+      - type: function-maps-to
+        target: PROV-MUT-001
+
+  - id: SWDD-MUT-LOCK-BLOCKING
+    type: sw-detail-design
+    title: "Mutex::lock_blocking — z_impl_k_mutex_lock blocking port"
+    status: approved
+    description: >
+      Block the calling thread and insert it into the wait queue in
+      priority order. Called when mutex is owned by another thread and
+      timeout is not K_NO_WAIT.
+    tags: [mutex, lock, blocking]
+    fields:
+      unit: plain/src/mutex.rs
+      function: "Mutex::lock_blocking"
+      algorithm: >
+        thread.block(); self.wait_q.pend(thread)
+    links:
+      - type: refines
+        target: SWARCH-MUT-001
+      - type: satisfies
+        target: SWREQ-MUT-M05
+      - type: satisfies
+        target: SWREQ-MUT-M11
+      - type: function-maps-to
+        target: PROV-MUT-001
+
+  - id: SWDD-MUT-UNLOCK
+    type: sw-detail-design
+    title: "Mutex::unlock — z_impl_k_mutex_unlock port"
+    status: approved
+    description: >
+      If not locked (owner is None): return Err(EINVAL). If caller is not
+      owner: return Err(EPERM). If lock_count > 1: decrement lock_count,
+      return Released. If waiters exist: transfer ownership to
+      highest-priority waiter, return Transferred. Otherwise: clear owner
+      and lock_count, return Unlocked.
+    tags: [mutex, unlock]
+    fields:
+      unit: plain/src/mutex.rs
+      function: "Mutex::unlock"
+      algorithm: >
+        validate owner == current_id; if lock_count > 1: decrement;
+        elif waiters: transfer; else: clear
+    links:
+      - type: refines
+        target: SWARCH-MUT-001
+      - type: satisfies
+        target: SWREQ-MUT-M06
+      - type: satisfies
+        target: SWREQ-MUT-M07
+      - type: satisfies
+        target: SWREQ-MUT-M08
+      - type: satisfies
+        target: SWREQ-MUT-M09
+      - type: satisfies
+        target: SWREQ-MUT-M10
+      - type: function-maps-to
+        target: PROV-MUT-001
+
+  # ── Software detailed design — CondVar (SWE.3) ─────────────────────────
+
+  - id: SWDD-CV-INIT
+    type: sw-detail-design
+    title: "CondVar::init — condvar initialization"
+    status: approved
+    description: >
+      Constructs a condition variable with an empty WaitQueue.
+    tags: [condvar, init]
+    fields:
+      unit: plain/src/condvar.rs
+      function: "CondVar::init"
+      algorithm: >
+        CondVar { wait_q: WaitQueue::new() }
+    links:
+      - type: refines
+        target: SWARCH-CV-001
+      - type: satisfies
+        target: SWREQ-CV-C01
+      - type: function-maps-to
+        target: PROV-CV-001
+
+  - id: SWDD-CV-SIGNAL
+    type: sw-detail-design
+    title: "CondVar::signal — z_impl_k_condvar_signal port"
+    status: approved
+    description: >
+      Wake the highest-priority waiting thread. If wait queue is empty,
+      return Empty (no-op). Otherwise unpend first thread and return
+      Woke(thread).
+    tags: [condvar, signal]
+    fields:
+      unit: plain/src/condvar.rs
+      function: "CondVar::signal"
+      algorithm: >
+        match self.wait_q.unpend_first(OK) { Some(t) => Woke(t), None => Empty }
+    links:
+      - type: refines
+        target: SWARCH-CV-001
+      - type: satisfies
+        target: SWREQ-CV-C02
+      - type: satisfies
+        target: SWREQ-CV-C03
+      - type: satisfies
+        target: SWREQ-CV-C07
+      - type: function-maps-to
+        target: PROV-CV-001
+
+  - id: SWDD-CV-BROADCAST
+    type: sw-detail-design
+    title: "CondVar::broadcast — z_impl_k_condvar_broadcast port"
+    status: approved
+    description: >
+      Wake all waiting threads. Returns the number of threads woken.
+    tags: [condvar, broadcast]
+    fields:
+      unit: plain/src/condvar.rs
+      function: "CondVar::broadcast"
+      algorithm: >
+        self.wait_q.unpend_all(OK)
+    links:
+      - type: refines
+        target: SWARCH-CV-001
+      - type: satisfies
+        target: SWREQ-CV-C04
+      - type: satisfies
+        target: SWREQ-CV-C05
+      - type: function-maps-to
+        target: PROV-CV-001
+
+  - id: SWDD-CV-WAIT
+    type: sw-detail-design
+    title: "CondVar::wait_blocking — z_impl_k_condvar_wait port"
+    status: approved
+    description: >
+      Block the calling thread and insert into wait queue in priority order.
+    tags: [condvar, wait, blocking]
+    fields:
+      unit: plain/src/condvar.rs
+      function: "CondVar::wait_blocking"
+      algorithm: >
+        thread.block(); self.wait_q.pend(thread)
+    links:
+      - type: refines
+        target: SWARCH-CV-001
+      - type: satisfies
+        target: SWREQ-CV-C06
+      - type: satisfies
+        target: SWREQ-CV-C08
+      - type: function-maps-to
+        target: PROV-CV-001
+
+  # ── Software detailed design — MsgQ (SWE.3) ────────────────────────────
+
+  - id: SWDD-MQ-INIT
+    type: sw-detail-design
+    title: "MsgQ::init — k_msgq_init port"
+    status: approved
+    description: >
+      Validate msg_size > 0, max_msgs > 0, and msg_size * max_msgs does
+      not overflow u32. Initialize read_idx, write_idx, used_msgs to 0.
+    tags: [msgq, init]
+    fields:
+      unit: plain/src/msgq.rs
+      function: "MsgQ::init"
+      algorithm: >
+        if msg_size == 0 || max_msgs == 0 || overflow: Err(EINVAL);
+        else Ok(MsgQ { ... all zero ... })
+    links:
+      - type: refines
+        target: SWARCH-MQ-001
+      - type: satisfies
+        target: SWREQ-MQ-MQ01
+      - type: function-maps-to
+        target: PROV-MQ-001
+
+  - id: SWDD-MQ-PUT
+    type: sw-detail-design
+    title: "MsgQ::put — z_impl_k_msgq_put index advancement"
+    status: approved
+    description: >
+      If queue is full: return Err(ENOMSG). Otherwise return Ok(write_idx)
+      for the caller to copy data, advance write_idx = (write_idx + 1) %
+      max_msgs, and increment used_msgs.
+    tags: [msgq, put]
+    fields:
+      unit: plain/src/msgq.rs
+      function: "MsgQ::put"
+      algorithm: >
+        if used_msgs == max_msgs: ENOMSG; else: slot = write_idx;
+        advance; used_msgs += 1; Ok(slot)
+    links:
+      - type: refines
+        target: SWARCH-MQ-001
+      - type: satisfies
+        target: SWREQ-MQ-MQ02
+      - type: satisfies
+        target: SWREQ-MQ-MQ03
+      - type: satisfies
+        target: SWREQ-MQ-MQ06
+      - type: function-maps-to
+        target: PROV-MQ-001
+
+  - id: SWDD-MQ-PUT-FRONT
+    type: sw-detail-design
+    title: "MsgQ::put_front — z_impl_k_msgq_put_front index retreat"
+    status: approved
+    description: >
+      If queue is full: return Err(ENOMSG). Otherwise retreat read_idx =
+      (read_idx + max_msgs - 1) % max_msgs, increment used_msgs, return
+      Ok(read_idx).
+    tags: [msgq, put-front]
+    fields:
+      unit: plain/src/msgq.rs
+      function: "MsgQ::put_front"
+      algorithm: >
+        if full: ENOMSG; else: read_idx = (read_idx + max_msgs - 1) %
+        max_msgs; used_msgs += 1; Ok(read_idx)
+    links:
+      - type: refines
+        target: SWARCH-MQ-001
+      - type: satisfies
+        target: SWREQ-MQ-MQ04
+      - type: function-maps-to
+        target: PROV-MQ-001
+
+  - id: SWDD-MQ-GET
+    type: sw-detail-design
+    title: "MsgQ::get — z_impl_k_msgq_get index advancement"
+    status: approved
+    description: >
+      If queue is empty: return Err(ENOMSG). Otherwise return Ok(read_idx)
+      for the caller to copy data, advance read_idx = (read_idx + 1) %
+      max_msgs, and decrement used_msgs.
+    tags: [msgq, get]
+    fields:
+      unit: plain/src/msgq.rs
+      function: "MsgQ::get"
+      algorithm: >
+        if used_msgs == 0: ENOMSG; else: slot = read_idx; advance;
+        used_msgs -= 1; Ok(slot)
+    links:
+      - type: refines
+        target: SWARCH-MQ-001
+      - type: satisfies
+        target: SWREQ-MQ-MQ05
+      - type: satisfies
+        target: SWREQ-MQ-MQ06
+      - type: satisfies
+        target: SWREQ-MQ-MQ07
+      - type: function-maps-to
+        target: PROV-MQ-001
+
+  - id: SWDD-MQ-PEEK
+    type: sw-detail-design
+    title: "MsgQ::peek_at — z_impl_k_msgq_peek_at slot computation"
+    status: approved
+    description: >
+      Compute the slot index for a peek at logical position idx. If idx >=
+      used_msgs: return Err(ENOMSG). Otherwise return Ok((read_idx + idx)
+      % max_msgs).
+    tags: [msgq, peek]
+    fields:
+      unit: plain/src/msgq.rs
+      function: "MsgQ::peek_at"
+      algorithm: >
+        if idx >= used_msgs: ENOMSG; else: Ok((read_idx + idx) % max_msgs)
+    links:
+      - type: refines
+        target: SWARCH-MQ-001
+      - type: satisfies
+        target: SWREQ-MQ-MQ10
+      - type: function-maps-to
+        target: PROV-MQ-001
+
+  - id: SWDD-MQ-PURGE
+    type: sw-detail-design
+    title: "MsgQ::purge — z_impl_k_msgq_purge port"
+    status: approved
+    description: >
+      Reset used_msgs to 0, set read_idx = write_idx. Return the previous
+      used count.
+    tags: [msgq, purge]
+    fields:
+      unit: plain/src/msgq.rs
+      function: "MsgQ::purge"
+      algorithm: >
+        old = used_msgs; used_msgs = 0; read_idx = write_idx; old
+    links:
+      - type: refines
+        target: SWARCH-MQ-001
+      - type: satisfies
+        target: SWREQ-MQ-MQ11
+      - type: satisfies
+        target: SWREQ-MQ-MQ12
+      - type: function-maps-to
+        target: PROV-MQ-001
+
+  # ── Software detailed design — Stack (SWE.3) ───────────────────────────
+
+  - id: SWDD-SK-INIT
+    type: sw-detail-design
+    title: "Stack::init — k_stack_init port"
+    status: approved
+    description: >
+      Validate capacity > 0 (return Err(EINVAL) if zero). Set count = 0.
+    tags: [stack, init]
+    fields:
+      unit: plain/src/stack.rs
+      function: "Stack::init"
+      algorithm: >
+        if capacity == 0: Err(EINVAL); else: Ok(Stack { capacity, count: 0 })
+    links:
+      - type: refines
+        target: SWARCH-SK-001
+      - type: satisfies
+        target: SWREQ-SK-SK01
+      - type: function-maps-to
+        target: PROV-SK-001
+
+  - id: SWDD-SK-PUSH
+    type: sw-detail-design
+    title: "Stack::push — z_impl_k_stack_push port"
+    status: approved
+    description: >
+      If count < capacity: increment count, return OK. Otherwise return
+      ENOMEM.
+    tags: [stack, push]
+    fields:
+      unit: plain/src/stack.rs
+      function: "Stack::push"
+      algorithm: >
+        if count < capacity: count += 1; OK; else: ENOMEM
+    links:
+      - type: refines
+        target: SWARCH-SK-001
+      - type: satisfies
+        target: SWREQ-SK-SK02
+      - type: satisfies
+        target: SWREQ-SK-SK04
+      - type: satisfies
+        target: SWREQ-SK-SK05
+      - type: function-maps-to
+        target: PROV-SK-001
+
+  - id: SWDD-SK-POP
+    type: sw-detail-design
+    title: "Stack::pop — z_impl_k_stack_pop port"
+    status: approved
+    description: >
+      If count > 0: decrement count, return OK. Otherwise return EBUSY.
+    tags: [stack, pop]
+    fields:
+      unit: plain/src/stack.rs
+      function: "Stack::pop"
+      algorithm: >
+        if count > 0: count -= 1; OK; else: EBUSY
+    links:
+      - type: refines
+        target: SWARCH-SK-001
+      - type: satisfies
+        target: SWREQ-SK-SK03
+      - type: satisfies
+        target: SWREQ-SK-SK06
+      - type: satisfies
+        target: SWREQ-SK-SK07
+      - type: function-maps-to
+        target: PROV-SK-001
+
+  # ── Software detailed design — Pipe (SWE.3) ────────────────────────────
+
+  - id: SWDD-PP-INIT
+    type: sw-detail-design
+    title: "Pipe::init — z_impl_k_pipe_init port"
+    status: approved
+    description: >
+      Validate size > 0 (return Err(EINVAL) if zero). Set used = 0,
+      flags = FLAG_OPEN.
+    tags: [pipe, init]
+    fields:
+      unit: plain/src/pipe.rs
+      function: "Pipe::init"
+      algorithm: >
+        if size == 0: Err(EINVAL); else: Ok(Pipe { size, used: 0, flags: FLAG_OPEN })
+    links:
+      - type: refines
+        target: SWARCH-PP-001
+      - type: satisfies
+        target: SWREQ-PP-PP01
+      - type: function-maps-to
+        target: PROV-PP-001
+
+  - id: SWDD-PP-WRITE
+    type: sw-detail-design
+    title: "Pipe::write_check — z_impl_k_pipe_write validation"
+    status: approved
+    description: >
+      If closed (flags == 0): EPIPE. If resetting (FLAG_RESET set):
+      ECANCELED. If request_len == 0: ENOMSG. Otherwise clamp actual_len
+      to min(request_len, free space) and increment used.
+    tags: [pipe, write]
+    fields:
+      unit: plain/src/pipe.rs
+      function: "Pipe::write_check"
+      algorithm: >
+        check flags for closed/resetting; clamp to free space;
+        used += actual; Ok(actual)
+    links:
+      - type: refines
+        target: SWARCH-PP-001
+      - type: satisfies
+        target: SWREQ-PP-PP02
+      - type: satisfies
+        target: SWREQ-PP-PP04
+      - type: satisfies
+        target: SWREQ-PP-PP06
+      - type: satisfies
+        target: SWREQ-PP-PP09
+      - type: function-maps-to
+        target: PROV-PP-001
+
+  - id: SWDD-PP-READ
+    type: sw-detail-design
+    title: "Pipe::read_check — z_impl_k_pipe_read validation"
+    status: approved
+    description: >
+      If resetting (FLAG_RESET set): ECANCELED. If closed and empty:
+      EPIPE. If request_len == 0: ENOMSG. Otherwise clamp actual_len to
+      min(request_len, available data) and decrement used.
+    tags: [pipe, read]
+    fields:
+      unit: plain/src/pipe.rs
+      function: "Pipe::read_check"
+      algorithm: >
+        check flags for resetting/closed; clamp to available;
+        used -= actual; Ok(actual)
+    links:
+      - type: refines
+        target: SWARCH-PP-001
+      - type: satisfies
+        target: SWREQ-PP-PP03
+      - type: satisfies
+        target: SWREQ-PP-PP05
+      - type: satisfies
+        target: SWREQ-PP-PP07
+      - type: satisfies
+        target: SWREQ-PP-PP10
+      - type: function-maps-to
+        target: PROV-PP-001
+
+  - id: SWDD-PP-CLOSE
+    type: sw-detail-design
+    title: "Pipe::close — z_impl_k_pipe_close port"
+    status: approved
+    description: >
+      Clear all flags (flags = 0), marking the pipe as closed.
+    tags: [pipe, close]
+    fields:
+      unit: plain/src/pipe.rs
+      function: "Pipe::close"
+      algorithm: >
+        self.flags = 0
+    links:
+      - type: refines
+        target: SWARCH-PP-001
+      - type: satisfies
+        target: SWREQ-PP-PP08
+      - type: function-maps-to
+        target: PROV-PP-001
+
+  - id: SWDD-PP-RESET
+    type: sw-detail-design
+    title: "Pipe::reset — z_impl_k_pipe_reset port"
+    status: approved
+    description: >
+      Set used = 0 and set FLAG_RESET bit in flags, signaling to pending
+      readers/writers that the pipe is being reset.
+    tags: [pipe, reset]
+    fields:
+      unit: plain/src/pipe.rs
+      function: "Pipe::reset"
+      algorithm: >
+        self.used = 0; self.flags |= FLAG_RESET
+    links:
+      - type: refines
+        target: SWARCH-PP-001
+      - type: satisfies
+        target: SWREQ-PP-PP09
+      - type: function-maps-to
+        target: PROV-PP-001

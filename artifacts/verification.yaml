@@ -11,7 +11,7 @@ artifacts:
     title: Semaphore unit tests (cargo test --lib)
     status: approved
     description: >
-      25 unit tests in plain/src/sem.rs and plain/src/wait_queue.rs.
+      Unit tests in plain/src/sem.rs and plain/src/wait_queue.rs.
       Covers init validation, give increment/saturate/wake, try_take
       available/unavailable, take_blocking, reset, give-take roundtrip,
       invariant preservation, priority ordering.
@@ -37,9 +37,9 @@ artifacts:
     title: Property-based tests (proptest)
     status: approved
     description: >
-      4 proptest properties in tests/proptest_sem.rs:
-      invariant_holds_under_random_ops (200 random ops),
-      give_take_roundtrip, gives_saturate_at_limit, takes_bottom_at_zero.
+      Property-based tests in tests/proptest_sem.rs exercising invariant
+      preservation under random operation sequences, give-take roundtrip,
+      saturation at limit, and underflow at zero.
     tags: [testing, proptest, swe-4]
     fields:
       method: automated-test
@@ -54,10 +54,10 @@ artifacts:
     title: Kani bounded model checking harnesses
     status: approved
     description: >
-      6 Kani harnesses in tests/kani_harnesses.rs:
-      init parameter validation, give/take/reset invariant preservation,
-      give-take roundtrip, 4-operation sequence invariant.
-      Exhaustive exploration of bounded state space.
+      Kani bounded model checking harnesses in tests/kani_harnesses.rs.
+      Exhaustive exploration of init parameter validation,
+      give/take/reset invariant preservation, give-take roundtrip,
+      and multi-operation sequence invariants within bounded state space.
     tags: [testing, kani, model-checking, swe-4]
     fields:
       method: formal-verification
@@ -97,10 +97,9 @@ artifacts:
     title: Fuzz testing (cargo-fuzz)
     status: approved
     description: >
-      2 fuzz targets in fuzz/fuzz_targets/:
-      sem_fuzz (random operation sequences on semaphore),
-      sem_api_fuzz (init boundary conditions with random count/limit).
-      Coverage-guided mutation testing.
+      Fuzz targets in fuzz/fuzz_targets/ exercising random operation
+      sequences on semaphore and init boundary conditions with random
+      count/limit values. Coverage-guided mutation testing.
     tags: [testing, fuzz, swe-4]
     fields:
       method: automated-test
@@ -119,8 +118,8 @@ artifacts:
     title: Semaphore integration tests
     status: approved
     description: >
-      13 integration tests in tests/sem_integration.rs exercising the full
-      API surface across module boundaries.  Tests all 10 ASIL-D properties
+      Integration tests in tests/sem_integration.rs exercising the full
+      API surface across module boundaries.  Tests all ASIL-D properties
       (P1-P10) including invariant preservation, overflow safety, wait queue
       ordering, and compositional behavior.
     tags: [testing, integration, swe-5]
@@ -137,9 +136,8 @@ artifacts:
     title: Benchmark regression tests (criterion)
     status: approved
     description: >
-      7 criterion benchmarks in benches/sem_bench.rs:
-      init, give_increment, give_saturated, try_take, give_take_cycle,
-      give_wake_thread, reset_10_waiters.  Serve as performance regression
+      Criterion benchmarks in benches/sem_bench.rs covering init, give,
+      take, reset, and wake paths.  Serves as performance regression
       detection across the full module integration.
     tags: [testing, benchmark, swe-5]
     fields:
@@ -236,3 +234,1003 @@ artifacts:
         target: SWREQ-SEM-P09
       - type: verifies
         target: SWREQ-SEM-P01
+
+  # ── SWE.4: Unit verification — Mutex ───────────────────────────────────
+
+  - id: UV-MUT-001
+    type: unit-verification
+    title: Mutex unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/mutex.rs covering init, try_lock
+      (unlocked/reentrant/contended), lock_blocking, unlock
+      (not-locked/not-owner/reentrant/transfer/full), lock-unlock
+      roundtrip, and invariant preservation.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-MUT-INIT
+      - type: verifies
+        target: SWDD-MUT-LOCK
+      - type: verifies
+        target: SWDD-MUT-LOCK-BLOCKING
+      - type: verifies
+        target: SWDD-MUT-UNLOCK
+
+  - id: UV-MUT-002
+    type: unit-verification
+    title: Mutex property-based tests (proptest)
+    status: approved
+    description: >
+      Property-based tests in tests/proptest_mutex.rs exercising invariant
+      preservation under random operation sequences, lock-unlock roundtrip,
+      reentrant depth tracking, contention state preservation, and
+      non-owner/unlocked error paths.
+    tags: [testing, proptest, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-MUT-LOCK
+      - type: verifies
+        target: SWDD-MUT-UNLOCK
+
+  - id: UV-MUT-003
+    type: unit-verification
+    title: Mutex Kani bounded model checking
+    status: approved
+    description: >
+      Kani bounded model checking harnesses in tests/kani_harnesses.rs.
+      Exhaustive exploration of mutex init, lock/unlock paths (unlocked,
+      reentrant, contended, not-owner, not-locked, final), lock-unlock
+      roundtrip, reentrant unwind, and invariant preservation within
+      bounded state space.
+    tags: [testing, kani, model-checking, swe-4]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWDD-MUT-INIT
+      - type: verifies
+        target: SWDD-MUT-LOCK
+      - type: verifies
+        target: SWDD-MUT-LOCK-BLOCKING
+      - type: verifies
+        target: SWDD-MUT-UNLOCK
+
+  - id: UV-MUT-004
+    type: unit-verification
+    title: Mutex Miri undefined behavior detection
+    status: approved
+    description: >
+      Full mutex test suite run under Miri to detect undefined behavior,
+      use-after-free, out-of-bounds access, and uninitialized memory
+      reads.
+    tags: [testing, miri, safety, swe-4]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWDD-MUT-INIT
+      - type: verifies
+        target: SWDD-MUT-LOCK
+      - type: verifies
+        target: SWDD-MUT-LOCK-BLOCKING
+      - type: verifies
+        target: SWDD-MUT-UNLOCK
+
+  - id: UV-MUT-005
+    type: unit-verification
+    title: Mutex fuzz testing (cargo-fuzz)
+    status: approved
+    description: >
+      Fuzz targets in fuzz/fuzz_targets/ exercising random lock/unlock
+      operation sequences and API boundary conditions on mutex.
+      Coverage-guided mutation testing.
+    tags: [testing, fuzz, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-MUT-LOCK
+      - type: verifies
+        target: SWDD-MUT-UNLOCK
+
+  # ── SWE.4: Unit verification — CondVar ─────────────────────────────────
+
+  - id: UV-CV-001
+    type: unit-verification
+    title: CondVar unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/condvar.rs covering init, signal
+      (empty/with-waiters), broadcast (empty/with-waiters),
+      wait_blocking, priority ordering, signal-broadcast equivalence,
+      and reuse after broadcast.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-CV-INIT
+      - type: verifies
+        target: SWDD-CV-SIGNAL
+      - type: verifies
+        target: SWDD-CV-BROADCAST
+      - type: verifies
+        target: SWDD-CV-WAIT
+
+  - id: UV-CV-002
+    type: unit-verification
+    title: CondVar property-based tests (proptest)
+    status: approved
+    description: >
+      Property-based tests in tests/proptest_condvar.rs exercising waiter
+      bound invariants under random operations, broadcast emptying,
+      signal-count equivalence, signal-empty no-op, and broadcast return
+      count correctness.
+    tags: [testing, proptest, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-CV-SIGNAL
+      - type: verifies
+        target: SWDD-CV-BROADCAST
+      - type: verifies
+        target: SWDD-CV-WAIT
+
+  - id: UV-CV-003
+    type: unit-verification
+    title: CondVar Kani bounded model checking
+    status: approved
+    description: >
+      Kani bounded model checking harnesses in tests/kani_harnesses.rs.
+      Exhaustive exploration of condvar init, signal (empty/with-waiters),
+      broadcast (empty/with-waiters), wait, broadcast idempotency, and
+      signal-broadcast equivalence within bounded state space.
+    tags: [testing, kani, model-checking, swe-4]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWDD-CV-INIT
+      - type: verifies
+        target: SWDD-CV-SIGNAL
+      - type: verifies
+        target: SWDD-CV-BROADCAST
+      - type: verifies
+        target: SWDD-CV-WAIT
+
+  - id: UV-CV-004
+    type: unit-verification
+    title: CondVar Miri undefined behavior detection
+    status: approved
+    description: >
+      Full condvar test suite run under Miri to detect undefined behavior,
+      use-after-free, out-of-bounds access, and uninitialized memory
+      reads.
+    tags: [testing, miri, safety, swe-4]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWDD-CV-INIT
+      - type: verifies
+        target: SWDD-CV-SIGNAL
+      - type: verifies
+        target: SWDD-CV-BROADCAST
+      - type: verifies
+        target: SWDD-CV-WAIT
+
+  - id: UV-CV-005
+    type: unit-verification
+    title: CondVar fuzz testing (cargo-fuzz)
+    status: approved
+    description: >
+      Fuzz targets in fuzz/fuzz_targets/ exercising random
+      signal/broadcast/wait operation sequences on condvar.
+      Coverage-guided mutation testing.
+    tags: [testing, fuzz, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-CV-SIGNAL
+      - type: verifies
+        target: SWDD-CV-BROADCAST
+      - type: verifies
+        target: SWDD-CV-WAIT
+
+  # ── SWE.4: Unit verification — MsgQ ────────────────────────────────────
+
+  - id: UV-MQ-001
+    type: unit-verification
+    title: MsgQ unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/msgq.rs covering init validation, put/get
+      FIFO ordering, put_front, peek_at, purge, ring buffer wrap-around,
+      full/empty boundary conditions, and ring consistency invariants.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-MQ-INIT
+      - type: verifies
+        target: SWDD-MQ-PUT
+      - type: verifies
+        target: SWDD-MQ-PUT-FRONT
+      - type: verifies
+        target: SWDD-MQ-GET
+      - type: verifies
+        target: SWDD-MQ-PEEK
+      - type: verifies
+        target: SWDD-MQ-PURGE
+
+  - id: UV-MQ-002
+    type: unit-verification
+    title: MsgQ property-based tests (proptest)
+    status: approved
+    description: >
+      Property-based tests in tests/proptest_msgq.rs exercising init
+      parameter validation, fill-drain invariant preservation, ring
+      consistency under arbitrary operations, error code correctness,
+      peek_at slot validity, and purge return count.
+    tags: [testing, proptest, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-MQ-INIT
+      - type: verifies
+        target: SWDD-MQ-PUT
+      - type: verifies
+        target: SWDD-MQ-GET
+      - type: verifies
+        target: SWDD-MQ-PEEK
+      - type: verifies
+        target: SWDD-MQ-PURGE
+
+  - id: UV-MQ-003
+    type: unit-verification
+    title: MsgQ Kani bounded model checking
+    status: approved
+    description: >
+      Kani bounded model checking harnesses in tests/kani_harnesses.rs.
+      Exhaustive exploration of msgq init validation, put/get/put_front
+      invariant preservation, peek_at slot computation, purge reset, ring
+      consistency across operation sequences, and fill-drain roundtrip
+      within bounded state space.
+    tags: [testing, kani, model-checking, swe-4]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWDD-MQ-INIT
+      - type: verifies
+        target: SWDD-MQ-PUT
+      - type: verifies
+        target: SWDD-MQ-PUT-FRONT
+      - type: verifies
+        target: SWDD-MQ-GET
+      - type: verifies
+        target: SWDD-MQ-PEEK
+      - type: verifies
+        target: SWDD-MQ-PURGE
+
+  - id: UV-MQ-004
+    type: unit-verification
+    title: MsgQ Miri undefined behavior detection
+    status: approved
+    description: >
+      Full msgq test suite run under Miri to detect undefined behavior,
+      use-after-free, out-of-bounds access, and uninitialized memory
+      reads.
+    tags: [testing, miri, safety, swe-4]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWDD-MQ-INIT
+      - type: verifies
+        target: SWDD-MQ-PUT
+      - type: verifies
+        target: SWDD-MQ-PUT-FRONT
+      - type: verifies
+        target: SWDD-MQ-GET
+      - type: verifies
+        target: SWDD-MQ-PEEK
+      - type: verifies
+        target: SWDD-MQ-PURGE
+
+  - id: UV-MQ-005
+    type: unit-verification
+    title: MsgQ fuzz testing (cargo-fuzz)
+    status: approved
+    description: >
+      Fuzz targets in fuzz/fuzz_targets/ exercising random
+      put/get/put_front/peek/purge operation sequences on message queue.
+      Coverage-guided mutation testing.
+    tags: [testing, fuzz, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-MQ-PUT
+      - type: verifies
+        target: SWDD-MQ-GET
+      - type: verifies
+        target: SWDD-MQ-PURGE
+
+  # ── SWE.4: Unit verification — Stack ───────────────────────────────────
+
+  - id: UV-SK-001
+    type: unit-verification
+    title: Stack unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/stack.rs covering init validation, push/pop
+      operations, full/empty boundary conditions, push-pop roundtrip,
+      fill-drain cycles, conservation invariant, and capacity-one edge
+      case.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-SK-INIT
+      - type: verifies
+        target: SWDD-SK-PUSH
+      - type: verifies
+        target: SWDD-SK-POP
+
+  - id: UV-SK-002
+    type: unit-verification
+    title: Stack property-based tests (proptest)
+    status: approved
+    description: >
+      Property-based tests in tests/proptest_stack.rs exercising init
+      parameter validation, push-pop roundtrip, conservation after
+      arbitrary operations, error code correctness, and fill-drain
+      symmetry.
+    tags: [testing, proptest, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-SK-INIT
+      - type: verifies
+        target: SWDD-SK-PUSH
+      - type: verifies
+        target: SWDD-SK-POP
+
+  - id: UV-SK-003
+    type: unit-verification
+    title: Stack Kani bounded model checking
+    status: approved
+    description: >
+      Kani bounded model checking harnesses in tests/kani_harnesses.rs.
+      Exhaustive exploration of stack init validation, push/pop invariant
+      preservation, conservation, push-pop roundtrip, and fill-drain
+      roundtrip within bounded state space.
+    tags: [testing, kani, model-checking, swe-4]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWDD-SK-INIT
+      - type: verifies
+        target: SWDD-SK-PUSH
+      - type: verifies
+        target: SWDD-SK-POP
+
+  - id: UV-SK-004
+    type: unit-verification
+    title: Stack Miri undefined behavior detection
+    status: approved
+    description: >
+      Full stack test suite run under Miri to detect undefined behavior,
+      use-after-free, out-of-bounds access, and uninitialized memory
+      reads.
+    tags: [testing, miri, safety, swe-4]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWDD-SK-INIT
+      - type: verifies
+        target: SWDD-SK-PUSH
+      - type: verifies
+        target: SWDD-SK-POP
+
+  - id: UV-SK-005
+    type: unit-verification
+    title: Stack fuzz testing (cargo-fuzz)
+    status: approved
+    description: >
+      Fuzz targets in fuzz/fuzz_targets/ exercising random push/pop
+      operation sequences on stack. Coverage-guided mutation testing.
+    tags: [testing, fuzz, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-SK-PUSH
+      - type: verifies
+        target: SWDD-SK-POP
+
+  # ── SWE.4: Unit verification — Pipe ────────────────────────────────────
+
+  - id: UV-PP-001
+    type: unit-verification
+    title: Pipe unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/pipe.rs covering init validation,
+      write/read basic operations, clamping to free space/available data,
+      full/empty/closed/resetting error paths, reset empties pipe, close
+      clears flags, conservation invariant, zero-length rejection, and
+      streaming write-read cycles.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-PP-INIT
+      - type: verifies
+        target: SWDD-PP-WRITE
+      - type: verifies
+        target: SWDD-PP-READ
+      - type: verifies
+        target: SWDD-PP-CLOSE
+      - type: verifies
+        target: SWDD-PP-RESET
+
+  - id: UV-PP-002
+    type: unit-verification
+    title: Pipe property-based tests (proptest)
+    status: approved
+    description: >
+      Property-based tests in tests/proptest_pipe.rs exercising init
+      parameter validation, conservation after arbitrary operations,
+      write clamping to free space, error code correctness, and reset
+      emptying.
+    tags: [testing, proptest, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-PP-INIT
+      - type: verifies
+        target: SWDD-PP-WRITE
+      - type: verifies
+        target: SWDD-PP-READ
+      - type: verifies
+        target: SWDD-PP-RESET
+
+  - id: UV-PP-003
+    type: unit-verification
+    title: Pipe Kani bounded model checking
+    status: approved
+    description: >
+      Kani bounded model checking harnesses in tests/kani_harnesses.rs.
+      Exhaustive exploration of pipe init, write/read invariant
+      preservation, error codes, full-rejects-write,
+      empty-rejects-read, and conservation within bounded state space.
+    tags: [testing, kani, model-checking, swe-4]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWDD-PP-INIT
+      - type: verifies
+        target: SWDD-PP-WRITE
+      - type: verifies
+        target: SWDD-PP-READ
+      - type: verifies
+        target: SWDD-PP-CLOSE
+      - type: verifies
+        target: SWDD-PP-RESET
+
+  - id: UV-PP-004
+    type: unit-verification
+    title: Pipe Miri undefined behavior detection
+    status: approved
+    description: >
+      Full pipe test suite run under Miri to detect undefined behavior,
+      use-after-free, out-of-bounds access, and uninitialized memory
+      reads.
+    tags: [testing, miri, safety, swe-4]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWDD-PP-INIT
+      - type: verifies
+        target: SWDD-PP-WRITE
+      - type: verifies
+        target: SWDD-PP-READ
+      - type: verifies
+        target: SWDD-PP-CLOSE
+      - type: verifies
+        target: SWDD-PP-RESET
+
+  - id: UV-PP-005
+    type: unit-verification
+    title: Pipe fuzz testing (cargo-fuzz)
+    status: approved
+    description: >
+      Fuzz targets in fuzz/fuzz_targets/ exercising random
+      write/read/reset/close operation sequences and state transitions
+      on pipe. Coverage-guided mutation testing.
+    tags: [testing, fuzz, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-PP-WRITE
+      - type: verifies
+        target: SWDD-PP-READ
+      - type: verifies
+        target: SWDD-PP-CLOSE
+      - type: verifies
+        target: SWDD-PP-RESET
+
+  # ── SWE.5: Integration verification — Mutex/CondVar/MsgQ/Stack/Pipe ───
+
+  - id: IV-MUT-001
+    type: sw-integration-verification
+    title: Mutex integration tests
+    status: approved
+    description: >
+      Integration tests in tests/mutex_integration.rs exercising the full
+      mutex API surface across module boundaries. Tests invariant
+      preservation, lock/unlock semantics, reentrant locking, contention,
+      ownership transfer, error paths, and priority ordering.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-MUT-001
+
+  - id: IV-CV-001
+    type: sw-integration-verification
+    title: CondVar integration tests
+    status: approved
+    description: >
+      Integration tests in tests/condvar_integration.rs exercising the
+      full condvar API surface across module boundaries. Tests init,
+      signal/broadcast semantics, wait blocking, priority ordering,
+      signal-broadcast equivalence, reuse after broadcast, and
+      idempotent broadcast.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-CV-001
+
+  - id: IV-MQ-001
+    type: sw-integration-verification
+    title: MsgQ integration tests
+    status: approved
+    description: >
+      Integration tests in tests/msgq_integration.rs exercising the full
+      message queue API surface across module boundaries. Tests init
+      validation, put/get FIFO ordering, put_front, peek_at, purge, ring
+      buffer wrap-around, full/empty boundaries, ring consistency,
+      conservation invariant, and stress fill-drain cycles.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-MQ-001
+
+  - id: IV-SK-001
+    type: sw-integration-verification
+    title: Stack integration tests
+    status: approved
+    description: >
+      Integration tests in tests/stack_integration.rs exercising the full
+      stack API surface across module boundaries. Tests init validation,
+      push/pop operations, full/empty boundaries, roundtrip, fill-drain,
+      conservation invariant, interleaved operations, and stress cycles.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-SK-001
+
+  - id: IV-PP-001
+    type: sw-integration-verification
+    title: Pipe integration tests
+    status: approved
+    description: >
+      Integration tests in tests/pipe_integration.rs exercising the full
+      pipe API surface across module boundaries. Tests init validation,
+      write/read basic and clamped, full/empty/closed/resetting error
+      paths, reset/close semantics, conservation, zero-length rejection,
+      streaming, and stress cycles.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-PP-001
+
+  # ── SWE.6: Software verification — Mutex ───────────────────────────────
+
+  - id: FV-MUT-001
+    type: sw-verification
+    title: Mutex Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/mutex.rs with requires/ensures clauses
+      that formally verify all mutex properties (M01-M11) via SMT
+      solving. Proves absence of panics, overflow, and invariant
+      violations. Includes proof lemmas for owner-lock_count
+      correspondence, lock-unlock roundtrip, and reentrant depth
+      tracking. Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-MUT-M01
+      - type: verifies
+        target: SWREQ-MUT-M02
+      - type: verifies
+        target: SWREQ-MUT-M03
+      - type: verifies
+        target: SWREQ-MUT-M04
+      - type: verifies
+        target: SWREQ-MUT-M05
+      - type: verifies
+        target: SWREQ-MUT-M06
+      - type: verifies
+        target: SWREQ-MUT-M07
+      - type: verifies
+        target: SWREQ-MUT-M08
+      - type: verifies
+        target: SWREQ-MUT-M09
+      - type: verifies
+        target: SWREQ-MUT-M10
+      - type: verifies
+        target: SWREQ-MUT-M11
+
+  - id: FV-MUT-003
+    type: sw-verification
+    title: Mutex Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all mutex code. Denies
+      arithmetic_side_effects, unwrap_used, expect_used, panic,
+      indexing_slicing, cast_possible_truncation, cast_possible_wrap,
+      cast_sign_loss. Configured in Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-MUT-M01
+      - type: verifies
+        target: SWREQ-MUT-M09
+
+  # ── SWE.6: Software verification — CondVar ─────────────────────────────
+
+  - id: FV-CV-001
+    type: sw-verification
+    title: CondVar Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/condvar.rs with requires/ensures
+      clauses that formally verify all condvar properties (C01-C08) via
+      SMT solving. Proves absence of panics and invariant violations.
+      Includes proof lemmas for init clean state, signal-broadcast
+      equivalence, and broadcast idempotency. Executed via: bazel test
+      //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-CV-C01
+      - type: verifies
+        target: SWREQ-CV-C02
+      - type: verifies
+        target: SWREQ-CV-C03
+      - type: verifies
+        target: SWREQ-CV-C04
+      - type: verifies
+        target: SWREQ-CV-C05
+      - type: verifies
+        target: SWREQ-CV-C06
+      - type: verifies
+        target: SWREQ-CV-C07
+      - type: verifies
+        target: SWREQ-CV-C08
+
+  - id: FV-CV-003
+    type: sw-verification
+    title: CondVar Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all condvar code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-CV-C01
+
+  # ── SWE.6: Software verification — MsgQ ────────────────────────────────
+
+  - id: FV-MQ-001
+    type: sw-verification
+    title: MsgQ Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/msgq.rs with requires/ensures clauses
+      that formally verify all msgq properties (MQ01-MQ13) via SMT
+      solving. Proves ring buffer index safety, overflow protection, and
+      invariant preservation. Includes proof lemmas for invariant
+      induction, put-get roundtrip, purge-returns-empty, and fill-drain
+      symmetry. Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-MQ-MQ01
+      - type: verifies
+        target: SWREQ-MQ-MQ02
+      - type: verifies
+        target: SWREQ-MQ-MQ03
+      - type: verifies
+        target: SWREQ-MQ-MQ04
+      - type: verifies
+        target: SWREQ-MQ-MQ05
+      - type: verifies
+        target: SWREQ-MQ-MQ06
+      - type: verifies
+        target: SWREQ-MQ-MQ07
+      - type: verifies
+        target: SWREQ-MQ-MQ08
+      - type: verifies
+        target: SWREQ-MQ-MQ09
+      - type: verifies
+        target: SWREQ-MQ-MQ10
+      - type: verifies
+        target: SWREQ-MQ-MQ11
+      - type: verifies
+        target: SWREQ-MQ-MQ12
+      - type: verifies
+        target: SWREQ-MQ-MQ13
+
+  - id: FV-MQ-003
+    type: sw-verification
+    title: MsgQ Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all msgq code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-MQ-MQ01
+
+  # ── SWE.6: Software verification — Stack ───────────────────────────────
+
+  - id: FV-SK-001
+    type: sw-verification
+    title: Stack Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/stack.rs with requires/ensures clauses
+      that formally verify all stack properties (SK01-SK09) via SMT
+      solving. Proves bounds safety and invariant preservation. Includes
+      proof lemmas for invariant induction, push-pop roundtrip, capacity
+      conservation, full-rejects-push, empty-rejects-pop, and pop-push
+      roundtrip. Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-SK-SK01
+      - type: verifies
+        target: SWREQ-SK-SK02
+      - type: verifies
+        target: SWREQ-SK-SK03
+      - type: verifies
+        target: SWREQ-SK-SK04
+      - type: verifies
+        target: SWREQ-SK-SK05
+      - type: verifies
+        target: SWREQ-SK-SK06
+      - type: verifies
+        target: SWREQ-SK-SK07
+      - type: verifies
+        target: SWREQ-SK-SK08
+      - type: verifies
+        target: SWREQ-SK-SK09
+
+  - id: FV-SK-003
+    type: sw-verification
+    title: Stack Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all stack code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-SK-SK01
+
+  # ── SWE.6: Software verification — Pipe ────────────────────────────────
+
+  - id: FV-PP-001
+    type: sw-verification
+    title: Pipe Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/pipe.rs with requires/ensures clauses
+      that formally verify all pipe properties (PP01-PP10) via SMT
+      solving. Proves state machine correctness, byte count safety, and
+      invariant preservation. Includes proof lemmas for invariant
+      induction, write-read roundtrip, conservation, reset empties, and
+      close clears flags. Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-PP-PP01
+      - type: verifies
+        target: SWREQ-PP-PP02
+      - type: verifies
+        target: SWREQ-PP-PP03
+      - type: verifies
+        target: SWREQ-PP-PP04
+      - type: verifies
+        target: SWREQ-PP-PP05
+      - type: verifies
+        target: SWREQ-PP-PP06
+      - type: verifies
+        target: SWREQ-PP-PP07
+      - type: verifies
+        target: SWREQ-PP-PP08
+      - type: verifies
+        target: SWREQ-PP-PP09
+      - type: verifies
+        target: SWREQ-PP-PP10
+
+  - id: FV-PP-003
+    type: sw-verification
+    title: Pipe Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all pipe code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-PP-PP01
+
+  # ── SYS.5: System verification ─────────────────────────────────────────
+
+  - id: SV-SEM-001
+    type: sys-verification
+    title: Semaphore Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel semaphore test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_SEM=y. Tests exercise the complete k_sem
+      API through the Gale FFI/C shim layer, validating functional
+      equivalence with upstream Zephyr. Test suite:
+      zephyr/tests/kernel/semaphore/semaphore.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-SEM-001
+
+  - id: SV-MUT-001
+    type: sys-verification
+    title: Mutex Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel mutex test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_MUTEX=y. Tests exercise the complete
+      k_mutex API through the Gale FFI/C shim layer, validating
+      functional equivalence with upstream Zephyr. Test suites:
+      zephyr/tests/kernel/mutex (mutex_api, mutex_api_1cpu, sys_mutex).
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-MUT-001
+
+  - id: SV-CV-001
+    type: sys-verification
+    title: CondVar Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel condvar test suite executed on qemu_cortex_m3.
+      CondVar has no Gale FFI layer (pure wait queue wrapper), so this
+      validates that the upstream condvar.c continues to work correctly
+      with the Gale wait queue replacement. Test suite:
+      zephyr/tests/kernel/condvar.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-CV-001
+
+  - id: SV-MQ-001
+    type: sys-verification
+    title: MsgQ Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel message queue test suite executed on
+      qemu_cortex_m3 with CONFIG_GALE_KERNEL_MSGQ=y. Tests exercise the
+      complete k_msgq API through the Gale FFI/C shim layer, validating
+      functional equivalence with upstream Zephyr. Test suites:
+      zephyr/tests/kernel/msgq (msgq_api, msgq_api_1cpu, msgq_usage).
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-MQ-001
+
+  - id: SV-SK-001
+    type: sys-verification
+    title: Stack Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel stack test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_STACK=y. Tests exercise the complete
+      k_stack API through the Gale FFI/C shim layer, validating
+      functional equivalence with upstream Zephyr. Test suites:
+      zephyr/tests/kernel/stack (contexts, fail, usage, usage_1cpu).
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-SK-001
+
+  - id: SV-PP-001
+    type: sys-verification
+    title: Pipe Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel pipe test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_PIPE=y. Tests exercise the complete
+      k_pipe API through the Gale FFI/C shim layer, validating
+      functional equivalence with upstream Zephyr. Test suites:
+      zephyr/tests/kernel/pipe (basic, concurrency, stress).
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-PP-001
