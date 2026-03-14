@@ -99,7 +99,29 @@ artifacts:
       - type: generates
         target: REQ-TRACTOR-003
 
-  # ── Requirements generated from TRACTOR finding ──────────────────────────
+  # ── System requirement for translation validation ───────────────────────
+
+  - id: SYSREQ-TRACTOR-001
+    type: system-req
+    title: Translation validation for C-to-Rust kernel porting
+    status: draft
+    description: >
+      Establish confidence that Gale Rust implementations preserve the
+      observable behavior of the original Zephyr C code. This covers
+      functional equivalence testing, automated mirror generation, and
+      specification independence from the C source.
+    tags: [translation-validation, safety, system]
+    fields:
+      req-type: safety
+      priority: should
+      verification-criteria: >
+        Zephyr test suites pass with Gale for all primitives.
+        Verus-strip tool generates plain/ code matching hand-written plain/.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Software requirements generated from TRACTOR finding ────────────────
 
   - id: REQ-TRACTOR-001
     type: sw-req
@@ -131,8 +153,10 @@ artifacts:
         within bounded state space.
     links:
       - type: derives-from
+        target: SYSREQ-TRACTOR-001
+      - type: traces-to
         target: FIND-001
-      - type: derives-from
+      - type: traces-to
         target: FIND-002
       - type: related-to
         target: SYSREQ-SEM-001
@@ -161,7 +185,7 @@ artifacts:
       the design of this tool.
     tags: [tooling, automation, mirror, verus]
     fields:
-      req-type: process
+      req-type: constraint
       priority: should
       verification-criteria: >
         Generated plain/ code compiles and passes all cargo tests.
@@ -169,6 +193,8 @@ artifacts:
         (modulo formatting).
     links:
       - type: derives-from
+        target: SYSREQ-TRACTOR-001
+      - type: traces-to
         target: FIND-001
 
   - id: REQ-TRACTOR-003
@@ -200,6 +226,8 @@ artifacts:
         independent implementations.
     links:
       - type: derives-from
+        target: SYSREQ-TRACTOR-001
+      - type: traces-to
         target: FIND-002
-      - type: derives-from
+      - type: traces-to
         target: FIND-001

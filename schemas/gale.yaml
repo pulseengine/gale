@@ -13,6 +13,27 @@ schema:
     Adds source provenance tracking for ASIL-D audit trail.
 
 artifact-types:
+  - name: finding
+    description: >
+      Research finding or gap analysis result that may generate requirements
+      or inform design decisions. Not part of the ASPICE V-model — tracked
+      separately for audit trail and decision rationale.
+    fields:
+      - name: source
+        type: string
+        required: false
+        description: Source of the finding (paper, program, analysis)
+      - name: relevance
+        type: string
+        required: false
+        allowed-values: [critical, high, medium, low]
+        description: Relevance to the project
+      - name: action-required
+        type: boolean
+        required: false
+        description: Whether this finding requires action
+    link-fields: []
+
   - name: documentation
     description: >
       Upstream document structure (sections, text blocks) imported from ReqIF.
@@ -67,6 +88,24 @@ artifact-types:
     link-fields: []
 
 link-types:
+  - name: informs
+    inverse: informed-by
+    description: >
+      A finding or analysis informs a requirement or design decision.
+      Non-normative link for rationale traceability.
+
+  - name: generates
+    inverse: generated-by
+    description: >
+      A finding generates a derived requirement. Indicates the requirement
+      was created as a result of the finding.
+
+  - name: related-to
+    inverse: related-to
+    description: >
+      General association between artifacts. Used when the relationship
+      is informational rather than structural.
+
   - name: replaces
     inverse: replaced-by
     description: >
