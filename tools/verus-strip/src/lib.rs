@@ -48,7 +48,16 @@ pub fn strip_file(input: &str) -> StripResult {
         output.push_str(trimmed_body);
         output.push('\n');
     }
-    let trimmed_after = after.trim();
+    // Filter out verus-related comments from after text (e.g., "// verus!")
+    let cleaned_after: String = after
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !(trimmed.starts_with("//") && trimmed.contains("verus"))
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let trimmed_after = cleaned_after.trim();
     if !trimmed_after.is_empty() {
         output.push('\n');
         output.push_str(trimmed_after);
@@ -412,6 +421,30 @@ fn tokenize(input: &str) -> Vec<Token> {
             _ => {}
         }
 
+        // Number literal (decimal, hex, binary, octal, float)
+        if c.is_ascii_digit() {
+            let start = i;
+            // Hex: 0x...
+            if c == '0' && i + 1 < chars.len() && (chars[i + 1] == 'x' || chars[i + 1] == 'X') {
+                i += 2;
+                while i < chars.len() && (chars[i].is_ascii_hexdigit() || chars[i] == '_') {
+                    i += 1;
+                }
+            } else {
+                while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '_' || chars[i] == '.') {
+                    i += 1;
+                }
+            }
+            // Type suffix (u8, u32, i32, usize, etc.)
+            if i < chars.len() && (chars[i] == 'u' || chars[i] == 'i' || chars[i] == 'f') {
+                while i < chars.len() && chars[i].is_alphanumeric() {
+                    i += 1;
+                }
+            }
+            tokens.push(Token::Ident(chars[start..i].iter().collect()));
+            continue;
+        }
+
         // Identifier or keyword
         if c.is_alphabetic() || c == '_' {
             let start = i;
@@ -422,7 +455,7 @@ fn tokenize(input: &str) -> Vec<Token> {
             continue;
         }
 
-        // Everything else (operators, numbers, etc.)
+        // Everything else (operators, etc.)
         tokens.push(Token::Punct(c));
         i += 1;
     }
@@ -577,22 +610,42 @@ fn skip_verus_assert(tokens: &[Token], pos: usize) -> usize {
 
 /// Skip a requires/ensures/invariant/decreases clause.
 /// Returns the index of the `{` token that starts the function/loop body.
-fn skip_clause(tokens: &[Token], pos: usize, base_brace_depth: i32) -> usize {
+///
+/// The clause may contain `{...}` groups (e.g., `match result { ... }`).
+/// We distinguish the function body `{` from clause-internal `{` by checking
+/// whether the previous non-whitespace token is `,` — in Verus, the ensures
+/// expression list ends with `,` before the function body `{`.
+fn skip_clause(tokens: &[Token], pos: usize, _base_brace_depth: i32) -> usize {
     let mut i = pos;
-    let mut brace_depth = base_brace_depth;
+    let mut internal_depth: i32 = 0;
+
+    // Skip the clause keyword itself
+    i += 1;
 
     while i < tokens.len() {
         match &tokens[i] {
             Token::LBrace => {
-                if brace_depth == base_brace_depth {
-                    // This { starts the function/loop body — stop skipping
-                    return i;
+                if internal_depth == 0 {
+                    // A `{` at depth 0 — is this the function body or a
+                    // match/if block inside the clause?
+                    // Heuristic: function body `{` is preceded by `,` or
+                    // by the clause keyword line (first `{` with no content).
+                    // Clause-internal `{` is preceded by an ident/expr.
+                    let prev = prev_non_ws(tokens, i);
+                    if let Some(idx) = prev {
+                        if matches!(&tokens[idx], Token::Punct(',')) {
+                            // `,` then `{` → this is the function body
+                            return i;
+                        }
+                    }
+                    // Not preceded by `,` — this is a clause-internal block
+                    // (match, if, etc). Consume it.
                 }
-                brace_depth += 1;
+                internal_depth += 1;
                 i += 1;
             }
             Token::RBrace => {
-                brace_depth -= 1;
+                internal_depth -= 1;
                 i += 1;
             }
             _ => {
@@ -601,6 +654,23 @@ fn skip_clause(tokens: &[Token], pos: usize, base_brace_depth: i32) -> usize {
         }
     }
     i
+}
+
+/// Find the previous non-whitespace token index.
+fn prev_non_ws(tokens: &[Token], start: usize) -> Option<usize> {
+    if start == 0 {
+        return None;
+    }
+    let mut i = start - 1;
+    loop {
+        if !matches!(&tokens[i], Token::Whitespace(_)) {
+            return Some(i);
+        }
+        if i == 0 {
+            return None;
+        }
+        i -= 1;
+    }
 }
 
 /// Try to strip a named return type: `-> (name: Type)` → `-> Type`
@@ -870,8 +940,8 @@ pub proof fn lemma_foo()
 "#;
         let result = strip_file(input);
         // Check no Verus constructs remain
-        assert!(!result.output.contains("vstd"));
-        assert!(!result.output.contains("verus!"));
+        assert!(!result.output.contains("vstd"), "output still contains vstd");
+        assert!(!result.output.contains("verus!"), "output still contains verus!");
         assert!(!result.output.contains("spec fn"));
         assert!(!result.output.contains("proof fn"));
         assert!(!result.output.contains("requires"));
