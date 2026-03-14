@@ -1,0 +1,72 @@
+//! CI gate: verify plain/src/ matches verus-strip output from src/.
+//! Fails if any file diverges — means src/ was edited without regenerating plain/.
+//!
+//! Run via: bazel test //tools/verus-strip:gate_test
+//! Or:      cargo test --manifest-path tools/verus-strip/Cargo.toml --test gate
+
+use std::fs;
+use std::path::Path;
+
+const FILES: &[&str] = &[
+    "error", "priority", "thread", "wait_queue", "sem", "mutex",
+    "condvar", "msgq", "stack", "pipe", "lib",
+];
+
+fn find_gale_root() -> &'static Path {
+    // Walk up from the test binary location to find the gale root
+    // (contains src/ and plain/src/)
+    let candidates = [
+        Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap(),
+        Path::new("."),
+        Path::new("../.."),
+    ];
+    for p in candidates {
+        if p.join("src").is_dir() && p.join("plain/src").is_dir() {
+            return Box::leak(p.to_path_buf().into_boxed_path());
+        }
+    }
+    panic!("Cannot find gale root (need src/ and plain/src/ directories)");
+}
+
+#[test]
+fn plain_matches_stripped_src() {
+    let root = find_gale_root();
+    let mut failures = Vec::new();
+
+    for name in FILES {
+        let src_path = root.join(format!("src/{name}.rs"));
+        let plain_path = root.join(format!("plain/src/{name}.rs"));
+
+        let src_content = fs::read_to_string(&src_path)
+            .unwrap_or_else(|e| panic!("Cannot read {}: {e}", src_path.display()));
+        let plain_content = fs::read_to_string(&plain_path)
+            .unwrap_or_else(|e| panic!("Cannot read {}: {e}", plain_path.display()));
+
+        let stripped = verus_strip::strip_file(&src_content);
+
+        if stripped.output != plain_content {
+            // Find first differing line for diagnostics
+            let stripped_lines: Vec<&str> = stripped.output.lines().collect();
+            let plain_lines: Vec<&str> = plain_content.lines().collect();
+            let first_diff = stripped_lines.iter().zip(plain_lines.iter())
+                .enumerate()
+                .find(|(_, (a, b))| a != b)
+                .map(|(i, (a, b))| format!("  line {}: stripped={:?} vs plain={:?}", i + 1, a, b))
+                .unwrap_or_else(|| {
+                    format!("  length: stripped={} vs plain={} lines",
+                        stripped_lines.len(), plain_lines.len())
+                });
+            failures.push(format!("{name}.rs:\n{first_diff}"));
+        }
+    }
+
+    if !failures.is_empty() {
+        panic!(
+            "plain/src/ is out of sync with src/. Regenerate with:\n\
+             for f in {}; do verus-strip src/$f.rs -o plain/src/$f.rs; done\n\n\
+             Divergences:\n{}",
+            FILES.join(" "),
+            failures.join("\n"),
+        );
+    }
+}

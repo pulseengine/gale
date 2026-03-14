@@ -252,22 +252,6 @@ test_suite(
 )
 
 # =========================================================================
-# =========================================================================
-# Verus-strip convergence check (TRACTOR translation validation)
-# =========================================================================
-
-# Verifies that stripping Verus annotations from src/ produces output
-# structurally matching plain/. Reports divergences but does not block
-# until hand-written plain/ is replaced with auto-generated output.
-sh_test(
-    name = "verus_strip_check",
-    srcs = ["tools/verus-strip-check.sh"],
-    data = VERUS_SRCS + PLAIN_SRCS + [
-        "//tools/verus-strip",
-    ],
-    tags = ["manual"],  # run explicitly, not in default test suite
-)
-
 # Pre-commit hook installer
 # =========================================================================
 
