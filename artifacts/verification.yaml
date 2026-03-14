@@ -905,6 +905,33 @@ artifacts:
       - type: verifies
         target: SWREQ-MUT-M11
 
+  - id: FV-MUT-002
+    type: sw-verification
+    title: Mutex Rocq theorem proofs (coq_of_rust)
+    status: draft
+    description: >
+      Rocq proof scripts in proofs/mutex_proofs.v proving mutex invariant
+      preservation (ownership correspondence, reentrant depth, lock/unlock
+      roundtrip, ownership transfer) via theorem proving on the coq_of_rust
+      translation of plain Rust code. Independent verification path from Verus.
+      Executed via: bazel test //proofs:mutex_proofs_test
+    tags: [formal-verification, rocq, theorem-proving, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-MUT-M01
+      - type: verifies
+        target: SWREQ-MUT-M03
+      - type: verifies
+        target: SWREQ-MUT-M06
+      - type: verifies
+        target: SWREQ-MUT-M07
+      - type: verifies
+        target: SWREQ-MUT-M08
+      - type: verifies
+        target: SWREQ-MUT-M09
+
   - id: FV-MUT-003
     type: sw-verification
     title: Mutex Clippy safety-critical lint profile
@@ -956,6 +983,29 @@ artifacts:
         target: SWREQ-CV-C07
       - type: verifies
         target: SWREQ-CV-C08
+
+  - id: FV-CV-002
+    type: sw-verification
+    title: CondVar Rocq theorem proofs (coq_of_rust)
+    status: draft
+    description: >
+      Rocq proof scripts in proofs/condvar_proofs.v proving condvar
+      invariant preservation (signal/broadcast/wait semantics, emptying,
+      idempotency, signal-broadcast equivalence) via theorem proving on
+      the coq_of_rust translation. Independent verification path from Verus.
+      Executed via: bazel test //proofs:condvar_proofs_test
+    tags: [formal-verification, rocq, theorem-proving, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-CV-C01
+      - type: verifies
+        target: SWREQ-CV-C02
+      - type: verifies
+        target: SWREQ-CV-C04
+      - type: verifies
+        target: SWREQ-CV-C06
 
   - id: FV-CV-003
     type: sw-verification
@@ -1015,6 +1065,29 @@ artifacts:
       - type: verifies
         target: SWREQ-MQ-MQ13
 
+  - id: FV-MQ-002
+    type: sw-verification
+    title: MsgQ Rocq theorem proofs (coq_of_rust)
+    status: draft
+    description: >
+      Rocq proof scripts in proofs/msgq_proofs.v proving message queue
+      invariant preservation (ring buffer index safety, put/get modular
+      arithmetic, purge reset, conservation) via theorem proving on the
+      coq_of_rust translation. Independent verification path from Verus.
+      Executed via: bazel test //proofs:msgq_proofs_test
+    tags: [formal-verification, rocq, theorem-proving, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-MQ-MQ01
+      - type: verifies
+        target: SWREQ-MQ-MQ02
+      - type: verifies
+        target: SWREQ-MQ-MQ05
+      - type: verifies
+        target: SWREQ-MQ-MQ11
+
   - id: FV-MQ-003
     type: sw-verification
     title: MsgQ Clippy safety-critical lint profile
@@ -1064,6 +1137,27 @@ artifacts:
         target: SWREQ-SK-SK08
       - type: verifies
         target: SWREQ-SK-SK09
+
+  - id: FV-SK-002
+    type: sw-verification
+    title: Stack Rocq theorem proofs (coq_of_rust)
+    status: draft
+    description: >
+      Rocq proof scripts in proofs/stack_proofs.v proving stack invariant
+      preservation (push/pop bounds, capacity conservation, roundtrip,
+      full-rejects-push, empty-rejects-pop) via theorem proving on the
+      coq_of_rust translation. Independent verification path from Verus.
+      Executed via: bazel test //proofs:stack_proofs_test
+    tags: [formal-verification, rocq, theorem-proving, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-SK-SK01
+      - type: verifies
+        target: SWREQ-SK-SK02
+      - type: verifies
+        target: SWREQ-SK-SK03
 
   - id: FV-SK-003
     type: sw-verification
@@ -1116,6 +1210,31 @@ artifacts:
         target: SWREQ-PP-PP09
       - type: verifies
         target: SWREQ-PP-PP10
+
+  - id: FV-PP-002
+    type: sw-verification
+    title: Pipe Rocq theorem proofs (coq_of_rust)
+    status: draft
+    description: >
+      Rocq proof scripts in proofs/pipe_proofs.v proving pipe invariant
+      preservation (state machine correctness, write/read byte accounting,
+      conservation, reset empties, close clears flags) via theorem proving
+      on the coq_of_rust translation. Independent verification path from Verus.
+      Executed via: bazel test //proofs:pipe_proofs_test
+    tags: [formal-verification, rocq, theorem-proving, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-PP-PP01
+      - type: verifies
+        target: SWREQ-PP-PP02
+      - type: verifies
+        target: SWREQ-PP-PP03
+      - type: verifies
+        target: SWREQ-PP-PP08
+      - type: verifies
+        target: SWREQ-PP-PP09
 
   - id: FV-PP-003
     type: sw-verification

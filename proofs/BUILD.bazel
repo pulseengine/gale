@@ -23,3 +23,93 @@ rocq_proof_test(
     srcs = ["sem_proofs.v"],
     deps = [":sem_proofs"],
 )
+
+# ── Mutex proofs ─────────────────────────────────────────────────────────
+
+rocq_library(
+    name = "mutex_proofs",
+    srcs = ["mutex_proofs.v"],
+    deps = [
+        "//plain:mutex_compiled",
+        "//plain:rocq_of_rust_lib",
+    ],
+    extra_flags = ["-impredicative-set"],
+)
+
+rocq_proof_test(
+    name = "mutex_proofs_test",
+    srcs = ["mutex_proofs.v"],
+    deps = [":mutex_proofs"],
+)
+
+# ── CondVar proofs ───────────────────────────────────────────────────────
+
+rocq_library(
+    name = "condvar_proofs",
+    srcs = ["condvar_proofs.v"],
+    deps = [
+        "//plain:condvar_compiled",
+        "//plain:rocq_of_rust_lib",
+    ],
+    extra_flags = ["-impredicative-set"],
+)
+
+rocq_proof_test(
+    name = "condvar_proofs_test",
+    srcs = ["condvar_proofs.v"],
+    deps = [":condvar_proofs"],
+)
+
+# ── MsgQ proofs ──────────────────────────────────────────────────────────
+
+rocq_library(
+    name = "msgq_proofs",
+    srcs = ["msgq_proofs.v"],
+    deps = [
+        "//plain:msgq_compiled",
+        "//plain:rocq_of_rust_lib",
+    ],
+    extra_flags = ["-impredicative-set"],
+)
+
+rocq_proof_test(
+    name = "msgq_proofs_test",
+    srcs = ["msgq_proofs.v"],
+    deps = [":msgq_proofs"],
+)
+
+# ── Stack proofs ─────────────────────────────────────────────────────────
+
+rocq_library(
+    name = "stack_proofs",
+    srcs = ["stack_proofs.v"],
+    deps = [
+        "//plain:stack_compiled",
+        "//plain:rocq_of_rust_lib",
+    ],
+    extra_flags = ["-impredicative-set"],
+)
+
+rocq_proof_test(
+    name = "stack_proofs_test",
+    srcs = ["stack_proofs.v"],
+    deps = [":stack_proofs"],
+)
+
+# ── Pipe proofs ──────────────────────────────────────────────────────────
+
+rocq_library(
+    name = "pipe_proofs",
+    srcs = ["pipe_proofs.v"],
+    deps = [
+        "//plain:pipe_compiled",
+        "//plain:rocq_of_rust_lib",
+    ],
+    extra_flags = ["-impredicative-set"],
+)
+
+rocq_proof_test(
+    name = "pipe_proofs_test",
+    srcs = ["pipe_proofs.v"],
+    deps = [":pipe_proofs"],
+)
