@@ -285,6 +285,50 @@ impl Pipe {
     {
         self.used == 0
     }
+
+    /// Check if pipe is full.
+    pub fn is_full(&self) -> (r: bool)
+        requires self.inv(),
+        ensures r == (self.used == self.size),
+    {
+        self.used == self.size
+    }
+
+    /// Check if pipe is open.
+    pub fn is_open_rt(&self) -> (r: bool)
+        requires self.inv(),
+        ensures r == (self.flags & FLAG_OPEN != 0),
+    {
+        (self.flags & FLAG_OPEN) != 0
+    }
+
+    /// Check if pipe is resetting.
+    pub fn is_resetting_rt(&self) -> (r: bool)
+        requires self.inv(),
+        ensures r == (self.flags & FLAG_RESET != 0),
+    {
+        (self.flags & FLAG_RESET) != 0
+    }
+
+    /// Get pipe buffer size.
+    pub fn size(&self) -> (r: u32)
+        requires self.inv(),
+        ensures r == self.size,
+    {
+        self.size
+    }
+
+    /// Clear the reset flag after reset is complete.
+    pub fn clear_reset(&mut self)
+        requires old(self).inv(),
+        ensures
+            self.inv(),
+            self.size == old(self).size,
+            self.used == old(self).used,
+            self.flags == (old(self).flags & !FLAG_RESET),
+    {
+        self.flags = self.flags & !FLAG_RESET;
+    }
 }
 
 // ======================================================================

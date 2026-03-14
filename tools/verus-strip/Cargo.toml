@@ -1,6 +1,6 @@
 [package]
 name = "verus-strip"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Strip Verus verification annotations from Rust source, producing plain Rust"
@@ -11,6 +11,8 @@ name = "verus-strip"
 path = "src/main.rs"
 
 [dependencies]
-ra_ap_syntax = "0.0.270"
+proc-macro2 = "1"
+syn = { version = "2", features = ["full", "parsing", "visit"] }
+prettyplease = "0.2"
 
 [dev-dependencies]
