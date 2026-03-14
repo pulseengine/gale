@@ -1353,3 +1353,39 @@ artifacts:
     links:
       - type: verifies
         target: SYSREQ-PP-001
+
+  # ── TRACTOR verification ─────────────────────────────────────────────
+
+  - id: FV-TRACTOR-001
+    type: sw-verification
+    title: verus-strip unit and convergence tests
+    status: approved
+    description: >
+      Unit tests in tools/verus-strip/src/lib.rs verifying Verus annotation
+      stripping: spec fn removal, proof fn removal, requires/ensures clause
+      stripping, named return type conversion, loop invariant handling,
+      doc comment cleanup, and full-file stripping with prettyplease formatting.
+      Convergence check validates stripped src/ compiles and passes all tests.
+      Executed via: bazel test //tools/verus-strip:verus_strip_test
+    tags: [testing, verus-strip, tractor, swe-6]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-TRACTOR-002
+
+  - id: SV-TRACTOR-001
+    type: sys-verification
+    title: verus-strip full codebase convergence
+    status: approved
+    description: >
+      Stripping all Verus source files (src/*.rs) with verus-strip produces
+      plain Rust output (plain/src/*.rs) that compiles and passes all
+      integration, proptest, and cargo tests. Validates REQ-TRACTOR-002
+      (automated mirror generation) at the system level.
+    tags: [system-verification, verus-strip, tractor, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-TRACTOR-001
