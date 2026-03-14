@@ -14,6 +14,7 @@
 //! - `#[verifier::*]` attributes
 
 use ra_ap_syntax::{Edition, SourceFile, ast, AstNode};
+use ra_ap_syntax::ast::HasModuleItem;
 
 /// Result of stripping a file.
 pub struct StripResult {
@@ -440,14 +441,15 @@ fn try_match_spec_or_proof_fn(tokens: &[Token], pos: usize) -> Option<usize> {
     //   pub proof fn ...
     //   proof fn ...
     let seq = collect_ident_sequence(tokens, pos);
+    let seq_str: Vec<&str> = seq.iter().map(|s| s.as_str()).collect();
 
     let is_spec_fn = matches!(
-        seq.as_slice(),
+        seq_str.as_slice(),
         ["pub", "open", "spec", "fn", ..]
             | ["pub", "closed", "spec", "fn", ..]
     );
     let is_proof_fn = matches!(
-        seq.as_slice(),
+        seq_str.as_slice(),
         ["pub", "proof", "fn", ..] | ["proof", "fn", ..]
     );
 

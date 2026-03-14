@@ -35,7 +35,8 @@ fn main() {
             process::exit(1);
         });
 
-        let output = verus_strip::strip(&input);
+        let result = verus_strip::strip_file(&input);
+        let output = result.output;
 
         if args.len() >= 4 && args[2] == "-o" {
             let out_path = Path::new(&args[3]);
@@ -72,7 +73,7 @@ fn check_convergence(src_dir: &Path, plain_dir: &Path) {
         let src_content = fs::read_to_string(src_path).unwrap();
         let plain_content = fs::read_to_string(&plain_path).unwrap();
 
-        let stripped = verus_strip::strip(&src_content);
+        let stripped = verus_strip::strip_file(&src_content).output;
 
         // Compare stripped Verus output against plain file.
         // The plain file may have ADDITIONAL content (tests, derive macros,
@@ -81,16 +82,16 @@ fn check_convergence(src_dir: &Path, plain_dir: &Path) {
         // in order, allowing gaps for the additions.
         let stripped_lines: Vec<&str> = stripped
             .lines()
-            .filter(|l| !l.trim().is_empty())
+            .filter(|l: &&str| !l.trim().is_empty())
             .collect();
         let plain_lines: Vec<&str> = plain_content
             .lines()
-            .filter(|l| !l.trim().is_empty())
+            .filter(|l: &&str| !l.trim().is_empty())
             .collect();
 
         // Check: all stripped lines should appear in plain, preserving order
         let mut plain_idx = 0;
-        let mut missing = Vec::new();
+        let mut missing: Vec<String> = Vec::new();
 
         for stripped_line in &stripped_lines {
             let needle = stripped_line.trim();
