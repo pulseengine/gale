@@ -29,12 +29,6 @@ rust_test(
     name = "gate_test",
     srcs = ["tests/gate.rs"],
     deps = [":verus_strip_lib"],
-    data = [
-        "//:src/error.rs", "//:src/priority.rs", "//:src/thread.rs",
-        "//:src/wait_queue.rs", "//:src/sem.rs", "//:src/mutex.rs",
-        "//:src/condvar.rs", "//:src/msgq.rs", "//:src/stack.rs",
-        "//:src/pipe.rs", "//:src/lib.rs",
-        "//plain:srcs",
-    ],
     edition = "2024",
+    tags = ["no-sandbox"],  # needs filesystem access to src/ and plain/
 )
