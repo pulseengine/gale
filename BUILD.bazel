@@ -263,10 +263,7 @@ sh_test(
     name = "verus_strip_check",
     srcs = ["tools/verus-strip-check.sh"],
     data = VERUS_SRCS + PLAIN_SRCS + [
-        "tools/verus-strip/Cargo.toml",
-        "tools/verus-strip/Cargo.lock",
-        "tools/verus-strip/src/lib.rs",
-        "tools/verus-strip/src/main.rs",
+        "//tools/verus-strip",
     ],
     tags = ["manual"],  # run explicitly, not in default test suite
 )

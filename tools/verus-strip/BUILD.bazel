@@ -1,0 +1,24 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+
+rust_library(
+    name = "verus_strip_lib",
+    srcs = ["src/lib.rs"],
+    crate_name = "verus_strip",
+    deps = [
+        "@crates//:ra_ap_syntax",
+    ],
+    edition = "2024",
+)
+
+rust_binary(
+    name = "verus-strip",
+    srcs = ["src/main.rs"],
+    deps = [":verus_strip_lib"],
+    edition = "2024",
+    visibility = ["//visibility:public"],
+)
+
+rust_test(
+    name = "verus_strip_test",
+    crate = ":verus_strip_lib",
+)
