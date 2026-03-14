@@ -16,7 +16,7 @@ pub const MAX_PRIORITY: u32 = 32;
 ///
 /// Invariant: value < MAX_PRIORITY.
 /// Lower value = higher scheduling priority (woken first from wait queues).
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Priority {
     pub value: u32,
 }

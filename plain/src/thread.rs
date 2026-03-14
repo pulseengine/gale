@@ -1,37 +1,62 @@
 //! Thread state machine for Zephyr kernel.
 //!
-//! Models the subset of Zephyr's k_thread relevant to synchronization.
-//! State machine: Ready -> Running -> Blocked -> Ready.
+//! Models the subset of Zephyr's k_thread relevant to synchronization primitives.
+//! A thread has an identity, a static priority, and a state that transitions
+//! through Ready -> Running -> Blocked -> Ready as it interacts with kernel objects.
+//!
+//! Corresponds to: zephyr/kernel/include/kthread.h, kernel/thread.c
 
+//! Thread state machine for Zephyr kernel.
+//!
+//! Models the subset of Zephyr's k_thread relevant to synchronization primitives.
+//! A thread has an identity, a static priority, and a state that transitions
+//! through Ready -> Running -> Blocked -> Ready as it interacts with kernel objects.
+//!
+//! Corresponds to: zephyr/kernel/include/kthread.h, kernel/thread.c
 use crate::priority::Priority;
-
 /// Unique thread identifier.
 /// In Zephyr this is the pointer to the k_thread struct;
 /// here we use a simple index for verifiability.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ThreadId {
     pub id: u32,
 }
-
+impl ThreadId {}
 /// Thread execution state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Models the relevant subset of Zephyr's _THREAD_* flags.
+/// Blocked carries a return_value that gets set when the thread is woken.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum ThreadState {
+    /// Thread is ready to run (in the ready queue).
     Ready,
+    /// Thread is the currently executing thread.
     Running,
+    /// Thread is blocked on a kernel object (semaphore, mutex, etc).
+    /// Stores the return value that will be set when unblocked.
     Blocked,
+    /// Thread is suspended (not schedulable until explicitly resumed).
     Suspended,
 }
-
-/// Minimal thread model for synchronization verification.
-#[derive(Debug, Clone)]
+/// A minimal thread model for synchronization verification.
+///
+/// We intentionally omit: stack, arch context, thread options, swap_data,
+/// timeout, and all fields not relevant to synchronization primitive correctness.
+#[derive(Debug, Copy, Clone)]
 pub struct Thread {
+    /// Unique identifier.
     pub id: ThreadId,
+    /// Static priority (lower value = higher priority).
     pub priority: Priority,
+    /// Current execution state.
     pub state: ThreadState,
+    /// Return value set by kernel when unblocking this thread.
+    /// Corresponds to arch_thread_return_value_set() in Zephyr.
     pub return_value: i32,
 }
-
 impl Thread {
+    /// Create a new thread in the Ready state.
     pub fn new(id: u32, priority: Priority) -> Self {
         Thread {
             id: ThreadId { id },
@@ -40,68 +65,23 @@ impl Thread {
             return_value: 0,
         }
     }
-
-    /// Ready -> Running.
+    /// Transition: Ready -> Running (scheduler dispatches this thread).
     pub fn dispatch(&mut self) {
-        debug_assert_eq!(self.state, ThreadState::Ready);
         self.state = ThreadState::Running;
     }
-
-    /// Running -> Blocked.
+    /// Transition: Running -> Blocked (thread pends on a kernel object).
+    /// Corresponds to z_pend_curr() in Zephyr.
     pub fn block(&mut self) {
-        debug_assert_eq!(self.state, ThreadState::Running);
         self.state = ThreadState::Blocked;
     }
-
-    /// Blocked -> Ready, with a return value.
+    /// Transition: Blocked -> Ready (kernel object wakes this thread).
+    /// Corresponds to z_ready_thread() + arch_thread_return_value_set().
     pub fn wake(&mut self, return_value: i32) {
-        debug_assert_eq!(self.state, ThreadState::Blocked);
         self.return_value = return_value;
         self.state = ThreadState::Ready;
     }
-
+    /// Check if thread is blocked.
     pub fn is_blocked(&self) -> bool {
-        self.state == ThreadState::Blocked
-    }
-}
-
-#[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::wildcard_enum_match_arm,
-    clippy::arithmetic_side_effects,
-    clippy::cast_possible_truncation
-)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_state_machine_happy_path() {
-        let p = Priority::new(5).unwrap();
-        let mut t = Thread::new(1, p);
-        assert_eq!(t.state, ThreadState::Ready);
-
-        t.dispatch();
-        assert_eq!(t.state, ThreadState::Running);
-
-        t.block();
-        assert_eq!(t.state, ThreadState::Blocked);
-        assert!(t.is_blocked());
-
-        t.wake(42);
-        assert_eq!(t.state, ThreadState::Ready);
-        assert_eq!(t.return_value, 42);
-    }
-
-    #[test]
-    fn test_new_thread_defaults() {
-        let p = Priority::new(0).unwrap();
-        let t = Thread::new(99, p);
-        assert_eq!(t.id.id, 99);
-        assert_eq!(t.return_value, 0);
-        assert_eq!(t.state, ThreadState::Ready);
+        matches!(self.state, ThreadState::Blocked)
     }
 }

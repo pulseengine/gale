@@ -149,7 +149,7 @@ fn take_empty_returns_wouldblock() {
 fn take_blocking_enqueues_thread() {
     let mut sem = Semaphore::init(0, 5).unwrap();
     let result = sem.take_blocking(make_running_thread(1, 5));
-    assert!(!result);
+    assert!(result); // true = thread was enqueued in wait queue
     assert_eq!(sem.num_waiters(), 1);
     assert_eq!(sem.count_get(), 0);
 }

@@ -45,6 +45,7 @@ verus! {
 ///
 /// We model next-base as `count` and top-base as `capacity`.
 /// The C shim converts: count = (next - base), capacity = (top - base).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stack {
     /// Maximum number of entries (immutable after init).
     pub capacity: u32,
@@ -64,13 +65,13 @@ impl Stack {
         && self.count <= self.capacity
     }
 
-    /// Stack is full (next == top).
-    pub open spec fn is_full(&self) -> bool {
+    /// Stack is full (spec version for verification).
+    pub open spec fn is_full_spec(&self) -> bool {
         self.count == self.capacity
     }
 
-    /// Stack is empty (next == base).
-    pub open spec fn is_empty(&self) -> bool {
+    /// Stack is empty (spec version for verification).
+    pub open spec fn is_empty_spec(&self) -> bool {
         self.count == 0
     }
 
@@ -184,6 +185,30 @@ impl Stack {
         ensures r == self.count,
     {
         self.count
+    }
+
+    /// Check if stack is full.
+    pub fn is_full(&self) -> (r: bool)
+        requires self.inv(),
+        ensures r == (self.count == self.capacity),
+    {
+        self.count == self.capacity
+    }
+
+    /// Check if stack is empty.
+    pub fn is_empty(&self) -> (r: bool)
+        requires self.inv(),
+        ensures r == (self.count == 0),
+    {
+        self.count == 0
+    }
+
+    /// Get stack capacity.
+    pub fn capacity(&self) -> (r: u32)
+        requires self.inv(),
+        ensures r == self.capacity,
+    {
+        self.capacity
     }
 }
 

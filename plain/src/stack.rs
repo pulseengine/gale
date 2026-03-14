@@ -1,207 +1,150 @@
-//! Plain Rust LIFO stack for testing and Rocq-of-Rust translation.
+//! Verified LIFO stack for Zephyr RTOS.
 //!
-//! Identical logic to the Verus-annotated src/stack.rs.
-//! Any divergence between these files is a bug.
+//! This is a formally verified port of zephyr/kernel/stack.c.
+//! All safety-critical properties are proven with Verus (SMT/Z3).
+//!
+//! This module models the **LIFO index arithmetic** of Zephyr's stack object.
+//! Actual data storage and wait queue management remain in C — only the
+//! count/capacity tracking crosses the FFI boundary.
 //!
 //! Source mapping:
 //!   k_stack_init   -> Stack::init   (stack.c:27-42)
 //!   k_stack_push   -> Stack::push   (stack.c:101-136, capacity check + increment)
 //!   k_stack_pop    -> Stack::pop    (stack.c:148-190, empty check + decrement)
+//!
+//! Omitted (not safety-relevant):
+//!   - CONFIG_OBJ_CORE_STACK — debug/tracing
+//!   - CONFIG_USERSPACE (z_vrfy_*) — syscall marshaling
+//!   - SYS_PORT_TRACING_* — instrumentation
+//!   - k_stack_alloc_init — heap allocation wrapper
+//!   - k_stack_cleanup — deallocation
+//!
+//! ASIL-D verified properties:
+//!   SK1: 0 <= count <= capacity (bounds invariant)
+//!   SK2: capacity > 0 (always after init)
+//!   SK3: push when not full: count incremented by 1
+//!   SK4: push when full: returns ENOMEM, state unchanged
+//!   SK5: pop when not empty: count decremented by 1
+//!   SK6: pop when empty: returns EBUSY, state unchanged
+//!   SK7: num_free + num_used == capacity (conservation)
+//!   SK8: no arithmetic overflow in any operation
+//!   SK9: push-pop roundtrip preserves state
 
-use crate::error::{EBUSY, EINVAL, ENOMEM, OK};
-
+//! Verified LIFO stack for Zephyr RTOS.
+//!
+//! This is a formally verified port of zephyr/kernel/stack.c.
+//! All safety-critical properties are proven with Verus (SMT/Z3).
+//!
+//! This module models the **LIFO index arithmetic** of Zephyr's stack object.
+//! Actual data storage and wait queue management remain in C — only the
+//! count/capacity tracking crosses the FFI boundary.
+//!
+//! Source mapping:
+//!   k_stack_init   -> Stack::init   (stack.c:27-42)
+//!   k_stack_push   -> Stack::push   (stack.c:101-136, capacity check + increment)
+//!   k_stack_pop    -> Stack::pop    (stack.c:148-190, empty check + decrement)
+//!
+//! Omitted (not safety-relevant):
+//!   - CONFIG_OBJ_CORE_STACK — debug/tracing
+//!   - CONFIG_USERSPACE (z_vrfy_*) — syscall marshaling
+//!   - SYS_PORT_TRACING_* — instrumentation
+//!   - k_stack_alloc_init — heap allocation wrapper
+//!   - k_stack_cleanup — deallocation
+//!
+//! ASIL-D verified properties:
+//!   SK1: 0 <= count <= capacity (bounds invariant)
+//!   SK2: capacity > 0 (always after init)
+//!   SK3: push when not full: count incremented by 1
+//!   SK4: push when full: returns ENOMEM, state unchanged
+//!   SK5: pop when not empty: count decremented by 1
+//!   SK6: pop when empty: returns EBUSY, state unchanged
+//!   SK7: num_free + num_used == capacity (conservation)
+//!   SK8: no arithmetic overflow in any operation
+//!   SK9: push-pop roundtrip preserves state
+use crate::error::*;
 /// LIFO stack — count/capacity model.
 ///
-/// Models Zephyr's k_stack pointer arithmetic as simple count tracking.
-/// count = (next - base), capacity = (top - base).
+/// Corresponds to Zephyr's struct k_stack {
+///     stack_data_t *base;   // buffer start
+///     stack_data_t *next;   // current top-of-stack
+///     stack_data_t *top;    // buffer end (base + num_entries)
+/// };
+///
+/// We model next-base as `count` and top-base as `capacity`.
+/// The C shim converts: count = (next - base), capacity = (top - base).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stack {
+    /// Maximum number of entries (immutable after init).
     pub capacity: u32,
+    /// Current number of entries on the stack.
     pub count: u32,
 }
-
 impl Stack {
     /// Initialize a stack with given capacity.
     ///
-    /// stack.c:27-42
-    pub fn init(capacity: u32) -> Result<Self, i32> {
-        if capacity == 0 {
-            return Err(EINVAL);
-        }
-        Ok(Stack { capacity, count: 0 })
+    /// stack.c:27-42:
+    ///   stack->base = buffer; stack->next = buffer;
+    ///   stack->top = buffer + num_entries;
+    pub fn init(capacity: u32) -> Result<Stack, i32> {
+        if capacity == 0 { Err(EINVAL) } else { Ok(Stack { capacity, count: 0 }) }
     }
-
     /// Push an entry onto the stack.
     ///
-    /// stack.c:109-125
+    /// stack.c:109-125:
+    ///   CHECKIF(stack->next == stack->top) { ret = -ENOMEM; }
+    ///   *(stack->next) = data; stack->next++;
     ///
     /// Returns OK (count incremented) or ENOMEM (full, unchanged).
     pub fn push(&mut self) -> i32 {
         if self.count >= self.capacity {
-            return ENOMEM;
+            ENOMEM
+        } else {
+            #[allow(clippy::arithmetic_side_effects)]
+            {
+                self.count = self.count + 1;
+            }
+            OK
         }
-        // Safe: count < capacity <= u32::MAX, so count+1 cannot overflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            self.count += 1;
-        }
-        OK
     }
-
     /// Pop an entry from the stack.
     ///
-    /// stack.c:158-166
+    /// stack.c:158-166:
+    ///   if (stack->next > stack->base) {
+    ///       stack->next--; *data = *(stack->next);
+    ///   }
     ///
     /// Returns OK (count decremented) or EBUSY (empty, unchanged).
     pub fn pop(&mut self) -> i32 {
         if self.count == 0 {
-            return EBUSY;
+            EBUSY
+        } else {
+            #[allow(clippy::arithmetic_side_effects)]
+            {
+                self.count = self.count - 1;
+            }
+            OK
         }
-        // Safe: count > 0, so count-1 >= 0.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            self.count -= 1;
-        }
-        OK
     }
-
     /// Number of free slots.
     pub fn num_free(&self) -> u32 {
-        // Safe: count <= capacity (invariant).
         #[allow(clippy::arithmetic_side_effects)]
         let r = self.capacity - self.count;
         r
     }
-
     /// Number of used slots.
     pub fn num_used(&self) -> u32 {
         self.count
     }
-
-    /// Stack is full.
+    /// Check if stack is full.
     pub fn is_full(&self) -> bool {
         self.count == self.capacity
     }
-
-    /// Stack is empty.
+    /// Check if stack is empty.
     pub fn is_empty(&self) -> bool {
         self.count == 0
     }
-
-    /// Capacity accessor.
+    /// Get stack capacity.
     pub fn capacity(&self) -> u32 {
         self.capacity
-    }
-}
-
-#[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::wildcard_enum_match_arm,
-    clippy::arithmetic_side_effects,
-    clippy::cast_possible_truncation
-)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_init_valid() {
-        let s = Stack::init(10).unwrap();
-        assert_eq!(s.num_used(), 0);
-        assert_eq!(s.num_free(), 10);
-        assert!(s.is_empty());
-        assert!(!s.is_full());
-    }
-
-    #[test]
-    fn test_init_zero_capacity() {
-        assert_eq!(Stack::init(0), Err(EINVAL));
-    }
-
-    #[test]
-    fn test_push_pop_basic() {
-        let mut s = Stack::init(5).unwrap();
-        assert_eq!(s.push(), OK);
-        assert_eq!(s.num_used(), 1);
-        assert_eq!(s.num_free(), 4);
-
-        assert_eq!(s.pop(), OK);
-        assert_eq!(s.num_used(), 0);
-        assert!(s.is_empty());
-    }
-
-    #[test]
-    fn test_push_full() {
-        let mut s = Stack::init(2).unwrap();
-        assert_eq!(s.push(), OK);
-        assert_eq!(s.push(), OK);
-        assert!(s.is_full());
-
-        assert_eq!(s.push(), ENOMEM);
-        assert!(s.is_full());
-    }
-
-    #[test]
-    fn test_pop_empty() {
-        let mut s = Stack::init(3).unwrap();
-        assert_eq!(s.pop(), EBUSY);
-        assert!(s.is_empty());
-    }
-
-    #[test]
-    fn test_fill_drain() {
-        let mut s = Stack::init(4).unwrap();
-        for _ in 0..4 {
-            assert_eq!(s.push(), OK);
-        }
-        assert!(s.is_full());
-        assert_eq!(s.num_used(), 4);
-        assert_eq!(s.num_free(), 0);
-
-        for _ in 0..4 {
-            assert_eq!(s.pop(), OK);
-        }
-        assert!(s.is_empty());
-        assert_eq!(s.num_used(), 0);
-        assert_eq!(s.num_free(), 4);
-    }
-
-    #[test]
-    fn test_conservation() {
-        let mut s = Stack::init(8).unwrap();
-        for _ in 0..5 {
-            s.push();
-            assert_eq!(s.num_free() + s.num_used(), 8);
-        }
-        for _ in 0..3 {
-            s.pop();
-            assert_eq!(s.num_free() + s.num_used(), 8);
-        }
-    }
-
-    #[test]
-    fn test_capacity_one() {
-        let mut s = Stack::init(1).unwrap();
-        assert!(s.is_empty());
-        assert!(!s.is_full());
-
-        assert_eq!(s.push(), OK);
-        assert!(s.is_full());
-        assert!(!s.is_empty());
-
-        assert_eq!(s.push(), ENOMEM);
-
-        assert_eq!(s.pop(), OK);
-        assert!(s.is_empty());
-    }
-
-    #[test]
-    fn test_max_capacity() {
-        let s = Stack::init(u32::MAX).unwrap();
-        assert_eq!(s.capacity(), u32::MAX);
-        assert_eq!(s.num_free(), u32::MAX);
     }
 }

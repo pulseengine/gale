@@ -66,6 +66,7 @@ pub enum MsgQResult {
 /// We model read_ptr/write_ptr as slot indices (0..max_msgs-1)
 /// rather than byte pointers.  The C shim converts:
 ///   byte_ptr = buffer_start + slot_idx * msg_size
+#[derive(Debug)]
 pub struct MsgQ {
     /// Size of each message in bytes (immutable after init).
     pub msg_size: u32,
@@ -567,6 +568,22 @@ impl MsgQ {
             result == (self.used_msgs == 0),
     {
         self.used_msgs == 0
+    }
+
+    /// Get current read index.
+    pub fn read_idx_get(&self) -> (result: u32)
+        requires self.inv(),
+        ensures result == self.read_idx,
+    {
+        self.read_idx
+    }
+
+    /// Get current write index.
+    pub fn write_idx_get(&self) -> (result: u32)
+        requires self.inv(),
+        ensures result == self.write_idx,
+    {
+        self.write_idx
     }
 }
 

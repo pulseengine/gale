@@ -36,6 +36,7 @@ use crate::wait_queue::WaitQueue;
 verus! {
 
 /// Result of a lock attempt.
+#[derive(Debug, PartialEq, Eq)]
 pub enum LockResult {
     /// Lock acquired (first time or reentrant).
     Acquired,
@@ -44,6 +45,7 @@ pub enum LockResult {
 }
 
 /// Result of an unlock operation.
+#[derive(Debug)]
 pub enum UnlockResult {
     /// lock_count decremented, mutex still held by current owner.
     Released,
@@ -393,6 +395,13 @@ impl Mutex {
             result == self.wait_q.len_spec(),
     {
         self.wait_q.len()
+    }
+
+    /// Get the current owner's thread ID, if any.
+    pub fn owner_get(&self) -> (result: Option<ThreadId>)
+        requires self.inv(),
+    {
+        self.owner
     }
 }
 

@@ -53,6 +53,7 @@ pub const FLAG_RESET: u8 = 2;
 ///
 /// The ring buffer internals (head/tail/base indices) stay in C.
 /// We model only the byte-level state: total size and bytes used.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pipe {
     /// Total buffer capacity in bytes (immutable after init).
     pub size: u32,
@@ -74,18 +75,18 @@ impl Pipe {
         && self.used <= self.size
     }
 
-    /// Pipe is open for operations.
-    pub open spec fn is_open(&self) -> bool {
+    /// Pipe is open for operations (spec).
+    pub open spec fn is_open_spec(&self) -> bool {
         (self.flags & FLAG_OPEN) != 0
     }
 
-    /// Pipe is in reset state.
-    pub open spec fn is_resetting(&self) -> bool {
+    /// Pipe is in reset state (spec).
+    pub open spec fn is_resetting_spec(&self) -> bool {
         (self.flags & FLAG_RESET) != 0
     }
 
-    /// Pipe buffer is full.
-    pub open spec fn is_full(&self) -> bool {
+    /// Pipe buffer is full (spec version for verification).
+    pub open spec fn is_full_spec(&self) -> bool {
         self.used == self.size
     }
 
@@ -134,9 +135,9 @@ impl Pipe {
             self.inv(),
             self.size == old(self).size,
             // PP3: closed -> EPIPE
-            !old(self).is_open() ==> result.is_err(),
+            !old(self).is_open_spec() ==> result.is_err(),
             // PP4: resetting -> ECANCELED
-            old(self).is_resetting() ==> result.is_err(),
+            old(self).is_resetting_spec() ==> result.is_err(),
             // PP5: write computes correct byte count
             result.is_ok() ==> {
                 &&& result.unwrap() > 0
@@ -191,7 +192,7 @@ impl Pipe {
             self.inv(),
             self.size == old(self).size,
             // PP4: resetting -> ECANCELED
-            old(self).is_resetting() ==> result.is_err(),
+            old(self).is_resetting_spec() ==> result.is_err(),
             // PP6: read computes correct byte count
             result.is_ok() ==> {
                 &&& result.unwrap() > 0
@@ -295,7 +296,7 @@ impl Pipe {
     }
 
     /// Check if pipe is open.
-    pub fn is_open_rt(&self) -> (r: bool)
+    pub fn is_open(&self) -> (r: bool)
         requires self.inv(),
         ensures r == (self.flags & FLAG_OPEN != 0),
     {
@@ -303,7 +304,7 @@ impl Pipe {
     }
 
     /// Check if pipe is resetting.
-    pub fn is_resetting_rt(&self) -> (r: bool)
+    pub fn is_resetting(&self) -> (r: bool)
         requires self.inv(),
         ensures r == (self.flags & FLAG_RESET != 0),
     {

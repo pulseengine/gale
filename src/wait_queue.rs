@@ -32,6 +32,7 @@ pub const MAX_WAITERS: u32 = 64;
 ///
 /// In Zephyr, this is an intrusive doubly-linked list threaded through
 /// k_thread structs. Here we use an array for verification simplicity.
+#[derive(Debug)]
 pub struct WaitQueue {
     /// Threads waiting, sorted by priority (highest priority first).
     pub entries: [Option<Thread>; 64],

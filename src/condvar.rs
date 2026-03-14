@@ -33,6 +33,7 @@ use crate::wait_queue::WaitQueue;
 verus! {
 
 /// Result of a signal operation.
+#[derive(Debug)]
 pub enum SignalResult {
     /// No thread was waiting — signal was a no-op.
     Empty,

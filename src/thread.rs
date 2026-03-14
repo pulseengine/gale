@@ -14,7 +14,7 @@ verus! {
 /// Unique thread identifier.
 /// In Zephyr this is the pointer to the k_thread struct;
 /// here we use a simple index for verifiability.
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ThreadId {
     pub id: u32,
 }
@@ -29,7 +29,7 @@ impl ThreadId {
 ///
 /// Models the relevant subset of Zephyr's _THREAD_* flags.
 /// Blocked carries a return_value that gets set when the thread is woken.
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum ThreadState {
     /// Thread is ready to run (in the ready queue).
@@ -47,7 +47,7 @@ pub enum ThreadState {
 ///
 /// We intentionally omit: stack, arch context, thread options, swap_data,
 /// timeout, and all fields not relevant to synchronization primitive correctness.
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Thread {
     /// Unique identifier.
     pub id: ThreadId,

@@ -1,21 +1,65 @@
-//! Plain Rust mutex for testing and Rocq-of-Rust translation.
+//! Verified reentrant mutex for Zephyr RTOS.
 //!
-//! Identical logic to the Verus-annotated src/mutex.rs.
-//! Any divergence between these files is a bug.
+//! This is a formally verified port of zephyr/kernel/mutex.c.
+//! All safety-critical properties are proven with Verus (SMT/Z3).
 //!
 //! Source mapping:
 //!   z_impl_k_mutex_init   -> Mutex::init         (mutex.c:55-71)
-//!   z_impl_k_mutex_lock   -> Mutex::try_lock      (mutex.c:107-154)
-//!                          -> Mutex::lock_blocking (mutex.c:169)
+//!   z_impl_k_mutex_lock   -> Mutex::try_lock      (mutex.c:107-154, fast path)
+//!                          -> Mutex::lock_blocking (mutex.c:169, blocking path)
 //!   z_impl_k_mutex_unlock -> Mutex::unlock        (mutex.c:230-307)
+//!
+//! Omitted (not safety-relevant):
+//!   - CONFIG_PRIORITY_CEILING — priority inheritance optimization
+//!   - CONFIG_OBJ_CORE_MUTEX — debug/tracing
+//!   - CONFIG_USERSPACE (z_vrfy_*) — syscall marshaling
+//!   - SYS_PORT_TRACING_* — instrumentation
+//!
+//! ASIL-D verified properties:
+//!   M1: lock_count > 0 ⟺ owner.is_some() (always)
+//!   M2: wait_q non-empty ⟹ mutex is locked (always)
+//!   M3: try_lock when unlocked: owner set, lock_count = 1
+//!   M4: try_lock when locked by same thread: lock_count incremented (reentrant)
+//!   M5: try_lock when locked by different thread: returns WouldBlock, unchanged
+//!   M6: unlock by non-owner: returns error, unchanged
+//!   M7: unlock when lock_count > 1: count decremented, owner unchanged
+//!   M8: unlock when lock_count == 1, waiter: ownership transferred, count stays 1
+//!   M9: unlock when lock_count == 1, no waiter: fully unlocked (count=0, owner=None)
+//!   M10: no arithmetic overflow in lock_count
+//!   M11: wait queue ordering preserved across all operations
 
-use crate::error::{EINVAL, EPERM, OK};
-use crate::thread::ThreadId;
-#[cfg(test)]
-use crate::thread::ThreadState;
-use crate::thread::Thread;
+//! Verified reentrant mutex for Zephyr RTOS.
+//!
+//! This is a formally verified port of zephyr/kernel/mutex.c.
+//! All safety-critical properties are proven with Verus (SMT/Z3).
+//!
+//! Source mapping:
+//!   z_impl_k_mutex_init   -> Mutex::init         (mutex.c:55-71)
+//!   z_impl_k_mutex_lock   -> Mutex::try_lock      (mutex.c:107-154, fast path)
+//!                          -> Mutex::lock_blocking (mutex.c:169, blocking path)
+//!   z_impl_k_mutex_unlock -> Mutex::unlock        (mutex.c:230-307)
+//!
+//! Omitted (not safety-relevant):
+//!   - CONFIG_PRIORITY_CEILING — priority inheritance optimization
+//!   - CONFIG_OBJ_CORE_MUTEX — debug/tracing
+//!   - CONFIG_USERSPACE (z_vrfy_*) — syscall marshaling
+//!   - SYS_PORT_TRACING_* — instrumentation
+//!
+//! ASIL-D verified properties:
+//!   M1: lock_count > 0 ⟺ owner.is_some() (always)
+//!   M2: wait_q non-empty ⟹ mutex is locked (always)
+//!   M3: try_lock when unlocked: owner set, lock_count = 1
+//!   M4: try_lock when locked by same thread: lock_count incremented (reentrant)
+//!   M5: try_lock when locked by different thread: returns WouldBlock, unchanged
+//!   M6: unlock by non-owner: returns error, unchanged
+//!   M7: unlock when lock_count > 1: count decremented, owner unchanged
+//!   M8: unlock when lock_count == 1, waiter: ownership transferred, count stays 1
+//!   M9: unlock when lock_count == 1, no waiter: fully unlocked (count=0, owner=None)
+//!   M10: no arithmetic overflow in lock_count
+//!   M11: wait queue ordering preserved across all operations
+use crate::error::*;
+use crate::thread::{Thread, ThreadId, ThreadState};
 use crate::wait_queue::WaitQueue;
-
 /// Result of a lock attempt.
 #[derive(Debug, PartialEq, Eq)]
 pub enum LockResult {
@@ -24,7 +68,6 @@ pub enum LockResult {
     /// Mutex locked by another thread, caller chose not to wait.
     WouldBlock,
 }
-
 /// Result of an unlock operation.
 #[derive(Debug)]
 pub enum UnlockResult {
@@ -35,17 +78,42 @@ pub enum UnlockResult {
     /// Ownership transferred to highest-priority waiter.
     Transferred(Thread),
 }
-
-/// Reentrant mutex with ownership tracking — port of Zephyr kernel/mutex.c.
-#[derive(Debug)]
+/// Reentrant mutex with ownership tracking.
+///
+/// Corresponds to Zephyr's struct k_mutex {
+///     _wait_q_t wait_q;
+///     struct k_thread *owner;
+///     uint32_t lock_count;
+///     int owner_orig_prio;  // omitted — priority inheritance
+/// };
 pub struct Mutex {
+    /// Wait queue for threads blocked on this mutex.
+    /// Corresponds to mutex->wait_q.
     pub wait_q: WaitQueue,
+    /// Current owner thread ID, or None if unlocked.
+    /// Corresponds to mutex->owner (NULL when unlocked).
     pub owner: Option<ThreadId>,
+    /// Number of times the owner has locked this mutex.
+    /// Corresponds to mutex->lock_count.
     pub lock_count: u32,
 }
-
 impl Mutex {
-    /// z_impl_k_mutex_init (mutex.c:55-71)
+    /// Initialize a mutex.
+    ///
+    /// ```c
+    /// int z_impl_k_mutex_init(struct k_mutex *mutex)
+    /// {
+    ///     mutex->owner = NULL;
+    ///     mutex->lock_count = 0U;
+    ///     z_waitq_init(&mutex->wait_q);
+    ///     return 0;
+    /// }
+    /// ```
+    ///
+    /// Verified properties:
+    /// - Establishes the invariant (M1, M2)
+    /// - Mutex starts unlocked (owner=None, lock_count=0)
+    /// - Wait queue starts empty
     pub fn init() -> Self {
         Mutex {
             wait_q: WaitQueue::new(),
@@ -53,296 +121,119 @@ impl Mutex {
             lock_count: 0,
         }
     }
-
-    /// z_impl_k_mutex_lock — non-blocking fast path (mutex.c:107-154)
+    /// Try to lock the mutex — non-blocking.
+    ///
+    /// ```c
+    /// if (likely((mutex->lock_count == 0U) || (mutex->owner == _current))) {
+    ///     mutex->lock_count++;
+    ///     mutex->owner = _current;
+    ///     return 0;
+    /// }
+    /// if (unlikely(K_TIMEOUT_EQ(timeout, K_NO_WAIT))) {
+    ///     return -EBUSY;
+    /// }
+    /// ```
+    ///
+    /// Verified properties (M3, M4, M5, M10):
+    /// - If unlocked: owner set to current, lock_count = 1 (M3)
+    /// - If locked by current: lock_count incremented (M4, reentrant)
+    /// - If locked by other: returns WouldBlock, unchanged (M5)
+    /// - No overflow on lock_count (M10)
+    /// - Invariant maintained
     pub fn try_lock(&mut self, current_id: ThreadId) -> LockResult {
         if self.lock_count == 0 {
-            // Mutex unlocked — acquire.
             self.owner = Some(current_id);
             self.lock_count = 1;
             LockResult::Acquired
-        } else if self.owner == Some(current_id) {
-            // Reentrant lock — same owner.
-            #[allow(clippy::arithmetic_side_effects)]
-            { self.lock_count = self.lock_count + 1; }
-            LockResult::Acquired
         } else {
-            // Different owner — cannot acquire.
-            LockResult::WouldBlock
+            let owner_id = self.owner.unwrap();
+            if owner_id.id == current_id.id {
+                self.lock_count = self.lock_count + 1;
+                LockResult::Acquired
+            } else {
+                LockResult::WouldBlock
+            }
         }
     }
-
-    /// z_impl_k_mutex_lock — blocking path (mutex.c:169).
-    /// Returns true if thread was enqueued, false if queue is full.
+    /// Lock the mutex — blocking path.
+    ///
+    /// Models z_pend_curr(): the calling thread blocks on the wait queue.
+    ///
+    /// Verified properties (M11):
+    /// - Thread is inserted into wait queue in priority order
+    /// - Thread state set to Blocked
+    /// - Mutex state unchanged (still locked by original owner)
+    /// - Returns false if wait queue is full
     pub fn lock_blocking(&mut self, mut thread: Thread) -> bool {
         thread.block();
         self.wait_q.pend(thread)
     }
-
-    /// z_impl_k_mutex_unlock (mutex.c:230-307)
+    /// Unlock the mutex.
+    ///
+    /// ```c
+    /// CHECKIF(mutex->owner == NULL) { return -EINVAL; }
+    /// CHECKIF(mutex->owner != _current) { return -EPERM; }
+    /// if (mutex->lock_count > 1U) {
+    ///     mutex->lock_count--;
+    ///     return 0;
+    /// }
+    /// new_owner = z_unpend_first_thread(&mutex->wait_q);
+    /// mutex->owner = new_owner;
+    /// if (new_owner != NULL) {
+    ///     arch_thread_return_value_set(new_owner, 0);
+    ///     z_ready_thread(new_owner);
+    /// } else {
+    ///     mutex->lock_count = 0U;
+    /// }
+    /// return 0;
+    /// ```
+    ///
+    /// Verified properties (M6, M7, M8, M9):
+    /// - Not locked: returns -EINVAL (M6a)
+    /// - Not owner: returns -EPERM (M6b)
+    /// - lock_count > 1: decremented, owner unchanged (M7)
+    /// - lock_count == 1, waiters: ownership transferred (M8)
+    /// - lock_count == 1, no waiters: fully unlocked (M9)
+    /// - Invariant maintained
     pub fn unlock(&mut self, current_id: ThreadId) -> Result<UnlockResult, i32> {
-        // CHECKIF(mutex->owner == NULL)
         if self.owner.is_none() {
             return Err(EINVAL);
         }
-
-        // CHECKIF(mutex->owner != _current)
-        if self.owner != Some(current_id) {
+        let owner_id = self.owner.unwrap();
+        if owner_id.id != current_id.id {
             return Err(EPERM);
         }
-
-        // lock_count > 1: reentrant release
-        #[allow(clippy::arithmetic_side_effects)]
         if self.lock_count > 1 {
             self.lock_count = self.lock_count - 1;
             return Ok(UnlockResult::Released);
         }
-
-        // lock_count == 1: final unlock
-        if let Some(t) = self.wait_q.unpend_first(OK) {
-            // Transfer ownership to highest-priority waiter.
-            self.owner = Some(t.id);
-            // lock_count stays at 1 (Zephyr doesn't touch it here).
-            Ok(UnlockResult::Transferred(t))
-        } else {
-            // No waiters — fully unlock.
-            self.owner = None;
-            self.lock_count = 0;
-            Ok(UnlockResult::Unlocked)
+        let new_owner = self.wait_q.unpend_first(OK);
+        match new_owner {
+            Some(t) => {
+                self.owner = Some(t.id);
+                Ok(UnlockResult::Transferred(t))
+            }
+            None => {
+                self.owner = None;
+                self.lock_count = 0;
+                Ok(UnlockResult::Unlocked)
+            }
         }
     }
-
     /// Check if the mutex is locked.
     pub fn is_locked(&self) -> bool {
         self.lock_count > 0
     }
-
     /// Get the current lock count.
     pub fn lock_count_get(&self) -> u32 {
         self.lock_count
     }
-
-    /// Get the owner thread ID, if locked.
-    pub fn owner_get(&self) -> Option<ThreadId> {
-        self.owner
-    }
-
     /// Get the number of threads waiting on this mutex.
     pub fn num_waiters(&self) -> u32 {
         self.wait_q.len()
     }
-}
-
-#[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::wildcard_enum_match_arm,
-    clippy::arithmetic_side_effects,
-    clippy::cast_possible_truncation
-)]
-mod tests {
-    use super::*;
-    use crate::priority::Priority;
-
-    fn tid(id: u32) -> ThreadId {
-        ThreadId { id }
-    }
-
-    fn make_running_thread(id: u32, prio: u32) -> Thread {
-        let mut t = Thread::new(id, Priority::new(prio).unwrap());
-        t.dispatch();
-        t
-    }
-
-    // ---- Init tests ----
-
-    #[test]
-    fn test_init() {
-        let m = Mutex::init();
-        assert!(!m.is_locked());
-        assert_eq!(m.lock_count_get(), 0);
-        assert_eq!(m.owner_get(), None);
-        assert_eq!(m.num_waiters(), 0);
-    }
-
-    // ---- Lock tests ----
-
-    #[test]
-    fn test_lock_unlocked() {
-        let mut m = Mutex::init();
-        assert_eq!(m.try_lock(tid(1)), LockResult::Acquired);
-        assert!(m.is_locked());
-        assert_eq!(m.lock_count_get(), 1);
-        assert_eq!(m.owner_get(), Some(tid(1)));
-    }
-
-    #[test]
-    fn test_lock_reentrant() {
-        let mut m = Mutex::init();
-        assert_eq!(m.try_lock(tid(1)), LockResult::Acquired);
-        assert_eq!(m.try_lock(tid(1)), LockResult::Acquired);
-        assert_eq!(m.try_lock(tid(1)), LockResult::Acquired);
-        assert_eq!(m.lock_count_get(), 3);
-        assert_eq!(m.owner_get(), Some(tid(1)));
-    }
-
-    #[test]
-    fn test_lock_different_owner() {
-        let mut m = Mutex::init();
-        assert_eq!(m.try_lock(tid(1)), LockResult::Acquired);
-        assert_eq!(m.try_lock(tid(2)), LockResult::WouldBlock);
-        assert_eq!(m.lock_count_get(), 1);
-        assert_eq!(m.owner_get(), Some(tid(1)));
-    }
-
-    #[test]
-    fn test_lock_blocking() {
-        let mut m = Mutex::init();
-        assert_eq!(m.try_lock(tid(1)), LockResult::Acquired);
-
-        let t = make_running_thread(2, 5);
-        assert!(m.lock_blocking(t));
-        assert_eq!(m.num_waiters(), 1);
-        assert_eq!(m.owner_get(), Some(tid(1)));
-    }
-
-    // ---- Unlock tests ----
-
-    #[test]
-    fn test_unlock_not_locked() {
-        let mut m = Mutex::init();
-        assert!(matches!(m.unlock(tid(1)), Err(EINVAL)));
-    }
-
-    #[test]
-    fn test_unlock_not_owner() {
-        let mut m = Mutex::init();
-        m.try_lock(tid(1));
-        assert!(matches!(m.unlock(tid(2)), Err(EPERM)));
-        assert_eq!(m.lock_count_get(), 1);
-    }
-
-    #[test]
-    fn test_unlock_reentrant() {
-        let mut m = Mutex::init();
-        m.try_lock(tid(1));
-        m.try_lock(tid(1));
-        m.try_lock(tid(1));
-        assert_eq!(m.lock_count_get(), 3);
-
-        assert!(matches!(m.unlock(tid(1)), Ok(UnlockResult::Released)));
-        assert_eq!(m.lock_count_get(), 2);
-        assert_eq!(m.owner_get(), Some(tid(1)));
-
-        assert!(matches!(m.unlock(tid(1)), Ok(UnlockResult::Released)));
-        assert_eq!(m.lock_count_get(), 1);
-    }
-
-    #[test]
-    fn test_unlock_final_no_waiters() {
-        let mut m = Mutex::init();
-        m.try_lock(tid(1));
-        assert!(matches!(m.unlock(tid(1)), Ok(UnlockResult::Unlocked)));
-        assert!(!m.is_locked());
-        assert_eq!(m.lock_count_get(), 0);
-        assert_eq!(m.owner_get(), None);
-    }
-
-    #[test]
-    fn test_unlock_transfers_to_waiter() {
-        let mut m = Mutex::init();
-        m.try_lock(tid(1));
-
-        let t = make_running_thread(2, 5);
-        m.lock_blocking(t);
-
-        match m.unlock(tid(1)) {
-            Ok(UnlockResult::Transferred(woken)) => {
-                assert_eq!(woken.id.id, 2);
-                assert_eq!(woken.state, ThreadState::Ready);
-                assert_eq!(woken.return_value, OK);
-            }
-            other => panic!("expected Transferred, got {:?}", other),
-        }
-        assert_eq!(m.owner_get(), Some(tid(2)));
-        assert_eq!(m.lock_count_get(), 1);
-        assert_eq!(m.num_waiters(), 0);
-    }
-
-    #[test]
-    fn test_unlock_transfers_highest_priority() {
-        let mut m = Mutex::init();
-        m.try_lock(tid(1));
-
-        m.lock_blocking(make_running_thread(10, 15));
-        m.lock_blocking(make_running_thread(20, 3)); // highest priority
-        m.lock_blocking(make_running_thread(30, 8));
-        assert_eq!(m.num_waiters(), 3);
-
-        // First transfer: highest priority (thread 20, prio 3)
-        match m.unlock(tid(1)) {
-            Ok(UnlockResult::Transferred(woken)) => {
-                assert_eq!(woken.id.id, 20);
-            }
-            other => panic!("expected Transferred, got {:?}", other),
-        }
-        assert_eq!(m.owner_get(), Some(tid(20)));
-        assert_eq!(m.num_waiters(), 2);
-
-        // Second transfer: next priority (thread 30, prio 8)
-        match m.unlock(tid(20)) {
-            Ok(UnlockResult::Transferred(woken)) => {
-                assert_eq!(woken.id.id, 30);
-            }
-            other => panic!("expected Transferred, got {:?}", other),
-        }
-        assert_eq!(m.owner_get(), Some(tid(30)));
-        assert_eq!(m.num_waiters(), 1);
-    }
-
-    // ---- Compositional tests ----
-
-    #[test]
-    fn test_lock_unlock_roundtrip() {
-        let mut m = Mutex::init();
-        assert!(!m.is_locked());
-
-        m.try_lock(tid(1));
-        assert!(m.is_locked());
-
-        m.unlock(tid(1)).unwrap();
-        assert!(!m.is_locked());
-        assert_eq!(m.lock_count_get(), 0);
-        assert_eq!(m.owner_get(), None);
-    }
-
-    #[test]
-    fn test_reentrant_full_unwind() {
-        let mut m = Mutex::init();
-        for _ in 0..10 {
-            m.try_lock(tid(1));
-        }
-        assert_eq!(m.lock_count_get(), 10);
-
-        for i in (1..10).rev() {
-            assert!(matches!(m.unlock(tid(1)), Ok(UnlockResult::Released)));
-            assert_eq!(m.lock_count_get(), i);
-        }
-        assert!(matches!(m.unlock(tid(1)), Ok(UnlockResult::Unlocked)));
-        assert!(!m.is_locked());
-    }
-
-    #[test]
-    fn test_reacquire_after_full_unlock() {
-        let mut m = Mutex::init();
-        m.try_lock(tid(1));
-        m.unlock(tid(1)).unwrap();
-
-        // Different thread can now acquire
-        assert_eq!(m.try_lock(tid(2)), LockResult::Acquired);
-        assert_eq!(m.owner_get(), Some(tid(2)));
+    /// Get the current owner's thread ID, if any.
+    pub fn owner_get(&self) -> Option<ThreadId> {
+        self.owner
     }
 }

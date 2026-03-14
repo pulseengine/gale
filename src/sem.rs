@@ -36,6 +36,7 @@ use crate::wait_queue::WaitQueue;
 verus! {
 
 /// Result of a give operation.
+#[derive(Debug)]
 pub enum GiveResult {
     /// Count was incremented (no waiter was present).
     Incremented,
@@ -46,6 +47,7 @@ pub enum GiveResult {
 }
 
 /// Result of a take operation.
+#[derive(Debug, PartialEq, Eq)]
 pub enum TakeResult {
     /// Semaphore was available; count decremented.
     Acquired,
