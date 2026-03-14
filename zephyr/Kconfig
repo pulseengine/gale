@@ -34,6 +34,15 @@ config GALE_KERNEL_MUTEX
 	  scheduling, and priority inheritance remain native Zephyr C.
 	  Requires a Rust toolchain for the target architecture.
 
+config GALE_KERNEL_CONDVAR
+	bool "Use Gale formally verified condvar"
+	depends on MULTITHREADING
+	help
+	  Mark kernel/condvar.c wait queue operations as verified by
+	  Gale. Condvar is a pure wait queue wrapper with no FFI —
+	  the upstream condvar.c is still compiled, but its wait queue
+	  operations are covered by Gale's Verus proofs.
+
 config GALE_KERNEL_MSGQ
 	bool "Use Gale formally verified message queue"
 	help

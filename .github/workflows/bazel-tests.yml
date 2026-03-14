@@ -1,0 +1,129 @@
+# Bazel-side CI: cargo tests, verus-strip gate, linting
+#
+# Runs the host-side verification and testing pipeline that does not
+# require Zephyr or QEMU.
+
+name: Bazel Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  cargo-tests:
+    name: Cargo Tests (unit + proptest)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Run cargo test
+        run: cargo test --workspace
+
+      - name: Run clippy
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  verus-strip-gate:
+    name: Verus-Strip Gate
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'tools/verus-strip/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Build verus-strip
+        run: cargo build --manifest-path tools/verus-strip/Cargo.toml
+
+      - name: Run verus-strip unit tests
+        run: cargo test --manifest-path tools/verus-strip/Cargo.toml
+
+      - name: Run gate test (verify all Verus sources strip cleanly)
+        run: |
+          cargo test --manifest-path tools/verus-strip/Cargo.toml \
+            --test gate -- --nocapture
+
+  bazel-precommit:
+    name: Bazel Precommit Suite
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Bazel
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/bazel
+          key: bazel-${{ runner.os }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock') }}
+          restore-keys: bazel-${{ runner.os }}-
+
+      - name: Install Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-version: 1.x
+
+      - name: Run precommit suite
+        run: bazel test //:precommit
+
+  summary:
+    name: Bazel Tests Summary
+    runs-on: ubuntu-22.04
+    needs: [cargo-tests, verus-strip-gate, bazel-precommit]
+    if: always()
+    steps:
+      - name: Check results
+        env:
+          CARGO_RESULT: ${{ needs.cargo-tests.result }}
+          GATE_RESULT: ${{ needs.verus-strip-gate.result }}
+          BAZEL_RESULT: ${{ needs.bazel-precommit.result }}
+        run: |
+          failed=0
+          for result in "${CARGO_RESULT}" "${GATE_RESULT}" "${BAZEL_RESULT}"; do
+            if [ "${result}" != "success" ]; then
+              failed=1
+            fi
+          done
+          if [ "${failed}" -eq 1 ]; then
+            echo "::error::One or more Bazel test jobs failed"
+            echo "  cargo-tests: ${CARGO_RESULT}"
+            echo "  verus-strip-gate: ${GATE_RESULT}"
+            echo "  bazel-precommit: ${BAZEL_RESULT}"
+            exit 1
+          fi
+          echo "All Bazel test jobs passed"

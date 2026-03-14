@@ -1,0 +1,229 @@
+# Gale multi-architecture test matrix
+# Used by CI and manual testing to validate across QEMU targets.
+#
+# Architecture support is defined in zephyr/CMakeLists.txt (target triple
+# detection).  Each entry here maps a Zephyr QEMU board to the Rust target
+# triple that Gale will compile for, along with status and notes.
+#
+# Primitives under test: semaphore, mutex, condvar, msgq, stack, pipe (89 tests total on M3).
+#
+# Build command template (substitute BOARD):
+#   west build -b <board> -s zephyr/tests/kernel/<primitive>/<suite> \
+#     -- -DZEPHYR_EXTRA_MODULES=/Volumes/Home/git/zephyr/gale \
+#        -DOVERLAY_CONFIG=/Volumes/Home/git/zephyr/gale/zephyr/gale_overlay.conf
+
+# ---------------------------------------------------------------------------
+# ARM Cortex-M targets
+# ---------------------------------------------------------------------------
+
+targets:
+  - board: qemu_cortex_m3
+    arch: arm
+    cpu: cortex-m3
+    soc: ti_lm3s6965
+    triple: thumbv7m-none-eabi
+    fpu: false
+    status: primary
+    tests_passing: 89
+    notes: >-
+      All 89 tests pass (sem 24, mutex 12, condvar 11, msgq 13, stack 12,
+      pipe 18).  Primary CI target.  No MPU so userspace/fault tests skip
+      (expected).
+
+  - board: qemu_cortex_m0
+    arch: arm
+    cpu: cortex-m0
+    soc: nrf51822
+    triple: thumbv6m-none-eabi
+    fpu: false
+    status: untested
+    notes: >-
+      ARMv6-M: no hardware divide (UDIV/SDIV), no unaligned access.
+      Verify that Gale's checked arithmetic compiles to correct software
+      division sequences.  Thumb-1 only instruction set -- ensure no
+      Thumb-2 instructions leak from Rust codegen.  Also covers M0+
+      (CONFIG_CPU_CORTEX_M0PLUS uses same triple).
+
+  - board: mps2/an386
+    arch: arm
+    cpu: cortex-m4
+    soc: an386
+    triple: thumbv7em-none-eabi
+    fpu: false
+    status: untested
+    notes: >-
+      ARMv7E-M with DSP extensions, no FPU.  Tests the thumbv7em soft-float
+      variant.  QEMU emulates the MPS2 AN386 (Cortex-M4 without FP).  Has MPU
+      so userspace fault tests may produce different skip/pass patterns than M3.
+
+  - board: mps2/an386
+    arch: arm
+    cpu: cortex-m4
+    soc: an386
+    triple: thumbv7em-none-eabihf
+    fpu: true
+    status: untested
+    notes: >-
+      Same board with CONFIG_FPU=y.  Tests the hard-float ABI variant.
+      Verify that Gale's FFI boundary handles FPU context correctly (no
+      float usage expected, but ABI calling convention changes).
+      Build with: -DCONFIG_FPU=y
+
+  - board: mps2/an500
+    arch: arm
+    cpu: cortex-m7
+    soc: an500
+    triple: thumbv7em-none-eabi
+    fpu: false
+    status: untested
+    notes: >-
+      ARMv7E-M Cortex-M7 on MPS2+ AN500.  Same triple as M4 (thumbv7em)
+      but M7 has dual-issue pipeline and different cache behavior.  Good for
+      catching alignment or memory-ordering issues that M3 masks.
+
+  - board: mps2/an521
+    arch: arm
+    cpu: cortex-m33
+    soc: an521
+    triple: thumbv8m.main-none-eabi
+    fpu: false
+    status: untested
+    notes: >-
+      ARMv8-M Mainline (Cortex-M33, SSE-200) on MPS2+ AN521.  TrustZone
+      capable.  Tests the Armv8-M target triple.  Has MPU so userspace tests
+      may pass.  Use cpu0 variant: -b mps2/an521/cpu0.
+      Dual-CPU SoC -- only CPU0 relevant for kernel tests.
+
+  - board: mps2/an521
+    arch: arm
+    cpu: cortex-m33
+    soc: an521
+    triple: thumbv8m.main-none-eabihf
+    fpu: true
+    status: untested
+    notes: >-
+      Same as above with CONFIG_FPU=y for hard-float ABI.  Cortex-M33 has
+      optional FPv5 single-precision FPU.
+      Build with: -b mps2/an521/cpu0 -DCONFIG_FPU=y
+
+  - board: mps2/an383
+    arch: arm
+    cpu: cortex-m0plus
+    soc: an383
+    triple: thumbv6m-none-eabi
+    fpu: false
+    status: untested
+    notes: >-
+      ARMv6-M Cortex-M0+ on MPS2 AN383.  Same triple as M0 (thumbv6m).
+      Has MPU (CONFIG_ARM_MPU=y in defconfig) so some userspace tests may
+      differ from qemu_cortex_m0.
+
+  # ---------------------------------------------------------------------------
+  # ARM Cortex-R target
+  # ---------------------------------------------------------------------------
+
+  - board: qemu_cortex_r5
+    arch: arm
+    cpu: cortex-r5
+    soc: zynqmp_rpu
+    triple: armv7r-none-eabihf
+    fpu: true
+    status: untested
+    notes: >-
+      ARMv7-R (Cortex-R5) on Xilinx ZynqMP RPU.  Hard-float ABI.
+      Safety-critical profile -- highly relevant for ASIL-D goals.
+      Different exception model than Cortex-M (banked registers, no
+      NVIC).  Verify that Gale's interrupt-locking assumptions hold
+      for the R-profile.
+
+  # ---------------------------------------------------------------------------
+  # RISC-V targets
+  # ---------------------------------------------------------------------------
+
+  - board: qemu_riscv32
+    arch: riscv
+    cpu: riscv32
+    soc: qemu_virt_riscv32
+    triple: riscv32imac-unknown-none-elf
+    fpu: false
+    status: untested
+    notes: >-
+      RV32IMAC on QEMU virt machine.  First non-ARM target -- tests
+      portability of Gale's atomic assumptions and interrupt model.
+      RISC-V uses different CSR-based interrupt control.  Also has SMP
+      variant for multi-hart testing.
+
+  - board: qemu_riscv64
+    arch: riscv
+    cpu: riscv64
+    soc: qemu_virt_riscv64
+    triple: riscv64imac-unknown-none-elf
+    fpu: false
+    status: untested
+    notes: >-
+      RV64IMAC on QEMU virt machine.  64-bit pointers and registers --
+      tests Gale's size_t/usize assumptions.  Verify that u32 counter
+      fields in semaphore/stack/pipe models behave correctly on a 64-bit
+      platform.  SMP variant available.
+
+  # ---------------------------------------------------------------------------
+  # x86 targets
+  # ---------------------------------------------------------------------------
+
+  - board: qemu_x86
+    arch: x86
+    cpu: atom
+    soc: atom
+    triple: i686-unknown-none
+    fpu: false
+    status: untested
+    notes: >-
+      IA-32 (x86) on QEMU.  Very different interrupt model (APIC, IDT)
+      and calling convention from ARM.  Tests portability of the C shim
+      and FFI layer.  Has several variants (nommu, xip, virt).
+
+  - board: qemu_x86_64
+    arch: x86
+    cpu: atom
+    soc: atom
+    triple: x86_64-unknown-none
+    fpu: false
+    status: untested
+    notes: >-
+      x86-64 on QEMU.  64-bit with different ABI (System V AMD64).
+      Tests Gale's pointer-size assumptions on a 64-bit non-RISC-V
+      platform.
+
+# ---------------------------------------------------------------------------
+# Architectures in CMakeLists.txt without QEMU boards
+# ---------------------------------------------------------------------------
+#
+# The following are supported by the target triple detection but have no
+# standard QEMU board in Zephyr:
+#
+#   - Cortex-M55 (thumbv8m.main-none-eabi[hf])  -- needs Corstone-300 FVP
+#     Board: mps3/corstone300/an547 (requires Arm FVP, not QEMU)
+#
+#   - Cortex-M85 (thumbv8m.main-none-eabi[hf])  -- needs Corstone-310 FVP
+#     Board: mps3/corstone310/an555 (requires Arm FVP, not QEMU)
+#
+#   - Cortex-A53 (not in Gale CMakeLists.txt target detection)
+#     Board: qemu_cortex_a53 exists but Gale has no A-profile triple mapping
+#
+# ---------------------------------------------------------------------------
+# Test count breakdown (from qemu_cortex_m3 primary target)
+# ---------------------------------------------------------------------------
+#
+#   Primitive    Suites                                         Tests
+#   ---------    ------                                         -----
+#   semaphore    semaphore/semaphore                              24
+#   mutex        mutex/mutex_api (4) + mutex_api_1cpu (5)         12
+#                + sys_mutex (3+1skip)
+#   condvar      condvar/condvar_api (11, 4 skip)                 11
+#   msgq         msgq/msgq_api (4) + msgq_api_1cpu (8)            13
+#                + msgq_usage (1)
+#   stack        stack/contexts (5) + fail (3) + usage (2)         12
+#                + usage_1cpu (2)
+#   pipe         pipe/basic (9) + concurrency (7) + stress (2)    18
+#   ---------                                                   -----
+#   TOTAL                                                         89

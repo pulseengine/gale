@@ -1374,6 +1374,24 @@ artifacts:
       - type: verifies
         target: REQ-TRACTOR-001
 
+  - id: FV-TRACTOR-DIFF
+    type: sw-verification
+    title: Differential specification testing (POSIX/FreeRTOS reference models)
+    status: approved
+    description: >
+      Differential tests in tests/differential_spec.rs that verify Gale's
+      ASIL-D properties against independent POSIX/FreeRTOS reference models.
+      Covers semaphore (invariant, give, reset, random ops), mutex (owner
+      correspondence, reentrant lock/unlock), msgq (conservation), and
+      stack (bounds, random ops). Validates that specifications are
+      mathematically sound, not just Zephyr-specific.
+    tags: [testing, differential, tractor, specification, swe-6]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-TRACTOR-003
+
   - id: FV-TRACTOR-001
     type: sw-verification
     title: verus-strip unit and convergence tests
