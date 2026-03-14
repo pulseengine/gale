@@ -18,7 +18,7 @@ use libfuzzer_sys::fuzz_target;
 use gale::error::*;
 use gale::mutex::{Mutex, UnlockResult};
 use gale::priority::Priority;
-use gale::thread::Thread;
+use gale::thread::{Thread, ThreadId};
 
 #[derive(Arbitrary, Debug)]
 enum FuzzOp {
@@ -38,14 +38,14 @@ fuzz_target!(|input: FuzzInput| {
     for op in &input.ops {
         match op {
             FuzzOp::TryLock { thread_id } => {
-                m.try_lock(*thread_id);
+                m.try_lock(ThreadId { id: *thread_id });
             }
             FuzzOp::Unlock { thread_id } => {
-                let _ = m.unlock(*thread_id);
+                let _ = m.unlock(ThreadId { id: *thread_id });
             }
             FuzzOp::LockBlocking { thread_id, priority } => {
                 let prio = (*priority as u32) % 32;
-                if m.is_locked() && m.owner_get() != Some(*thread_id) && m.num_waiters() < 60 {
+                if m.is_locked() && m.owner_get() != Some(ThreadId { id: *thread_id }) && m.num_waiters() < 60 {
                     if let Some(p) = Priority::new(prio) {
                         let mut t = Thread::new(*thread_id, p);
                         t.dispatch();

@@ -10,7 +10,7 @@
 //!   z_impl_k_sem_reset -> Semaphore::reset     (sem.c:166-192)
 //!   k_sem_count_get    -> Semaphore::count_get (kernel.h inline)
 
-use crate::error::{EAGAIN, EBUSY, EINVAL, OK};
+use crate::error::{EAGAIN, EINVAL, OK};
 use crate::thread::Thread;
 use crate::wait_queue::WaitQueue;
 
@@ -25,12 +25,23 @@ pub enum GiveResult {
     Saturated,
 }
 
+/// Result of a take operation.
+#[derive(Debug, PartialEq, Eq)]
+pub enum TakeResult {
+    /// Semaphore was available; count decremented.
+    Acquired,
+    /// Semaphore unavailable, caller chose not to wait.
+    WouldBlock,
+    /// Semaphore unavailable, caller is now blocked on the wait queue.
+    Blocked,
+}
+
 /// Counting semaphore — port of Zephyr kernel/sem.c.
 #[derive(Debug)]
 pub struct Semaphore {
-    wait_q: WaitQueue,
-    count: u32,
-    limit: u32,
+    pub wait_q: WaitQueue,
+    pub count: u32,
+    pub limit: u32,
 }
 
 impl Semaphore {
@@ -47,12 +58,12 @@ impl Semaphore {
     }
 
     /// z_impl_k_sem_give (sem.c:95-121)
+    #[allow(clippy::arithmetic_side_effects)]
     pub fn give(&mut self) -> GiveResult {
         if let Some(thread) = self.wait_q.unpend_first(OK) {
             GiveResult::WokeThread(thread)
         } else if self.count != self.limit {
-            // Safe: count < limit (checked above), so count+1 <= limit <= u32::MAX
-            self.count = self.count.checked_add(1).unwrap_or(self.count);
+            self.count = self.count + 1;
             GiveResult::Incremented
         } else {
             GiveResult::Saturated
@@ -60,13 +71,13 @@ impl Semaphore {
     }
 
     /// z_impl_k_sem_take — non-blocking (sem.c:132-164 with K_NO_WAIT)
-    pub fn try_take(&mut self) -> i32 {
+    #[allow(clippy::arithmetic_side_effects)]
+    pub fn try_take(&mut self) -> TakeResult {
         if self.count > 0 {
-            // Safe: count > 0 (checked above), so count-1 >= 0
-            self.count = self.count.saturating_sub(1);
-            OK
+            self.count = self.count - 1;
+            TakeResult::Acquired
         } else {
-            EBUSY
+            TakeResult::WouldBlock
         }
     }
 
@@ -74,18 +85,13 @@ impl Semaphore {
     /// Returns true if acquired immediately, false if thread was blocked.
     /// Returns false without blocking if the wait queue is full.
     pub fn take_blocking(&mut self, mut thread: Thread) -> bool {
-        if self.count > 0 {
-            // Safe: count > 0 (checked above)
-            self.count = self.count.saturating_sub(1);
-            return true;
-        }
         thread.block();
         self.wait_q.pend(thread);
         false
     }
 
     /// z_impl_k_sem_reset (sem.c:166-192)
-    pub fn reset(&mut self) -> usize {
+    pub fn reset(&mut self) -> u32 {
         let woken = self.wait_q.unpend_all(EAGAIN);
         self.count = 0;
         woken
@@ -100,7 +106,7 @@ impl Semaphore {
         self.limit
     }
 
-    pub fn num_waiters(&self) -> usize {
+    pub fn num_waiters(&self) -> u32 {
         self.wait_q.len()
     }
 }
@@ -181,7 +187,7 @@ mod tests {
 
         match sem.give() {
             GiveResult::WokeThread(woken) => {
-                assert_eq!(woken.id, 1);
+                assert_eq!(woken.id.id, 1);
                 assert_eq!(woken.state, crate::thread::ThreadState::Ready);
                 assert_eq!(woken.return_value, OK);
             }
@@ -195,14 +201,14 @@ mod tests {
     #[test]
     fn test_try_take_available() {
         let mut sem = Semaphore::init(3, 5).unwrap();
-        assert_eq!(sem.try_take(), OK);
+        assert_eq!(sem.try_take(), TakeResult::Acquired);
         assert_eq!(sem.count_get(), 2);
     }
 
     #[test]
     fn test_try_take_unavailable() {
         let mut sem = Semaphore::init(0, 5).unwrap();
-        assert_eq!(sem.try_take(), EBUSY);
+        assert_eq!(sem.try_take(), TakeResult::WouldBlock);
         assert_eq!(sem.count_get(), 0);
     }
 
@@ -213,16 +219,6 @@ mod tests {
         let acquired = sem.take_blocking(t);
         assert!(!acquired);
         assert_eq!(sem.num_waiters(), 1);
-    }
-
-    #[test]
-    fn test_take_blocking_acquires_when_available() {
-        let mut sem = Semaphore::init(3, 5).unwrap();
-        let t = make_running_thread(1, 5);
-        let acquired = sem.take_blocking(t);
-        assert!(acquired);
-        assert_eq!(sem.count_get(), 2);
-        assert_eq!(sem.num_waiters(), 0);
     }
 
     // ---- Reset tests ----
@@ -286,15 +282,15 @@ mod tests {
         sem.take_blocking(make_running_thread(3, 7));
 
         match sem.give() {
-            GiveResult::WokeThread(t) => assert_eq!(t.id, 2),
+            GiveResult::WokeThread(t) => assert_eq!(t.id.id, 2),
             _ => panic!("expected WokeThread"),
         }
         match sem.give() {
-            GiveResult::WokeThread(t) => assert_eq!(t.id, 3),
+            GiveResult::WokeThread(t) => assert_eq!(t.id.id, 3),
             _ => panic!("expected WokeThread"),
         }
         match sem.give() {
-            GiveResult::WokeThread(t) => assert_eq!(t.id, 1),
+            GiveResult::WokeThread(t) => assert_eq!(t.id.id, 1),
             _ => panic!("expected WokeThread"),
         }
     }

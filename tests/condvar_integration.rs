@@ -49,7 +49,7 @@ fn c2_signal_wakes_highest_priority() {
 
     match cv.signal() {
         SignalResult::Woke(t) => {
-            assert_eq!(t.id, 2);
+            assert_eq!(t.id.id, 2);
             assert_eq!(t.state, ThreadState::Ready);
             assert_eq!(t.return_value, OK);
         }
@@ -136,7 +136,7 @@ fn c7_signal_preserves_priority_order() {
     for (i, &expected_id) in expected.iter().enumerate() {
         match cv.signal() {
             SignalResult::Woke(t) => {
-                assert_eq!(t.id, expected_id, "signal {i}: expected thread {expected_id}");
+                assert_eq!(t.id.id, expected_id, "signal {i}: expected thread {expected_id}");
             }
             SignalResult::Empty => panic!("signal {i}: expected Woke, got Empty"),
         }
@@ -197,7 +197,7 @@ fn n_signals_equivalent_to_broadcast() {
         cv2.wait_blocking(make_running_thread(i, (i % 32)));
     }
     let woken = cv2.broadcast();
-    assert_eq!(woken as u32, n);
+    assert_eq!(woken, n);
     assert_eq!(cv2.num_waiters(), 0);
 }
 

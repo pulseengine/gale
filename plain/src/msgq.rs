@@ -21,11 +21,11 @@ use crate::error::{EINVAL, ENOMSG};
 /// Read/write pointers are represented as slot indices (0..max_msgs-1).
 #[derive(Debug)]
 pub struct MsgQ {
-    msg_size: u32,
-    max_msgs: u32,
-    read_idx: u32,
-    write_idx: u32,
-    used_msgs: u32,
+    pub msg_size: u32,
+    pub max_msgs: u32,
+    pub read_idx: u32,
+    pub write_idx: u32,
+    pub used_msgs: u32,
 }
 
 impl MsgQ {

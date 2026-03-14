@@ -82,7 +82,7 @@ proptest! {
         }
 
         let woken = cv.broadcast();
-        prop_assert_eq!(woken, num_waiters as usize);
+        prop_assert_eq!(woken, num_waiters);
         prop_assert_eq!(cv.num_waiters(), 0);
     }
 
@@ -138,6 +138,6 @@ proptest! {
         // Broadcast removes the rest
         let remaining = num_waiters - signals;
         let woken = cv.broadcast();
-        prop_assert_eq!(woken, remaining as usize);
+        prop_assert_eq!(woken, remaining);
     }
 }

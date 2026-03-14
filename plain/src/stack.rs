@@ -16,8 +16,8 @@ use crate::error::{EBUSY, EINVAL, ENOMEM, OK};
 /// count = (next - base), capacity = (top - base).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stack {
-    capacity: u32,
-    count: u32,
+    pub capacity: u32,
+    pub count: u32,
 }
 
 impl Stack {

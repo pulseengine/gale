@@ -15,7 +15,11 @@
 use gale::error::*;
 use gale::mutex::{LockResult, Mutex, UnlockResult};
 use gale::priority::Priority;
-use gale::thread::{Thread, ThreadState};
+use gale::thread::{Thread, ThreadId, ThreadState};
+
+fn tid(id: u32) -> ThreadId {
+    ThreadId { id }
+}
 
 fn make_running_thread(id: u32, prio: u32) -> Thread {
     let mut t = Thread::new(id, Priority::new(prio).unwrap());
@@ -37,7 +41,7 @@ fn m1_invariant_after_init() {
 #[test]
 fn m1_invariant_after_lock() {
     let mut m = Mutex::init();
-    m.try_lock(1);
+    m.try_lock(tid(1));
     assert!(m.lock_count_get() > 0);
     assert!(m.owner_get().is_some());
 }
@@ -45,8 +49,8 @@ fn m1_invariant_after_lock() {
 #[test]
 fn m1_invariant_after_full_unlock() {
     let mut m = Mutex::init();
-    m.try_lock(1);
-    m.unlock(1).unwrap();
+    m.try_lock(tid(1));
+    m.unlock(tid(1)).unwrap();
     assert_eq!(m.lock_count_get(), 0);
     assert!(m.owner_get().is_none());
 }
@@ -58,7 +62,7 @@ fn m1_invariant_after_full_unlock() {
 #[test]
 fn m2_waiters_implies_locked() {
     let mut m = Mutex::init();
-    m.try_lock(1);
+    m.try_lock(tid(1));
     m.lock_blocking(make_running_thread(2, 5));
     assert!(m.num_waiters() > 0);
     assert!(m.is_locked());
@@ -71,8 +75,8 @@ fn m2_waiters_implies_locked() {
 #[test]
 fn m3_lock_unlocked_mutex() {
     let mut m = Mutex::init();
-    assert_eq!(m.try_lock(42), LockResult::Acquired);
-    assert_eq!(m.owner_get(), Some(42));
+    assert_eq!(m.try_lock(tid(42)), LockResult::Acquired);
+    assert_eq!(m.owner_get(), Some(tid(42)));
     assert_eq!(m.lock_count_get(), 1);
 }
 
@@ -83,11 +87,11 @@ fn m3_lock_unlocked_mutex() {
 #[test]
 fn m4_reentrant_lock() {
     let mut m = Mutex::init();
-    m.try_lock(1);
+    m.try_lock(tid(1));
     for depth in 2..=10 {
-        assert_eq!(m.try_lock(1), LockResult::Acquired);
+        assert_eq!(m.try_lock(tid(1)), LockResult::Acquired);
         assert_eq!(m.lock_count_get(), depth);
-        assert_eq!(m.owner_get(), Some(1));
+        assert_eq!(m.owner_get(), Some(tid(1)));
     }
 }
 
@@ -98,11 +102,11 @@ fn m4_reentrant_lock() {
 #[test]
 fn m5_lock_contention() {
     let mut m = Mutex::init();
-    m.try_lock(1);
-    assert_eq!(m.try_lock(2), LockResult::WouldBlock);
-    assert_eq!(m.try_lock(3), LockResult::WouldBlock);
+    m.try_lock(tid(1));
+    assert_eq!(m.try_lock(tid(2)), LockResult::WouldBlock);
+    assert_eq!(m.try_lock(tid(3)), LockResult::WouldBlock);
     // State unchanged
-    assert_eq!(m.owner_get(), Some(1));
+    assert_eq!(m.owner_get(), Some(tid(1)));
     assert_eq!(m.lock_count_get(), 1);
 }
 
@@ -113,16 +117,16 @@ fn m5_lock_contention() {
 #[test]
 fn m6a_unlock_not_locked() {
     let mut m = Mutex::init();
-    assert!(matches!(m.unlock(1), Err(EINVAL)));
+    assert!(matches!(m.unlock(tid(1)), Err(EINVAL)));
 }
 
 #[test]
 fn m6b_unlock_not_owner() {
     let mut m = Mutex::init();
-    m.try_lock(1);
-    assert!(matches!(m.unlock(2), Err(EPERM)));
+    m.try_lock(tid(1));
+    assert!(matches!(m.unlock(tid(2)), Err(EPERM)));
     // State unchanged
-    assert_eq!(m.owner_get(), Some(1));
+    assert_eq!(m.owner_get(), Some(tid(1)));
     assert_eq!(m.lock_count_get(), 1);
 }
 
@@ -133,13 +137,13 @@ fn m6b_unlock_not_owner() {
 #[test]
 fn m7_reentrant_unlock() {
     let mut m = Mutex::init();
-    m.try_lock(1);
-    m.try_lock(1);
-    m.try_lock(1);
+    m.try_lock(tid(1));
+    m.try_lock(tid(1));
+    m.try_lock(tid(1));
 
-    assert!(matches!(m.unlock(1), Ok(UnlockResult::Released)));
+    assert!(matches!(m.unlock(tid(1)), Ok(UnlockResult::Released)));
     assert_eq!(m.lock_count_get(), 2);
-    assert_eq!(m.owner_get(), Some(1));
+    assert_eq!(m.owner_get(), Some(tid(1)));
 }
 
 // ==========================================================================
@@ -149,19 +153,19 @@ fn m7_reentrant_unlock() {
 #[test]
 fn m8_ownership_transfer() {
     let mut m = Mutex::init();
-    m.try_lock(1);
+    m.try_lock(tid(1));
     m.lock_blocking(make_running_thread(2, 5));
     m.lock_blocking(make_running_thread(3, 3)); // higher priority
 
-    match m.unlock(1) {
+    match m.unlock(tid(1)) {
         Ok(UnlockResult::Transferred(t)) => {
-            assert_eq!(t.id, 3); // highest priority woken first
+            assert_eq!(t.id.id, 3); // highest priority woken first
             assert_eq!(t.state, ThreadState::Ready);
             assert_eq!(t.return_value, OK);
         }
         other => panic!("expected Transferred, got {other:?}"),
     }
-    assert_eq!(m.owner_get(), Some(3));
+    assert_eq!(m.owner_get(), Some(tid(3)));
     assert_eq!(m.lock_count_get(), 1);
     assert_eq!(m.num_waiters(), 1); // thread 2 still waiting
 }
@@ -173,8 +177,8 @@ fn m8_ownership_transfer() {
 #[test]
 fn m9_full_unlock() {
     let mut m = Mutex::init();
-    m.try_lock(1);
-    assert!(matches!(m.unlock(1), Ok(UnlockResult::Unlocked)));
+    m.try_lock(tid(1));
+    assert!(matches!(m.unlock(tid(1)), Ok(UnlockResult::Unlocked)));
     assert!(!m.is_locked());
     assert_eq!(m.lock_count_get(), 0);
     assert_eq!(m.owner_get(), None);
@@ -189,10 +193,10 @@ fn m10_no_overflow() {
     // The Verus code requires lock_count < u32::MAX as precondition.
     // The plain code uses checked_add. Verify it doesn't panic.
     let mut m = Mutex::init();
-    m.try_lock(1);
+    m.try_lock(tid(1));
     // Lock many times to exercise the addition
     for _ in 0..1000 {
-        m.try_lock(1);
+        m.try_lock(tid(1));
     }
     assert_eq!(m.lock_count_get(), 1001);
 }
@@ -204,7 +208,7 @@ fn m10_no_overflow() {
 #[test]
 fn m11_priority_ordering() {
     let mut m = Mutex::init();
-    m.try_lock(1);
+    m.try_lock(tid(1));
 
     // Block threads in non-priority order
     m.lock_blocking(make_running_thread(10, 15));
@@ -218,7 +222,7 @@ fn m11_priority_ordering() {
         let current_owner = m.owner_get().unwrap();
         match m.unlock(current_owner) {
             Ok(UnlockResult::Transferred(t)) => {
-                assert_eq!(t.id, expected_id, "transfer {i}: expected thread {expected_id}");
+                assert_eq!(t.id.id, expected_id, "transfer {i}: expected thread {expected_id}");
             }
             other => panic!("transfer {i}: expected Transferred, got {other:?}"),
         }
@@ -236,8 +240,8 @@ fn m11_priority_ordering() {
 fn lock_unlock_roundtrip() {
     let mut m = Mutex::init();
     for thread_id in 1..=5 {
-        assert_eq!(m.try_lock(thread_id), LockResult::Acquired);
-        m.unlock(thread_id).unwrap();
+        assert_eq!(m.try_lock(tid(thread_id)), LockResult::Acquired);
+        m.unlock(tid(thread_id)).unwrap();
         assert!(!m.is_locked());
     }
 }
@@ -247,15 +251,15 @@ fn reentrant_full_unwind() {
     let mut m = Mutex::init();
     let depth = 20;
     for _ in 0..depth {
-        m.try_lock(1);
+        m.try_lock(tid(1));
     }
     assert_eq!(m.lock_count_get(), depth);
 
     for remaining in (1..depth).rev() {
-        m.unlock(1).unwrap();
+        m.unlock(tid(1)).unwrap();
         assert_eq!(m.lock_count_get(), remaining);
         assert!(m.is_locked());
     }
-    m.unlock(1).unwrap();
+    m.unlock(tid(1)).unwrap();
     assert!(!m.is_locked());
 }

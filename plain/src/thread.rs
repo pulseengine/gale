@@ -5,6 +5,14 @@
 
 use crate::priority::Priority;
 
+/// Unique thread identifier.
+/// In Zephyr this is the pointer to the k_thread struct;
+/// here we use a simple index for verifiability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThreadId {
+    pub id: u32,
+}
+
 /// Thread execution state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
@@ -17,7 +25,7 @@ pub enum ThreadState {
 /// Minimal thread model for synchronization verification.
 #[derive(Debug, Clone)]
 pub struct Thread {
-    pub id: u32,
+    pub id: ThreadId,
     pub priority: Priority,
     pub state: ThreadState,
     pub return_value: i32,
@@ -26,7 +34,7 @@ pub struct Thread {
 impl Thread {
     pub fn new(id: u32, priority: Priority) -> Self {
         Thread {
-            id,
+            id: ThreadId { id },
             priority,
             state: ThreadState::Ready,
             return_value: 0,
@@ -92,7 +100,7 @@ mod tests {
     fn test_new_thread_defaults() {
         let p = Priority::new(0).unwrap();
         let t = Thread::new(99, p);
-        assert_eq!(t.id, 99);
+        assert_eq!(t.id.id, 99);
         assert_eq!(t.return_value, 0);
         assert_eq!(t.state, ThreadState::Ready);
     }

@@ -25,7 +25,7 @@ pub enum SignalResult {
 /// Condition variable — port of Zephyr kernel/condvar.c.
 #[derive(Debug)]
 pub struct CondVar {
-    wait_q: WaitQueue,
+    pub wait_q: WaitQueue,
 }
 
 impl CondVar {
@@ -42,7 +42,7 @@ impl CondVar {
     }
 
     /// z_impl_k_condvar_broadcast (condvar.c:73-96)
-    pub fn broadcast(&mut self) -> usize {
+    pub fn broadcast(&mut self) -> u32 {
         self.wait_q.unpend_all(OK)
     }
 
@@ -53,7 +53,7 @@ impl CondVar {
     }
 
     /// Get the number of threads waiting on this condvar.
-    pub fn num_waiters(&self) -> usize {
+    pub fn num_waiters(&self) -> u32 {
         self.wait_q.len()
     }
 
@@ -112,7 +112,7 @@ mod tests {
         // Signal wakes highest priority (thread 2, prio 3)
         match cv.signal() {
             SignalResult::Woke(t) => {
-                assert_eq!(t.id, 2);
+                assert_eq!(t.id.id, 2);
                 assert_eq!(t.state, ThreadState::Ready);
                 assert_eq!(t.return_value, OK);
             }
@@ -182,15 +182,15 @@ mod tests {
 
         // Signal should wake in priority order
         match cv.signal() {
-            SignalResult::Woke(t) => assert_eq!(t.id, 20),
+            SignalResult::Woke(t) => assert_eq!(t.id.id, 20),
             SignalResult::Empty => panic!("expected Woke"),
         }
         match cv.signal() {
-            SignalResult::Woke(t) => assert_eq!(t.id, 30),
+            SignalResult::Woke(t) => assert_eq!(t.id.id, 30),
             SignalResult::Empty => panic!("expected Woke"),
         }
         match cv.signal() {
-            SignalResult::Woke(t) => assert_eq!(t.id, 10),
+            SignalResult::Woke(t) => assert_eq!(t.id.id, 10),
             SignalResult::Empty => panic!("expected Woke"),
         }
     }
@@ -225,7 +225,7 @@ mod tests {
         cv.wait_blocking(make_running_thread(2, 3));
         assert_eq!(cv.num_waiters(), 1);
         match cv.signal() {
-            SignalResult::Woke(t) => assert_eq!(t.id, 2),
+            SignalResult::Woke(t) => assert_eq!(t.id.id, 2),
             SignalResult::Empty => panic!("expected Woke"),
         }
     }

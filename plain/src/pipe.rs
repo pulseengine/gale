@@ -22,9 +22,9 @@ pub const FLAG_RESET: u8 = 2;
 /// size = ring_buf.size, used = ring_buf_size_get(&buf).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pipe {
-    size: u32,
-    used: u32,
-    flags: u8,
+    pub size: u32,
+    pub used: u32,
+    pub flags: u8,
 }
 
 impl Pipe {

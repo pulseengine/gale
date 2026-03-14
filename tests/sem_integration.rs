@@ -14,7 +14,7 @@
 
 use gale::error::*;
 use gale::priority::Priority;
-use gale::sem::{GiveResult, Semaphore};
+use gale::sem::{GiveResult, Semaphore, TakeResult};
 use gale::thread::Thread;
 
 fn make_running_thread(id: u32, prio: u32) -> Thread {
@@ -109,7 +109,7 @@ fn give_wakes_highest_priority_thread() {
     // Give should wake priority 2 first (thread id 2)
     match sem.give() {
         GiveResult::WokeThread(t) => {
-            assert_eq!(t.id, 2);
+            assert_eq!(t.id.id, 2);
             assert_eq!(t.return_value, OK);
         }
         other => panic!("expected WokeThread, got {other:?}"),
@@ -125,7 +125,7 @@ fn give_wakes_highest_priority_thread() {
 fn take_decrements_by_one() {
     let mut sem = Semaphore::init(5, 5).unwrap();
     for expected in (0..5).rev() {
-        assert_eq!(sem.try_take(), OK);
+        assert_eq!(sem.try_take(), TakeResult::Acquired);
         assert_eq!(sem.count_get(), expected);
     }
 }
@@ -135,9 +135,9 @@ fn take_decrements_by_one() {
 // ==========================================================================
 
 #[test]
-fn take_empty_returns_ebusy() {
+fn take_empty_returns_wouldblock() {
     let mut sem = Semaphore::init(0, 5).unwrap();
-    assert_eq!(sem.try_take(), EBUSY);
+    assert_eq!(sem.try_take(), TakeResult::WouldBlock);
     assert_eq!(sem.count_get(), 0);
 }
 
@@ -205,7 +205,7 @@ fn wait_queue_ordering_across_operations() {
     let expected_ids = [4, 2, 5, 3, 1];
     for &expected_id in &expected_ids {
         match sem.give() {
-            GiveResult::WokeThread(t) => assert_eq!(t.id, expected_id),
+            GiveResult::WokeThread(t) => assert_eq!(t.id.id, expected_id),
             other => panic!("expected WokeThread, got {other:?}"),
         }
     }

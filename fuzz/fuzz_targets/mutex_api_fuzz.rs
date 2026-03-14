@@ -17,6 +17,7 @@
 use libfuzzer_sys::fuzz_target;
 use gale::error::*;
 use gale::mutex::{LockResult, Mutex, UnlockResult};
+use gale::thread::ThreadId;
 
 fuzz_target!(|data: &[u8]| {
     if data.len() < 6 {
@@ -30,28 +31,31 @@ fuzz_target!(|data: &[u8]| {
 
     let mut m = Mutex::init();
 
+    let owner_tid = ThreadId { id: owner_id };
+    let other_tid = ThreadId { id: other_id };
+
     // Unlock on empty mutex must fail
-    assert!(m.unlock(owner_id).is_err());
+    assert!(m.unlock(owner_tid).is_err());
 
     // Lock owner_id `depth` times
     for i in 0..depth {
-        assert_eq!(m.try_lock(owner_id), LockResult::Acquired);
+        assert_eq!(m.try_lock(owner_tid), LockResult::Acquired);
         assert_eq!(m.lock_count_get(), i + 1);
-        assert_eq!(m.owner_get(), Some(owner_id));
+        assert_eq!(m.owner_get(), Some(owner_tid));
     }
 
     if depth > 0 {
         // other_id cannot lock
-        assert_eq!(m.try_lock(other_id), LockResult::WouldBlock);
+        assert_eq!(m.try_lock(other_tid), LockResult::WouldBlock);
 
         // other_id cannot unlock
         if other_id != owner_id {
-            assert!(matches!(m.unlock(other_id), Err(EPERM)));
+            assert!(matches!(m.unlock(other_tid), Err(EPERM)));
         }
 
         // Unwind all locks
         for remaining in (1..depth).rev() {
-            match m.unlock(owner_id) {
+            match m.unlock(owner_tid) {
                 Ok(UnlockResult::Released) => {
                     assert_eq!(m.lock_count_get(), remaining);
                 }
@@ -60,7 +64,7 @@ fuzz_target!(|data: &[u8]| {
         }
 
         // Final unlock
-        match m.unlock(owner_id) {
+        match m.unlock(owner_tid) {
             Ok(UnlockResult::Unlocked) => {
                 assert!(!m.is_locked());
                 assert_eq!(m.lock_count_get(), 0);

@@ -16,6 +16,8 @@ pub const ENOMEM: i32 = -12;
 pub const EPIPE: i32 = -32;
 /// No message of desired type (message queue empty/full).
 pub const ENOMSG: i32 = -42;
+/// Timed out.
+pub const ETIMEDOUT: i32 = -110;
 /// Operation canceled (pipe resetting).
 pub const ECANCELED: i32 = -125;
 /// Success.
