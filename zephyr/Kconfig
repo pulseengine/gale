@@ -33,3 +33,33 @@ config GALE_KERNEL_MUTEX
 	  arithmetic are handled by verified Rust code. Wait queue,
 	  scheduling, and priority inheritance remain native Zephyr C.
 	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_MSGQ
+	bool "Use Gale formally verified message queue"
+	help
+	  Replace kernel/msg_q.c with the Gale formally verified Rust
+	  implementation. The ring buffer index arithmetic is handled
+	  by verified Rust code. Wait queue, scheduling, memcpy,
+	  polling, and tracing remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_STACK
+	bool "Use Gale formally verified stack"
+	depends on MULTITHREADING
+	help
+	  Replace kernel/stack.c with the Gale formally verified Rust
+	  implementation. The LIFO capacity check and count tracking
+	  are handled by verified Rust code. Wait queue, scheduling,
+	  data storage, and tracing remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_PIPE
+	bool "Use Gale formally verified pipe"
+	depends on MULTITHREADING
+	help
+	  Replace kernel/pipe.c with the Gale formally verified Rust
+	  implementation. The state machine validation and byte count
+	  computation are handled by verified Rust code. Ring buffer
+	  data transfer, wait queues, scheduling, direct-copy, and
+	  tracing remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.

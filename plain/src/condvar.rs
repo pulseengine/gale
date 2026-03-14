@@ -38,10 +38,7 @@ impl CondVar {
 
     /// z_impl_k_condvar_signal (condvar.c:44-61)
     pub fn signal(&mut self) -> SignalResult {
-        match self.wait_q.unpend_first(OK) {
-            Some(t) => SignalResult::Woke(t),
-            None => SignalResult::Empty,
-        }
+        self.wait_q.unpend_first(OK).map_or(SignalResult::Empty, SignalResult::Woke)
     }
 
     /// z_impl_k_condvar_broadcast (condvar.c:73-96)
@@ -62,7 +59,7 @@ impl CondVar {
 
     /// Check if any threads are waiting.
     pub fn has_waiters(&self) -> bool {
-        self.wait_q.len() > 0
+        !self.wait_q.is_empty()
     }
 }
 
@@ -161,7 +158,7 @@ mod tests {
     fn test_broadcast_returns_count() {
         let mut cv = CondVar::init();
         for i in 0..10 {
-            cv.wait_blocking(make_running_thread(i, (i % 32)));
+            cv.wait_blocking(make_running_thread(i, i % 32));
         }
         assert_eq!(cv.broadcast(), 10);
     }
@@ -186,15 +183,15 @@ mod tests {
         // Signal should wake in priority order
         match cv.signal() {
             SignalResult::Woke(t) => assert_eq!(t.id, 20),
-            _ => panic!("expected Woke"),
+            SignalResult::Empty => panic!("expected Woke"),
         }
         match cv.signal() {
             SignalResult::Woke(t) => assert_eq!(t.id, 30),
-            _ => panic!("expected Woke"),
+            SignalResult::Empty => panic!("expected Woke"),
         }
         match cv.signal() {
             SignalResult::Woke(t) => assert_eq!(t.id, 10),
-            _ => panic!("expected Woke"),
+            SignalResult::Empty => panic!("expected Woke"),
         }
     }
 
@@ -229,7 +226,7 @@ mod tests {
         assert_eq!(cv.num_waiters(), 1);
         match cv.signal() {
             SignalResult::Woke(t) => assert_eq!(t.id, 2),
-            _ => panic!("expected Woke"),
+            SignalResult::Empty => panic!("expected Woke"),
         }
     }
 
@@ -238,7 +235,7 @@ mod tests {
         let mut cv = CondVar::init();
         let n = 5;
         for i in 0..n {
-            cv.wait_blocking(make_running_thread(i, (i % 32)));
+            cv.wait_blocking(make_running_thread(i, i % 32));
         }
 
         for _ in 0..n {

@@ -433,3 +433,544 @@ mod kani_condvar_proofs {
         assert_eq!(cv.num_waiters(), 0);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Message queue harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_msgq_proofs {
+    use gale::error::*;
+    use gale::msgq::MsgQ;
+
+    /// MQ2: init rejects invalid parameters.
+    #[kani::proof]
+    fn msgq_init_validates_parameters() {
+        let msg_size: u32 = kani::any();
+        let max_msgs: u32 = kani::any();
+
+        kani::assume(msg_size <= 256);
+        kani::assume(max_msgs <= 64);
+
+        match MsgQ::init(msg_size, max_msgs) {
+            Ok(mq) => {
+                assert!(msg_size > 0);
+                assert!(max_msgs > 0);
+                assert!(msg_size.checked_mul(max_msgs).is_some());
+                assert_eq!(mq.num_used_get(), 0);
+                assert_eq!(mq.num_free_get(), max_msgs);
+            }
+            Err(e) => {
+                assert_eq!(e, EINVAL);
+                assert!(
+                    msg_size == 0
+                        || max_msgs == 0
+                        || msg_size.checked_mul(max_msgs).is_none()
+                );
+            }
+        }
+    }
+
+    /// MQ5/MQ6: put preserves invariant.
+    #[kani::proof]
+    fn msgq_put_preserves_invariant() {
+        let max_msgs: u32 = kani::any();
+        kani::assume(max_msgs > 0 && max_msgs <= 8);
+
+        let mut mq = MsgQ::init(4, max_msgs).unwrap();
+
+        // Put some messages
+        let n: u32 = kani::any();
+        kani::assume(n <= max_msgs);
+
+        let mut i: u32 = 0;
+        while i < n {
+            mq.put().unwrap();
+            i += 1;
+        }
+
+        // Try one more
+        let result = mq.put();
+        if n < max_msgs {
+            assert!(result.is_ok());
+            assert_eq!(mq.num_used_get(), n + 1);
+        } else {
+            assert!(result.is_err());
+            assert_eq!(mq.num_used_get(), n);
+        }
+        assert!(mq.num_used_get() <= mq.max_msgs_get());
+    }
+
+    /// MQ8/MQ9: get preserves invariant.
+    #[kani::proof]
+    fn msgq_get_preserves_invariant() {
+        let max_msgs: u32 = kani::any();
+        kani::assume(max_msgs > 0 && max_msgs <= 8);
+
+        let mut mq = MsgQ::init(4, max_msgs).unwrap();
+
+        let n: u32 = kani::any();
+        kani::assume(n <= max_msgs);
+
+        let mut i: u32 = 0;
+        while i < n {
+            mq.put().unwrap();
+            i += 1;
+        }
+
+        let result = mq.get();
+        if n > 0 {
+            assert!(result.is_ok());
+            assert_eq!(mq.num_used_get(), n - 1);
+        } else {
+            assert!(result.is_err());
+            assert_eq!(mq.num_used_get(), 0);
+        }
+    }
+
+    /// MQ7: put_front retreats read_idx correctly.
+    #[kani::proof]
+    fn msgq_put_front_preserves_invariant() {
+        let max_msgs: u32 = kani::any();
+        kani::assume(max_msgs > 0 && max_msgs <= 8);
+
+        let mut mq = MsgQ::init(4, max_msgs).unwrap();
+
+        let n: u32 = kani::any();
+        kani::assume(n < max_msgs);
+
+        let mut i: u32 = 0;
+        while i < n {
+            mq.put().unwrap();
+            i += 1;
+        }
+
+        let result = mq.put_front();
+        assert!(result.is_ok());
+        assert_eq!(mq.num_used_get(), n + 1);
+        assert!(mq.num_used_get() <= mq.max_msgs_get());
+    }
+
+    /// MQ10: peek_at returns valid slot.
+    #[kani::proof]
+    fn msgq_peek_at_valid_slot() {
+        let max_msgs: u32 = kani::any();
+        kani::assume(max_msgs > 0 && max_msgs <= 8);
+
+        let mut mq = MsgQ::init(4, max_msgs).unwrap();
+
+        let n: u32 = kani::any();
+        kani::assume(n > 0 && n <= max_msgs);
+
+        let mut i: u32 = 0;
+        while i < n {
+            mq.put().unwrap();
+            i += 1;
+        }
+
+        let idx: u32 = kani::any();
+        kani::assume(idx < n);
+        let slot = mq.peek_at(idx).unwrap();
+        assert!(slot < max_msgs);
+    }
+
+    /// MQ11: purge resets queue.
+    #[kani::proof]
+    fn msgq_purge_resets() {
+        let max_msgs: u32 = kani::any();
+        kani::assume(max_msgs > 0 && max_msgs <= 8);
+
+        let mut mq = MsgQ::init(4, max_msgs).unwrap();
+
+        let n: u32 = kani::any();
+        kani::assume(n <= max_msgs);
+
+        let mut i: u32 = 0;
+        while i < n {
+            mq.put().unwrap();
+            i += 1;
+        }
+
+        let old_used = mq.purge();
+        assert_eq!(old_used, n);
+        assert_eq!(mq.num_used_get(), 0);
+        assert!(mq.is_empty());
+        assert_eq!(mq.read_idx_get(), mq.write_idx_get());
+    }
+
+    /// MQ13: ring consistency after operation sequence.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn msgq_operation_sequence_ring_consistency() {
+        let max_msgs: u32 = kani::any();
+        kani::assume(max_msgs > 0 && max_msgs <= 4);
+
+        let mut mq = MsgQ::init(4, max_msgs).unwrap();
+
+        for _ in 0..5 {
+            let op: u8 = kani::any();
+            kani::assume(op < 4);
+            match op {
+                0 => { let _ = mq.put(); }
+                1 => { let _ = mq.get(); }
+                2 => { let _ = mq.put_front(); }
+                _ => { mq.purge(); }
+            }
+            assert!(mq.num_used_get() <= mq.max_msgs_get());
+            let expected = (mq.read_idx_get() + mq.num_used_get()) % mq.max_msgs_get();
+            assert_eq!(mq.write_idx_get(), expected);
+        }
+    }
+
+    /// Fill-drain roundtrip returns to empty.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn msgq_fill_drain_roundtrip() {
+        let max_msgs: u32 = kani::any();
+        kani::assume(max_msgs > 0 && max_msgs <= 5);
+
+        let mut mq = MsgQ::init(4, max_msgs).unwrap();
+
+        let mut i: u32 = 0;
+        while i < max_msgs {
+            mq.put().unwrap();
+            i += 1;
+        }
+        assert!(mq.is_full());
+
+        i = 0;
+        while i < max_msgs {
+            mq.get().unwrap();
+            i += 1;
+        }
+        assert!(mq.is_empty());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Stack harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_stack_proofs {
+    use gale::error::*;
+    use gale::stack::Stack;
+
+    /// SK1/SK2: init rejects zero capacity, accepts valid.
+    #[kani::proof]
+    fn stack_init_validates_parameters() {
+        let capacity: u32 = kani::any();
+        kani::assume(capacity <= 100);
+
+        match Stack::init(capacity) {
+            Ok(s) => {
+                assert!(capacity > 0);
+                assert_eq!(s.num_used(), 0);
+                assert_eq!(s.num_free(), capacity);
+                assert!(s.is_empty());
+            }
+            Err(e) => {
+                assert_eq!(e, EINVAL);
+                assert_eq!(capacity, 0);
+            }
+        }
+    }
+
+    /// SK3/SK4: push preserves invariant.
+    #[kani::proof]
+    fn stack_push_preserves_invariant() {
+        let capacity: u32 = kani::any();
+        kani::assume(capacity > 0 && capacity <= 16);
+
+        let mut s = Stack::init(capacity).unwrap();
+
+        let n: u32 = kani::any();
+        kani::assume(n <= capacity);
+
+        let mut i: u32 = 0;
+        while i < n {
+            assert_eq!(s.push(), OK);
+            i += 1;
+        }
+
+        let rc = s.push();
+        if n < capacity {
+            assert_eq!(rc, OK);
+            assert_eq!(s.num_used(), n + 1);
+        } else {
+            assert_eq!(rc, ENOMEM);
+            assert_eq!(s.num_used(), n);
+        }
+    }
+
+    /// SK5/SK6: pop preserves invariant.
+    #[kani::proof]
+    fn stack_pop_preserves_invariant() {
+        let capacity: u32 = kani::any();
+        kani::assume(capacity > 0 && capacity <= 16);
+
+        let mut s = Stack::init(capacity).unwrap();
+
+        let n: u32 = kani::any();
+        kani::assume(n <= capacity);
+
+        let mut i: u32 = 0;
+        while i < n {
+            s.push();
+            i += 1;
+        }
+
+        let rc = s.pop();
+        if n > 0 {
+            assert_eq!(rc, OK);
+            assert_eq!(s.num_used(), n - 1);
+        } else {
+            assert_eq!(rc, EBUSY);
+            assert_eq!(s.num_used(), 0);
+        }
+    }
+
+    /// SK7: conservation after arbitrary operations.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn stack_conservation_after_ops() {
+        let capacity: u32 = kani::any();
+        kani::assume(capacity > 0 && capacity <= 8);
+
+        let mut s = Stack::init(capacity).unwrap();
+
+        for _ in 0..5 {
+            let push: bool = kani::any();
+            if push {
+                s.push();
+            } else {
+                s.pop();
+            }
+            assert_eq!(s.num_free() + s.num_used(), capacity);
+        }
+    }
+
+    /// SK9: push-pop roundtrip preserves state.
+    #[kani::proof]
+    fn stack_push_pop_roundtrip() {
+        let capacity: u32 = kani::any();
+        kani::assume(capacity > 0 && capacity <= 16);
+
+        let fill: u32 = kani::any();
+        kani::assume(fill < capacity);
+
+        let mut s = Stack::init(capacity).unwrap();
+        let mut i: u32 = 0;
+        while i < fill {
+            s.push();
+            i += 1;
+        }
+        let original = s.clone();
+
+        assert_eq!(s.push(), OK);
+        assert_eq!(s.pop(), OK);
+        assert_eq!(s, original);
+    }
+
+    /// Fill-drain roundtrip returns to empty.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn stack_fill_drain_roundtrip() {
+        let capacity: u32 = kani::any();
+        kani::assume(capacity > 0 && capacity <= 5);
+
+        let mut s = Stack::init(capacity).unwrap();
+
+        let mut i: u32 = 0;
+        while i < capacity {
+            assert_eq!(s.push(), OK);
+            i += 1;
+        }
+        assert!(s.is_full());
+
+        i = 0;
+        while i < capacity {
+            assert_eq!(s.pop(), OK);
+            i += 1;
+        }
+        assert!(s.is_empty());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Pipe harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_pipe_proofs {
+    use gale::error::*;
+    use gale::pipe::Pipe;
+
+    /// PP1: init establishes invariant.
+    #[kani::proof]
+    fn pipe_init_invariant() {
+        let size: u32 = kani::any();
+        kani::assume(size <= 256);
+
+        match Pipe::init(size) {
+            Ok(p) => {
+                assert!(size > 0);
+                assert!(p.is_empty());
+                assert!(p.is_open());
+                assert!(!p.is_resetting());
+                assert_eq!(p.space_get() + p.data_get(), size);
+            }
+            Err(e) => {
+                assert_eq!(e, EINVAL);
+                assert_eq!(size, 0);
+            }
+        }
+    }
+
+    /// PP2/PP8: write preserves invariant and computes correct byte count.
+    #[kani::proof]
+    fn pipe_write_preserves_invariant() {
+        let size: u32 = kani::any();
+        kani::assume(size > 0 && size <= 16);
+
+        let fill: u32 = kani::any();
+        kani::assume(fill <= size);
+
+        let request: u32 = kani::any();
+        kani::assume(request <= 64);
+
+        let mut p = Pipe::init(size).unwrap();
+        if fill > 0 {
+            p.write_check(fill).unwrap();
+        }
+
+        let free = p.space_get();
+        match p.write_check(request) {
+            Ok(n) => {
+                assert!(n > 0);
+                assert!(n <= request);
+                assert!(n <= free);
+                if request <= free {
+                    assert_eq!(n, request);
+                } else {
+                    assert_eq!(n, free);
+                }
+            }
+            Err(EAGAIN) => assert_eq!(free, 0),
+            Err(ENOMSG) => assert_eq!(request, 0),
+            Err(_) => panic!("unexpected error"),
+        }
+        assert_eq!(p.space_get() + p.data_get(), size);
+    }
+
+    /// PP3/PP9: read preserves invariant and computes correct byte count.
+    #[kani::proof]
+    fn pipe_read_preserves_invariant() {
+        let size: u32 = kani::any();
+        kani::assume(size > 0 && size <= 16);
+
+        let fill: u32 = kani::any();
+        kani::assume(fill <= size);
+
+        let request: u32 = kani::any();
+        kani::assume(request <= 64);
+
+        let mut p = Pipe::init(size).unwrap();
+        if fill > 0 {
+            p.write_check(fill).unwrap();
+        }
+
+        let used = p.data_get();
+        match p.read_check(request) {
+            Ok(n) => {
+                assert!(n > 0);
+                assert!(n <= request);
+                assert!(n <= used);
+                if request <= used {
+                    assert_eq!(n, request);
+                } else {
+                    assert_eq!(n, used);
+                }
+            }
+            Err(EAGAIN) => assert_eq!(used, 0),
+            Err(ENOMSG) => assert_eq!(request, 0),
+            Err(_) => panic!("unexpected error"),
+        }
+        assert_eq!(p.space_get() + p.data_get(), size);
+    }
+
+    /// PP4/PP5: error codes for state transitions.
+    #[kani::proof]
+    fn pipe_error_codes_correct() {
+        let size: u32 = kani::any();
+        kani::assume(size > 0 && size <= 16);
+
+        let mut p = Pipe::init(size).unwrap();
+
+        // Closed pipe
+        let mut closed = p.clone();
+        closed.close();
+        assert_eq!(closed.write_check(1), Err(EPIPE));
+        assert_eq!(closed.read_check(1), Err(EPIPE));
+
+        // Resetting pipe
+        p.write_check(1).unwrap();
+        let mut resetting = p.clone();
+        resetting.reset();
+        assert_eq!(resetting.write_check(1), Err(ECANCELED));
+        assert_eq!(resetting.read_check(1), Err(ECANCELED));
+    }
+
+    /// PP6: full pipe rejects write.
+    #[kani::proof]
+    fn pipe_full_rejects_write() {
+        let size: u32 = kani::any();
+        kani::assume(size > 0 && size <= 16);
+
+        let mut p = Pipe::init(size).unwrap();
+        p.write_check(size).unwrap();
+        assert!(p.is_full());
+        assert_eq!(p.write_check(1), Err(EAGAIN));
+    }
+
+    /// PP7: empty pipe rejects read.
+    #[kani::proof]
+    fn pipe_empty_rejects_read() {
+        let size: u32 = kani::any();
+        kani::assume(size > 0 && size <= 16);
+
+        let p = Pipe::init(size).unwrap();
+        assert!(p.is_empty());
+        assert_eq!(p.clone().read_check(1), Err(EAGAIN));
+    }
+
+    /// PP10: conservation after arbitrary operations.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn pipe_conservation_after_ops() {
+        let size: u32 = kani::any();
+        kani::assume(size > 0 && size <= 8);
+
+        let mut p = Pipe::init(size).unwrap();
+
+        for _ in 0..5 {
+            let op: u8 = kani::any();
+            kani::assume(op < 4);
+            match op {
+                0 => {
+                    let len: u32 = kani::any();
+                    kani::assume(len > 0 && len <= 16);
+                    let _ = p.write_check(len);
+                }
+                1 => {
+                    let len: u32 = kani::any();
+                    kani::assume(len > 0 && len <= 16);
+                    let _ = p.read_check(len);
+                }
+                2 => p.reset(),
+                _ => p.close(),
+            }
+            assert_eq!(p.space_get() + p.data_get(), size);
+        }
+    }
+}

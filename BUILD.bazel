@@ -25,6 +25,9 @@ VERUS_SRCS = [
     "src/sem.rs",
     "src/mutex.rs",
     "src/condvar.rs",
+    "src/msgq.rs",
+    "src/pipe.rs",
+    "src/stack.rs",
 ]
 
 PLAIN_SRCS = ["//plain:srcs"]

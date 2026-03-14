@@ -29,3 +29,6 @@ pub mod wait_queue;
 pub mod sem;
 pub mod mutex;
 pub mod condvar;
+pub mod msgq;
+pub mod pipe;
+pub mod stack;

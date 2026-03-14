@@ -17,5 +17,8 @@ pub mod priority;
 pub mod mutex;
 pub mod sem;
 pub mod condvar;
+pub mod msgq;
+pub mod pipe;
+pub mod stack;
 pub mod thread;
 pub mod wait_queue;

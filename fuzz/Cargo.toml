@@ -39,3 +39,18 @@ doc = false
 name = "condvar_fuzz"
 path = "fuzz_targets/condvar_fuzz.rs"
 doc = false
+
+[[bin]]
+name = "msgq_fuzz"
+path = "fuzz_targets/msgq_fuzz.rs"
+doc = false
+
+[[bin]]
+name = "stack_fuzz"
+path = "fuzz_targets/stack_fuzz.rs"
+doc = false
+
+[[bin]]
+name = "pipe_fuzz"
+path = "fuzz_targets/pipe_fuzz.rs"
+doc = false

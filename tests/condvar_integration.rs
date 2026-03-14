@@ -9,7 +9,9 @@
     clippy::indexing_slicing,
     clippy::wildcard_enum_match_arm,
     clippy::arithmetic_side_effects,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    clippy::shadow_unrelated,
+    unused_parens
 )]
 
 use gale::condvar::{CondVar, SignalResult};
