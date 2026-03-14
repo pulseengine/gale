@@ -1,10 +1,6 @@
 //! Zephyr-compatible error codes.
 //!
 //! Maps directly to Zephyr's errno.h values used by kernel/sem.c.
-
-//! Zephyr-compatible error codes.
-//!
-//! Maps directly to Zephyr's errno.h values used by kernel/sem.c.
 /// Zephyr error codes used by kernel APIs.
 /// Values match zephyr/include/zephyr/sys/errno_private.h.
 pub const EINVAL: i32 = -22;

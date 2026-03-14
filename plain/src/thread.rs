@@ -5,14 +5,6 @@
 //! through Ready -> Running -> Blocked -> Ready as it interacts with kernel objects.
 //!
 //! Corresponds to: zephyr/kernel/include/kthread.h, kernel/thread.c
-
-//! Thread state machine for Zephyr kernel.
-//!
-//! Models the subset of Zephyr's k_thread relevant to synchronization primitives.
-//! A thread has an identity, a static priority, and a state that transitions
-//! through Ready -> Running -> Blocked -> Ready as it interacts with kernel objects.
-//!
-//! Corresponds to: zephyr/kernel/include/kthread.h, kernel/thread.c
 use crate::priority::Priority;
 /// Unique thread identifier.
 /// In Zephyr this is the pointer to the k_thread struct;

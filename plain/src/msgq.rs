@@ -39,48 +39,6 @@
 //!   MQ11: purge resets to empty (used_msgs=0, read_idx=write_idx)
 //!   MQ12: no arithmetic overflow in any operation
 //!   MQ13: ring buffer consistency: write_idx tracks read_idx + used_msgs
-
-//! Verified message queue for Zephyr RTOS.
-//!
-//! This is a formally verified port of zephyr/kernel/msg_q.c.
-//! All safety-critical properties are proven with Verus (SMT/Z3).
-//!
-//! This module models the **ring buffer index arithmetic** of Zephyr's
-//! message queue.  Actual message data and wait queue management remain
-//! in C — only the index computation crosses the FFI boundary.
-//!
-//! Source mapping:
-//!   k_msgq_init      -> MsgQ::init         (msg_q.c:43-71)
-//!   k_msgq_put       -> MsgQ::put          (msg_q.c:130-228, ring buffer path)
-//!   k_msgq_put_front -> MsgQ::put_front    (msg_q.c:236-239)
-//!   k_msgq_get       -> MsgQ::get          (msg_q.c:280-349, ring buffer path)
-//!   k_msgq_peek_at   -> MsgQ::peek_at      (msg_q.c:397-430)
-//!   k_msgq_purge     -> MsgQ::purge        (msg_q.c:443-470, index reset)
-//!   k_msgq_num_free  -> MsgQ::num_free_get (kernel.h inline)
-//!   k_msgq_num_used  -> MsgQ::num_used_get (kernel.h inline)
-//!
-//! Omitted (not safety-relevant):
-//!   - CONFIG_POLL (poll_events) — application convenience
-//!   - CONFIG_OBJ_CORE_MSGQ — debug/tracing
-//!   - CONFIG_USERSPACE (z_vrfy_*) — syscall marshaling
-//!   - SYS_PORT_TRACING_* — instrumentation
-//!   - k_msgq_alloc_init — heap allocation wrapper
-//!   - k_msgq_cleanup — deallocation
-//!
-//! ASIL-D verified properties:
-//!   MQ1:  0 <= used_msgs <= max_msgs (capacity invariant)
-//!   MQ2:  read_idx < max_msgs (index bounds)
-//!   MQ3:  write_idx < max_msgs (index bounds)
-//!   MQ4:  msg_size > 0, max_msgs > 0 (always)
-//!   MQ5:  put on non-full queue: used_msgs incremented, write_idx advanced
-//!   MQ6:  put on full queue: returns ENOMSG, state unchanged
-//!   MQ7:  put_front on non-full queue: read_idx retreated correctly
-//!   MQ8:  get on non-empty queue: used_msgs decremented, read_idx advanced
-//!   MQ9:  get on empty queue: returns ENOMSG, state unchanged
-//!   MQ10: peek_at computes correct slot index
-//!   MQ11: purge resets to empty (used_msgs=0, read_idx=write_idx)
-//!   MQ12: no arithmetic overflow in any operation
-//!   MQ13: ring buffer consistency: write_idx tracks read_idx + used_msgs
 use crate::error::*;
 /// Result of a put/get operation.
 pub enum MsgQResult {

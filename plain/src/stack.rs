@@ -29,38 +29,6 @@
 //!   SK7: num_free + num_used == capacity (conservation)
 //!   SK8: no arithmetic overflow in any operation
 //!   SK9: push-pop roundtrip preserves state
-
-//! Verified LIFO stack for Zephyr RTOS.
-//!
-//! This is a formally verified port of zephyr/kernel/stack.c.
-//! All safety-critical properties are proven with Verus (SMT/Z3).
-//!
-//! This module models the **LIFO index arithmetic** of Zephyr's stack object.
-//! Actual data storage and wait queue management remain in C — only the
-//! count/capacity tracking crosses the FFI boundary.
-//!
-//! Source mapping:
-//!   k_stack_init   -> Stack::init   (stack.c:27-42)
-//!   k_stack_push   -> Stack::push   (stack.c:101-136, capacity check + increment)
-//!   k_stack_pop    -> Stack::pop    (stack.c:148-190, empty check + decrement)
-//!
-//! Omitted (not safety-relevant):
-//!   - CONFIG_OBJ_CORE_STACK — debug/tracing
-//!   - CONFIG_USERSPACE (z_vrfy_*) — syscall marshaling
-//!   - SYS_PORT_TRACING_* — instrumentation
-//!   - k_stack_alloc_init — heap allocation wrapper
-//!   - k_stack_cleanup — deallocation
-//!
-//! ASIL-D verified properties:
-//!   SK1: 0 <= count <= capacity (bounds invariant)
-//!   SK2: capacity > 0 (always after init)
-//!   SK3: push when not full: count incremented by 1
-//!   SK4: push when full: returns ENOMEM, state unchanged
-//!   SK5: pop when not empty: count decremented by 1
-//!   SK6: pop when empty: returns EBUSY, state unchanged
-//!   SK7: num_free + num_used == capacity (conservation)
-//!   SK8: no arithmetic overflow in any operation
-//!   SK9: push-pop roundtrip preserves state
 use crate::error::*;
 /// LIFO stack — count/capacity model.
 ///

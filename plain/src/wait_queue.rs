@@ -13,22 +13,6 @@
 //! - unpend_first returns the highest priority thread
 //! - No thread appears twice in the queue
 //! - pend/unpend maintain sorted invariant
-
-//! Priority-ordered wait queue for Zephyr kernel objects.
-//!
-//! Corresponds to Zephyr's _wait_q_t (a doubly-linked list ordered by thread priority).
-//! Used by semaphores, mutexes, condvars, and other blocking kernel objects.
-//!
-//! Key Zephyr functions modeled:
-//! - z_waitq_init()        -> WaitQueue::new()
-//! - z_unpend_first_thread -> WaitQueue::unpend_first()
-//! - z_pend_curr (partial) -> WaitQueue::pend()
-//!
-//! ASIL-D properties verified:
-//! - Queue is always sorted by priority (highest priority = lowest value first)
-//! - unpend_first returns the highest priority thread
-//! - No thread appears twice in the queue
-//! - pend/unpend maintain sorted invariant
 use crate::thread::{Thread, ThreadId, ThreadState};
 use crate::priority::MAX_PRIORITY;
 /// Maximum threads that can be waiting on a single kernel object.

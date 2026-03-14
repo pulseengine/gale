@@ -33,42 +33,6 @@
 //!   PP8: close clears open flag
 //!   PP9: conservation: used + free == size
 //!   PP10: no arithmetic overflow in any operation
-
-//! Verified byte stream pipe for Zephyr RTOS.
-//!
-//! This is a formally verified port of zephyr/kernel/pipe.c.
-//! All safety-critical properties are proven with Verus (SMT/Z3).
-//!
-//! This module models the **state machine and byte count tracking** of
-//! Zephyr's pipe.  The actual ring buffer (head/tail/base indices) and
-//! data transfer (memcpy) remain in C via Zephyr's ring_buf subsystem.
-//!
-//! Source mapping:
-//!   k_pipe_init   -> Pipe::init         (pipe.c:67-85)
-//!   k_pipe_write  -> Pipe::write_check  (pipe.c:147-218, state/count validation)
-//!   k_pipe_read   -> Pipe::read_check   (pipe.c:220-271, state/count validation)
-//!   k_pipe_reset  -> Pipe::reset        (pipe.c:273-285)
-//!   k_pipe_close  -> Pipe::close        (pipe.c:287-296)
-//!
-//! Omitted (not safety-relevant):
-//!   - CONFIG_POLL (poll_events) — application convenience
-//!   - CONFIG_OBJ_CORE_PIPE — debug/tracing
-//!   - CONFIG_USERSPACE (z_vrfy_*) — syscall marshaling
-//!   - SYS_PORT_TRACING_* — instrumentation
-//!   - CONFIG_KERNEL_COHERENCE — cache coherency optimization
-//!   - copy_to_pending_readers — direct-copy optimization
-//!
-//! ASIL-D verified properties:
-//!   PP1: 0 <= used <= size (capacity invariant)
-//!   PP2: size > 0 (always after init)
-//!   PP3: write_check on closed pipe: returns EPIPE
-//!   PP4: write_check on resetting pipe: returns ECANCELED
-//!   PP5: write_check computes correct byte count (min of request and free)
-//!   PP6: read_check computes correct byte count (min of request and used)
-//!   PP7: reset sets used to 0
-//!   PP8: close clears open flag
-//!   PP9: conservation: used + free == size
-//!   PP10: no arithmetic overflow in any operation
 use crate::error::*;
 /// Pipe flags — matches pipe.c PIPE_FLAG_*.
 pub const FLAG_OPEN: u8 = 1;

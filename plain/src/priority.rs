@@ -3,12 +3,6 @@
 //! Zephyr uses lower numerical values for higher priority.
 //! Priority 0 is the highest; MAX_PRIORITY-1 is the lowest.
 //! This maps to Zephyr's CONFIG_NUM_COOP_PRIORITIES + CONFIG_NUM_PREEMPT_PRIORITIES.
-
-//! Bounded priority type for Zephyr thread scheduling.
-//!
-//! Zephyr uses lower numerical values for higher priority.
-//! Priority 0 is the highest; MAX_PRIORITY-1 is the lowest.
-//! This maps to Zephyr's CONFIG_NUM_COOP_PRIORITIES + CONFIG_NUM_PREEMPT_PRIORITIES.
 /// Maximum number of priority levels. Configurable per-system.
 /// Default matches Zephyr: 16 cooperative + 16 preemptive = 32.
 pub const MAX_PRIORITY: u32 = 32;

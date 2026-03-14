@@ -23,7 +23,7 @@ pub struct StripResult {
 
 /// Strip Verus annotations from a Rust source file.
 pub fn strip_file(input: &str) -> StripResult {
-    let (preamble, body, after) = split_at_verus_macro(input);
+    let (preamble, body, _after) = split_at_verus_macro(input);
     let clean_preamble = strip_vstd_imports(&preamble);
     let stripped_body = strip_body(&body);
 
@@ -47,13 +47,21 @@ pub fn strip_file(input: &str) -> StripResult {
     match syn::parse_file(&raw) {
         Ok(file) => {
             let mut output = prettyplease::unparse(&file);
-            // Preserve module-level doc comments from preamble
-            // (prettyplease drops comments, so prepend them)
+            // Preserve non-doc comments from preamble.
+            // prettyplease preserves `//!` inner doc comments (they are
+            // syntactic attrs in the AST), so we only re-prepend regular
+            // `//` comments that prettyplease would drop.
             let doc_lines: Vec<&str> = trimmed_pre
                 .lines()
                 .take_while(|l| {
                     let t = l.trim();
                     t.is_empty() || t.starts_with("//")
+                })
+                .filter(|l| {
+                    let t = l.trim();
+                    // Keep blank lines and regular comments, but NOT //! doc comments
+                    // (prettyplease already emits those from the AST)
+                    t.is_empty() || (t.starts_with("//") && !t.starts_with("//!"))
                 })
                 .collect();
             if !doc_lines.is_empty() {
@@ -140,6 +148,10 @@ fn strip_vstd_imports(text: &str) -> String {
 
 /// Strip Verus annotations from the body of a `verus! { }` block.
 fn strip_body(body: &str) -> String {
+    // Strip leading module doc comments (//!) from the body — the preamble
+    // already has them, so they'd be duplicated.
+    let body = strip_leading_doc_comments(body);
+
     // Parse as token stream. If parsing fails (unlikely for valid Verus code),
     // fall back to returning the body unchanged.
     let tokens: TokenStream = match body.parse() {
@@ -567,6 +579,21 @@ fn needs_space_before(out: &str) -> bool {
 }
 
 // ─── Output cleanup helpers ─────────────────────────────────────────────
+
+/// Strip leading `//!` module doc comment lines from body text.
+fn strip_leading_doc_comments(text: &str) -> String {
+    let mut lines = text.lines().peekable();
+    // Skip leading blank lines and //! lines
+    while let Some(line) = lines.peek() {
+        let t = line.trim();
+        if t.is_empty() || t.starts_with("//!") {
+            lines.next();
+        } else {
+            break;
+        }
+    }
+    lines.collect::<Vec<_>>().join("\n")
+}
 
 fn strip_trailing_doc_comments(out: &mut String) {
     loop {

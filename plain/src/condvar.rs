@@ -24,33 +24,6 @@
 //!   C6: Wait adds thread to wait queue (blocking path)
 //!   C7: Signal/broadcast preserve wait queue ordering
 //!   C8: No arithmetic overflow in broadcast woken count
-
-//! Verified condition variable for Zephyr RTOS.
-//!
-//! This is a formally verified port of zephyr/kernel/condvar.c.
-//! All safety-critical properties are proven with Verus (SMT/Z3).
-//!
-//! Source mapping:
-//!   z_impl_k_condvar_init      -> CondVar::init          (condvar.c:21-30)
-//!   z_impl_k_condvar_signal    -> CondVar::signal         (condvar.c:44-61)
-//!   z_impl_k_condvar_broadcast -> CondVar::broadcast      (condvar.c:73-96)
-//!   z_impl_k_condvar_wait      -> CondVar::wait_blocking  (condvar.c:99-121)
-//!
-//! Omitted (not safety-relevant):
-//!   - CONFIG_OBJ_CORE_CONDVAR — debug/tracing
-//!   - CONFIG_USERSPACE (z_vrfy_*) — syscall marshaling
-//!   - SYS_PORT_TRACING_* — instrumentation
-//!   - Timeout handling (modeled as immediate blocking)
-//!
-//! ASIL-D verified properties:
-//!   C1: After init, wait queue is empty
-//!   C2: Signal wakes at most one waiter (highest priority)
-//!   C3: Signal on empty condvar is a no-op
-//!   C4: Broadcast wakes all waiters, returns woken count
-//!   C5: Broadcast on empty condvar returns 0
-//!   C6: Wait adds thread to wait queue (blocking path)
-//!   C7: Signal/broadcast preserve wait queue ordering
-//!   C8: No arithmetic overflow in broadcast woken count
 use crate::error::*;
 use crate::thread::{Thread, ThreadState};
 use crate::wait_queue::WaitQueue;

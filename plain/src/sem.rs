@@ -27,36 +27,6 @@
 //!   P8: reset: count set to 0, all waiters woken with -EAGAIN
 //!   P9: no arithmetic overflow in any operation
 //!   P10: wait queue ordering preserved across all operations
-
-//! Verified counting semaphore for Zephyr RTOS.
-//!
-//! This is a formally verified port of zephyr/kernel/sem.c.
-//! All safety-critical properties are proven with Verus (SMT/Z3).
-//!
-//! Source mapping:
-//!   z_impl_k_sem_init  -> Semaphore::init     (sem.c:45-73)
-//!   z_impl_k_sem_give  -> Semaphore::give      (sem.c:95-121)
-//!   z_impl_k_sem_take  -> Semaphore::take      (sem.c:132-164)
-//!   z_impl_k_sem_reset -> Semaphore::reset     (sem.c:166-192)
-//!   k_sem_count_get    -> Semaphore::count_get (kernel.h inline)
-//!
-//! Omitted (not safety-relevant):
-//!   - CONFIG_POLL (poll_events) — application convenience
-//!   - CONFIG_OBJ_CORE_SEM — debug/tracing
-//!   - CONFIG_USERSPACE (z_vrfy_*) — syscall marshaling
-//!   - SYS_PORT_TRACING_* — instrumentation
-//!
-//! ASIL-D verified properties:
-//!   P1: 0 <= count <= limit (always)
-//!   P2: limit > 0 (always)
-//!   P3: give with no waiters: count incremented by 1, capped at limit
-//!   P4: give with waiters: highest-priority thread woken, count unchanged
-//!   P5: take when count > 0: count decremented by exactly 1
-//!   P6: take when count == 0, no wait: returns -EBUSY
-//!   P7: take when count == 0, with wait: thread blocks on wait queue
-//!   P8: reset: count set to 0, all waiters woken with -EAGAIN
-//!   P9: no arithmetic overflow in any operation
-//!   P10: wait queue ordering preserved across all operations
 use crate::error::*;
 use crate::thread::{Thread, ThreadState};
 use crate::wait_queue::WaitQueue;

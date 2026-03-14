@@ -1356,6 +1356,24 @@ artifacts:
 
   # ── TRACTOR verification ─────────────────────────────────────────────
 
+  - id: FV-TRACTOR-EQ
+    type: sw-verification
+    title: Kani C↔Rust semantic equivalence (bounded model checking)
+    status: approved
+    description: >
+      Kani BMC harnesses in tests/kani_equivalence.rs that model C behavior
+      as Rust functions (derived from kernel/*.c source) and prove the Gale
+      implementation produces identical results for all bounded inputs.
+      Covers stack (init/push/pop/sequence), semaphore (init/give/take),
+      mutex (lock/unlock validate), msgq (init/put/get/purge), and
+      pipe (init/write_check/read_check). REQ-TRACTOR-001 Level 2.
+    tags: [formal-verification, kani, tractor, equivalence, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: REQ-TRACTOR-001
+
   - id: FV-TRACTOR-001
     type: sw-verification
     title: verus-strip unit and convergence tests

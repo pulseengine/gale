@@ -27,36 +27,6 @@
 //!   M9: unlock when lock_count == 1, no waiter: fully unlocked (count=0, owner=None)
 //!   M10: no arithmetic overflow in lock_count
 //!   M11: wait queue ordering preserved across all operations
-
-//! Verified reentrant mutex for Zephyr RTOS.
-//!
-//! This is a formally verified port of zephyr/kernel/mutex.c.
-//! All safety-critical properties are proven with Verus (SMT/Z3).
-//!
-//! Source mapping:
-//!   z_impl_k_mutex_init   -> Mutex::init         (mutex.c:55-71)
-//!   z_impl_k_mutex_lock   -> Mutex::try_lock      (mutex.c:107-154, fast path)
-//!                          -> Mutex::lock_blocking (mutex.c:169, blocking path)
-//!   z_impl_k_mutex_unlock -> Mutex::unlock        (mutex.c:230-307)
-//!
-//! Omitted (not safety-relevant):
-//!   - CONFIG_PRIORITY_CEILING — priority inheritance optimization
-//!   - CONFIG_OBJ_CORE_MUTEX — debug/tracing
-//!   - CONFIG_USERSPACE (z_vrfy_*) — syscall marshaling
-//!   - SYS_PORT_TRACING_* — instrumentation
-//!
-//! ASIL-D verified properties:
-//!   M1: lock_count > 0 ⟺ owner.is_some() (always)
-//!   M2: wait_q non-empty ⟹ mutex is locked (always)
-//!   M3: try_lock when unlocked: owner set, lock_count = 1
-//!   M4: try_lock when locked by same thread: lock_count incremented (reentrant)
-//!   M5: try_lock when locked by different thread: returns WouldBlock, unchanged
-//!   M6: unlock by non-owner: returns error, unchanged
-//!   M7: unlock when lock_count > 1: count decremented, owner unchanged
-//!   M8: unlock when lock_count == 1, waiter: ownership transferred, count stays 1
-//!   M9: unlock when lock_count == 1, no waiter: fully unlocked (count=0, owner=None)
-//!   M10: no arithmetic overflow in lock_count
-//!   M11: wait queue ordering preserved across all operations
 use crate::error::*;
 use crate::thread::{Thread, ThreadId, ThreadState};
 use crate::wait_queue::WaitQueue;
