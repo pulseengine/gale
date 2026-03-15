@@ -1,0 +1,50 @@
+# Lean 4 proofs: mathematical scheduling theory foundations
+#
+# These are PURE MATHEMATICAL proofs about scheduling theory,
+# not implementation proofs. They establish the theoretical
+# basis for Zephyr's fixed-priority preemptive scheduler:
+#
+#   - Rate Monotonic Analysis (Liu & Layland 1973)
+#   - Priority Ceiling Protocol (Sha, Rajkumar, Lehoczky 1990)
+#   - Priority queue invariants (sorted-list model)
+
+load("@rules_lean//lean:defs.bzl", "lean_library", "lean_proof_test")
+
+# ── Rate Monotonic Scheduling ──────────────────────────────────────────
+
+lean_library(
+    name = "scheduling",
+    srcs = ["Scheduling.lean"],
+)
+
+lean_proof_test(
+    name = "scheduling_test",
+    srcs = ["Scheduling.lean"],
+    deps = [":scheduling"],
+)
+
+# ── Priority Ceiling Protocol ──────────────────────────────────────────
+
+lean_library(
+    name = "priority_ceiling",
+    srcs = ["PriorityCeiling.lean"],
+)
+
+lean_proof_test(
+    name = "priority_ceiling_test",
+    srcs = ["PriorityCeiling.lean"],
+    deps = [":priority_ceiling"],
+)
+
+# ── Priority Queue Invariants ──────────────────────────────────────────
+
+lean_library(
+    name = "priority_queue",
+    srcs = ["PriorityQueue.lean"],
+)
+
+lean_proof_test(
+    name = "priority_queue_test",
+    srcs = ["PriorityQueue.lean"],
+    deps = [":priority_queue"],
+)
