@@ -2,6 +2,8 @@
 #
 # Builds and runs upstream Zephyr test suites for each kernel primitive
 # replaced by Gale, on qemu_cortex_m3.
+#
+# Uses the Zephyr CI Docker image which has the Zephyr SDK pre-installed.
 
 name: Zephyr Kernel Tests
 
@@ -11,12 +13,16 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  HOME: /root
+
 jobs:
   zephyr-test:
     name: "${{ matrix.primitive }} (qemu_cortex_m3)"
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      options: --user root
     strategy:
       fail-fast: false
       matrix:
@@ -56,10 +62,9 @@ jobs:
 
       - name: Install Rust + ARM target
         run: |
-          export HOME=/root
           apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-          . "$HOME/.cargo/env"
+          . /root/.cargo/env
           rustup target add thumbv7m-none-eabi
 
       - name: Initialize west workspace
@@ -74,8 +79,7 @@ jobs:
         env:
           TEST_PATH: ${{ matrix.test_path }}
         run: |
-          export HOME=/root
-          . "$HOME/.cargo/env"
+          . /root/.cargo/env
           export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
           export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
           cd zephyr-workspace
