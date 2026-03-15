@@ -991,3 +991,306 @@ mod kani_pipe_proofs {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Timer harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_timer_proofs {
+    use gale::error::*;
+    use gale::timer::Timer;
+
+    /// TM1/TM6/TM7: init establishes invariant and period classification.
+    #[kani::proof]
+    fn timer_init_invariant() {
+        let period: u32 = kani::any();
+        kani::assume(period <= 1000);
+
+        let t = Timer::init(period);
+        assert_eq!(t.status_peek(), 0);
+        assert_eq!(t.period_get(), period);
+        assert!(!t.is_running());
+    }
+
+    /// TM3: start sets status = 0 and running = true.
+    #[kani::proof]
+    fn timer_start() {
+        let period: u32 = kani::any();
+        kani::assume(period <= 1000);
+
+        let mut t = Timer::init(period);
+
+        // Accumulate some status first
+        let n: u32 = kani::any();
+        kani::assume(n <= 10);
+        let mut i: u32 = 0;
+        while i < n {
+            let _ = t.expire();
+            i += 1;
+        }
+
+        t.start();
+        assert_eq!(t.status_peek(), 0);
+        assert!(t.is_running());
+        assert_eq!(t.period_get(), period);
+    }
+
+    /// TM5: expire increments status by 1.
+    #[kani::proof]
+    fn timer_expire() {
+        let period: u32 = kani::any();
+        kani::assume(period <= 1000);
+
+        let status: u32 = kani::any();
+        kani::assume(status < u32::MAX);
+
+        let mut t = Timer::init(period);
+        t.status = status;
+
+        let result = t.expire();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), status + 1);
+        assert_eq!(t.status_peek(), status + 1);
+    }
+
+    /// TM2: status_get returns old value and resets to 0.
+    #[kani::proof]
+    fn timer_status_get() {
+        let period: u32 = kani::any();
+        kani::assume(period <= 1000);
+
+        let mut t = Timer::init(period);
+
+        let n: u32 = kani::any();
+        kani::assume(n <= 10);
+        let mut i: u32 = 0;
+        while i < n {
+            let _ = t.expire();
+            i += 1;
+        }
+
+        let got = t.status_get();
+        assert_eq!(got, n);
+        assert_eq!(t.status_peek(), 0);
+    }
+
+    /// TM8: overflow at u32::MAX returns EOVERFLOW, state unchanged.
+    #[kani::proof]
+    fn timer_overflow() {
+        let period: u32 = kani::any();
+        kani::assume(period <= 1000);
+
+        let mut t = Timer::init(period);
+        t.status = u32::MAX;
+
+        let result = t.expire();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), EOVERFLOW);
+        assert_eq!(t.status_peek(), u32::MAX);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Event harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_event_proofs {
+    use gale::event::Event;
+
+    /// EV7: init creates event with all bits cleared.
+    #[kani::proof]
+    fn event_init() {
+        let ev = Event::init();
+        assert_eq!(ev.events_get(), 0);
+    }
+
+    /// EV8: post is monotonic — never clears bits.
+    #[kani::proof]
+    fn event_post_monotonic() {
+        let initial: u32 = kani::any();
+        let new_bits: u32 = kani::any();
+
+        let mut ev = Event::init();
+        ev.set(initial);
+        let before = ev.events_get();
+
+        ev.post(new_bits);
+        let after = ev.events_get();
+
+        // All bits set before are still set
+        assert_eq!(before & after, before);
+        // Result is OR of both
+        assert_eq!(after, initial | new_bits);
+    }
+
+    /// EV2+EV3: set then clear roundtrip yields 0.
+    #[kani::proof]
+    fn event_set_clear() {
+        let value: u32 = kani::any();
+
+        let mut ev = Event::init();
+        ev.set(value);
+        assert_eq!(ev.events_get(), value);
+
+        ev.clear(value);
+        assert_eq!(ev.events_get(), 0);
+    }
+
+    /// EV5: wait_check_any returns true when any desired bit is set.
+    #[kani::proof]
+    fn event_wait_any() {
+        let events: u32 = kani::any();
+        let desired: u32 = kani::any();
+
+        let mut ev = Event::init();
+        ev.set(events);
+
+        let result = ev.wait_check_any(desired);
+        assert_eq!(result, (events & desired) != 0);
+    }
+
+    /// EV6: wait_check_all returns true when all desired bits are set.
+    #[kani::proof]
+    fn event_wait_all() {
+        let events: u32 = kani::any();
+        let desired: u32 = kani::any();
+
+        let mut ev = Event::init();
+        ev.set(events);
+
+        let result = ev.wait_check_all(desired);
+        assert_eq!(result, (events & desired) == desired);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Memory slab harnesses
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_mem_slab_proofs {
+    use gale::error::*;
+    use gale::mem_slab::MemSlab;
+
+    /// MS1/MS2/MS3: init validates parameters and establishes invariant.
+    #[kani::proof]
+    fn mem_slab_init() {
+        let block_size: u32 = kani::any();
+        let num_blocks: u32 = kani::any();
+
+        kani::assume(block_size <= 256);
+        kani::assume(num_blocks <= 64);
+
+        match MemSlab::init(block_size, num_blocks) {
+            Ok(s) => {
+                assert!(block_size > 0);
+                assert!(num_blocks > 0);
+                assert_eq!(s.num_used_get(), 0);
+                assert_eq!(s.num_free_get(), num_blocks);
+                assert!(s.is_empty());
+            }
+            Err(e) => {
+                assert_eq!(e, EINVAL);
+                assert!(block_size == 0 || num_blocks == 0);
+            }
+        }
+    }
+
+    /// MS4: alloc when not full increments num_used.
+    #[kani::proof]
+    fn mem_slab_alloc() {
+        let num_blocks: u32 = kani::any();
+        kani::assume(num_blocks > 0 && num_blocks <= 16);
+
+        let mut s = MemSlab::init(4, num_blocks).unwrap();
+
+        let n: u32 = kani::any();
+        kani::assume(n <= num_blocks);
+
+        let mut i: u32 = 0;
+        while i < n {
+            assert_eq!(s.alloc(), OK);
+            i += 1;
+        }
+
+        let rc = s.alloc();
+        if n < num_blocks {
+            assert_eq!(rc, OK);
+            assert_eq!(s.num_used_get(), n + 1);
+        } else {
+            assert_eq!(rc, ENOMEM);
+            assert_eq!(s.num_used_get(), n);
+        }
+    }
+
+    /// MS6: free when num_used > 0 decrements num_used.
+    #[kani::proof]
+    fn mem_slab_free() {
+        let num_blocks: u32 = kani::any();
+        kani::assume(num_blocks > 0 && num_blocks <= 16);
+
+        let mut s = MemSlab::init(4, num_blocks).unwrap();
+
+        let n: u32 = kani::any();
+        kani::assume(n <= num_blocks);
+
+        let mut i: u32 = 0;
+        while i < n {
+            s.alloc();
+            i += 1;
+        }
+
+        let rc = s.free();
+        if n > 0 {
+            assert_eq!(rc, OK);
+            assert_eq!(s.num_used_get(), n - 1);
+        } else {
+            assert_eq!(rc, EINVAL);
+            assert_eq!(s.num_used_get(), 0);
+        }
+    }
+
+    /// MS7: conservation after arbitrary operations.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn mem_slab_conservation() {
+        let num_blocks: u32 = kani::any();
+        kani::assume(num_blocks > 0 && num_blocks <= 8);
+
+        let mut s = MemSlab::init(4, num_blocks).unwrap();
+
+        for _ in 0..5 {
+            let do_alloc: bool = kani::any();
+            if do_alloc {
+                s.alloc();
+            } else {
+                s.free();
+            }
+            assert_eq!(s.num_free_get() + s.num_used_get(), num_blocks);
+        }
+    }
+
+    /// MS4+MS6: alloc-free roundtrip preserves state.
+    #[kani::proof]
+    fn mem_slab_roundtrip() {
+        let num_blocks: u32 = kani::any();
+        kani::assume(num_blocks > 0 && num_blocks <= 16);
+
+        let fill: u32 = kani::any();
+        kani::assume(fill < num_blocks);
+
+        let mut s = MemSlab::init(4, num_blocks).unwrap();
+        let mut i: u32 = 0;
+        while i < fill {
+            s.alloc();
+            i += 1;
+        }
+        let original = s.clone();
+
+        assert_eq!(s.alloc(), OK);
+        assert_eq!(s.free(), OK);
+        assert_eq!(s, original);
+    }
+}

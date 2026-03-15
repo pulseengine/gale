@@ -115,3 +115,48 @@ rocq_library(
     deps = [":rocq_of_rust_lib"],
     extra_flags = ["-impredicative-set"],
 )
+
+# ── Timer ───────────────────────────────────────────────────────────────
+
+coq_of_rust_library(
+    name = "timer_translated",
+    rust_sources = ["timer.rs"],
+    edition = "2021",
+)
+
+rocq_library(
+    name = "timer_compiled",
+    srcs = [":timer_translated"],
+    deps = [":rocq_of_rust_lib"],
+    extra_flags = ["-impredicative-set"],
+)
+
+# ── Event ───────────────────────────────────────────────────────────────
+
+coq_of_rust_library(
+    name = "event_translated",
+    rust_sources = ["event.rs"],
+    edition = "2021",
+)
+
+rocq_library(
+    name = "event_compiled",
+    srcs = [":event_translated"],
+    deps = [":rocq_of_rust_lib"],
+    extra_flags = ["-impredicative-set"],
+)
+
+# ── MemSlab ─────────────────────────────────────────────────────────────
+
+coq_of_rust_library(
+    name = "mem_slab_translated",
+    rust_sources = ["mem_slab.rs"],
+    edition = "2021",
+)
+
+rocq_library(
+    name = "mem_slab_compiled",
+    srcs = [":mem_slab_translated"],
+    deps = [":rocq_of_rust_lib"],
+    extra_flags = ["-impredicative-set"],
+)

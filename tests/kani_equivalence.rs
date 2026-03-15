@@ -554,4 +554,249 @@ mod equivalence {
             }
         }
     }
+
+    // =====================================================================
+    // Timer C↔Rust equivalence
+    // =====================================================================
+
+    use gale::timer::Timer;
+
+    /// C model: timer expire — increment status with overflow check.
+    fn c_timer_expire(status: u32) -> (i32, u32) {
+        if status < u32::MAX {
+            (OK, status + 1)
+        } else {
+            (EOVERFLOW, status)
+        }
+    }
+
+    /// C model: timer status_get — returns old status, resets to 0.
+    fn c_timer_status_get(status: u32) -> (u32, u32) {
+        (status, 0)
+    }
+
+    #[kani::proof]
+    fn timer_init_equivalence() {
+        let period: u32 = kani::any();
+        kani::assume(period <= 1000);
+        let t = Timer::init(period);
+        assert!(t.status_peek() == 0);
+        assert!(t.period_get() == period);
+        assert!(!t.is_running());
+    }
+
+    #[kani::proof]
+    fn timer_expire_equivalence() {
+        let period: u32 = kani::any();
+        kani::assume(period <= 100);
+        let mut t = Timer::init(period);
+        t.start();
+
+        // Pre-fill to some status
+        let fill: u32 = kani::any();
+        kani::assume(fill <= 16);
+        for _ in 0..fill {
+            let _ = t.expire();
+        }
+
+        let status = t.status_peek();
+        let (c_rc, c_new) = c_timer_expire(status);
+        let rust_result = t.expire();
+        match rust_result {
+            Ok(new_status) => {
+                assert!(c_rc == OK);
+                assert!(new_status == c_new);
+                assert!(t.status_peek() == c_new);
+            }
+            Err(e) => {
+                assert!(c_rc == EOVERFLOW);
+                assert!(e == EOVERFLOW);
+                assert!(t.status_peek() == c_new);
+            }
+        }
+    }
+
+    #[kani::proof]
+    fn timer_status_get_equivalence() {
+        let period: u32 = kani::any();
+        kani::assume(period <= 100);
+        let mut t = Timer::init(period);
+        t.start();
+
+        let fill: u32 = kani::any();
+        kani::assume(fill <= 16);
+        for _ in 0..fill {
+            let _ = t.expire();
+        }
+
+        let status = t.status_peek();
+        let (c_old, c_new) = c_timer_status_get(status);
+        let rust_old = t.status_get();
+        assert!(rust_old == c_old);
+        assert!(t.status_peek() == c_new);
+    }
+
+    // =====================================================================
+    // Event C↔Rust equivalence
+    // =====================================================================
+
+    use gale::event::Event;
+
+    /// C model: event post — OR new bits in.
+    fn c_event_post(events: u32, new_events: u32) -> u32 {
+        events | new_events
+    }
+
+    /// C model: event set — replace entirely.
+    fn c_event_set(new_events: u32) -> u32 {
+        new_events
+    }
+
+    /// C model: event clear — AND with complement.
+    fn c_event_clear(events: u32, clear_bits: u32) -> u32 {
+        events & !clear_bits
+    }
+
+    #[kani::proof]
+    fn event_init_equivalence() {
+        let e = Event::init();
+        assert!(e.events_get() == 0);
+    }
+
+    #[kani::proof]
+    fn event_post_equivalence() {
+        let mut e = Event::init();
+        let initial: u32 = kani::any();
+        e.set(initial);
+
+        let new_events: u32 = kani::any();
+        let c_result = c_event_post(e.events_get(), new_events);
+        let r_result = e.post(new_events);
+        assert!(r_result == c_result);
+        assert!(e.events_get() == c_result);
+    }
+
+    #[kani::proof]
+    fn event_set_equivalence() {
+        let mut e = Event::init();
+        let initial: u32 = kani::any();
+        e.post(initial);
+
+        let new_events: u32 = kani::any();
+        let c_result = c_event_set(new_events);
+        let _old = e.set(new_events);
+        assert!(e.events_get() == c_result);
+    }
+
+    #[kani::proof]
+    fn event_clear_equivalence() {
+        let mut e = Event::init();
+        let initial: u32 = kani::any();
+        e.set(initial);
+
+        let clear_bits: u32 = kani::any();
+        let c_result = c_event_clear(e.events_get(), clear_bits);
+        let r_result = e.clear(clear_bits);
+        assert!(r_result == c_result);
+        assert!(e.events_get() == c_result);
+    }
+
+    // =====================================================================
+    // MemSlab C↔Rust equivalence
+    // =====================================================================
+
+    use gale::mem_slab::MemSlab;
+
+    /// C model: mem_slab alloc — increment if not full, else ENOMEM.
+    fn c_mem_slab_alloc(num_used: u32, num_blocks: u32) -> (i32, u32) {
+        if num_used < num_blocks {
+            (OK, num_used + 1)
+        } else {
+            (ENOMEM, num_used)
+        }
+    }
+
+    /// C model: mem_slab free — decrement if used > 0, else EINVAL.
+    fn c_mem_slab_free(num_used: u32) -> (i32, u32) {
+        if num_used > 0 {
+            (OK, num_used - 1)
+        } else {
+            (EINVAL, num_used)
+        }
+    }
+
+    #[kani::proof]
+    fn mem_slab_init_equivalence() {
+        let block_size: u32 = kani::any();
+        let num_blocks: u32 = kani::any();
+        kani::assume(block_size <= 256);
+        kani::assume(num_blocks <= 256);
+        match MemSlab::init(block_size, num_blocks) {
+            Ok(s) => {
+                assert!(block_size > 0 && num_blocks > 0);
+                assert!(s.num_used_get() == 0);
+                assert!(s.num_blocks_get() == num_blocks);
+                assert!(s.block_size_get() == block_size);
+            }
+            Err(e) => {
+                assert!(block_size == 0 || num_blocks == 0);
+                assert!(e == EINVAL);
+            }
+        }
+    }
+
+    #[kani::proof]
+    fn mem_slab_alloc_equivalence() {
+        let num_blocks: u32 = kani::any();
+        kani::assume(num_blocks > 0 && num_blocks <= 16);
+        let fill: u32 = kani::any();
+        kani::assume(fill <= num_blocks);
+        let mut s = MemSlab::init(64, num_blocks).unwrap();
+        for _ in 0..fill {
+            s.alloc();
+        }
+        let used = s.num_used_get();
+        let (c_rc, c_new) = c_mem_slab_alloc(used, num_blocks);
+        let r_rc = s.alloc();
+        assert!(r_rc == c_rc);
+        assert!(s.num_used_get() == c_new);
+    }
+
+    #[kani::proof]
+    fn mem_slab_free_equivalence() {
+        let num_blocks: u32 = kani::any();
+        kani::assume(num_blocks > 0 && num_blocks <= 16);
+        let fill: u32 = kani::any();
+        kani::assume(fill <= num_blocks);
+        let mut s = MemSlab::init(64, num_blocks).unwrap();
+        for _ in 0..fill {
+            s.alloc();
+        }
+        let used = s.num_used_get();
+        let (c_rc, c_new) = c_mem_slab_free(used);
+        let r_rc = s.free();
+        assert!(r_rc == c_rc);
+        assert!(s.num_used_get() == c_new);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn mem_slab_sequence_equivalence() {
+        let num_blocks: u32 = kani::any();
+        kani::assume(num_blocks > 0 && num_blocks <= 8);
+        let mut s = MemSlab::init(64, num_blocks).unwrap();
+        let mut c_used: u32 = 0;
+        for _ in 0..4 {
+            if kani::any() {
+                let (c_rc, c_new) = c_mem_slab_alloc(c_used, num_blocks);
+                assert!(s.alloc() == c_rc);
+                c_used = c_new;
+            } else {
+                let (c_rc, c_new) = c_mem_slab_free(c_used);
+                assert!(s.free() == c_rc);
+                c_used = c_new;
+            }
+            assert!(s.num_used_get() == c_used);
+        }
+    }
 }

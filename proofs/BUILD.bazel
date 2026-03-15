@@ -113,3 +113,57 @@ rocq_proof_test(
     srcs = ["pipe_proofs.v"],
     deps = [":pipe_proofs"],
 )
+
+# ── Timer proofs ────────────────────────────────────────────────────────
+
+rocq_library(
+    name = "timer_proofs",
+    srcs = ["timer_proofs.v"],
+    deps = [
+        "//plain:timer_compiled",
+        "//plain:rocq_of_rust_lib",
+    ],
+    extra_flags = ["-impredicative-set"],
+)
+
+rocq_proof_test(
+    name = "timer_proofs_test",
+    srcs = ["timer_proofs.v"],
+    deps = [":timer_proofs"],
+)
+
+# ── Event proofs ────────────────────────────────────────────────────────
+
+rocq_library(
+    name = "event_proofs",
+    srcs = ["event_proofs.v"],
+    deps = [
+        "//plain:event_compiled",
+        "//plain:rocq_of_rust_lib",
+    ],
+    extra_flags = ["-impredicative-set"],
+)
+
+rocq_proof_test(
+    name = "event_proofs_test",
+    srcs = ["event_proofs.v"],
+    deps = [":event_proofs"],
+)
+
+# ── MemSlab proofs ──────────────────────────────────────────────────────
+
+rocq_library(
+    name = "mem_slab_proofs",
+    srcs = ["mem_slab_proofs.v"],
+    deps = [
+        "//plain:mem_slab_compiled",
+        "//plain:rocq_of_rust_lib",
+    ],
+    extra_flags = ["-impredicative-set"],
+)
+
+rocq_proof_test(
+    name = "mem_slab_proofs_test",
+    srcs = ["mem_slab_proofs.v"],
+    deps = [":mem_slab_proofs"],
+)

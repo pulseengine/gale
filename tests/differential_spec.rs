@@ -207,6 +207,157 @@ mod posix_stack {
 }
 
 // =====================================================================
+// Reference model: POSIX timer_create/timer_settime (status counter)
+// =====================================================================
+
+mod posix_timer {
+    /// POSIX timer model — status counter only.
+    ///
+    /// Based on POSIX timer_create/timer_settime/timer_getoverrun semantics.
+    /// The overrun count is analogous to Zephyr's status counter: it tracks
+    /// how many expiry events occurred since the last read.
+    pub struct Timer {
+        pub status: u32,
+        pub running: bool,
+    }
+
+    impl Timer {
+        pub fn init() -> Self {
+            Timer {
+                status: 0,
+                running: false,
+            }
+        }
+
+        /// timer_settime: arm the timer, reset overrun count.
+        pub fn start(&mut self) {
+            self.status = 0;
+            self.running = true;
+        }
+
+        /// timer_delete / disarm: stop the timer, reset status.
+        pub fn stop(&mut self) {
+            self.status = 0;
+            self.running = false;
+        }
+
+        /// Signal handler / expiry callback: increment overrun count.
+        /// Returns Err on overflow (checked_add).
+        pub fn expire(&mut self) -> Result<u32, i32> {
+            if self.status == u32::MAX {
+                Err(-75) // EOVERFLOW
+            } else {
+                self.status += 1;
+                Ok(self.status)
+            }
+        }
+
+        /// timer_getoverrun: read and reset the overrun/status counter.
+        pub fn status_get(&mut self) -> u32 {
+            let old = self.status;
+            self.status = 0;
+            old
+        }
+    }
+}
+
+// =====================================================================
+// Reference model: FreeRTOS xEventGroupSetBits/WaitBits
+// =====================================================================
+
+mod freertos_event {
+    /// FreeRTOS event group model — 32-bit bitmask.
+    ///
+    /// Based on xEventGroupCreate, xEventGroupSetBits,
+    /// xEventGroupClearBits, xEventGroupWaitBits semantics.
+    pub struct EventGroup {
+        pub bits: u32,
+    }
+
+    impl EventGroup {
+        pub fn init() -> Self {
+            EventGroup { bits: 0 }
+        }
+
+        /// xEventGroupSetBits: OR new bits in.
+        pub fn set_bits(&mut self, bits_to_set: u32) -> u32 {
+            self.bits |= bits_to_set;
+            self.bits
+        }
+
+        /// xEventGroupClearBits: AND with complement.
+        pub fn clear_bits(&mut self, bits_to_clear: u32) -> u32 {
+            self.bits &= !bits_to_clear;
+            self.bits
+        }
+
+        /// xEventGroupWaitBits with xWaitForAllBits=false: any-bit match.
+        pub fn wait_bits_any(&self, bits_to_wait: u32) -> bool {
+            (self.bits & bits_to_wait) != 0
+        }
+
+        /// xEventGroupWaitBits with xWaitForAllBits=true: all-bits match.
+        pub fn wait_bits_all(&self, bits_to_wait: u32) -> bool {
+            (self.bits & bits_to_wait) == bits_to_wait
+        }
+    }
+}
+
+// =====================================================================
+// Reference model: POSIX fixed-block memory pool
+// =====================================================================
+
+mod posix_mem_pool {
+    /// POSIX-style fixed-block memory pool model.
+    ///
+    /// Based on a simplified version of POSIX shared memory with fixed-size
+    /// block allocation (similar to VxWorks memPartAlloc/memPartFree or
+    /// a simple pool allocator with fixed block sizes).
+    pub struct MemPool {
+        pub num_blocks: u32,
+        pub num_used: u32,
+    }
+
+    impl MemPool {
+        pub fn init(num_blocks: u32) -> Result<Self, ()> {
+            if num_blocks == 0 {
+                Err(())
+            } else {
+                Ok(MemPool {
+                    num_blocks,
+                    num_used: 0,
+                })
+            }
+        }
+
+        /// Allocate a block from the pool.
+        pub fn alloc(&mut self) -> bool {
+            if self.num_used < self.num_blocks {
+                self.num_used += 1;
+                true
+            } else {
+                false
+            }
+        }
+
+        /// Free a block back to the pool.
+        pub fn free(&mut self) -> bool {
+            if self.num_used > 0 {
+                self.num_used -= 1;
+                true
+            } else {
+                false
+            }
+        }
+
+        /// Number of free blocks.
+        pub fn num_free(&self) -> u32 {
+            self.num_blocks - self.num_used
+        }
+    }
+}
+
+// =====================================================================
 // Differential property tests
 // =====================================================================
 //
@@ -428,6 +579,267 @@ mod differential {
                 g.num_used(),
                 p.count,
                 "Gale/POSIX stack diverged at rng={rng}"
+            );
+        }
+    }
+
+    // ── Timer: expire status counter ────────────────────────────────────
+
+    #[test]
+    fn timer_expire_gale_and_posix() {
+        use super::posix_timer;
+        use gale::timer::Timer;
+
+        let mut g = Timer::init(100);
+        let mut p = posix_timer::Timer::init();
+
+        g.start();
+        p.start();
+
+        // Expire 10 times
+        for i in 1..=10u32 {
+            let g_res = g.expire();
+            let p_res = p.expire();
+            assert!(g_res.is_ok(), "Gale timer expire failed at iteration {i}");
+            assert!(p_res.is_ok(), "POSIX timer expire failed at iteration {i}");
+            assert_eq!(
+                g.status_peek(),
+                p.status,
+                "Gale/POSIX timer status diverged at iteration {i}"
+            );
+        }
+
+        // status_get: read and reset
+        let g_old = g.status_get();
+        let p_old = p.status_get();
+        assert_eq!(g_old, p_old, "Gale/POSIX timer status_get value diverged");
+        assert_eq!(g.status_peek(), 0, "Gale timer not reset after status_get");
+        assert_eq!(p.status, 0, "POSIX timer not reset after status_get");
+
+        // Stop resets
+        g.expire().unwrap();
+        p.expire().unwrap();
+        g.stop();
+        p.stop();
+        assert_eq!(g.status_peek(), 0);
+        assert_eq!(p.status, 0);
+        assert!(!g.is_running());
+        assert!(!p.running);
+    }
+
+    // ── Event: bitmask operations ───────────────────────────────────────
+
+    #[test]
+    fn event_post_gale_and_posix() {
+        use super::freertos_event;
+        use gale::event::Event;
+
+        let mut g = Event::init();
+        let mut p = freertos_event::EventGroup::init();
+
+        // Post bits
+        g.post(0x01);
+        p.set_bits(0x01);
+        assert_eq!(g.events_get(), p.bits, "diverge after post 0x01");
+
+        g.post(0x04);
+        p.set_bits(0x04);
+        assert_eq!(g.events_get(), p.bits, "diverge after post 0x04");
+
+        // Post is monotonic — old bits preserved
+        assert_eq!(g.events_get() & 0x01, 0x01);
+        assert_eq!(p.bits & 0x01, 0x01);
+
+        // wait_any
+        assert_eq!(g.wait_check_any(0x01), p.wait_bits_any(0x01));
+        assert_eq!(g.wait_check_any(0x02), p.wait_bits_any(0x02));
+        assert_eq!(g.wait_check_any(0x05), p.wait_bits_any(0x05));
+
+        // wait_all
+        assert_eq!(g.wait_check_all(0x05), p.wait_bits_all(0x05));
+        assert_eq!(g.wait_check_all(0x07), p.wait_bits_all(0x07));
+
+        // Clear
+        let g_after = g.clear(0x01);
+        let p_after = p.clear_bits(0x01);
+        assert_eq!(g_after, p_after, "diverge after clear 0x01");
+        assert_eq!(g.events_get(), p.bits, "state diverge after clear");
+
+        // Set (replace)
+        g.set(0xFF);
+        p.bits = 0xFF;
+        assert_eq!(g.events_get(), p.bits, "diverge after set 0xFF");
+
+        // Idempotent post
+        g.post(0xFF);
+        p.set_bits(0xFF);
+        assert_eq!(g.events_get(), 0xFF);
+        assert_eq!(p.bits, 0xFF);
+    }
+
+    // ── MemSlab: conservation ───────────────────────────────────────────
+
+    #[test]
+    fn mem_slab_conservation_gale_and_posix() {
+        use super::posix_mem_pool;
+        use gale::error::OK;
+        use gale::mem_slab::MemSlab;
+
+        let num_blocks = 8u32;
+        let mut g = MemSlab::init(64, num_blocks).unwrap();
+        let mut p = posix_mem_pool::MemPool::init(num_blocks).unwrap();
+
+        // Conservation holds initially
+        assert_eq!(
+            g.num_used_get() + g.num_free_get(),
+            num_blocks,
+            "Gale conservation violated initially"
+        );
+        assert_eq!(
+            p.num_used + p.num_free(),
+            num_blocks,
+            "POSIX conservation violated initially"
+        );
+
+        // Fill
+        for _ in 0..num_blocks {
+            let g_ok = g.alloc() == OK;
+            let p_ok = p.alloc();
+            assert_eq!(g_ok, p_ok, "alloc result diverged");
+            // Conservation
+            assert_eq!(g.num_used_get() + g.num_free_get(), num_blocks);
+            assert_eq!(p.num_used + p.num_free(), num_blocks);
+            // Counts match
+            assert_eq!(g.num_used_get(), p.num_used);
+        }
+
+        // Full — alloc rejected
+        assert_ne!(g.alloc(), OK);
+        assert!(!p.alloc());
+
+        // Drain
+        for _ in 0..num_blocks {
+            let g_ok = g.free() == OK;
+            let p_ok = p.free();
+            assert_eq!(g_ok, p_ok, "free result diverged");
+            assert_eq!(g.num_used_get() + g.num_free_get(), num_blocks);
+            assert_eq!(p.num_used + p.num_free(), num_blocks);
+            assert_eq!(g.num_used_get(), p.num_used);
+        }
+
+        // Empty — free rejected
+        assert_ne!(g.free(), OK);
+        assert!(!p.free());
+    }
+
+    // ── Random operations: timer ────────────────────────────────────────
+
+    #[test]
+    fn timer_random_ops_gale_matches_posix() {
+        use super::posix_timer;
+        use gale::timer::Timer;
+
+        let mut g = Timer::init(50);
+        let mut p = posix_timer::Timer::init();
+        g.start();
+        p.start();
+
+        let mut rng: u32 = 0xBAAD_F00D;
+        for _ in 0..500 {
+            rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
+            match rng % 4 {
+                0 => {
+                    let _ = g.expire();
+                    let _ = p.expire();
+                }
+                1 => {
+                    g.status_get();
+                    p.status_get();
+                }
+                2 => {
+                    g.start();
+                    p.start();
+                }
+                _ => {
+                    g.stop();
+                    p.stop();
+                    // Restart so we can keep expiring
+                    g.start();
+                    p.start();
+                }
+            }
+            assert_eq!(
+                g.status_peek(),
+                p.status,
+                "Gale/POSIX timer diverged at rng={rng}"
+            );
+        }
+    }
+
+    // ── Random operations: event ────────────────────────────────────────
+
+    #[test]
+    fn event_random_ops_gale_matches_freertos() {
+        use super::freertos_event;
+        use gale::event::Event;
+
+        let mut g = Event::init();
+        let mut p = freertos_event::EventGroup::init();
+
+        let mut rng: u32 = 0xDEAD_C0DE;
+        for _ in 0..1000 {
+            rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
+            let bits = rng >> 16; // use upper 16 bits as event mask
+            match rng % 3 {
+                0 => {
+                    g.post(bits);
+                    p.set_bits(bits);
+                }
+                1 => {
+                    g.clear(bits);
+                    p.clear_bits(bits);
+                }
+                _ => {
+                    g.set(bits);
+                    p.bits = bits;
+                }
+            }
+            assert_eq!(
+                g.events_get(),
+                p.bits,
+                "Gale/FreeRTOS event diverged at rng={rng}"
+            );
+        }
+    }
+
+    // ── Random operations: mem_slab ─────────────────────────────────────
+
+    #[test]
+    fn mem_slab_random_ops_gale_matches_posix() {
+        use super::posix_mem_pool;
+        use gale::error::OK;
+        use gale::mem_slab::MemSlab;
+
+        let num_blocks = 32u32;
+        let mut g = MemSlab::init(64, num_blocks).unwrap();
+        let mut p = posix_mem_pool::MemPool::init(num_blocks).unwrap();
+
+        let mut rng: u32 = 0xFACE_CAFE;
+        for _ in 0..1000 {
+            rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
+            if rng % 2 == 0 {
+                let g_ok = g.alloc() == OK;
+                let p_ok = p.alloc();
+                assert_eq!(g_ok, p_ok);
+            } else {
+                let g_ok = g.free() == OK;
+                let p_ok = p.free();
+                assert_eq!(g_ok, p_ok);
+            }
+            assert_eq!(
+                g.num_used_get(),
+                p.num_used,
+                "Gale/POSIX mem_slab diverged at rng={rng}"
             );
         }
     }

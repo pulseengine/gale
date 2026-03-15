@@ -54,3 +54,18 @@ doc = false
 name = "pipe_fuzz"
 path = "fuzz_targets/pipe_fuzz.rs"
 doc = false
+
+[[bin]]
+name = "timer_fuzz"
+path = "fuzz_targets/timer_fuzz.rs"
+doc = false
+
+[[bin]]
+name = "event_fuzz"
+path = "fuzz_targets/event_fuzz.rs"
+doc = false
+
+[[bin]]
+name = "mem_slab_fuzz"
+path = "fuzz_targets/mem_slab_fuzz.rs"
+doc = false
