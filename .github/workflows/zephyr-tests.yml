@@ -53,6 +53,7 @@ jobs:
           west init -m https://github.com/zephyrproject-rtos/zephyr.git zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
+          west sdk install
 
       - name: Build and run test
         env:
