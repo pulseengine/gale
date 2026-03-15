@@ -113,6 +113,8 @@
 // FFI boundary crate — unsafe is inherent (no_mangle, raw pointers).
 // The verified pure logic lives in the `gale` crate which denies unsafe.
 
+pub mod coarse;
+
 use gale::error::{EAGAIN, EBUSY, ECANCELED, EINVAL, ENOMEM, ENOMSG, EOVERFLOW, EPERM, EPIPE, OK};
 
 // ---------------------------------------------------------------------------

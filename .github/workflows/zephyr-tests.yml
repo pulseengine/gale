@@ -15,6 +15,7 @@ on:
 
 env:
   HOME: /root
+  DOCKER_CONFIG: /tmp/.docker
 
 jobs:
   zephyr-test:

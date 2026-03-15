@@ -20,8 +20,8 @@ panic = "abort"
 overflow-checks = true
 
 [profile.release]
-opt-level = "s"
-lto = true
+opt-level = "z"  # optimize for size (embedded)
+lto = true        # fat LTO — maximum interprocedural optimization
 codegen-units = 1
 panic = "abort"
 overflow-checks = true

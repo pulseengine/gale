@@ -1,0 +1,50 @@
+# Proof-of-concept: Full Rust semaphore kernel implementation.
+#
+# This crate replaces gale_sem.c entirely — Rust calling Gale directly
+# (Rust-to-Rust for verified logic, extern "C" for Zephyr scheduler ops).
+#
+# This does NOT compile against Zephyr yet. It demonstrates the architecture
+# and dependency structure for a full-Rust kernel primitive implementation.
+#
+# To actually build, you would need:
+#   1. Bindgen-generated kernel_sys.rs (from Zephyr headers)
+#   2. A Zephyr build providing the linker symbols (z_pend_curr etc.)
+#   3. Cross-compilation targeting the Zephyr platform (e.g., thumbv7m-none-eabi)
+
+[package]
+name = "gale-sem-kernel"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "POC: Full Rust semaphore replacing gale_sem.c"
+publish = false
+
+[lib]
+name = "gale_sem_kernel"
+path = "sem_kernel.rs"
+crate-type = ["staticlib"]  # Produces .a for linking into Zephyr
+
+[dependencies]
+# Direct dependency on Gale — Rust-to-Rust, no FFI!
+# This is the whole point: the verified model is a regular Rust dependency.
+gale = { path = "../../.." }
+
+[features]
+default = []
+# Enable CONFIG_POLL support (mirrors Zephyr's Kconfig).
+config_poll = []
+
+[profile.release]
+# Safety-critical: overflow checks always on (matches gale's policy).
+overflow-checks = true
+# LTO for cross-crate inlining — critical for eliminating the
+# Rust-to-Rust call overhead between this crate and gale.
+lto = true
+# Optimize for size (embedded target).
+opt-level = "s"
+# No unwinding in kernel code.
+panic = "abort"
+
+[profile.dev]
+overflow-checks = true
+panic = "abort"
