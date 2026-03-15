@@ -49,4 +49,7 @@ pub mod timer;
 pub mod event;
 pub mod mem_slab;
 pub mod queue;
+pub mod futex;
 pub mod mbox;
+pub mod timeout;
+pub mod poll;
