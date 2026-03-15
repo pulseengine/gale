@@ -15,6 +15,10 @@
 #     → SYSREQ-LI-001  (system) → SWREQ-LI-LI01..LI06 (software)
 #     → SYSREQ-QU-001  (system) → SWREQ-QU-QU01..QU06 (software)
 #     → SYSREQ-MB-001  (system) → SWREQ-MB-MB01..MB06 (software)
+#     → SYSREQ-FX-001  (system) → SWREQ-FX-FX01..FX06 (software)
+#     → SYSREQ-TO-001  (system) → SWREQ-TO-TO01..TO08 (software)
+#     → SYSREQ-PL-001  (system) → SWREQ-PL-PL01..PL08 (software)
+#     → SYSREQ-SC-001  (system) → SWREQ-SC-SC01..SC16 (software)
 #
 # The verified properties are the ASIL-D formal specifications.
 # Each maps directly to a property in the Verus/Rocq specs.
@@ -2320,3 +2324,776 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MB-001
+
+  # ── Futex: System requirement ──────────────────────────────────────────────
+
+  - id: SYSREQ-FX-001
+    type: system-req
+    title: Fast userspace mutex with wait/wake
+    status: approved
+    description: >
+      A futex that matches the Zephyr k_futex API semantics:
+      wait (block only when val == expected) and wake (resume waiters).
+      Must maintain wait queue integrity and never exhibit undefined
+      behavior or arithmetic overflow.
+    tags: [futex, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 6 properties (FX1-FX6) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Futex: Software requirements (6 ASIL-D properties) ────────────────────
+
+  - id: SWREQ-FX-FX01
+    type: sw-req
+    title: "FX1: wait blocks only when val == expected"
+    status: approved
+    description: >
+      When wait is called and the atomic value equals expected, the
+      calling thread is added to the wait queue and blocks.
+      Maps to futex.c:69-94.
+    tags: [futex, wait, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on wait(). Unit test wait_blocks_on_match.
+    links:
+      - type: derives-from
+        target: SYSREQ-FX-001
+
+  - id: SWREQ-FX-FX02
+    type: sw-req
+    title: "FX2: wait with val != expected returns EAGAIN"
+    status: approved
+    description: >
+      When wait is called and the atomic value does not equal expected,
+      the call returns -EAGAIN immediately without blocking.
+      Maps to futex.c:81-83.
+    tags: [futex, wait, error, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on wait(). Unit test wait_mismatch_returns_eagain.
+    links:
+      - type: derives-from
+        target: SYSREQ-FX-001
+
+  - id: SWREQ-FX-FX03
+    type: sw-req
+    title: "FX3: wake returns number of threads woken"
+    status: approved
+    description: >
+      The wake function returns the count of threads actually removed
+      from the wait queue and made ready.
+      Maps to futex.c:27-57.
+    tags: [futex, wake, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on wake(). Unit test wake_returns_woken_count.
+    links:
+      - type: derives-from
+        target: SYSREQ-FX-001
+
+  - id: SWREQ-FX-FX04
+    type: sw-req
+    title: "FX4: wake_all=false wakes at most one thread"
+    status: approved
+    description: >
+      When wake is called with wake_all=false, at most one thread is
+      removed from the wait queue.
+      Maps to futex.c:41-48.
+    tags: [futex, wake, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on wake(). Unit test wake_one_wakes_single.
+    links:
+      - type: derives-from
+        target: SYSREQ-FX-001
+
+  - id: SWREQ-FX-FX05
+    type: sw-req
+    title: "FX5: wake_all=true wakes all waiters"
+    status: approved
+    description: >
+      When wake is called with wake_all=true, all threads are removed
+      from the wait queue.
+      Maps to futex.c:41-48.
+    tags: [futex, wake, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on wake(). Unit test wake_all_wakes_everyone.
+    links:
+      - type: derives-from
+        target: SYSREQ-FX-001
+
+  - id: SWREQ-FX-FX06
+    type: sw-req
+    title: "FX6: no overflow in woken count"
+    status: approved
+    description: >
+      No arithmetic operation on the woken counter causes integer
+      overflow. All arithmetic is guarded by bounds checks.
+    tags: [futex, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-FX-001
+
+  # ── Timeout: System requirement ────────────────────────────────────────────
+
+  - id: SYSREQ-TO-001
+    type: system-req
+    title: Timeout subsystem with tick arithmetic
+    status: approved
+    description: >
+      A timeout subsystem that matches the Zephyr _timeout API semantics:
+      add, abort, remaining, expires, and announce. Must maintain tick
+      arithmetic correctness and never exhibit undefined behavior or
+      arithmetic overflow.
+    tags: [timeout, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 8 properties (TO1-TO8) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Timeout: Software requirements (8 ASIL-D properties) ──────────────────
+
+  - id: SWREQ-TO-TO01
+    type: sw-req
+    title: "TO1: add_timeout inserts with correct expiry tick"
+    status: approved
+    description: >
+      When a timeout is added, its expiry tick is set to
+      curr_tick + ticks. The timeout is inserted into the sorted list
+      maintaining ascending order.
+      Maps to timeout.c:88-145.
+    tags: [timeout, add, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on add(). Unit test add_sets_expiry.
+    links:
+      - type: derives-from
+        target: SYSREQ-TO-001
+
+  - id: SWREQ-TO-TO02
+    type: sw-req
+    title: "TO2: abort_timeout returns 0 on success, -EINVAL if inactive"
+    status: approved
+    description: >
+      Aborting an active timeout removes it and returns 0.
+      Aborting an inactive timeout returns -EINVAL.
+      Maps to timeout.c:147-166.
+    tags: [timeout, abort, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on abort(). Unit test abort_active_and_inactive.
+    links:
+      - type: derives-from
+        target: SYSREQ-TO-001
+
+  - id: SWREQ-TO-TO03
+    type: sw-req
+    title: "TO3: timeout_remaining returns ticks until expiry"
+    status: approved
+    description: >
+      For an active timeout, remaining returns max(0, expiry - curr_tick).
+      For an inactive timeout, returns 0.
+      Maps to timeout.c:168-193.
+    tags: [timeout, remaining, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on remaining(). Unit test remaining_correct.
+    links:
+      - type: derives-from
+        target: SYSREQ-TO-001
+
+  - id: SWREQ-TO-TO04
+    type: sw-req
+    title: "TO4: timeout_expires returns absolute expiry tick"
+    status: approved
+    description: >
+      For an active timeout, expires returns the absolute tick at which
+      the timeout fires. For an inactive timeout, returns 0.
+      Maps to timeout.c:196-209.
+    tags: [timeout, expires, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on expires(). Unit test expires_correct.
+    links:
+      - type: derives-from
+        target: SYSREQ-TO-001
+
+  - id: SWREQ-TO-TO05
+    type: sw-req
+    title: "TO5: announce processes expired timeouts in order"
+    status: approved
+    description: >
+      sys_clock_announce advances curr_tick by ticks and fires all
+      timeouts whose expiry <= curr_tick, in ascending expiry order.
+      Maps to timeout.c:221-270.
+    tags: [timeout, announce, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on announce(). Unit test announce_fires_expired.
+    links:
+      - type: derives-from
+        target: SYSREQ-TO-001
+
+  - id: SWREQ-TO-TO06
+    type: sw-req
+    title: "TO6: curr_tick monotonically increases"
+    status: approved
+    description: >
+      The current tick counter never decreases. Each announce call
+      advances curr_tick by the given ticks count.
+    tags: [timeout, monotonic, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on announce(). Unit test tick_monotonic.
+    links:
+      - type: derives-from
+        target: SYSREQ-TO-001
+
+  - id: SWREQ-TO-TO07
+    type: sw-req
+    title: "TO7: timeout list remains sorted by expiry"
+    status: approved
+    description: >
+      The timeout list is always sorted in ascending order of expiry
+      ticks. Insertion maintains this invariant.
+    tags: [timeout, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus invariant on timeout list. Unit test list_sorted_after_add.
+    links:
+      - type: derives-from
+        target: SYSREQ-TO-001
+
+  - id: SWREQ-TO-TO08
+    type: sw-req
+    title: "TO8: no overflow in tick arithmetic"
+    status: approved
+    description: >
+      No arithmetic operation on tick values causes integer overflow.
+      All arithmetic is guarded by bounds checks or uses wrapping
+      semantics where required.
+    tags: [timeout, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-TO-001
+
+  # ── Poll: System requirement ───────────────────────────────────────────────
+
+  - id: SYSREQ-PL-001
+    type: system-req
+    title: Poll event state machine
+    status: approved
+    description: >
+      A poll event subsystem that matches the Zephyr k_poll API semantics:
+      event initialization, readiness checking, signal raising, and state
+      transitions. Must maintain event state consistency and never exhibit
+      undefined behavior or arithmetic overflow.
+    tags: [poll, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 8 properties (PL1-PL8) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Poll: Software requirements (8 ASIL-D properties) ─────────────────────
+
+  - id: SWREQ-PL-PL01
+    type: sw-req
+    title: "PL1: event_init sets state to NOT_READY"
+    status: approved
+    description: >
+      When a poll event is initialized, its state is set to
+      K_POLL_STATE_NOT_READY and its type is recorded.
+      Maps to poll.c:43-62.
+    tags: [poll, init, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on init(). Unit test event_init_not_ready.
+    links:
+      - type: derives-from
+        target: SYSREQ-PL-001
+
+  - id: SWREQ-PL-PL02
+    type: sw-req
+    title: "PL2: is_condition_met returns true only when event state matches"
+    status: approved
+    description: >
+      The readiness check returns true only when the underlying kernel
+      object's state satisfies the poll event's type condition.
+      Maps to poll.c:63-105.
+    tags: [poll, check, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on check(). Unit test condition_met_matches_state.
+    links:
+      - type: derives-from
+        target: SYSREQ-PL-001
+
+  - id: SWREQ-PL-PL03
+    type: sw-req
+    title: "PL3: set_event_ready transitions state to ready"
+    status: approved
+    description: >
+      When a poll event becomes ready, its state is updated to the
+      specified ready state value.
+      Maps to poll.c:223-228.
+    tags: [poll, ready, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on set_ready(). Unit test set_ready_transitions_state.
+    links:
+      - type: derives-from
+        target: SYSREQ-PL-001
+
+  - id: SWREQ-PL-PL04
+    type: sw-req
+    title: "PL4: signal_raise sets signaled flag and result"
+    status: approved
+    description: >
+      When a poll signal is raised, the signaled flag is set to 1 and
+      the result value is stored.
+      Maps to poll.c:522-553.
+    tags: [poll, signal, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on signal(). Unit test signal_raise_sets_flag.
+    links:
+      - type: derives-from
+        target: SYSREQ-PL-001
+
+  - id: SWREQ-PL-PL05
+    type: sw-req
+    title: "PL5: signal_reset clears signaled flag"
+    status: approved
+    description: >
+      When a poll signal is reset, the signaled flag is cleared to 0
+      and the result is reset.
+      Maps to poll.c:494-499.
+    tags: [poll, signal, reset, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on reset(). Unit test signal_reset_clears_flag.
+    links:
+      - type: derives-from
+        target: SYSREQ-PL-001
+
+  - id: SWREQ-PL-PL06
+    type: sw-req
+    title: "PL6: signal_check reads signaled and result atomically"
+    status: approved
+    description: >
+      The check function reads the current signaled flag and result
+      value, returning them as a consistent pair.
+      Maps to poll.c:501-515.
+    tags: [poll, signal, check, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on check(). Unit test signal_check_reads_consistent.
+    links:
+      - type: derives-from
+        target: SYSREQ-PL-001
+
+  - id: SWREQ-PL-PL07
+    type: sw-req
+    title: "PL7: event state transitions are valid (NOT_READY -> READY only)"
+    status: approved
+    description: >
+      Poll event state transitions follow a valid state machine.
+      Events can only transition from NOT_READY to a ready state,
+      and must be re-initialized to return to NOT_READY.
+    tags: [poll, fsm, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on state transitions. Unit test invalid_transition_rejected.
+    links:
+      - type: derives-from
+        target: SYSREQ-PL-001
+
+  - id: SWREQ-PL-PL08
+    type: sw-req
+    title: "PL8: no overflow in poll event operations"
+    status: approved
+    description: >
+      No arithmetic operation on event counts or signal results causes
+      integer overflow. All arithmetic is guarded by bounds checks.
+    tags: [poll, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-PL-001
+
+  # ── Scheduler: System requirement ──────────────────────────────────────────
+
+  - id: SYSREQ-SC-001
+    type: system-req
+    title: Priority scheduler with run queue and preemption
+    status: approved
+    description: >
+      A priority-based scheduler that matches the Zephyr scheduler
+      semantics: run queue management, priority-ordered selection,
+      preemption decisions, thread state machine, suspend/resume, and
+      wait queue integration. Must maintain scheduling invariants and
+      never exhibit undefined behavior or arithmetic overflow.
+    tags: [sched, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 16 properties (SC1-SC16) verified by Verus SMT proofs,
+        Lean 4 scheduling theory, and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Scheduler: Software requirements (16 ASIL-D properties) ───────────────
+
+  - id: SWREQ-SC-SC01
+    type: sw-req
+    title: "SC1: runq_add inserts thread into run queue"
+    status: approved
+    description: >
+      Adding a thread to the run queue makes it eligible for selection
+      by next_up.
+      Maps to sched.c:80-87.
+    tags: [sched, runq, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on add(). Unit test runq_add_makes_eligible.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001
+
+  - id: SWREQ-SC-SC02
+    type: sw-req
+    title: "SC2: runq_remove removes thread from run queue"
+    status: approved
+    description: >
+      Removing a thread from the run queue makes it ineligible for
+      selection by next_up.
+      Maps to sched.c:88-95.
+    tags: [sched, runq, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on remove(). Unit test runq_remove_makes_ineligible.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001
+
+  - id: SWREQ-SC-SC03
+    type: sw-req
+    title: "SC3: runq_best returns highest-priority thread"
+    status: approved
+    description: >
+      The best thread from the run queue is the one with the numerically
+      lowest priority value (highest scheduling priority).
+      Maps to sched.c:101-108.
+    tags: [sched, runq, priority, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on best(). Unit test runq_best_returns_highest_priority.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001
+
+  - id: SWREQ-SC-SC04
+    type: sw-req
+    title: "SC4: next_up selects best runnable thread"
+    status: approved
+    description: >
+      next_up returns the highest-priority ready thread, considering
+      the idle thread as fallback.
+      Maps to sched.c:185-282.
+    tags: [sched, scheduling, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on next_up(). Unit test next_up_selects_best.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001
+
+  - id: SWREQ-SC-SC05
+    type: sw-req
+    title: "SC5: should_preempt returns true when thread has higher priority"
+    status: approved
+    description: >
+      Preemption is indicated when the candidate thread has strictly
+      higher priority than the current thread, or when preemption is
+      explicitly allowed via swap_ok.
+      Maps to kthread.h:224+.
+    tags: [sched, preemption, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on should_preempt(). Unit test preempt_higher_priority.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001
+
+  - id: SWREQ-SC-SC06
+    type: sw-req
+    title: "SC6: ready_thread adds thread to run queue and updates cache"
+    status: approved
+    description: >
+      Making a thread ready adds it to the run queue and triggers
+      a cache update to check if preemption is needed.
+      Maps to sched.c:348-375.
+    tags: [sched, ready, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on ready(). Unit test ready_thread_in_runq.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001
+
+  - id: SWREQ-SC-SC07
+    type: sw-req
+    title: "SC7: suspend removes thread from run queue"
+    status: approved
+    description: >
+      Suspending a thread removes it from the run queue and sets its
+      state to suspended.
+      Maps to sched.c:491-523.
+    tags: [sched, suspend, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on suspend(). Unit test suspend_removes_from_runq.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001
+
+  - id: SWREQ-SC-SC08
+    type: sw-req
+    title: "SC8: resume adds suspended thread back to run queue"
+    status: approved
+    description: >
+      Resuming a suspended thread adds it back to the run queue and
+      triggers rescheduling.
+      Maps to sched.c:533-548.
+    tags: [sched, resume, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on resume(). Unit test resume_adds_to_runq.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001
+
+  - id: SWREQ-SC-SC09
+    type: sw-req
+    title: "SC9: yield moves current thread to end of priority queue"
+    status: approved
+    description: >
+      Yielding moves the current thread to the end of its priority
+      level's queue, allowing same-priority threads to run.
+      Maps to sched.c:284-292.
+    tags: [sched, yield, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on yield(). Unit test yield_moves_to_end.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001
+
+  - id: SWREQ-SC-SC10
+    type: sw-req
+    title: "SC10: thread state machine transitions are valid"
+    status: approved
+    description: >
+      Thread states (READY, RUNNING, SUSPENDED, PENDING, HALTED)
+      follow valid transitions. Invalid transitions are rejected.
+    tags: [sched, fsm, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on state transitions. Unit test invalid_state_rejected.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001
+
+  - id: SWREQ-SC-SC11
+    type: sw-req
+    title: "SC11: run queue never contains duplicate threads"
+    status: approved
+    description: >
+      A thread appears in the run queue at most once. Adding an
+      already-queued thread is a no-op.
+    tags: [sched, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus invariant on run queue. Unit test no_duplicate_in_runq.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001
+
+  - id: SWREQ-SC-SC12
+    type: sw-req
+    title: "SC12: priority ordering preserved across operations"
+    status: approved
+    description: >
+      The run queue maintains priority ordering after any add, remove,
+      or yield operation.
+    tags: [sched, priority, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus invariant on run queue ordering. Proptest random op sequences.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001
+
+  - id: SWREQ-SC-SC13
+    type: sw-req
+    title: "SC13: idle thread is always selectable"
+    status: approved
+    description: >
+      The idle thread is always present and selectable by next_up as
+      a fallback when no other threads are ready.
+    tags: [sched, idle, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on next_up(). Unit test idle_always_selectable.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001
+
+  - id: SWREQ-SC-SC14
+    type: sw-req
+    title: "SC14: cooperative threads not preempted"
+    status: approved
+    description: >
+      Threads with cooperative priority (negative priority values) are
+      not preempted by threads of equal or lower priority.
+    tags: [sched, cooperative, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on should_preempt(). Unit test coop_not_preempted.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001
+
+  - id: SWREQ-SC-SC15
+    type: sw-req
+    title: "SC15: meta-IRQ threads preempt cooperative threads"
+    status: approved
+    description: >
+      Meta-IRQ priority threads can preempt even cooperative threads,
+      providing a mechanism for ISR-like urgency in thread context.
+    tags: [sched, meta-irq, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on should_preempt(). Unit test metairq_preempts_coop.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001
+
+  - id: SWREQ-SC-SC16
+    type: sw-req
+    title: "SC16: no overflow in priority arithmetic"
+    status: approved
+    description: >
+      No arithmetic operation on thread priorities, run queue indices,
+      or scheduling counters causes integer overflow. All arithmetic
+      is guarded by bounds checks.
+    tags: [sched, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-SC-001

@@ -2067,3 +2067,388 @@ artifacts:
     links:
       - type: verifies
         target: SYSREQ-TRACTOR-001
+
+  # ── SWE.4: Unit verification — Futex ───────────────────────────────────
+
+  - id: UV-FX-001
+    type: unit-verification
+    title: Futex unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/futex.rs covering wait val-match blocking,
+      wait val-mismatch EAGAIN, wake-one, wake-all, woken count return,
+      and empty-wake boundary condition.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-FX-WAIT
+      - type: verifies
+        target: SWDD-FX-WAKE
+
+  # ── SWE.4: Unit verification — Timeout ─────────────────────────────────
+
+  - id: UV-TO-001
+    type: unit-verification
+    title: Timeout unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/timeout.rs covering add expiry computation,
+      abort active/inactive, remaining calculation, expires retrieval,
+      announce firing, tick monotonicity, list ordering after insertion,
+      and tick arithmetic bounds.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-TO-ADD
+      - type: verifies
+        target: SWDD-TO-ABORT
+      - type: verifies
+        target: SWDD-TO-ANNOUNCE
+
+  # ── SWE.4: Unit verification — Poll ────────────────────────────────────
+
+  - id: UV-PL-001
+    type: unit-verification
+    title: Poll unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/poll.rs covering event init NOT_READY state,
+      set_ready transition, signal raise/reset/check, state machine
+      validity, and signal flag consistency.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-PL-INIT
+      - type: verifies
+        target: SWDD-PL-SET-READY
+      - type: verifies
+        target: SWDD-PL-CHECK
+      - type: verifies
+        target: SWDD-PL-SIGNAL
+
+  # ── SWE.4: Unit verification — Scheduler ───────────────────────────────
+
+  - id: UV-SC-001
+    type: unit-verification
+    title: Scheduler unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/sched.rs covering runq_add/remove/best,
+      next_up selection, should_preempt logic, priority ordering,
+      no-duplicate invariant, suspend/resume state transitions, yield
+      reordering, cooperative/meta-IRQ preemption rules, and idle
+      thread fallback.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-SC-ADD
+      - type: verifies
+        target: SWDD-SC-REMOVE-BEST
+      - type: verifies
+        target: SWDD-SC-NEXT-UP
+      - type: verifies
+        target: SWDD-SC-SHOULD-PREEMPT
+      - type: verifies
+        target: SWDD-SC-FSM
+
+  # ── SWE.5: Integration verification — Futex ───────────────────────────
+
+  - id: IV-FX-001
+    type: sw-integration-verification
+    title: Futex integration tests
+    status: approved
+    description: >
+      Integration tests in tests/futex_integration.rs exercising the
+      full futex API surface across module boundaries. Tests wait/wake
+      sequences, val-mismatch early return, wake-one vs wake-all,
+      woken count accuracy, and stress cycles.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-FX-001
+
+  # ── SWE.5: Integration verification — Timeout ─────────────────────────
+
+  - id: IV-TO-001
+    type: sw-integration-verification
+    title: Timeout integration tests
+    status: approved
+    description: >
+      Integration tests in tests/timeout_integration.rs exercising the
+      full timeout API surface across module boundaries. Tests add/abort
+      sequences, remaining/expires queries, announce with multiple
+      expirations, ordering preservation, and tick arithmetic edge cases.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-TO-001
+
+  # ── SWE.5: Integration verification — Poll ────────────────────────────
+
+  - id: IV-PL-001
+    type: sw-integration-verification
+    title: Poll integration tests
+    status: approved
+    description: >
+      Integration tests in tests/poll_integration.rs exercising the
+      full poll API surface across module boundaries. Tests event init
+      and readiness, signal raise/reset/check sequences, state machine
+      transitions, and multi-event polling scenarios.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-PL-001
+
+  # ── SWE.5: Integration verification — Scheduler ───────────────────────
+
+  - id: IV-SC-001
+    type: sw-integration-verification
+    title: Scheduler integration tests
+    status: approved
+    description: >
+      Integration tests in tests/sched_integration.rs exercising the
+      full scheduler API surface across module boundaries. Tests run
+      queue add/remove/best, next_up selection, preemption decisions,
+      suspend/resume cycles, yield reordering, priority ordering
+      preservation, and cooperative/meta-IRQ interactions.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-SC-001
+
+  # ── SWE.6: Software verification — Futex ──────────────────────────────
+
+  - id: FV-FX-001
+    type: sw-verification
+    title: Futex Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/futex.rs with requires/ensures clauses
+      that formally verify all futex properties (FX01-FX06) via SMT
+      solving. Proves wait/wake correctness, val-mismatch early return,
+      woken count accuracy, and overflow protection.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-FX-FX01
+      - type: verifies
+        target: SWREQ-FX-FX02
+      - type: verifies
+        target: SWREQ-FX-FX03
+      - type: verifies
+        target: SWREQ-FX-FX04
+      - type: verifies
+        target: SWREQ-FX-FX05
+      - type: verifies
+        target: SWREQ-FX-FX06
+
+  - id: FV-FX-003
+    type: sw-verification
+    title: Futex Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all futex code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-FX-FX01
+
+  # ── SWE.6: Software verification — Timeout ────────────────────────────
+
+  - id: FV-TO-001
+    type: sw-verification
+    title: Timeout Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/timeout.rs with requires/ensures clauses
+      that formally verify all timeout properties (TO01-TO08) via SMT
+      solving. Proves tick arithmetic, expiry computation, ordering
+      invariant, monotonicity, and overflow protection.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-TO-TO01
+      - type: verifies
+        target: SWREQ-TO-TO02
+      - type: verifies
+        target: SWREQ-TO-TO03
+      - type: verifies
+        target: SWREQ-TO-TO04
+      - type: verifies
+        target: SWREQ-TO-TO05
+      - type: verifies
+        target: SWREQ-TO-TO06
+      - type: verifies
+        target: SWREQ-TO-TO07
+      - type: verifies
+        target: SWREQ-TO-TO08
+
+  - id: FV-TO-003
+    type: sw-verification
+    title: Timeout Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all timeout code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-TO-TO01
+
+  # ── SWE.6: Software verification — Poll ───────────────────────────────
+
+  - id: FV-PL-001
+    type: sw-verification
+    title: Poll Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/poll.rs with requires/ensures clauses
+      that formally verify all poll properties (PL01-PL08) via SMT
+      solving. Proves state machine validity, signal flag consistency,
+      readiness checking, and overflow protection.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-PL-PL01
+      - type: verifies
+        target: SWREQ-PL-PL02
+      - type: verifies
+        target: SWREQ-PL-PL03
+      - type: verifies
+        target: SWREQ-PL-PL04
+      - type: verifies
+        target: SWREQ-PL-PL05
+      - type: verifies
+        target: SWREQ-PL-PL06
+      - type: verifies
+        target: SWREQ-PL-PL07
+      - type: verifies
+        target: SWREQ-PL-PL08
+
+  - id: FV-PL-003
+    type: sw-verification
+    title: Poll Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all poll code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-PL-PL01
+
+  # ── SWE.6: Software verification — Scheduler ──────────────────────────
+
+  - id: FV-SC-001
+    type: sw-verification
+    title: Scheduler Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/sched.rs with requires/ensures clauses
+      that formally verify all scheduler properties (SC01-SC16) via SMT
+      solving. Proves priority ordering, preemption correctness, state
+      machine validity, no-duplicate invariant, and overflow protection.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-SC-SC01
+      - type: verifies
+        target: SWREQ-SC-SC02
+      - type: verifies
+        target: SWREQ-SC-SC03
+      - type: verifies
+        target: SWREQ-SC-SC04
+      - type: verifies
+        target: SWREQ-SC-SC05
+      - type: verifies
+        target: SWREQ-SC-SC06
+      - type: verifies
+        target: SWREQ-SC-SC07
+      - type: verifies
+        target: SWREQ-SC-SC08
+      - type: verifies
+        target: SWREQ-SC-SC09
+      - type: verifies
+        target: SWREQ-SC-SC10
+      - type: verifies
+        target: SWREQ-SC-SC11
+      - type: verifies
+        target: SWREQ-SC-SC12
+      - type: verifies
+        target: SWREQ-SC-SC13
+      - type: verifies
+        target: SWREQ-SC-SC14
+      - type: verifies
+        target: SWREQ-SC-SC15
+      - type: verifies
+        target: SWREQ-SC-SC16
+
+  - id: FV-SC-003
+    type: sw-verification
+    title: Scheduler Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all scheduler code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-SC-SC01
+
+  - id: FV-SC-004
+    type: sw-verification
+    title: Scheduler Lean 4 scheduling theory proofs
+    status: approved
+    description: >
+      Lean 4 proofs of scheduling theory properties: rate-monotonic
+      analysis (RMA) utilization bound, priority ceiling protocol
+      correctness, and priority queue ordering lemmas. Validates that
+      the scheduler model satisfies classical real-time scheduling
+      invariants independent of the Zephyr-specific implementation.
+    tags: [formal-verification, lean4, scheduling-theory, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-SC-SC03
+      - type: verifies
+        target: SWREQ-SC-SC05
+      - type: verifies
+        target: SWREQ-SC-SC12

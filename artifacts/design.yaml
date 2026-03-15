@@ -1792,3 +1792,508 @@ artifacts:
         target: SWREQ-MB-MB06
       - type: function-maps-to
         target: PROV-MB-001
+
+  # ── Software architecture — Futex (SWE.2) ───────────────────────────────
+
+  - id: SWARCH-FX-001
+    type: sw-arch-component
+    title: Futex module (gale::futex)
+    status: approved
+    description: >
+      Fast userspace mutex model with wait/wake operations.
+      Owns a WaitQueue for blocked threads. Models the val comparison
+      for wait and the woken-count arithmetic for wake. Actual thread
+      blocking and atomic value management stays in C — Gale verifies
+      state machine and counter safety only. No unsafe code.
+    tags: [futex, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "Futex::wait(i32, i32) -> i32"
+          - "Futex::wake(bool) -> i32"
+          - "Futex::waiters() -> u32"
+        required:
+          - "gale::wait_queue::WaitQueue"
+          - "gale::thread::Thread"
+          - "gale::error::{OK, EINVAL, EAGAIN}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-FX-FX01
+      - type: allocated-from
+        target: SWREQ-FX-FX03
+      - type: allocated-from
+        target: SWREQ-FX-FX04
+      - type: replaces
+        target: PROV-FX-001
+
+  # ── Software detailed design — Futex (SWE.3) ────────────────────────────
+
+  - id: SWDD-FX-WAIT
+    type: sw-detail-design
+    title: "Futex::wait — z_impl_k_futex_wait port"
+    status: approved
+    description: >
+      If val != expected: return EAGAIN. Otherwise add calling thread
+      to wait queue and block.
+    tags: [futex, wait]
+    fields:
+      unit: plain/src/futex.rs
+      function: "Futex::wait"
+      algorithm: >
+        if val != expected: EAGAIN; else: pend to wait_q; block
+    links:
+      - type: refines
+        target: SWARCH-FX-001
+      - type: satisfies
+        target: SWREQ-FX-FX01
+      - type: satisfies
+        target: SWREQ-FX-FX02
+      - type: function-maps-to
+        target: PROV-FX-001
+
+  - id: SWDD-FX-WAKE
+    type: sw-detail-design
+    title: "Futex::wake — z_impl_k_futex_wake port"
+    status: approved
+    description: >
+      Unpend threads from wait queue. If wake_all: unpend all, else
+      unpend at most one. Return woken count.
+    tags: [futex, wake]
+    fields:
+      unit: plain/src/futex.rs
+      function: "Futex::wake"
+      algorithm: >
+        loop { unpend first; woken += 1; if !wake_all: break }; woken
+    links:
+      - type: refines
+        target: SWARCH-FX-001
+      - type: satisfies
+        target: SWREQ-FX-FX03
+      - type: satisfies
+        target: SWREQ-FX-FX04
+      - type: satisfies
+        target: SWREQ-FX-FX05
+      - type: satisfies
+        target: SWREQ-FX-FX06
+      - type: function-maps-to
+        target: PROV-FX-001
+
+  # ── Software architecture — Timeout (SWE.2) ─────────────────────────────
+
+  - id: SWARCH-TO-001
+    type: sw-arch-component
+    title: Timeout module (gale::timeout)
+    status: approved
+    description: >
+      Timeout tick arithmetic model with add/abort/remaining/expires/announce.
+      Tracks curr_tick (u64), timeout list ordering, and expiry computation.
+      Actual DLL management and callback invocation stays in C — Gale
+      verifies tick arithmetic and ordering invariants only. No unsafe code.
+    tags: [timeout, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "Timeout::add(u64, u64) -> u64"
+          - "Timeout::abort() -> i32"
+          - "Timeout::remaining(u64) -> u64"
+          - "Timeout::expires() -> u64"
+          - "TimeoutList::announce(i32)"
+          - "TimeoutList::next_expiry() -> i32"
+        required:
+          - "gale::error::{OK, EINVAL}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-TO-TO01
+      - type: allocated-from
+        target: SWREQ-TO-TO05
+      - type: allocated-from
+        target: SWREQ-TO-TO06
+      - type: replaces
+        target: PROV-TO-001
+
+  # ── Software detailed design — Timeout (SWE.3) ──────────────────────────
+
+  - id: SWDD-TO-ADD
+    type: sw-detail-design
+    title: "Timeout::add — z_add_timeout port"
+    status: approved
+    description: >
+      Compute expiry = curr_tick + ticks. Insert timeout into sorted
+      list maintaining ascending expiry order.
+    tags: [timeout, add]
+    fields:
+      unit: plain/src/timeout.rs
+      function: "Timeout::add"
+      algorithm: >
+        expiry = curr_tick + ticks; insert sorted by expiry
+    links:
+      - type: refines
+        target: SWARCH-TO-001
+      - type: satisfies
+        target: SWREQ-TO-TO01
+      - type: satisfies
+        target: SWREQ-TO-TO07
+      - type: satisfies
+        target: SWREQ-TO-TO08
+      - type: function-maps-to
+        target: PROV-TO-001
+
+  - id: SWDD-TO-ABORT
+    type: sw-detail-design
+    title: "Timeout::abort — z_abort_timeout port"
+    status: approved
+    description: >
+      If timeout is active: remove from list, return 0.
+      If inactive: return -EINVAL.
+    tags: [timeout, abort]
+    fields:
+      unit: plain/src/timeout.rs
+      function: "Timeout::abort"
+      algorithm: >
+        if active: remove; 0; else: -EINVAL
+    links:
+      - type: refines
+        target: SWARCH-TO-001
+      - type: satisfies
+        target: SWREQ-TO-TO02
+      - type: function-maps-to
+        target: PROV-TO-001
+
+  - id: SWDD-TO-ANNOUNCE
+    type: sw-detail-design
+    title: "TimeoutList::announce — sys_clock_announce port"
+    status: approved
+    description: >
+      Advance curr_tick by ticks. Fire all timeouts whose expiry <=
+      curr_tick in ascending order.
+    tags: [timeout, announce]
+    fields:
+      unit: plain/src/timeout.rs
+      function: "TimeoutList::announce"
+      algorithm: >
+        curr_tick += ticks; while head.expiry <= curr_tick: remove & fire
+    links:
+      - type: refines
+        target: SWARCH-TO-001
+      - type: satisfies
+        target: SWREQ-TO-TO03
+      - type: satisfies
+        target: SWREQ-TO-TO04
+      - type: satisfies
+        target: SWREQ-TO-TO05
+      - type: satisfies
+        target: SWREQ-TO-TO06
+      - type: satisfies
+        target: SWREQ-TO-TO08
+      - type: function-maps-to
+        target: PROV-TO-001
+
+  # ── Software architecture — Poll (SWE.2) ────────────────────────────────
+
+  - id: SWARCH-PL-001
+    type: sw-arch-component
+    title: Poll module (gale::poll)
+    status: approved
+    description: >
+      Poll event state machine model with init/check/set_ready/signal.
+      Tracks event state (NOT_READY/READY), signal flag, and result value.
+      Actual thread blocking, event registration, and DLL management
+      stays in C — Gale verifies state transitions and signal flag
+      operations only. No unsafe code.
+    tags: [poll, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "PollEvent::init(u32) -> Self"
+          - "PollEvent::is_ready() -> bool"
+          - "PollEvent::set_ready(u32)"
+          - "PollEvent::state() -> u32"
+          - "PollSignal::init() -> Self"
+          - "PollSignal::raise(i32)"
+          - "PollSignal::reset()"
+          - "PollSignal::check() -> (bool, i32)"
+        required:
+          - "gale::error::{OK, EINVAL}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-PL-PL01
+      - type: allocated-from
+        target: SWREQ-PL-PL04
+      - type: allocated-from
+        target: SWREQ-PL-PL07
+      - type: replaces
+        target: PROV-PL-001
+
+  # ── Software detailed design — Poll (SWE.3) ─────────────────────────────
+
+  - id: SWDD-PL-INIT
+    type: sw-detail-design
+    title: "PollEvent::init — k_poll_event_init port"
+    status: approved
+    description: >
+      Set event type and state = K_POLL_STATE_NOT_READY.
+    tags: [poll, init]
+    fields:
+      unit: plain/src/poll.rs
+      function: "PollEvent::init"
+      algorithm: >
+        PollEvent { event_type: type, state: NOT_READY }
+    links:
+      - type: refines
+        target: SWARCH-PL-001
+      - type: satisfies
+        target: SWREQ-PL-PL01
+      - type: function-maps-to
+        target: PROV-PL-001
+
+  - id: SWDD-PL-SET-READY
+    type: sw-detail-design
+    title: "PollEvent::set_ready — set_event_ready port"
+    status: approved
+    description: >
+      Transition event state to the specified ready state value.
+    tags: [poll, ready]
+    fields:
+      unit: plain/src/poll.rs
+      function: "PollEvent::set_ready"
+      algorithm: >
+        self.state = ready_state
+    links:
+      - type: refines
+        target: SWARCH-PL-001
+      - type: satisfies
+        target: SWREQ-PL-PL03
+      - type: satisfies
+        target: SWREQ-PL-PL07
+      - type: function-maps-to
+        target: PROV-PL-001
+
+  - id: SWDD-PL-CHECK
+    type: sw-detail-design
+    title: "PollSignal::check — z_impl_k_poll_signal_check port"
+    status: approved
+    description: >
+      Read the signaled flag and result value as a consistent pair.
+    tags: [poll, signal, check]
+    fields:
+      unit: plain/src/poll.rs
+      function: "PollSignal::check"
+      algorithm: >
+        (self.signaled, self.result)
+    links:
+      - type: refines
+        target: SWARCH-PL-001
+      - type: satisfies
+        target: SWREQ-PL-PL02
+      - type: satisfies
+        target: SWREQ-PL-PL06
+      - type: function-maps-to
+        target: PROV-PL-001
+
+  - id: SWDD-PL-SIGNAL
+    type: sw-detail-design
+    title: "PollSignal::raise/reset — z_impl_k_poll_signal_raise/reset port"
+    status: approved
+    description: >
+      raise: set signaled = true, result = value.
+      reset: set signaled = false, result = 0.
+    tags: [poll, signal]
+    fields:
+      unit: plain/src/poll.rs
+      function: "PollSignal::raise / PollSignal::reset"
+      algorithm: >
+        raise: signaled = true; result = value;
+        reset: signaled = false; result = 0
+    links:
+      - type: refines
+        target: SWARCH-PL-001
+      - type: satisfies
+        target: SWREQ-PL-PL04
+      - type: satisfies
+        target: SWREQ-PL-PL05
+      - type: satisfies
+        target: SWREQ-PL-PL08
+      - type: function-maps-to
+        target: PROV-PL-001
+
+  # ── Software architecture — Scheduler (SWE.2) ───────────────────────────
+
+  - id: SWARCH-SC-001
+    type: sw-arch-component
+    title: Scheduler module (gale::sched)
+    status: approved
+    description: >
+      Priority-based scheduler model with run queue management,
+      preemption decisions, and thread state machine. Tracks priority
+      queue, thread states (READY/RUNNING/SUSPENDED/PENDING/HALTED),
+      and preemption logic. Actual context switching, spinlocks, and
+      SMP coordination stays in C — Gale verifies priority ordering,
+      state transitions, and preemption correctness only. No unsafe code.
+    tags: [sched, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "RunQueue::add(Thread)"
+          - "RunQueue::remove(Thread)"
+          - "RunQueue::best() -> Option<Thread>"
+          - "Scheduler::next_up() -> Thread"
+          - "Scheduler::should_preempt(Thread, bool) -> bool"
+          - "Scheduler::ready(Thread)"
+          - "Scheduler::suspend(Thread)"
+          - "Scheduler::resume(Thread)"
+          - "Scheduler::yield_current()"
+        required:
+          - "gale::thread::Thread"
+          - "gale::error::{OK, EINVAL}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-SC-SC01
+      - type: allocated-from
+        target: SWREQ-SC-SC04
+      - type: allocated-from
+        target: SWREQ-SC-SC05
+      - type: replaces
+        target: PROV-SC-001
+
+  # ── Software detailed design — Scheduler (SWE.3) ────────────────────────
+
+  - id: SWDD-SC-ADD
+    type: sw-detail-design
+    title: "RunQueue::add — runq_add port"
+    status: approved
+    description: >
+      Insert thread into run queue at its priority position. If thread
+      is already in queue, no-op.
+    tags: [sched, runq, add]
+    fields:
+      unit: plain/src/sched.rs
+      function: "RunQueue::add"
+      algorithm: >
+        if !contains(thread): insert at priority position
+    links:
+      - type: refines
+        target: SWARCH-SC-001
+      - type: satisfies
+        target: SWREQ-SC-SC01
+      - type: satisfies
+        target: SWREQ-SC-SC11
+      - type: satisfies
+        target: SWREQ-SC-SC12
+      - type: function-maps-to
+        target: PROV-SC-001
+
+  - id: SWDD-SC-REMOVE-BEST
+    type: sw-detail-design
+    title: "RunQueue::remove/best — runq_remove/runq_best port"
+    status: approved
+    description: >
+      remove: remove thread from run queue. best: return
+      highest-priority (lowest numeric value) thread.
+    tags: [sched, runq, remove, best]
+    fields:
+      unit: plain/src/sched.rs
+      function: "RunQueue::remove / RunQueue::best"
+      algorithm: >
+        remove: delete from queue; best: return min-priority thread
+    links:
+      - type: refines
+        target: SWARCH-SC-001
+      - type: satisfies
+        target: SWREQ-SC-SC02
+      - type: satisfies
+        target: SWREQ-SC-SC03
+      - type: satisfies
+        target: SWREQ-SC-SC12
+      - type: function-maps-to
+        target: PROV-SC-001
+
+  - id: SWDD-SC-NEXT-UP
+    type: sw-detail-design
+    title: "Scheduler::next_up — next_up port"
+    status: approved
+    description: >
+      Select the highest-priority ready thread from the run queue,
+      falling back to the idle thread if no other threads are ready.
+    tags: [sched, scheduling]
+    fields:
+      unit: plain/src/sched.rs
+      function: "Scheduler::next_up"
+      algorithm: >
+        thread = runq_best(); if thread == idle: idle; else: thread
+    links:
+      - type: refines
+        target: SWARCH-SC-001
+      - type: satisfies
+        target: SWREQ-SC-SC04
+      - type: satisfies
+        target: SWREQ-SC-SC13
+      - type: function-maps-to
+        target: PROV-SC-001
+
+  - id: SWDD-SC-SHOULD-PREEMPT
+    type: sw-detail-design
+    title: "Scheduler::should_preempt — should_preempt port"
+    status: approved
+    description: >
+      Return true if thread has strictly higher priority than current,
+      or if preempt_ok is set. Meta-IRQ threads always preempt.
+      Cooperative threads are not preempted unless by meta-IRQ.
+    tags: [sched, preemption]
+    fields:
+      unit: plain/src/sched.rs
+      function: "Scheduler::should_preempt"
+      algorithm: >
+        if is_metairq(thread): true;
+        elif is_coop(current) && !preempt_ok: false;
+        else: prio_cmp(thread, current) < 0 || preempt_ok
+    links:
+      - type: refines
+        target: SWARCH-SC-001
+      - type: satisfies
+        target: SWREQ-SC-SC05
+      - type: satisfies
+        target: SWREQ-SC-SC14
+      - type: satisfies
+        target: SWREQ-SC-SC15
+      - type: satisfies
+        target: SWREQ-SC-SC16
+      - type: function-maps-to
+        target: PROV-SC-001
+
+  - id: SWDD-SC-FSM
+    type: sw-detail-design
+    title: "Scheduler thread state machine — suspend/resume/ready port"
+    status: approved
+    description: >
+      suspend: remove from run queue, set state SUSPENDED.
+      resume: if SUSPENDED, add to run queue, set state READY, reschedule.
+      ready: add to run queue, set state READY, update cache.
+      yield: move current to end of priority queue.
+    tags: [sched, fsm, suspend, resume]
+    fields:
+      unit: plain/src/sched.rs
+      function: "Scheduler::suspend / resume / ready / yield_current"
+      algorithm: >
+        suspend: unready; state = SUSPENDED;
+        resume: if SUSPENDED: ready; reschedule;
+        ready: queue_thread; update_cache;
+        yield: move_to_end_of_prio_q
+    links:
+      - type: refines
+        target: SWARCH-SC-001
+      - type: satisfies
+        target: SWREQ-SC-SC06
+      - type: satisfies
+        target: SWREQ-SC-SC07
+      - type: satisfies
+        target: SWREQ-SC-SC08
+      - type: satisfies
+        target: SWREQ-SC-SC09
+      - type: satisfies
+        target: SWREQ-SC-SC10
+      - type: function-maps-to
+        target: PROV-SC-001

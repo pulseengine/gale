@@ -345,3 +345,115 @@ artifacts:
       gale-file: plain/src/mbox.rs
       gale-module: gale::mbox
       scope: partial-functions
+
+  - id: PROV-FX-001
+    type: source-provenance
+    title: "Zephyr kernel/futex.c — fast userspace mutex implementation"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's futex. Contains
+      z_impl_k_futex_wait, z_impl_k_futex_wake, plus userspace
+      verification wrappers. The Gale port models the wait/wake
+      state machine and woken count arithmetic only.
+    tags: [upstream, futex, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/futex.c
+      upstream-sha256: "d8518066150fecc63f7a4b9b998fd99d00875ef7c15f2f7a9f531599402d8369"
+      upstream-lines: 105
+      upstream-functions:
+        - "z_impl_k_futex_wake (lines 27-57)"
+        - "z_impl_k_futex_wait (lines 69-94)"
+      gale-file: plain/src/futex.rs
+      gale-module: gale::futex
+      scope: partial-functions
+
+  - id: PROV-TO-001
+    type: source-provenance
+    title: "Zephyr kernel/timeout.c — timeout subsystem implementation"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's timeout subsystem.
+      Contains z_add_timeout, z_abort_timeout, z_timeout_remaining,
+      z_timeout_expires, sys_clock_announce, z_get_next_timeout_expiry,
+      plus tick management and elapsed time calculation.
+      The Gale port models tick arithmetic and timeout list ordering only.
+    tags: [upstream, timeout, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/timeout.c
+      upstream-sha256: "4d045c1d35d8b12d2c416479a0b8dad0403cbc14f2fe8ee01fe73138cee7bca4"
+      upstream-lines: 351
+      upstream-functions:
+        - "z_add_timeout (lines 88-145)"
+        - "z_abort_timeout (lines 147-166)"
+        - "z_timeout_remaining (lines 182-193)"
+        - "z_timeout_expires (lines 196-209)"
+        - "sys_clock_announce (lines 221-270)"
+        - "z_get_next_timeout_expiry (lines 211-219)"
+      gale-file: plain/src/timeout.rs
+      gale-module: gale::timeout
+      scope: partial-functions
+
+  - id: PROV-PL-001
+    type: source-provenance
+    title: "Zephyr kernel/poll.c — poll event subsystem implementation"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's poll subsystem. Contains
+      k_poll_event_init, z_impl_k_poll, z_impl_k_poll_signal_init,
+      z_impl_k_poll_signal_raise, z_impl_k_poll_signal_reset,
+      z_impl_k_poll_signal_check, z_handle_obj_poll_events, plus
+      internal event registration and readiness checking.
+      The Gale port models the event state machine and signal
+      flag operations only.
+    tags: [upstream, poll, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/poll.c
+      upstream-sha256: "76d38acc3f0c9df8506acb45375f4bef897244a865653c46e0b80d81bfeb7f80"
+      upstream-lines: 810
+      upstream-functions:
+        - "k_poll_event_init (lines 43-62)"
+        - "z_impl_k_poll (lines 283-349)"
+        - "z_impl_k_poll_signal_init (lines 475-483)"
+        - "z_impl_k_poll_signal_raise (lines 522-553)"
+        - "z_impl_k_poll_signal_reset (lines 494-499)"
+        - "z_impl_k_poll_signal_check (lines 501-515)"
+      gale-file: plain/src/poll.rs
+      gale-module: gale::poll
+      scope: partial-functions
+
+  - id: PROV-SC-001
+    type: source-provenance
+    title: "Zephyr kernel/sched.c — priority scheduler implementation"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's priority-based scheduler.
+      Contains runq_add, runq_remove, runq_best, next_up, ready_thread,
+      z_ready_thread, z_impl_k_thread_suspend, z_impl_k_thread_resume,
+      move_current_to_end_of_prio_q, update_cache, plus wait queue and
+      thread state management. The Gale port models the priority queue,
+      preemption decisions, and thread state machine only.
+    tags: [upstream, sched, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/sched.c
+      upstream-sha256: "e8a690efaae2df0b4639d6c6848b8fdce4631b80c3ede94b2271c2d812ced467"
+      upstream-lines: 1605
+      upstream-functions:
+        - "runq_add (line 80)"
+        - "runq_remove (line 88)"
+        - "runq_best (line 101)"
+        - "next_up (lines 185-282)"
+        - "ready_thread (lines 348-375)"
+        - "z_impl_k_thread_suspend (lines 491-523)"
+        - "z_impl_k_thread_resume (lines 533-548)"
+        - "move_current_to_end_of_prio_q (line 284)"
+      gale-file: plain/src/sched.rs
+      gale-module: gale::sched
+      scope: partial-functions
