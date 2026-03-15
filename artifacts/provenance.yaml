@@ -202,3 +202,83 @@ artifacts:
       gale-file: plain/src/pipe.rs
       gale-module: gale::pipe
       scope: partial-functions
+
+  - id: PROV-TM-001
+    type: source-provenance
+    title: "Zephyr kernel/timer.c — timer implementation"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's kernel timer.  Contains
+      z_impl_k_timer_init, z_impl_k_timer_start, z_impl_k_timer_stop,
+      z_timer_expiration_handler, z_impl_k_timer_status_get, plus
+      userspace wrappers and sync timer support.
+      The Gale port models the status counter and period mode only.
+    tags: [upstream, timer, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/timer.c
+      upstream-sha256: "0318fa685deb5c14173dbfd90ca6d1bddb0d616c93afcb94079524445c1ff409"
+      upstream-lines: 434
+      upstream-functions:
+        - "z_impl_k_timer_init"
+        - "z_impl_k_timer_start"
+        - "z_impl_k_timer_stop"
+        - "z_timer_expiration_handler"
+        - "z_impl_k_timer_status_get"
+      gale-file: plain/src/timer.rs
+      gale-module: gale::timer
+      scope: partial-functions
+
+  - id: PROV-EV-001
+    type: source-provenance
+    title: "Zephyr kernel/events.c — event object implementation"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's event object.  Contains
+      z_impl_k_event_init, z_impl_k_event_post, z_impl_k_event_set,
+      z_impl_k_event_clear, z_impl_k_event_set_masked, z_impl_k_event_wait,
+      plus userspace wrappers and poll integration.
+      The Gale port models the bitmask operations only.
+    tags: [upstream, event, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/events.c
+      upstream-sha256: "85e77a43d2eaebd64dec676bbb87538fb498ef58097ea8b80eeadb6679a1ed94"
+      upstream-lines: 448
+      upstream-functions:
+        - "z_impl_k_event_init"
+        - "z_impl_k_event_post"
+        - "z_impl_k_event_set"
+        - "z_impl_k_event_clear"
+        - "z_impl_k_event_set_masked"
+        - "z_impl_k_event_wait"
+      gale-file: plain/src/event.rs
+      gale-module: gale::event
+      scope: partial-functions
+
+  - id: PROV-MS-001
+    type: source-provenance
+    title: "Zephyr kernel/mem_slab.c — memory slab allocator implementation"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's memory slab allocator.
+      Contains k_mem_slab_init, z_impl_k_mem_slab_alloc,
+      z_impl_k_mem_slab_free, plus userspace wrappers and statistics.
+      The Gale port models the block counter only — actual memory
+      management stays in C.
+    tags: [upstream, mem-slab, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/mem_slab.c
+      upstream-sha256: "c60846d05aee3cbd6efec922e74b2906fe5982889383c4a9c9cce00b5b4da678"
+      upstream-lines: 353
+      upstream-functions:
+        - "k_mem_slab_init"
+        - "z_impl_k_mem_slab_alloc"
+        - "z_impl_k_mem_slab_free"
+      gale-file: plain/src/mem_slab.rs
+      gale-module: gale::mem_slab
+      scope: partial-functions

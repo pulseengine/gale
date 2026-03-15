@@ -8,6 +8,9 @@
 #     → SYSREQ-MQ-001  (system) → SWREQ-MQ-MQ01..MQ13 (software)
 #     → SYSREQ-SK-001  (system) → SWREQ-SK-SK01..SK09 (software)
 #     → SYSREQ-PP-001  (system) → SWREQ-PP-PP01..PP10 (software)
+#     → SYSREQ-TM-001  (system) → SWREQ-TM-TM01..TM08 (software)
+#     → SYSREQ-EV-001  (system) → SWREQ-EV-EV01..EV08 (software)
+#     → SYSREQ-MS-001  (system) → SWREQ-MS-MS01..MS08 (software)
 #
 # The verified properties are the ASIL-D formal specifications.
 # Each maps directly to a property in the Verus/Rocq specs.
@@ -1316,3 +1319,488 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-PP-001
+
+  # ── Timer: System requirement ──────────────────────────────────────────
+
+  - id: SYSREQ-TM-001
+    type: system-req
+    title: Timer status counter with init/start/stop/expire/status_get
+    status: approved
+    description: >
+      A timer status counter that matches the Zephyr k_timer API semantics:
+      initialization, start (reset status), stop (reset status and clear
+      running), expire (increment status), and status_get (atomic read and
+      reset).  Must maintain non-negative status and never exhibit undefined
+      behavior or arithmetic overflow.
+    tags: [timer, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 8 properties (TM1-TM8) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Timer: Software requirements (8 ASIL-D properties) ────────────────
+
+  - id: SWREQ-TM-TM01
+    type: sw-req
+    title: "TM1: status >= 0 (non-negative)"
+    status: approved
+    description: >
+      The timer status counter is always non-negative. This is the
+      fundamental invariant maintained across all operations.
+    tags: [timer, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures/invariant on all methods. Proptest random op sequences.
+    links:
+      - type: derives-from
+        target: SYSREQ-TM-001
+
+  - id: SWREQ-TM-TM02
+    type: sw-req
+    title: "TM2: status_get atomically reads and resets"
+    status: approved
+    description: >
+      When status_get is called, the current status value is returned
+      and the status counter is reset to zero in a single logical step.
+    tags: [timer, status-get, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on status_get(). Unit test status_get_reads_and_resets.
+    links:
+      - type: derives-from
+        target: SYSREQ-TM-001
+
+  - id: SWREQ-TM-TM03
+    type: sw-req
+    title: "TM3: start resets status"
+    status: approved
+    description: >
+      When start is called, the status counter is reset to zero
+      regardless of its previous value.
+    tags: [timer, start, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on start(). Unit test start_resets_status.
+    links:
+      - type: derives-from
+        target: SYSREQ-TM-001
+
+  - id: SWREQ-TM-TM04
+    type: sw-req
+    title: "TM4: stop resets status and clears running"
+    status: approved
+    description: >
+      When stop is called, the status counter is reset to zero and the
+      running flag is cleared.
+    tags: [timer, stop, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on stop(). Unit test stop_clears_running_and_status.
+    links:
+      - type: derives-from
+        target: SYSREQ-TM-001
+
+  - id: SWREQ-TM-TM05
+    type: sw-req
+    title: "TM5: expire increments status by 1"
+    status: approved
+    description: >
+      When expire is called, the status counter is incremented by exactly 1.
+    tags: [timer, expire, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on expire(). Unit test expire_increments_status.
+    links:
+      - type: derives-from
+        target: SYSREQ-TM-001
+
+  - id: SWREQ-TM-TM06
+    type: sw-req
+    title: "TM6: period==0 means one-shot"
+    status: approved
+    description: >
+      When the timer period is zero, the timer operates in one-shot mode
+      and does not auto-restart after expiration.
+    tags: [timer, one-shot, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on init/start(). Unit test period_zero_is_one_shot.
+    links:
+      - type: derives-from
+        target: SYSREQ-TM-001
+
+  - id: SWREQ-TM-TM07
+    type: sw-req
+    title: "TM7: period>0 means periodic"
+    status: approved
+    description: >
+      When the timer period is greater than zero, the timer operates in
+      periodic mode and auto-restarts after each expiration.
+    tags: [timer, periodic, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on init/start(). Unit test period_nonzero_is_periodic.
+    links:
+      - type: derives-from
+        target: SYSREQ-TM-001
+
+  - id: SWREQ-TM-TM08
+    type: sw-req
+    title: "TM8: no overflow on expire"
+    status: approved
+    description: >
+      No arithmetic operation on the status counter causes integer overflow.
+      Expire uses checked or saturating arithmetic.
+    tags: [timer, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-TM-001
+
+  # ── Event: System requirement ──────────────────────────────────────────
+
+  - id: SYSREQ-EV-001
+    type: system-req
+    title: Event bitmask with post/set/clear/wait_any/wait_all
+    status: approved
+    description: >
+      An event object that matches the Zephyr k_event API semantics:
+      post (OR bits), set (replace), clear (AND complement), set_masked
+      (selective update), wait_any (any bit match), and wait_all (all bits
+      match).  Must maintain valid bitmask and never exhibit undefined
+      behavior or arithmetic overflow.
+    tags: [event, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 8 properties (EV1-EV8) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Event: Software requirements (8 ASIL-D properties) ────────────────
+
+  - id: SWREQ-EV-EV01
+    type: sw-req
+    title: "EV1: post ORs bits"
+    status: approved
+    description: >
+      When post is called with a bitmask, the event's current value is
+      updated to the bitwise OR of the current value and the posted bits.
+    tags: [event, post, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on post(). Unit test post_ors_bits.
+    links:
+      - type: derives-from
+        target: SYSREQ-EV-001
+
+  - id: SWREQ-EV-EV02
+    type: sw-req
+    title: "EV2: set replaces"
+    status: approved
+    description: >
+      When set is called with a bitmask, the event's current value is
+      replaced entirely with the given bitmask.
+    tags: [event, set, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on set(). Unit test set_replaces_value.
+    links:
+      - type: derives-from
+        target: SYSREQ-EV-001
+
+  - id: SWREQ-EV-EV03
+    type: sw-req
+    title: "EV3: clear ANDs complement"
+    status: approved
+    description: >
+      When clear is called with a bitmask, the event's current value is
+      updated to the bitwise AND of the current value and the complement
+      of the clear mask.
+    tags: [event, clear, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on clear(). Unit test clear_ands_complement.
+    links:
+      - type: derives-from
+        target: SYSREQ-EV-001
+
+  - id: SWREQ-EV-EV04
+    type: sw-req
+    title: "EV4: set_masked selective"
+    status: approved
+    description: >
+      When set_masked is called with a value and a mask, only the bits
+      selected by the mask are updated to the corresponding bits from
+      the value; unmasked bits are preserved.
+    tags: [event, set-masked, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on set_masked(). Unit test set_masked_selective.
+    links:
+      - type: derives-from
+        target: SYSREQ-EV-001
+
+  - id: SWREQ-EV-EV05
+    type: sw-req
+    title: "EV5: wait_any condition"
+    status: approved
+    description: >
+      wait_any is satisfied when the bitwise AND of the event value and
+      the requested mask is non-zero (at least one requested bit is set).
+    tags: [event, wait-any, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on wait_any(). Unit test wait_any_condition.
+    links:
+      - type: derives-from
+        target: SYSREQ-EV-001
+
+  - id: SWREQ-EV-EV06
+    type: sw-req
+    title: "EV6: wait_all condition"
+    status: approved
+    description: >
+      wait_all is satisfied when the bitwise AND of the event value and
+      the requested mask equals the requested mask (all requested bits
+      are set).
+    tags: [event, wait-all, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on wait_all(). Unit test wait_all_condition.
+    links:
+      - type: derives-from
+        target: SYSREQ-EV-001
+
+  - id: SWREQ-EV-EV07
+    type: sw-req
+    title: "EV7: valid bitmask"
+    status: approved
+    description: >
+      The event value is always a valid u32 bitmask. All bitwise operations
+      preserve the u32 domain with no undefined behavior.
+    tags: [event, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus invariant on all methods. Proptest random op sequences.
+    links:
+      - type: derives-from
+        target: SYSREQ-EV-001
+
+  - id: SWREQ-EV-EV08
+    type: sw-req
+    title: "EV8: post monotonic"
+    status: approved
+    description: >
+      Post can only set bits, never clear them. The resulting value after
+      post always has a superset of the bits that were set before.
+    tags: [event, post, monotonic, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on post(). Proptest monotonicity check.
+    links:
+      - type: derives-from
+        target: SYSREQ-EV-001
+
+  # ── MemSlab: System requirement ────────────────────────────────────────
+
+  - id: SYSREQ-MS-001
+    type: system-req
+    title: Memory slab block counter with alloc/free
+    status: approved
+    description: >
+      A memory slab allocator that matches the Zephyr k_mem_slab API
+      semantics: initialization with num_blocks and block_size, alloc
+      (increment used), and free (decrement used).  Must maintain
+      block count bounds and never exhibit undefined behavior or
+      arithmetic overflow.
+    tags: [mem-slab, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 8 properties (MS1-MS8) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── MemSlab: Software requirements (8 ASIL-D properties) ──────────────
+
+  - id: SWREQ-MS-MS01
+    type: sw-req
+    title: "MS1: 0 <= num_used <= num_blocks (bounds invariant)"
+    status: approved
+    description: >
+      The used block count is always between 0 and num_blocks inclusive.
+      This is the fundamental invariant maintained across all operations.
+    tags: [mem-slab, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures/invariant on all methods. Proptest random op sequences.
+    links:
+      - type: derives-from
+        target: SYSREQ-MS-001
+
+  - id: SWREQ-MS-MS02
+    type: sw-req
+    title: "MS2: num_blocks > 0 (always after init)"
+    status: approved
+    description: >
+      The total number of blocks is always strictly positive.
+      Enforced by init rejecting num_blocks == 0 with -EINVAL.
+    tags: [mem-slab, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus requires on init(). Unit test init_rejects_zero_blocks.
+    links:
+      - type: derives-from
+        target: SYSREQ-MS-001
+
+  - id: SWREQ-MS-MS03
+    type: sw-req
+    title: "MS3: block_size > 0 (always after init)"
+    status: approved
+    description: >
+      The block size is always strictly positive.
+      Enforced by init rejecting block_size == 0 with -EINVAL.
+    tags: [mem-slab, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus requires on init(). Unit test init_rejects_zero_block_size.
+    links:
+      - type: derives-from
+        target: SYSREQ-MS-001
+
+  - id: SWREQ-MS-MS04
+    type: sw-req
+    title: "MS4: alloc increments num_used by 1"
+    status: approved
+    description: >
+      When alloc is called and num_used < num_blocks, num_used increments
+      by 1 and returns OK.
+    tags: [mem-slab, alloc, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on alloc(). Unit test alloc_increments_used.
+    links:
+      - type: derives-from
+        target: SYSREQ-MS-001
+
+  - id: SWREQ-MS-MS05
+    type: sw-req
+    title: "MS5: alloc full returns ENOMEM"
+    status: approved
+    description: >
+      When alloc is called and num_used >= num_blocks, returns ENOMEM
+      without modifying the slab state.
+    tags: [mem-slab, alloc, error, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on alloc(). Unit test alloc_full_returns_enomem.
+    links:
+      - type: derives-from
+        target: SYSREQ-MS-001
+
+  - id: SWREQ-MS-MS06
+    type: sw-req
+    title: "MS6: free decrements num_used by 1"
+    status: approved
+    description: >
+      When free is called and num_used > 0, num_used decrements by 1
+      and returns OK.
+    tags: [mem-slab, free, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on free(). Unit test free_decrements_used.
+    links:
+      - type: derives-from
+        target: SYSREQ-MS-001
+
+  - id: SWREQ-MS-MS07
+    type: sw-req
+    title: "MS7: conservation (num_used + num_free == num_blocks)"
+    status: approved
+    description: >
+      The sum of used and free blocks always equals the total number
+      of blocks.
+    tags: [mem-slab, conservation, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on num_free()/num_used(). Proptest conservation check.
+    links:
+      - type: derives-from
+        target: SYSREQ-MS-001
+
+  - id: SWREQ-MS-MS08
+    type: sw-req
+    title: "MS8: no overflow on alloc/free"
+    status: approved
+    description: >
+      No arithmetic operation on num_used or num_blocks causes integer
+      overflow. All arithmetic is guarded by bounds checks.
+    tags: [mem-slab, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-MS-001

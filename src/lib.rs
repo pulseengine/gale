@@ -32,3 +32,6 @@ pub mod condvar;
 pub mod msgq;
 pub mod pipe;
 pub mod stack;
+pub mod timer;
+pub mod event;
+pub mod mem_slab;

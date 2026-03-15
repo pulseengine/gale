@@ -947,3 +947,413 @@ artifacts:
         target: SWREQ-PP-PP09
       - type: function-maps-to
         target: PROV-PP-001
+
+  # ── Software architecture — Timer (SWE.2) ─────────────────────────────
+
+  - id: SWARCH-TM-001
+    type: sw-arch-component
+    title: Timer module (gale::timer)
+    status: approved
+    description: >
+      Timer status counter model with init/start/stop/expire/status_get.
+      Tracks status (u32), period (u32), and running (bool) for timer
+      lifecycle validation. Actual timeout scheduling stays in C — Gale
+      verifies status arithmetic and mode logic only. No unsafe code.
+    tags: [timer, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "Timer::init(u32) -> Result<Self, i32>"
+          - "Timer::start(u32)"
+          - "Timer::stop()"
+          - "Timer::expire()"
+          - "Timer::status_get() -> u32"
+          - "Timer::is_running() -> bool"
+          - "Timer::is_periodic() -> bool"
+          - "Timer::period() -> u32"
+        required:
+          - "gale::error::{OK, EINVAL}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-TM-TM01
+      - type: allocated-from
+        target: SWREQ-TM-TM02
+      - type: allocated-from
+        target: SWREQ-TM-TM05
+      - type: replaces
+        target: PROV-TM-001
+
+  # ── Software detailed design — Timer (SWE.3) ──────────────────────────
+
+  - id: SWDD-TM-INIT
+    type: sw-detail-design
+    title: "Timer::init — z_impl_k_timer_init port"
+    status: approved
+    description: >
+      Constructs a timer with status = 0, period = given value, running = false.
+    tags: [timer, init]
+    fields:
+      unit: plain/src/timer.rs
+      function: "Timer::init"
+      algorithm: >
+        Ok(Timer { status: 0, period, running: false })
+    links:
+      - type: refines
+        target: SWARCH-TM-001
+      - type: satisfies
+        target: SWREQ-TM-TM01
+      - type: satisfies
+        target: SWREQ-TM-TM06
+      - type: satisfies
+        target: SWREQ-TM-TM07
+      - type: function-maps-to
+        target: PROV-TM-001
+
+  - id: SWDD-TM-START
+    type: sw-detail-design
+    title: "Timer::start — z_impl_k_timer_start port"
+    status: approved
+    description: >
+      Reset status to 0, set period to given value, set running = true.
+    tags: [timer, start]
+    fields:
+      unit: plain/src/timer.rs
+      function: "Timer::start"
+      algorithm: >
+        self.status = 0; self.period = period; self.running = true
+    links:
+      - type: refines
+        target: SWARCH-TM-001
+      - type: satisfies
+        target: SWREQ-TM-TM03
+      - type: satisfies
+        target: SWREQ-TM-TM06
+      - type: satisfies
+        target: SWREQ-TM-TM07
+      - type: function-maps-to
+        target: PROV-TM-001
+
+  - id: SWDD-TM-STOP
+    type: sw-detail-design
+    title: "Timer::stop — z_impl_k_timer_stop port"
+    status: approved
+    description: >
+      Reset status to 0 and set running = false.
+    tags: [timer, stop]
+    fields:
+      unit: plain/src/timer.rs
+      function: "Timer::stop"
+      algorithm: >
+        self.status = 0; self.running = false
+    links:
+      - type: refines
+        target: SWARCH-TM-001
+      - type: satisfies
+        target: SWREQ-TM-TM04
+      - type: function-maps-to
+        target: PROV-TM-001
+
+  - id: SWDD-TM-EXPIRE
+    type: sw-detail-design
+    title: "Timer::expire — z_timer_expiration_handler port"
+    status: approved
+    description: >
+      Increment status by 1 using checked arithmetic.
+    tags: [timer, expire]
+    fields:
+      unit: plain/src/timer.rs
+      function: "Timer::expire"
+      algorithm: >
+        self.status = self.status.saturating_add(1)
+    links:
+      - type: refines
+        target: SWARCH-TM-001
+      - type: satisfies
+        target: SWREQ-TM-TM05
+      - type: satisfies
+        target: SWREQ-TM-TM08
+      - type: function-maps-to
+        target: PROV-TM-001
+
+  - id: SWDD-TM-STATUS-GET
+    type: sw-detail-design
+    title: "Timer::status_get — z_impl_k_timer_status_get port"
+    status: approved
+    description: >
+      Read the current status value and reset status to 0.
+      Returns the value that was read.
+    tags: [timer, status-get]
+    fields:
+      unit: plain/src/timer.rs
+      function: "Timer::status_get"
+      algorithm: >
+        old = self.status; self.status = 0; old
+    links:
+      - type: refines
+        target: SWARCH-TM-001
+      - type: satisfies
+        target: SWREQ-TM-TM02
+      - type: function-maps-to
+        target: PROV-TM-001
+
+  # ── Software architecture — Event (SWE.2) ─────────────────────────────
+
+  - id: SWARCH-EV-001
+    type: sw-arch-component
+    title: Event module (gale::event)
+    status: approved
+    description: >
+      Event bitmask model with post/set/clear/set_masked/wait_any/wait_all.
+      Tracks a u32 bitmask for event signaling validation. Actual thread
+      blocking stays in C — Gale verifies bitwise operation correctness
+      only. No unsafe code.
+    tags: [event, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "Event::init() -> Self"
+          - "Event::post(u32)"
+          - "Event::set(u32)"
+          - "Event::clear(u32)"
+          - "Event::set_masked(u32, u32)"
+          - "Event::wait_any(u32) -> bool"
+          - "Event::wait_all(u32) -> bool"
+          - "Event::get() -> u32"
+        required:
+          - "gale::error::{OK, EINVAL}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-EV-EV01
+      - type: allocated-from
+        target: SWREQ-EV-EV05
+      - type: allocated-from
+        target: SWREQ-EV-EV06
+      - type: replaces
+        target: PROV-EV-001
+
+  # ── Software detailed design — Event (SWE.3) ──────────────────────────
+
+  - id: SWDD-EV-INIT
+    type: sw-detail-design
+    title: "Event::init — z_impl_k_event_init port"
+    status: approved
+    description: >
+      Constructs an event with value = 0 (no bits set).
+    tags: [event, init]
+    fields:
+      unit: plain/src/event.rs
+      function: "Event::init"
+      algorithm: >
+        Event { value: 0u32 }
+    links:
+      - type: refines
+        target: SWARCH-EV-001
+      - type: satisfies
+        target: SWREQ-EV-EV07
+      - type: function-maps-to
+        target: PROV-EV-001
+
+  - id: SWDD-EV-POST
+    type: sw-detail-design
+    title: "Event::post — z_impl_k_event_post port"
+    status: approved
+    description: >
+      Bitwise OR the posted bits into the current event value.
+    tags: [event, post]
+    fields:
+      unit: plain/src/event.rs
+      function: "Event::post"
+      algorithm: >
+        self.value |= bits
+    links:
+      - type: refines
+        target: SWARCH-EV-001
+      - type: satisfies
+        target: SWREQ-EV-EV01
+      - type: satisfies
+        target: SWREQ-EV-EV08
+      - type: function-maps-to
+        target: PROV-EV-001
+
+  - id: SWDD-EV-SET
+    type: sw-detail-design
+    title: "Event::set — z_impl_k_event_set port"
+    status: approved
+    description: >
+      Replace the event value entirely with the given bitmask.
+    tags: [event, set]
+    fields:
+      unit: plain/src/event.rs
+      function: "Event::set"
+      algorithm: >
+        self.value = bits
+    links:
+      - type: refines
+        target: SWARCH-EV-001
+      - type: satisfies
+        target: SWREQ-EV-EV02
+      - type: function-maps-to
+        target: PROV-EV-001
+
+  - id: SWDD-EV-CLEAR
+    type: sw-detail-design
+    title: "Event::clear — z_impl_k_event_clear port"
+    status: approved
+    description: >
+      Bitwise AND the complement of the clear mask into the current value.
+    tags: [event, clear]
+    fields:
+      unit: plain/src/event.rs
+      function: "Event::clear"
+      algorithm: >
+        self.value &= !mask
+    links:
+      - type: refines
+        target: SWARCH-EV-001
+      - type: satisfies
+        target: SWREQ-EV-EV03
+      - type: function-maps-to
+        target: PROV-EV-001
+
+  - id: SWDD-EV-WAIT
+    type: sw-detail-design
+    title: "Event::wait_any/wait_all — z_impl_k_event_wait port"
+    status: approved
+    description: >
+      wait_any returns true when (value & mask) != 0.
+      wait_all returns true when (value & mask) == mask.
+    tags: [event, wait]
+    fields:
+      unit: plain/src/event.rs
+      function: "Event::wait_any / Event::wait_all"
+      algorithm: >
+        wait_any: (self.value & mask) != 0;
+        wait_all: (self.value & mask) == mask
+    links:
+      - type: refines
+        target: SWARCH-EV-001
+      - type: satisfies
+        target: SWREQ-EV-EV04
+      - type: satisfies
+        target: SWREQ-EV-EV05
+      - type: satisfies
+        target: SWREQ-EV-EV06
+      - type: function-maps-to
+        target: PROV-EV-001
+
+  # ── Software architecture — MemSlab (SWE.2) ───────────────────────────
+
+  - id: SWARCH-MS-001
+    type: sw-arch-component
+    title: MemSlab module (gale::mem_slab)
+    status: approved
+    description: >
+      Memory slab block counter model with init/alloc/free. Tracks
+      num_used, num_blocks, and block_size for allocation validation.
+      Actual memory management stays in C — Gale verifies counter
+      bounds safety only. No unsafe code.
+    tags: [mem-slab, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "MemSlab::init(u32, u32) -> Result<Self, i32>"
+          - "MemSlab::alloc() -> i32"
+          - "MemSlab::free() -> i32"
+          - "MemSlab::num_used() -> u32"
+          - "MemSlab::num_free() -> u32"
+          - "MemSlab::num_blocks() -> u32"
+          - "MemSlab::block_size() -> u32"
+          - "MemSlab::is_full() -> bool"
+          - "MemSlab::is_empty() -> bool"
+        required:
+          - "gale::error::{OK, EINVAL, ENOMEM}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-MS-MS01
+      - type: allocated-from
+        target: SWREQ-MS-MS02
+      - type: allocated-from
+        target: SWREQ-MS-MS04
+      - type: replaces
+        target: PROV-MS-001
+
+  # ── Software detailed design — MemSlab (SWE.3) ────────────────────────
+
+  - id: SWDD-MS-INIT
+    type: sw-detail-design
+    title: "MemSlab::init — k_mem_slab_init port"
+    status: approved
+    description: >
+      Validate num_blocks > 0 and block_size > 0 (return Err(EINVAL) if
+      either is zero). Set num_used = 0.
+    tags: [mem-slab, init]
+    fields:
+      unit: plain/src/mem_slab.rs
+      function: "MemSlab::init"
+      algorithm: >
+        if num_blocks == 0 || block_size == 0: Err(EINVAL);
+        else: Ok(MemSlab { num_blocks, block_size, num_used: 0 })
+    links:
+      - type: refines
+        target: SWARCH-MS-001
+      - type: satisfies
+        target: SWREQ-MS-MS01
+      - type: satisfies
+        target: SWREQ-MS-MS02
+      - type: satisfies
+        target: SWREQ-MS-MS03
+      - type: function-maps-to
+        target: PROV-MS-001
+
+  - id: SWDD-MS-ALLOC
+    type: sw-detail-design
+    title: "MemSlab::alloc — z_impl_k_mem_slab_alloc port"
+    status: approved
+    description: >
+      If num_used < num_blocks: increment num_used, return OK.
+      Otherwise return ENOMEM.
+    tags: [mem-slab, alloc]
+    fields:
+      unit: plain/src/mem_slab.rs
+      function: "MemSlab::alloc"
+      algorithm: >
+        if num_used < num_blocks: num_used += 1; OK; else: ENOMEM
+    links:
+      - type: refines
+        target: SWARCH-MS-001
+      - type: satisfies
+        target: SWREQ-MS-MS04
+      - type: satisfies
+        target: SWREQ-MS-MS05
+      - type: satisfies
+        target: SWREQ-MS-MS08
+      - type: function-maps-to
+        target: PROV-MS-001
+
+  - id: SWDD-MS-FREE
+    type: sw-detail-design
+    title: "MemSlab::free — z_impl_k_mem_slab_free port"
+    status: approved
+    description: >
+      If num_used > 0: decrement num_used, return OK.
+      Otherwise return EINVAL.
+    tags: [mem-slab, free]
+    fields:
+      unit: plain/src/mem_slab.rs
+      function: "MemSlab::free"
+      algorithm: >
+        if num_used > 0: num_used -= 1; OK; else: EINVAL
+    links:
+      - type: refines
+        target: SWARCH-MS-001
+      - type: satisfies
+        target: SWREQ-MS-MS06
+      - type: satisfies
+        target: SWREQ-MS-MS07
+      - type: satisfies
+        target: SWREQ-MS-MS08
+      - type: function-maps-to
+        target: PROV-MS-001

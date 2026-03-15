@@ -1354,6 +1354,274 @@ artifacts:
       - type: verifies
         target: SYSREQ-PP-001
 
+  # ── SWE.4: Unit verification — Timer ──────────────────────────────────
+
+  - id: UV-TM-001
+    type: unit-verification
+    title: Timer unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/timer.rs covering init validation, start/stop
+      lifecycle, expire increment, status_get read-and-reset, one-shot vs
+      periodic mode, and boundary conditions.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-TM-INIT
+      - type: verifies
+        target: SWDD-TM-START
+      - type: verifies
+        target: SWDD-TM-STOP
+      - type: verifies
+        target: SWDD-TM-EXPIRE
+      - type: verifies
+        target: SWDD-TM-STATUS-GET
+
+  # ── SWE.4: Unit verification — Event ──────────────────────────────────
+
+  - id: UV-EV-001
+    type: unit-verification
+    title: Event unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/event.rs covering init validation, post OR
+      semantics, set replacement, clear AND-complement, set_masked selective
+      update, wait_any/wait_all condition checks, and bitmask preservation.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-EV-INIT
+      - type: verifies
+        target: SWDD-EV-POST
+      - type: verifies
+        target: SWDD-EV-SET
+      - type: verifies
+        target: SWDD-EV-CLEAR
+      - type: verifies
+        target: SWDD-EV-WAIT
+
+  # ── SWE.4: Unit verification — MemSlab ────────────────────────────────
+
+  - id: UV-MS-001
+    type: unit-verification
+    title: MemSlab unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/mem_slab.rs covering init validation,
+      alloc/free operations, full/empty boundary conditions, alloc-free
+      roundtrip, fill-drain cycles, conservation invariant, and
+      capacity-one edge case.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-MS-INIT
+      - type: verifies
+        target: SWDD-MS-ALLOC
+      - type: verifies
+        target: SWDD-MS-FREE
+
+  # ── SWE.5: Integration verification — Timer ───────────────────────────
+
+  - id: IV-TM-001
+    type: sw-integration-verification
+    title: Timer integration tests
+    status: approved
+    description: >
+      Integration tests in tests/timer_integration.rs exercising the full
+      timer API surface across module boundaries. Tests init validation,
+      start/stop lifecycle, expire sequences, status_get read-and-reset,
+      one-shot vs periodic modes, overflow protection, and stress cycles.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-TM-001
+
+  # ── SWE.5: Integration verification — Event ───────────────────────────
+
+  - id: IV-EV-001
+    type: sw-integration-verification
+    title: Event integration tests
+    status: approved
+    description: >
+      Integration tests in tests/event_integration.rs exercising the full
+      event API surface across module boundaries. Tests post OR semantics,
+      set replacement, clear AND-complement, set_masked selective update,
+      wait_any/wait_all conditions, combined operation sequences, and
+      bitmask boundary conditions.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-EV-001
+
+  # ── SWE.5: Integration verification — MemSlab ─────────────────────────
+
+  - id: IV-MS-001
+    type: sw-integration-verification
+    title: MemSlab integration tests
+    status: approved
+    description: >
+      Integration tests in tests/mem_slab_integration.rs exercising the full
+      mem_slab API surface across module boundaries. Tests init validation,
+      alloc/free operations, full/empty boundaries, roundtrip, fill-drain,
+      conservation invariant, interleaved operations, and stress cycles.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-MS-001
+
+  # ── SWE.6: Software verification — Timer ──────────────────────────────
+
+  - id: FV-TM-001
+    type: sw-verification
+    title: Timer Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/timer.rs with requires/ensures clauses
+      that formally verify all timer properties (TM01-TM08) via SMT
+      solving. Proves status counter safety, read-and-reset atomicity,
+      start/stop correctness, expire increment, and one-shot vs periodic
+      mode invariants. Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-TM-TM01
+      - type: verifies
+        target: SWREQ-TM-TM02
+      - type: verifies
+        target: SWREQ-TM-TM03
+      - type: verifies
+        target: SWREQ-TM-TM04
+      - type: verifies
+        target: SWREQ-TM-TM05
+      - type: verifies
+        target: SWREQ-TM-TM06
+      - type: verifies
+        target: SWREQ-TM-TM07
+      - type: verifies
+        target: SWREQ-TM-TM08
+
+  - id: FV-TM-003
+    type: sw-verification
+    title: Timer Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all timer code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-TM-TM01
+
+  # ── SWE.6: Software verification — Event ──────────────────────────────
+
+  - id: FV-EV-001
+    type: sw-verification
+    title: Event Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/event.rs with requires/ensures clauses
+      that formally verify all event properties (EV01-EV08) via SMT
+      solving. Proves bitwise operation correctness, post monotonicity,
+      set/clear semantics, set_masked selectivity, wait_any/wait_all
+      conditions, and bitmask validity. Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-EV-EV01
+      - type: verifies
+        target: SWREQ-EV-EV02
+      - type: verifies
+        target: SWREQ-EV-EV03
+      - type: verifies
+        target: SWREQ-EV-EV04
+      - type: verifies
+        target: SWREQ-EV-EV05
+      - type: verifies
+        target: SWREQ-EV-EV06
+      - type: verifies
+        target: SWREQ-EV-EV07
+      - type: verifies
+        target: SWREQ-EV-EV08
+
+  - id: FV-EV-003
+    type: sw-verification
+    title: Event Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all event code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-EV-EV07
+
+  # ── SWE.6: Software verification — MemSlab ────────────────────────────
+
+  - id: FV-MS-001
+    type: sw-verification
+    title: MemSlab Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/mem_slab.rs with requires/ensures clauses
+      that formally verify all mem_slab properties (MS01-MS08) via SMT
+      solving. Proves bounds safety, invariant preservation, alloc/free
+      correctness, conservation, and overflow protection.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-MS-MS01
+      - type: verifies
+        target: SWREQ-MS-MS02
+      - type: verifies
+        target: SWREQ-MS-MS03
+      - type: verifies
+        target: SWREQ-MS-MS04
+      - type: verifies
+        target: SWREQ-MS-MS05
+      - type: verifies
+        target: SWREQ-MS-MS06
+      - type: verifies
+        target: SWREQ-MS-MS07
+      - type: verifies
+        target: SWREQ-MS-MS08
+
+  - id: FV-MS-003
+    type: sw-verification
+    title: MemSlab Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all mem_slab code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-MS-MS01
+
   # ── TRACTOR verification ─────────────────────────────────────────────
 
   - id: FV-TRACTOR-EQ

@@ -12,5 +12,7 @@ pub const EPIPE: i32 = -32;
 pub const ENOMSG: i32 = -42;
 pub const ETIMEDOUT: i32 = -110;
 pub const ECANCELED: i32 = -125;
+/// Value too large (arithmetic overflow).
+pub const EOVERFLOW: i32 = -75;
 /// Success return value.
 pub const OK: i32 = 0;
