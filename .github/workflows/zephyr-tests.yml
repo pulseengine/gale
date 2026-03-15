@@ -1,6 +1,6 @@
 # Zephyr kernel integration tests with Gale enabled
 #
-# Builds and runs the upstream Zephyr test suites for each kernel primitive
+# Builds and runs upstream Zephyr test suites for each kernel primitive
 # replaced by Gale, on qemu_cortex_m3.
 
 name: Zephyr Kernel Tests
@@ -10,11 +10,6 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-
-env:
-  ZEPHYR_SDK_VERSION: 0.17.0
-  ZEPHYR_SDK_INSTALL_DIR: /opt/zephyr-sdk
-  RUST_TOOLCHAIN: stable
 
 jobs:
   zephyr-test:
@@ -28,22 +23,16 @@ jobs:
         include:
           - primitive: semaphore
             test_path: tests/kernel/semaphore/semaphore
-            expected_pass: 24
           - primitive: mutex
             test_path: tests/kernel/mutex/mutex_api
-            expected_pass: 12
           - primitive: condvar
             test_path: tests/kernel/condvar/condvar_api
-            expected_pass: 11
           - primitive: msgq
             test_path: tests/kernel/msgq/msgq_api
-            expected_pass: 13
           - primitive: stack
             test_path: tests/kernel/stack/stack
-            expected_pass: 12
           - primitive: pipe
             test_path: tests/kernel/pipe/pipe_api
-            expected_pass: 18
 
     steps:
       - name: Checkout Gale
@@ -51,97 +40,36 @@ jobs:
         with:
           path: gale
 
-      - name: Install system dependencies
+      - name: Install Rust + ARM target
         run: |
-          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: thumbv7m-none-eabi
-
-      - name: Cache Rust build artifacts
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            gale/ffi/target
-          key: rust-${{ runner.os }}-${{ hashFiles('gale/ffi/Cargo.lock', 'gale/plain/src/**') }}
-          restore-keys: rust-${{ runner.os }}-
-
-      - name: Install west and dependencies
-        run: |
-          pip3 install west
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          . "$HOME/.cargo/env"
+          rustup target add thumbv7m-none-eabi
 
       - name: Initialize west workspace
         run: |
+          pip3 install west
           west init -m https://github.com/zephyrproject-rtos/zephyr.git zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
 
-      - name: Install Zephyr SDK
-        run: |
-          cd zephyr-workspace
-          west sdk install
-
-      - name: Set environment
-        run: |
-          GALE_ROOT="${GITHUB_WORKSPACE}/gale"
-          ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
-          echo "GALE_ROOT=${GALE_ROOT}" >> "$GITHUB_ENV"
-          echo "ZEPHYR_BASE=${ZEPHYR_BASE}" >> "$GITHUB_ENV"
-
-      - name: Build test suite
+      - name: Build and run test
         env:
           TEST_PATH: ${{ matrix.test_path }}
         run: |
+          . "$HOME/.cargo/env"
+          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
           cd zephyr-workspace
           west build -b qemu_cortex_m3 \
             -s "zephyr/${TEST_PATH}" \
             -- \
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf"
-
-      - name: Run test suite
-        run: |
-          cd zephyr-workspace
-          west build -t run 2>&1 | tee test-output.txt
-
-      - name: Verify test results
-        run: |
-          cd zephyr-workspace
-          if grep -q "PROJECT EXECUTION FAILED" test-output.txt; then
+          timeout 120 west build -t run 2>&1 | tee test.log
+          if grep -q "PROJECT EXECUTION SUCCESSFUL" test.log; then
+            echo "PASS"
+          else
             echo "::error::Test suite failed"
-            cat test-output.txt
             exit 1
           fi
-          if grep -q "FAIL" test-output.txt; then
-            echo "::warning::Some tests reported FAIL (check output)"
-          fi
-          echo "::notice::Test suite completed"
-
-      - name: Upload test log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-log-${{ matrix.primitive }}
-          path: zephyr-workspace/test-output.txt
-          retention-days: 30
-
-  # Summary job to gate on all matrix legs
-  zephyr-test-summary:
-    name: Zephyr Tests Summary
-    runs-on: ubuntu-22.04
-    needs: zephyr-test
-    if: always()
-    steps:
-      - name: Check results
-        env:
-          TEST_RESULT: ${{ needs.zephyr-test.result }}
-        run: |
-          if [ "${TEST_RESULT}" != "success" ]; then
-            echo "::error::One or more Zephyr test suites failed"
-            exit 1
-          fi
-          echo "All 6 kernel primitive test suites passed with Gale enabled"
