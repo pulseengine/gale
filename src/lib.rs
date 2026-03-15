@@ -29,7 +29,8 @@
     clippy::indexing_slicing,
     clippy::unwrap_used,
     clippy::cast_possible_truncation,
-    clippy::self_assignment
+    clippy::self_assignment,
+    clippy::absurd_extreme_comparisons
 )]
 
 pub mod error;
@@ -42,6 +43,10 @@ pub mod condvar;
 pub mod msgq;
 pub mod pipe;
 pub mod stack;
+pub mod fifo;
+pub mod lifo;
 pub mod timer;
 pub mod event;
 pub mod mem_slab;
+pub mod queue;
+pub mod mbox;
