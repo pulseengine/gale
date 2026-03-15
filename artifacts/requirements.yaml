@@ -11,6 +11,10 @@
 #     → SYSREQ-TM-001  (system) → SWREQ-TM-TM01..TM08 (software)
 #     → SYSREQ-EV-001  (system) → SWREQ-EV-EV01..EV08 (software)
 #     → SYSREQ-MS-001  (system) → SWREQ-MS-MS01..MS08 (software)
+#     → SYSREQ-FI-001  (system) → SWREQ-FI-FI01..FI06 (software)
+#     → SYSREQ-LI-001  (system) → SWREQ-LI-LI01..LI06 (software)
+#     → SYSREQ-QU-001  (system) → SWREQ-QU-QU01..QU06 (software)
+#     → SYSREQ-MB-001  (system) → SWREQ-MB-MB01..MB06 (software)
 #
 # The verified properties are the ASIL-D formal specifications.
 # Each maps directly to a property in the Verus/Rocq specs.
@@ -1804,3 +1808,515 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MS-001
+
+  # ── FIFO: System requirement ─────────────────────────────────────────────
+
+  - id: SYSREQ-FI-001
+    type: system-req
+    title: FIFO queue with put/get semantics
+    status: approved
+    description: >
+      A FIFO queue that matches the Zephyr k_fifo API semantics:
+      initialization, put (enqueue at tail), and get (dequeue from head).
+      Built on top of k_queue. Must maintain item count bounds and never
+      exhibit undefined behavior or arithmetic overflow.
+    tags: [fifo, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 6 properties (FI1-FI6) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── FIFO: Software requirements (6 ASIL-D properties) ───────────────────
+
+  - id: SWREQ-FI-FI01
+    type: sw-req
+    title: "FI1: 0 <= count (non-negative count)"
+    status: approved
+    description: >
+      The FIFO item count is always non-negative.
+      This is the fundamental invariant maintained across all operations.
+    tags: [fifo, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures/invariant on all methods. Proptest random op sequences.
+    links:
+      - type: derives-from
+        target: SYSREQ-FI-001
+
+  - id: SWREQ-FI-FI02
+    type: sw-req
+    title: "FI2: put increments count by 1"
+    status: approved
+    description: >
+      When put is called, the item count increments by 1.
+      Maps to queue.c:197-213.
+    tags: [fifo, put, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on put(). Unit test put_increments_count.
+    links:
+      - type: derives-from
+        target: SYSREQ-FI-001
+
+  - id: SWREQ-FI-FI03
+    type: sw-req
+    title: "FI3: get when not empty decrements count by 1"
+    status: approved
+    description: >
+      When get is called and count > 0, count decrements by 1
+      and returns OK.
+      Maps to queue.c:335-370.
+    tags: [fifo, get, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on get(). Unit test get_decrements_count.
+    links:
+      - type: derives-from
+        target: SYSREQ-FI-001
+
+  - id: SWREQ-FI-FI04
+    type: sw-req
+    title: "FI4: get when empty returns ENOENT, state unchanged"
+    status: approved
+    description: >
+      When get is called and count == 0, returns ENOENT
+      without modifying the queue state.
+      Maps to queue.c:335-370.
+    tags: [fifo, get, error, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on get(). Unit test get_empty_returns_enoent.
+    links:
+      - type: derives-from
+        target: SYSREQ-FI-001
+
+  - id: SWREQ-FI-FI05
+    type: sw-req
+    title: "FI5: put-get roundtrip preserves state"
+    status: approved
+    description: >
+      A put followed by a get returns count to its original value.
+    tags: [fifo, roundtrip, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on put() then get(). Proptest roundtrip check.
+    links:
+      - type: derives-from
+        target: SYSREQ-FI-001
+
+  - id: SWREQ-FI-FI06
+    type: sw-req
+    title: "FI6: no arithmetic overflow in any operation"
+    status: approved
+    description: >
+      No arithmetic operation on the item count causes integer overflow.
+      All arithmetic is guarded by bounds checks.
+    tags: [fifo, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-FI-001
+
+  # ── LIFO: System requirement ─────────────────────────────────────────────
+
+  - id: SYSREQ-LI-001
+    type: system-req
+    title: LIFO queue with put/get semantics
+    status: approved
+    description: >
+      A LIFO queue that matches the Zephyr k_lifo API semantics:
+      initialization, put (push to head), and get (pop from head).
+      Built on top of k_queue. Must maintain item count bounds and never
+      exhibit undefined behavior or arithmetic overflow.
+    tags: [lifo, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 6 properties (LI1-LI6) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── LIFO: Software requirements (6 ASIL-D properties) ───────────────────
+
+  - id: SWREQ-LI-LI01
+    type: sw-req
+    title: "LI1: 0 <= count (non-negative count)"
+    status: approved
+    description: >
+      The LIFO item count is always non-negative.
+      This is the fundamental invariant maintained across all operations.
+    tags: [lifo, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures/invariant on all methods. Proptest random op sequences.
+    links:
+      - type: derives-from
+        target: SYSREQ-LI-001
+
+  - id: SWREQ-LI-LI02
+    type: sw-req
+    title: "LI2: put increments count by 1"
+    status: approved
+    description: >
+      When put is called, the item count increments by 1.
+      Maps to queue.c:206-213.
+    tags: [lifo, put, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on put(). Unit test put_increments_count.
+    links:
+      - type: derives-from
+        target: SYSREQ-LI-001
+
+  - id: SWREQ-LI-LI03
+    type: sw-req
+    title: "LI3: get when not empty decrements count by 1"
+    status: approved
+    description: >
+      When get is called and count > 0, count decrements by 1
+      and returns OK.
+      Maps to queue.c:335-370.
+    tags: [lifo, get, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on get(). Unit test get_decrements_count.
+    links:
+      - type: derives-from
+        target: SYSREQ-LI-001
+
+  - id: SWREQ-LI-LI04
+    type: sw-req
+    title: "LI4: get when empty returns ENOENT, state unchanged"
+    status: approved
+    description: >
+      When get is called and count == 0, returns ENOENT
+      without modifying the queue state.
+      Maps to queue.c:335-370.
+    tags: [lifo, get, error, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on get(). Unit test get_empty_returns_enoent.
+    links:
+      - type: derives-from
+        target: SYSREQ-LI-001
+
+  - id: SWREQ-LI-LI05
+    type: sw-req
+    title: "LI5: put-get roundtrip preserves state"
+    status: approved
+    description: >
+      A put followed by a get returns count to its original value.
+    tags: [lifo, roundtrip, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on put() then get(). Proptest roundtrip check.
+    links:
+      - type: derives-from
+        target: SYSREQ-LI-001
+
+  - id: SWREQ-LI-LI06
+    type: sw-req
+    title: "LI6: no arithmetic overflow in any operation"
+    status: approved
+    description: >
+      No arithmetic operation on the item count causes integer overflow.
+      All arithmetic is guarded by bounds checks.
+    tags: [lifo, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-LI-001
+
+  # ── Queue: System requirement ────────────────────────────────────────────
+
+  - id: SYSREQ-QU-001
+    type: system-req
+    title: Generic queue with append/prepend/get semantics
+    status: approved
+    description: >
+      A generic queue that matches the Zephyr k_queue API semantics:
+      initialization, append (enqueue at tail), prepend (enqueue at head),
+      and get (dequeue from head). Must maintain item count bounds and
+      never exhibit undefined behavior or arithmetic overflow.
+    tags: [queue, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 6 properties (QU1-QU6) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Queue: Software requirements (6 ASIL-D properties) ──────────────────
+
+  - id: SWREQ-QU-QU01
+    type: sw-req
+    title: "QU1: 0 <= count (non-negative count)"
+    status: approved
+    description: >
+      The queue item count is always non-negative.
+      This is the fundamental invariant maintained across all operations.
+    tags: [queue, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures/invariant on all methods. Proptest random op sequences.
+    links:
+      - type: derives-from
+        target: SYSREQ-QU-001
+
+  - id: SWREQ-QU-QU02
+    type: sw-req
+    title: "QU2: append increments count by 1"
+    status: approved
+    description: >
+      When append is called, the item count increments by 1.
+      Maps to queue.c:197-213.
+    tags: [queue, append, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on append(). Unit test append_increments_count.
+    links:
+      - type: derives-from
+        target: SYSREQ-QU-001
+
+  - id: SWREQ-QU-QU03
+    type: sw-req
+    title: "QU3: prepend increments count by 1"
+    status: approved
+    description: >
+      When prepend is called, the item count increments by 1.
+      Maps to queue.c:206-213.
+    tags: [queue, prepend, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on prepend(). Unit test prepend_increments_count.
+    links:
+      - type: derives-from
+        target: SYSREQ-QU-001
+
+  - id: SWREQ-QU-QU04
+    type: sw-req
+    title: "QU4: get when not empty decrements count by 1"
+    status: approved
+    description: >
+      When get is called and count > 0, count decrements by 1
+      and returns OK.
+      Maps to queue.c:335-370.
+    tags: [queue, get, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on get(). Unit test get_decrements_count.
+    links:
+      - type: derives-from
+        target: SYSREQ-QU-001
+
+  - id: SWREQ-QU-QU05
+    type: sw-req
+    title: "QU5: get when empty returns ENOENT, state unchanged"
+    status: approved
+    description: >
+      When get is called and count == 0, returns ENOENT
+      without modifying the queue state.
+      Maps to queue.c:335-370.
+    tags: [queue, get, error, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on get(). Unit test get_empty_returns_enoent.
+    links:
+      - type: derives-from
+        target: SYSREQ-QU-001
+
+  - id: SWREQ-QU-QU06
+    type: sw-req
+    title: "QU6: no arithmetic overflow in any operation"
+    status: approved
+    description: >
+      No arithmetic operation on the item count causes integer overflow.
+      All arithmetic is guarded by bounds checks.
+    tags: [queue, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-QU-001
+
+  # ── Mailbox: System requirement ──────────────────────────────────────────
+
+  - id: SYSREQ-MB-001
+    type: system-req
+    title: Mailbox with put/get and message matching
+    status: approved
+    description: >
+      A mailbox that matches the Zephyr k_mbox API semantics:
+      initialization, put (send message), get (receive message), with
+      sender/receiver thread matching and data exchange.  Must validate
+      message parameters and never exhibit undefined behavior or
+      arithmetic overflow.
+    tags: [mbox, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 6 properties (MB1-MB6) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Mailbox: Software requirements (6 ASIL-D properties) ────────────────
+
+  - id: SWREQ-MB-MB01
+    type: sw-req
+    title: "MB1: tx_target_thread valid or K_ANY"
+    status: approved
+    description: >
+      The transmit message target thread must be either a valid thread
+      identifier or K_ANY (wildcard). Invalid targets are rejected.
+    tags: [mbox, validation, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus requires on put(). Unit test invalid_target_rejected.
+    links:
+      - type: derives-from
+        target: SYSREQ-MB-001
+
+  - id: SWREQ-MB-MB02
+    type: sw-req
+    title: "MB2: rx_source_thread valid or K_ANY"
+    status: approved
+    description: >
+      The receive message source thread must be either a valid thread
+      identifier or K_ANY (wildcard). Invalid sources are rejected.
+    tags: [mbox, validation, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus requires on get(). Unit test invalid_source_rejected.
+    links:
+      - type: derives-from
+        target: SYSREQ-MB-001
+
+  - id: SWREQ-MB-MB03
+    type: sw-req
+    title: "MB3: message match requires compatible thread IDs"
+    status: approved
+    description: >
+      A transmit message matches a receive message only if the tx target
+      is K_ANY or equals the receiver thread, AND the rx source is K_ANY
+      or equals the sender thread.
+      Maps to mailbox.c:112-153.
+    tags: [mbox, matching, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on match_check(). Unit test match_symmetric_wildcard.
+    links:
+      - type: derives-from
+        target: SYSREQ-MB-001
+
+  - id: SWREQ-MB-MB04
+    type: sw-req
+    title: "MB4: data exchange respects min(tx_size, rx_size)"
+    status: approved
+    description: >
+      The actual data exchanged is the minimum of the transmit and receive
+      buffer sizes. Neither buffer is overflowed.
+      Maps to mailbox.c:155-207.
+    tags: [mbox, data-exchange, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on data_exchange(). Unit test data_size_clamped.
+    links:
+      - type: derives-from
+        target: SYSREQ-MB-001
+
+  - id: SWREQ-MB-MB05
+    type: sw-req
+    title: "MB5: no unmatched message leaves stale state"
+    status: approved
+    description: >
+      When no match is found, both sender and receiver state remain
+      unchanged. No partial state modifications occur.
+    tags: [mbox, safety, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on put()/get() error paths. Unit test no_match_no_side_effect.
+    links:
+      - type: derives-from
+        target: SYSREQ-MB-001
+
+  - id: SWREQ-MB-MB06
+    type: sw-req
+    title: "MB6: no arithmetic overflow in any operation"
+    status: approved
+    description: >
+      No arithmetic operation on message sizes or internal counters causes
+      integer overflow. All arithmetic is guarded by bounds checks.
+    tags: [mbox, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-MB-001

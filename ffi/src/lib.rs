@@ -73,6 +73,41 @@
 //!   timer.c init            period validation
 //!
 //! Verified: TM1-TM8 (status bounds, increment, reset, no overflow).
+//!
+//! ## Fifo (gale_fifo_*)
+//!
+//! Pure functions replacing unbounded queue count tracking for k_fifo
+//! (FIFO ordering wrapper around k_queue):
+//!   queue.c:insert  count++ (overflow check)
+//!   queue.c:get     count-- (underflow check)
+//!
+//! Verified: FI1-FI4 (bounds, increment, decrement, no overflow/underflow).
+//!
+//! ## Lifo (gale_lifo_*)
+//!
+//! Pure functions replacing unbounded queue count tracking for k_lifo
+//! (LIFO ordering wrapper around k_queue):
+//!   queue.c:insert  count++ (overflow check)
+//!   queue.c:get     count-- (underflow check)
+//!
+//! Verified: LI1-LI4 (bounds, increment, decrement, no overflow/underflow).
+//!
+//! ## Queue (gale_queue_*)
+//!
+//! Pure functions replacing unbounded queue count tracking for k_queue:
+//!   queue.c:append/prepend  count++ (overflow check)
+//!   queue.c:get             count-- (underflow check)
+//!
+//! Verified: QU1-QU6 (bounds, append, prepend, get, no overflow/underflow).
+//!
+//! ## Mbox (gale_mbox_*)
+//!
+//! Pure functions replacing stateless validation in kernel/mailbox.c:
+//!   mailbox.c:put   size > 0 check
+//!   mailbox.c:match sender/receiver ID compatibility
+//!   mailbox.c:data  min(tx_size, rx_buf_size) computation
+//!
+//! Verified: MB1-MB6 (send validation, match logic, data exchange).
 
 #![cfg_attr(not(any(test, kani)), no_std)]
 // FFI boundary crate — unsafe is inherent (no_mangle, raw pointers).
@@ -1173,6 +1208,333 @@ pub extern "C" fn gale_event_wait_check_all(
     }
 }
 
+// ---------------------------------------------------------------------------
+// FFI exports — fifo (unbounded queue counter, FIFO ordering)
+// ---------------------------------------------------------------------------
+
+/// Validate a fifo put operation and compute new count.
+///
+/// queue.c queue_insert:
+///   Enqueue data at tail (FIFO ordering).
+///   Count tracks number of data items in the underlying k_queue.
+///
+/// Arguments:
+///   count:     current element count
+///   new_count: pointer to receive count + 1
+///
+/// Returns:
+///   0 (OK)       — space available, *new_count set
+///   -EOVERFLOW   — count would overflow u32
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_fifo_put_validate(
+    count: u32,
+    new_count: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_count.is_null() {
+            return EINVAL;
+        }
+
+        if count >= u32::MAX - 1 {
+            return EOVERFLOW;
+        }
+
+        // Verified: count < u32::MAX - 1, no overflow.
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_count = count + 1;
+        }
+        OK
+    }
+}
+
+/// Validate a fifo get operation and compute new count.
+///
+/// queue.c k_queue_get:
+///   Dequeue data from head (FIFO ordering).
+///
+/// Arguments:
+///   count:     current element count
+///   new_count: pointer to receive count - 1
+///
+/// Returns:
+///   0 (OK)    — data available, *new_count set
+///   -EAGAIN   — fifo empty
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_fifo_get_validate(
+    count: u32,
+    new_count: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_count.is_null() {
+            return EINVAL;
+        }
+
+        if count == 0 {
+            return EAGAIN;
+        }
+
+        // Verified: count > 0, no underflow.
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_count = count - 1;
+        }
+        OK
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — lifo (unbounded queue counter, LIFO ordering)
+// ---------------------------------------------------------------------------
+
+/// Validate a lifo put operation and compute new count.
+///
+/// queue.c queue_insert:
+///   Enqueue data at head (LIFO ordering).
+///   Count tracks number of data items in the underlying k_queue.
+///
+/// Arguments:
+///   count:     current element count
+///   new_count: pointer to receive count + 1
+///
+/// Returns:
+///   0 (OK)       — space available, *new_count set
+///   -EOVERFLOW   — count would overflow u32
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_lifo_put_validate(
+    count: u32,
+    new_count: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_count.is_null() {
+            return EINVAL;
+        }
+
+        if count >= u32::MAX - 1 {
+            return EOVERFLOW;
+        }
+
+        // Verified: count < u32::MAX - 1, no overflow.
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_count = count + 1;
+        }
+        OK
+    }
+}
+
+/// Validate a lifo get operation and compute new count.
+///
+/// queue.c k_queue_get:
+///   Dequeue data from head (LIFO ordering).
+///
+/// Arguments:
+///   count:     current element count
+///   new_count: pointer to receive count - 1
+///
+/// Returns:
+///   0 (OK)    — data available, *new_count set
+///   -EAGAIN   — lifo empty
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_lifo_get_validate(
+    count: u32,
+    new_count: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_count.is_null() {
+            return EINVAL;
+        }
+
+        if count == 0 {
+            return EAGAIN;
+        }
+
+        // Verified: count > 0, no underflow.
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_count = count - 1;
+        }
+        OK
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — queue (unbounded queue counter)
+// ---------------------------------------------------------------------------
+
+/// Validate a queue append operation and compute new count.
+///
+/// queue.c queue_insert (is_append=true):
+///   Enqueue data at tail.
+///
+/// Arguments:
+///   count:     current element count
+///   new_count: pointer to receive count + 1
+///
+/// Returns:
+///   0 (OK)       — space available, *new_count set
+///   -EOVERFLOW   — count would overflow u32
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_queue_append_validate(
+    count: u32,
+    new_count: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_count.is_null() {
+            return EINVAL;
+        }
+
+        if count >= u32::MAX - 1 {
+            return EOVERFLOW;
+        }
+
+        // Verified: count < u32::MAX - 1, no overflow.
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_count = count + 1;
+        }
+        OK
+    }
+}
+
+/// Validate a queue prepend operation and compute new count.
+///
+/// queue.c queue_insert (is_append=false):
+///   Enqueue data at head.
+///
+/// Arguments:
+///   count:     current element count
+///   new_count: pointer to receive count + 1
+///
+/// Returns:
+///   0 (OK)       — space available, *new_count set
+///   -EOVERFLOW   — count would overflow u32
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_queue_prepend_validate(
+    count: u32,
+    new_count: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_count.is_null() {
+            return EINVAL;
+        }
+
+        if count >= u32::MAX - 1 {
+            return EOVERFLOW;
+        }
+
+        // Verified: count < u32::MAX - 1, no overflow.
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_count = count + 1;
+        }
+        OK
+    }
+}
+
+/// Validate a queue get operation and compute new count.
+///
+/// queue.c k_queue_get:
+///   Dequeue data from head.
+///
+/// Arguments:
+///   count:     current element count
+///   new_count: pointer to receive count - 1
+///
+/// Returns:
+///   0 (OK)    — data available, *new_count set
+///   -EAGAIN   — queue empty
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_queue_get_validate(
+    count: u32,
+    new_count: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_count.is_null() {
+            return EINVAL;
+        }
+
+        if count == 0 {
+            return EAGAIN;
+        }
+
+        // Verified: count > 0, no underflow.
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_count = count - 1;
+        }
+        OK
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — mbox (stateless validation)
+// ---------------------------------------------------------------------------
+
+/// Validate a mailbox send operation.
+///
+/// mailbox.c mbox_message_put:
+///   Validates that the message has non-zero data size.
+///
+/// Arguments:
+///   size: message data size in bytes
+///
+/// Returns:
+///   0 (OK)    — valid send
+///   -EINVAL   — size == 0
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_mbox_validate_send(size: u32) -> i32 {
+    if size == 0 {
+        EINVAL
+    } else {
+        OK
+    }
+}
+
+/// Check if sender and receiver IDs are compatible for mailbox matching.
+///
+/// mailbox.c mbox_message_match:
+///   tx_target_thread == K_ANY || tx_target_thread == rx thread
+///   rx_source_thread == K_ANY || rx_source_thread == tx thread
+///
+/// Simplified to integer IDs: 0 means K_ANY (match any).
+///
+/// Arguments:
+///   send_id: sender's target ID (0 = K_ANY)
+///   recv_id: receiver's source ID (0 = K_ANY)
+///
+/// Returns:
+///   1 — IDs match (either is 0/K_ANY, or both are equal)
+///   0 — IDs do not match
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_mbox_match_check(send_id: u32, recv_id: u32) -> i32 {
+    if send_id == 0 || recv_id == 0 || send_id == recv_id {
+        1
+    } else {
+        0
+    }
+}
+
+/// Compute the actual data exchange size for a mailbox message.
+///
+/// mailbox.c mbox_message_match:
+///   if (rx_msg->size > tx_msg->size) { rx_msg->size = tx_msg->size; }
+///
+/// Arguments:
+///   tx_size:     transmit message data size
+///   rx_buf_size: receive buffer size
+///
+/// Returns:
+///   min(tx_size, rx_buf_size)
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_mbox_data_exchange(tx_size: u32, rx_buf_size: u32) -> u32 {
+    if tx_size < rx_buf_size {
+        tx_size
+    } else {
+        rx_buf_size
+    }
+}
+
 // Panic handler for no_std
 #[cfg(not(any(test, kani)))]
 #[panic_handler]
@@ -2050,5 +2412,262 @@ mod kani_event_proofs {
         assert!(gale_event_set(0, core::ptr::null_mut(), 0) == EINVAL);
         assert!(gale_event_clear(0, 0, core::ptr::null_mut()) == EINVAL);
         assert!(gale_event_set_masked(0, 0, 0, core::ptr::null_mut()) == EINVAL);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — fifo
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_fifo_proofs {
+    use super::*;
+
+    /// FI1/FI2: put validates overflow and increments count.
+    #[kani::proof]
+    fn fifo_put_validates() {
+        let count: u32 = kani::any();
+        let mut new_count: u32 = 0;
+        let ret = gale_fifo_put_validate(count, &mut new_count);
+        if count >= u32::MAX - 1 {
+            assert!(ret == EOVERFLOW);
+        } else {
+            assert!(ret == OK);
+            assert!(new_count == count + 1);
+        }
+    }
+
+    /// FI3/FI4: get validates underflow and decrements count.
+    #[kani::proof]
+    fn fifo_get_validates() {
+        let count: u32 = kani::any();
+        let mut new_count: u32 = 0;
+        let ret = gale_fifo_get_validate(count, &mut new_count);
+        if count == 0 {
+            assert!(ret == EAGAIN);
+        } else {
+            assert!(ret == OK);
+            assert!(new_count == count - 1);
+        }
+    }
+
+    /// Put then get is identity.
+    #[kani::proof]
+    fn fifo_put_get_roundtrip() {
+        let count: u32 = kani::any();
+        kani::assume(count < u32::MAX - 1);
+        let mut after_put: u32 = 0;
+        let ret1 = gale_fifo_put_validate(count, &mut after_put);
+        assert!(ret1 == OK);
+        let mut after_get: u32 = 0;
+        let ret2 = gale_fifo_get_validate(after_put, &mut after_get);
+        assert!(ret2 == OK);
+        assert!(after_get == count);
+    }
+
+    /// Null pointer checks return EINVAL.
+    #[kani::proof]
+    fn fifo_null_pointers() {
+        assert!(gale_fifo_put_validate(0, core::ptr::null_mut()) == EINVAL);
+        assert!(gale_fifo_get_validate(1, core::ptr::null_mut()) == EINVAL);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — lifo
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_lifo_proofs {
+    use super::*;
+
+    /// LI1/LI2: put validates overflow and increments count.
+    #[kani::proof]
+    fn lifo_put_validates() {
+        let count: u32 = kani::any();
+        let mut new_count: u32 = 0;
+        let ret = gale_lifo_put_validate(count, &mut new_count);
+        if count >= u32::MAX - 1 {
+            assert!(ret == EOVERFLOW);
+        } else {
+            assert!(ret == OK);
+            assert!(new_count == count + 1);
+        }
+    }
+
+    /// LI3/LI4: get validates underflow and decrements count.
+    #[kani::proof]
+    fn lifo_get_validates() {
+        let count: u32 = kani::any();
+        let mut new_count: u32 = 0;
+        let ret = gale_lifo_get_validate(count, &mut new_count);
+        if count == 0 {
+            assert!(ret == EAGAIN);
+        } else {
+            assert!(ret == OK);
+            assert!(new_count == count - 1);
+        }
+    }
+
+    /// Put then get is identity.
+    #[kani::proof]
+    fn lifo_put_get_roundtrip() {
+        let count: u32 = kani::any();
+        kani::assume(count < u32::MAX - 1);
+        let mut after_put: u32 = 0;
+        let ret1 = gale_lifo_put_validate(count, &mut after_put);
+        assert!(ret1 == OK);
+        let mut after_get: u32 = 0;
+        let ret2 = gale_lifo_get_validate(after_put, &mut after_get);
+        assert!(ret2 == OK);
+        assert!(after_get == count);
+    }
+
+    /// Null pointer checks return EINVAL.
+    #[kani::proof]
+    fn lifo_null_pointers() {
+        assert!(gale_lifo_put_validate(0, core::ptr::null_mut()) == EINVAL);
+        assert!(gale_lifo_get_validate(1, core::ptr::null_mut()) == EINVAL);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — queue
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_queue_proofs {
+    use super::*;
+
+    /// QU1/QU2: append validates overflow and increments count.
+    #[kani::proof]
+    fn queue_append_validates() {
+        let count: u32 = kani::any();
+        let mut new_count: u32 = 0;
+        let ret = gale_queue_append_validate(count, &mut new_count);
+        if count >= u32::MAX - 1 {
+            assert!(ret == EOVERFLOW);
+        } else {
+            assert!(ret == OK);
+            assert!(new_count == count + 1);
+        }
+    }
+
+    /// QU3/QU4: prepend validates overflow and increments count.
+    #[kani::proof]
+    fn queue_prepend_validates() {
+        let count: u32 = kani::any();
+        let mut new_count: u32 = 0;
+        let ret = gale_queue_prepend_validate(count, &mut new_count);
+        if count >= u32::MAX - 1 {
+            assert!(ret == EOVERFLOW);
+        } else {
+            assert!(ret == OK);
+            assert!(new_count == count + 1);
+        }
+    }
+
+    /// QU5/QU6: get validates underflow and decrements count.
+    #[kani::proof]
+    fn queue_get_validates() {
+        let count: u32 = kani::any();
+        let mut new_count: u32 = 0;
+        let ret = gale_queue_get_validate(count, &mut new_count);
+        if count == 0 {
+            assert!(ret == EAGAIN);
+        } else {
+            assert!(ret == OK);
+            assert!(new_count == count - 1);
+        }
+    }
+
+    /// Append then get is identity.
+    #[kani::proof]
+    fn queue_append_get_roundtrip() {
+        let count: u32 = kani::any();
+        kani::assume(count < u32::MAX - 1);
+        let mut after_append: u32 = 0;
+        let ret1 = gale_queue_append_validate(count, &mut after_append);
+        assert!(ret1 == OK);
+        let mut after_get: u32 = 0;
+        let ret2 = gale_queue_get_validate(after_append, &mut after_get);
+        assert!(ret2 == OK);
+        assert!(after_get == count);
+    }
+
+    /// Null pointer checks return EINVAL.
+    #[kani::proof]
+    fn queue_null_pointers() {
+        assert!(gale_queue_append_validate(0, core::ptr::null_mut()) == EINVAL);
+        assert!(gale_queue_prepend_validate(0, core::ptr::null_mut()) == EINVAL);
+        assert!(gale_queue_get_validate(1, core::ptr::null_mut()) == EINVAL);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — mbox
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_mbox_proofs {
+    use super::*;
+
+    /// MB1: validate_send rejects zero size.
+    #[kani::proof]
+    fn mbox_validate_send_checks() {
+        let size: u32 = kani::any();
+        let ret = gale_mbox_validate_send(size);
+        if size == 0 {
+            assert!(ret == EINVAL);
+        } else {
+            assert!(ret == OK);
+        }
+    }
+
+    /// MB2: K_ANY (0) matches any ID.
+    #[kani::proof]
+    fn mbox_match_k_any() {
+        let id: u32 = kani::any();
+        // send_id == 0 (K_ANY) always matches
+        assert!(gale_mbox_match_check(0, id) == 1);
+        // recv_id == 0 (K_ANY) always matches
+        assert!(gale_mbox_match_check(id, 0) == 1);
+    }
+
+    /// MB3: equal non-zero IDs match.
+    #[kani::proof]
+    fn mbox_match_equal_ids() {
+        let id: u32 = kani::any();
+        kani::assume(id != 0);
+        assert!(gale_mbox_match_check(id, id) == 1);
+    }
+
+    /// MB4: different non-zero IDs do not match.
+    #[kani::proof]
+    fn mbox_match_different_ids() {
+        let a: u32 = kani::any();
+        let b: u32 = kani::any();
+        kani::assume(a != 0 && b != 0 && a != b);
+        assert!(gale_mbox_match_check(a, b) == 0);
+    }
+
+    /// MB5: data_exchange returns min of tx_size and rx_buf_size.
+    #[kani::proof]
+    fn mbox_data_exchange_is_min() {
+        let tx: u32 = kani::any();
+        let rx: u32 = kani::any();
+        let result = gale_mbox_data_exchange(tx, rx);
+        if tx < rx {
+            assert!(result == tx);
+        } else {
+            assert!(result == rx);
+        }
+    }
+
+    /// MB6: data_exchange is commutative when equal.
+    #[kani::proof]
+    fn mbox_data_exchange_symmetric() {
+        let size: u32 = kani::any();
+        assert!(gale_mbox_data_exchange(size, size) == size);
     }
 }

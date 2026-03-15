@@ -1357,3 +1357,438 @@ artifacts:
         target: SWREQ-MS-MS08
       - type: function-maps-to
         target: PROV-MS-001
+
+  # ── Software architecture — FIFO (SWE.2) ──────────────────────────────
+
+  - id: SWARCH-FI-001
+    type: sw-arch-component
+    title: FIFO module (gale::fifo)
+    status: approved
+    description: >
+      FIFO queue item counter model. Tracks item count for put/get
+      validation. Thin wrapper around queue — enqueues at tail, dequeues
+      from head. Actual data storage stays in C — Gale verifies counter
+      safety only. No unsafe code.
+    tags: [fifo, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "Fifo::init() -> Self"
+          - "Fifo::put() -> i32"
+          - "Fifo::get() -> i32"
+          - "Fifo::is_empty() -> bool"
+          - "Fifo::count() -> u32"
+        required:
+          - "gale::error::{OK, ENOENT}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-FI-FI01
+      - type: allocated-from
+        target: SWREQ-FI-FI02
+      - type: allocated-from
+        target: SWREQ-FI-FI03
+      - type: replaces
+        target: PROV-QU-001
+
+  # ── Software detailed design — FIFO (SWE.3) ───────────────────────────
+
+  - id: SWDD-FI-INIT
+    type: sw-detail-design
+    title: "Fifo::init — k_fifo_init port"
+    status: approved
+    description: >
+      Initialize an empty FIFO. Set count = 0.
+    tags: [fifo, init]
+    fields:
+      unit: plain/src/fifo.rs
+      function: "Fifo::init"
+      algorithm: >
+        Ok(Fifo { count: 0 })
+    links:
+      - type: refines
+        target: SWARCH-FI-001
+      - type: satisfies
+        target: SWREQ-FI-FI01
+      - type: function-maps-to
+        target: PROV-QU-001
+
+  - id: SWDD-FI-PUT
+    type: sw-detail-design
+    title: "Fifo::put — k_fifo_put port"
+    status: approved
+    description: >
+      Enqueue an item at the tail. Increment count by 1, return OK.
+    tags: [fifo, put]
+    fields:
+      unit: plain/src/fifo.rs
+      function: "Fifo::put"
+      algorithm: >
+        count += 1; OK
+    links:
+      - type: refines
+        target: SWARCH-FI-001
+      - type: satisfies
+        target: SWREQ-FI-FI02
+      - type: satisfies
+        target: SWREQ-FI-FI06
+      - type: function-maps-to
+        target: PROV-QU-001
+
+  - id: SWDD-FI-GET
+    type: sw-detail-design
+    title: "Fifo::get — k_fifo_get port"
+    status: approved
+    description: >
+      Dequeue an item from the head. If count > 0: decrement count,
+      return OK. Otherwise return ENOENT.
+    tags: [fifo, get]
+    fields:
+      unit: plain/src/fifo.rs
+      function: "Fifo::get"
+      algorithm: >
+        if count > 0: count -= 1; OK; else: ENOENT
+    links:
+      - type: refines
+        target: SWARCH-FI-001
+      - type: satisfies
+        target: SWREQ-FI-FI03
+      - type: satisfies
+        target: SWREQ-FI-FI04
+      - type: satisfies
+        target: SWREQ-FI-FI06
+      - type: function-maps-to
+        target: PROV-QU-001
+
+  # ── Software architecture — LIFO (SWE.2) ──────────────────────────────
+
+  - id: SWARCH-LI-001
+    type: sw-arch-component
+    title: LIFO module (gale::lifo)
+    status: approved
+    description: >
+      LIFO queue item counter model. Tracks item count for put/get
+      validation. Thin wrapper around queue — enqueues at head, dequeues
+      from head (stack semantics). Actual data storage stays in C — Gale
+      verifies counter safety only. No unsafe code.
+    tags: [lifo, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "Lifo::init() -> Self"
+          - "Lifo::put() -> i32"
+          - "Lifo::get() -> i32"
+          - "Lifo::is_empty() -> bool"
+          - "Lifo::count() -> u32"
+        required:
+          - "gale::error::{OK, ENOENT}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-LI-LI01
+      - type: allocated-from
+        target: SWREQ-LI-LI02
+      - type: allocated-from
+        target: SWREQ-LI-LI03
+      - type: replaces
+        target: PROV-QU-001
+
+  # ── Software detailed design — LIFO (SWE.3) ───────────────────────────
+
+  - id: SWDD-LI-INIT
+    type: sw-detail-design
+    title: "Lifo::init — k_lifo_init port"
+    status: approved
+    description: >
+      Initialize an empty LIFO. Set count = 0.
+    tags: [lifo, init]
+    fields:
+      unit: plain/src/lifo.rs
+      function: "Lifo::init"
+      algorithm: >
+        Ok(Lifo { count: 0 })
+    links:
+      - type: refines
+        target: SWARCH-LI-001
+      - type: satisfies
+        target: SWREQ-LI-LI01
+      - type: function-maps-to
+        target: PROV-QU-001
+
+  - id: SWDD-LI-PUT
+    type: sw-detail-design
+    title: "Lifo::put — k_lifo_put port"
+    status: approved
+    description: >
+      Push an item to the head. Increment count by 1, return OK.
+    tags: [lifo, put]
+    fields:
+      unit: plain/src/lifo.rs
+      function: "Lifo::put"
+      algorithm: >
+        count += 1; OK
+    links:
+      - type: refines
+        target: SWARCH-LI-001
+      - type: satisfies
+        target: SWREQ-LI-LI02
+      - type: satisfies
+        target: SWREQ-LI-LI06
+      - type: function-maps-to
+        target: PROV-QU-001
+
+  - id: SWDD-LI-GET
+    type: sw-detail-design
+    title: "Lifo::get — k_lifo_get port"
+    status: approved
+    description: >
+      Pop an item from the head. If count > 0: decrement count,
+      return OK. Otherwise return ENOENT.
+    tags: [lifo, get]
+    fields:
+      unit: plain/src/lifo.rs
+      function: "Lifo::get"
+      algorithm: >
+        if count > 0: count -= 1; OK; else: ENOENT
+    links:
+      - type: refines
+        target: SWARCH-LI-001
+      - type: satisfies
+        target: SWREQ-LI-LI03
+      - type: satisfies
+        target: SWREQ-LI-LI04
+      - type: satisfies
+        target: SWREQ-LI-LI06
+      - type: function-maps-to
+        target: PROV-QU-001
+
+  # ── Software architecture — Queue (SWE.2) ─────────────────────────────
+
+  - id: SWARCH-QU-001
+    type: sw-arch-component
+    title: Queue module (gale::queue)
+    status: approved
+    description: >
+      Generic queue item counter model. Tracks item count for append/prepend/get
+      validation. Supports both FIFO (append+get) and LIFO (prepend+get) ordering.
+      Actual linked-list data management stays in C — Gale verifies counter
+      safety only. No unsafe code.
+    tags: [queue, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "Queue::init() -> Self"
+          - "Queue::append() -> i32"
+          - "Queue::prepend() -> i32"
+          - "Queue::get() -> i32"
+          - "Queue::is_empty() -> bool"
+          - "Queue::count() -> u32"
+        required:
+          - "gale::error::{OK, ENOENT}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-QU-QU01
+      - type: allocated-from
+        target: SWREQ-QU-QU02
+      - type: allocated-from
+        target: SWREQ-QU-QU04
+      - type: replaces
+        target: PROV-QU-001
+
+  # ── Software detailed design — Queue (SWE.3) ──────────────────────────
+
+  - id: SWDD-QU-INIT
+    type: sw-detail-design
+    title: "Queue::init — z_impl_k_queue_init port"
+    status: approved
+    description: >
+      Initialize an empty queue. Set count = 0.
+    tags: [queue, init]
+    fields:
+      unit: plain/src/queue.rs
+      function: "Queue::init"
+      algorithm: >
+        Ok(Queue { count: 0 })
+    links:
+      - type: refines
+        target: SWARCH-QU-001
+      - type: satisfies
+        target: SWREQ-QU-QU01
+      - type: function-maps-to
+        target: PROV-QU-001
+
+  - id: SWDD-QU-APPEND
+    type: sw-detail-design
+    title: "Queue::append — k_queue_append port"
+    status: approved
+    description: >
+      Enqueue an item at the tail. Increment count by 1, return OK.
+    tags: [queue, append]
+    fields:
+      unit: plain/src/queue.rs
+      function: "Queue::append"
+      algorithm: >
+        count += 1; OK
+    links:
+      - type: refines
+        target: SWARCH-QU-001
+      - type: satisfies
+        target: SWREQ-QU-QU02
+      - type: satisfies
+        target: SWREQ-QU-QU06
+      - type: function-maps-to
+        target: PROV-QU-001
+
+  - id: SWDD-QU-PREPEND
+    type: sw-detail-design
+    title: "Queue::prepend — k_queue_prepend port"
+    status: approved
+    description: >
+      Enqueue an item at the head. Increment count by 1, return OK.
+    tags: [queue, prepend]
+    fields:
+      unit: plain/src/queue.rs
+      function: "Queue::prepend"
+      algorithm: >
+        count += 1; OK
+    links:
+      - type: refines
+        target: SWARCH-QU-001
+      - type: satisfies
+        target: SWREQ-QU-QU03
+      - type: satisfies
+        target: SWREQ-QU-QU06
+      - type: function-maps-to
+        target: PROV-QU-001
+
+  - id: SWDD-QU-GET
+    type: sw-detail-design
+    title: "Queue::get — z_impl_k_queue_get port"
+    status: approved
+    description: >
+      Dequeue an item from the head. If count > 0: decrement count,
+      return OK. Otherwise return ENOENT.
+    tags: [queue, get]
+    fields:
+      unit: plain/src/queue.rs
+      function: "Queue::get"
+      algorithm: >
+        if count > 0: count -= 1; OK; else: ENOENT
+    links:
+      - type: refines
+        target: SWARCH-QU-001
+      - type: satisfies
+        target: SWREQ-QU-QU04
+      - type: satisfies
+        target: SWREQ-QU-QU05
+      - type: satisfies
+        target: SWREQ-QU-QU06
+      - type: function-maps-to
+        target: PROV-QU-001
+
+  # ── Software architecture — Mailbox (SWE.2) ───────────────────────────
+
+  - id: SWARCH-MB-001
+    type: sw-arch-component
+    title: Mailbox module (gale::mbox)
+    status: approved
+    description: >
+      Mailbox message validation and matching model. Tracks sender/receiver
+      thread ID validation, message match logic (wildcard and exact), and
+      data exchange size calculation (min of tx/rx sizes). Actual thread
+      blocking and data copy stays in C — Gale verifies protocol safety
+      only. No unsafe code.
+    tags: [mbox, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "Mbox::init() -> Self"
+          - "Mbox::validate_send(tx_target, tx_size) -> Result<(), i32>"
+          - "Mbox::match_check(tx_target, tx_sender, rx_source, rx_receiver) -> bool"
+          - "Mbox::data_exchange_size(tx_size, rx_size) -> u32"
+        required:
+          - "gale::error::{OK, EINVAL, ENOMSG}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-MB-MB01
+      - type: allocated-from
+        target: SWREQ-MB-MB03
+      - type: allocated-from
+        target: SWREQ-MB-MB04
+      - type: replaces
+        target: PROV-MB-001
+
+  # ── Software detailed design — Mailbox (SWE.3) ────────────────────────
+
+  - id: SWDD-MB-VALIDATE-SEND
+    type: sw-detail-design
+    title: "Mbox::validate_send — message validation port"
+    status: approved
+    description: >
+      Validate transmit message parameters. Check tx_target is valid
+      thread ID or K_ANY. Return Err(EINVAL) on invalid parameters.
+    tags: [mbox, validate]
+    fields:
+      unit: plain/src/mbox.rs
+      function: "Mbox::validate_send"
+      algorithm: >
+        if tx_target invalid: Err(EINVAL); else: Ok(())
+    links:
+      - type: refines
+        target: SWARCH-MB-001
+      - type: satisfies
+        target: SWREQ-MB-MB01
+      - type: satisfies
+        target: SWREQ-MB-MB02
+      - type: function-maps-to
+        target: PROV-MB-001
+
+  - id: SWDD-MB-MATCH-CHECK
+    type: sw-detail-design
+    title: "Mbox::match_check — mbox_message_match port"
+    status: approved
+    description: >
+      Check if a transmit message matches a receive message. Match requires:
+      (tx_target == K_ANY || tx_target == rx_receiver) AND
+      (rx_source == K_ANY || rx_source == tx_sender).
+    tags: [mbox, match]
+    fields:
+      unit: plain/src/mbox.rs
+      function: "Mbox::match_check"
+      algorithm: >
+        (tx_target == K_ANY || tx_target == rx_receiver) &&
+        (rx_source == K_ANY || rx_source == tx_sender)
+    links:
+      - type: refines
+        target: SWARCH-MB-001
+      - type: satisfies
+        target: SWREQ-MB-MB03
+      - type: satisfies
+        target: SWREQ-MB-MB05
+      - type: function-maps-to
+        target: PROV-MB-001
+
+  - id: SWDD-MB-DATA-EXCHANGE
+    type: sw-detail-design
+    title: "Mbox::data_exchange_size — mbox_message_dispose port"
+    status: approved
+    description: >
+      Calculate the actual data exchange size as min(tx_size, rx_size).
+      Neither buffer is overflowed.
+    tags: [mbox, data-exchange]
+    fields:
+      unit: plain/src/mbox.rs
+      function: "Mbox::data_exchange_size"
+      algorithm: >
+        min(tx_size, rx_size)
+    links:
+      - type: refines
+        target: SWARCH-MB-001
+      - type: satisfies
+        target: SWREQ-MB-MB04
+      - type: satisfies
+        target: SWREQ-MB-MB06
+      - type: function-maps-to
+        target: PROV-MB-001

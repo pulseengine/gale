@@ -1672,6 +1672,330 @@ artifacts:
       - type: verifies
         target: SWREQ-MS-MS01
 
+  # ── SWE.4: Unit verification — FIFO ──────────────────────────────────
+
+  - id: UV-FI-001
+    type: unit-verification
+    title: FIFO unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/fifo.rs covering init, put/get operations,
+      empty boundary condition, put-get roundtrip, and count tracking.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-FI-INIT
+      - type: verifies
+        target: SWDD-FI-PUT
+      - type: verifies
+        target: SWDD-FI-GET
+
+  # ── SWE.4: Unit verification — LIFO ──────────────────────────────────
+
+  - id: UV-LI-001
+    type: unit-verification
+    title: LIFO unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/lifo.rs covering init, put/get operations,
+      empty boundary condition, put-get roundtrip, and count tracking.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-LI-INIT
+      - type: verifies
+        target: SWDD-LI-PUT
+      - type: verifies
+        target: SWDD-LI-GET
+
+  # ── SWE.4: Unit verification — Queue ─────────────────────────────────
+
+  - id: UV-QU-001
+    type: unit-verification
+    title: Queue unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/queue.rs covering init, append/prepend/get
+      operations, empty boundary condition, roundtrip, and count tracking.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-QU-INIT
+      - type: verifies
+        target: SWDD-QU-APPEND
+      - type: verifies
+        target: SWDD-QU-PREPEND
+      - type: verifies
+        target: SWDD-QU-GET
+
+  # ── SWE.4: Unit verification — Mailbox ───────────────────────────────
+
+  - id: UV-MB-001
+    type: unit-verification
+    title: Mailbox unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/mbox.rs covering init, validate_send
+      parameter checking, match_check with wildcard and exact thread IDs,
+      data_exchange_size clamping, and no-match state preservation.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-MB-VALIDATE-SEND
+      - type: verifies
+        target: SWDD-MB-MATCH-CHECK
+      - type: verifies
+        target: SWDD-MB-DATA-EXCHANGE
+
+  # ── SWE.5: Integration verification — FIFO ──────────────────────────
+
+  - id: IV-FI-001
+    type: sw-integration-verification
+    title: FIFO integration tests
+    status: approved
+    description: >
+      Integration tests in tests/fifo_integration.rs exercising the full
+      FIFO API surface across module boundaries. Tests init, put/get
+      sequences, empty-get error path, roundtrip, interleaved operations,
+      and stress cycles.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-FI-001
+
+  # ── SWE.5: Integration verification — LIFO ──────────────────────────
+
+  - id: IV-LI-001
+    type: sw-integration-verification
+    title: LIFO integration tests
+    status: approved
+    description: >
+      Integration tests in tests/lifo_integration.rs exercising the full
+      LIFO API surface across module boundaries. Tests init, put/get
+      sequences, empty-get error path, roundtrip, interleaved operations,
+      and stress cycles.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-LI-001
+
+  # ── SWE.5: Integration verification — Queue ─────────────────────────
+
+  - id: IV-QU-001
+    type: sw-integration-verification
+    title: Queue integration tests
+    status: approved
+    description: >
+      Integration tests in tests/queue_integration.rs exercising the full
+      queue API surface across module boundaries. Tests init, append/prepend/get
+      sequences, empty-get error path, mixed append/prepend ordering,
+      interleaved operations, and stress cycles.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-QU-001
+
+  # ── SWE.5: Integration verification — Mailbox ───────────────────────
+
+  - id: IV-MB-001
+    type: sw-integration-verification
+    title: Mailbox integration tests
+    status: approved
+    description: >
+      Integration tests in tests/mbox_integration.rs exercising the full
+      mailbox API surface across module boundaries. Tests init, validate_send
+      acceptance and rejection, match_check with wildcard and exact thread
+      IDs, data_exchange_size clamping, and no-match state preservation.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-MB-001
+
+  # ── SWE.6: Software verification — FIFO ─────────────────────────────
+
+  - id: FV-FI-001
+    type: sw-verification
+    title: FIFO Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/fifo.rs with requires/ensures clauses
+      that formally verify all FIFO properties (FI01-FI06) via SMT
+      solving. Proves counter safety, put/get correctness, roundtrip,
+      and overflow protection. Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-FI-FI01
+      - type: verifies
+        target: SWREQ-FI-FI02
+      - type: verifies
+        target: SWREQ-FI-FI03
+      - type: verifies
+        target: SWREQ-FI-FI04
+      - type: verifies
+        target: SWREQ-FI-FI05
+      - type: verifies
+        target: SWREQ-FI-FI06
+
+  - id: FV-FI-003
+    type: sw-verification
+    title: FIFO Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all FIFO code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-FI-FI01
+
+  # ── SWE.6: Software verification — LIFO ─────────────────────────────
+
+  - id: FV-LI-001
+    type: sw-verification
+    title: LIFO Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/lifo.rs with requires/ensures clauses
+      that formally verify all LIFO properties (LI01-LI06) via SMT
+      solving. Proves counter safety, put/get correctness, roundtrip,
+      and overflow protection. Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-LI-LI01
+      - type: verifies
+        target: SWREQ-LI-LI02
+      - type: verifies
+        target: SWREQ-LI-LI03
+      - type: verifies
+        target: SWREQ-LI-LI04
+      - type: verifies
+        target: SWREQ-LI-LI05
+      - type: verifies
+        target: SWREQ-LI-LI06
+
+  - id: FV-LI-003
+    type: sw-verification
+    title: LIFO Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all LIFO code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-LI-LI01
+
+  # ── SWE.6: Software verification — Queue ────────────────────────────
+
+  - id: FV-QU-001
+    type: sw-verification
+    title: Queue Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/queue.rs with requires/ensures clauses
+      that formally verify all queue properties (QU01-QU06) via SMT
+      solving. Proves counter safety, append/prepend/get correctness,
+      and overflow protection. Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-QU-QU01
+      - type: verifies
+        target: SWREQ-QU-QU02
+      - type: verifies
+        target: SWREQ-QU-QU03
+      - type: verifies
+        target: SWREQ-QU-QU04
+      - type: verifies
+        target: SWREQ-QU-QU05
+      - type: verifies
+        target: SWREQ-QU-QU06
+
+  - id: FV-QU-003
+    type: sw-verification
+    title: Queue Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all queue code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-QU-QU01
+
+  # ── SWE.6: Software verification — Mailbox ──────────────────────────
+
+  - id: FV-MB-001
+    type: sw-verification
+    title: Mailbox Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/mbox.rs with requires/ensures clauses
+      that formally verify all mailbox properties (MB01-MB06) via SMT
+      solving. Proves validation correctness, match logic, data exchange
+      size safety, and overflow protection.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-MB-MB01
+      - type: verifies
+        target: SWREQ-MB-MB02
+      - type: verifies
+        target: SWREQ-MB-MB03
+      - type: verifies
+        target: SWREQ-MB-MB04
+      - type: verifies
+        target: SWREQ-MB-MB05
+      - type: verifies
+        target: SWREQ-MB-MB06
+
+  - id: FV-MB-003
+    type: sw-verification
+    title: Mailbox Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all mailbox code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-MB-MB01
+
   # ── TRACTOR verification ─────────────────────────────────────────────
 
   - id: FV-TRACTOR-EQ

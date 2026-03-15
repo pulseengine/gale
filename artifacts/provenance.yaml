@@ -282,3 +282,66 @@ artifacts:
       gale-file: plain/src/mem_slab.rs
       gale-module: gale::mem_slab
       scope: partial-functions
+
+  - id: PROV-QU-001
+    type: source-provenance
+    title: "Zephyr kernel/queue.c — generic queue implementation (fifo/lifo/queue)"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's generic queue, which
+      underlies k_fifo, k_lifo, and k_queue. Contains z_impl_k_queue_init,
+      k_queue_append, k_queue_prepend, z_impl_k_queue_get,
+      z_impl_k_queue_cancel_wait, k_queue_insert, plus peek, remove,
+      unique_append, merge_slist, and userspace wrappers.
+      The Gale port models the item counter only — actual linked-list
+      data management stays in C.
+    tags: [upstream, fifo, lifo, queue, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/queue.c
+      upstream-sha256: "4274e01743bfaf05ceec10a39a049f94a6ba1f040753a2c492976dcb0c69c1f3"
+      upstream-lines: 498
+      upstream-functions:
+        - "z_impl_k_queue_init (line 58)"
+        - "k_queue_append (line 197)"
+        - "k_queue_prepend (line 206)"
+        - "z_impl_k_queue_get (lines 335-370)"
+        - "z_impl_k_queue_cancel_wait (line 99)"
+        - "k_queue_insert (line 188)"
+        - "z_impl_k_queue_peek_head (line 404)"
+        - "z_impl_k_queue_peek_tail (line 413)"
+      gale-file: plain/src/queue.rs
+      gale-module: gale::queue
+      scope: partial-functions
+
+  - id: PROV-MB-001
+    type: source-provenance
+    title: "Zephyr kernel/mailbox.c — mailbox implementation"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's mailbox.  Contains
+      k_mbox_init, k_mbox_put, k_mbox_async_put, k_mbox_get,
+      k_mbox_data_get, plus internal mbox_message_match,
+      mbox_message_dispose, and mbox_message_put helpers.
+      The Gale port models message validation, match checking, and
+      data exchange size calculation only — actual thread blocking
+      and data copy stays in C.
+    tags: [upstream, mbox, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/mailbox.c
+      upstream-sha256: "1e68899bcd31ca25db98341dbe2ba373290aa33f6868ae55fe4779de68cce156"
+      upstream-lines: 461
+      upstream-functions:
+        - "k_mbox_init (line 87)"
+        - "mbox_message_match (lines 112-153)"
+        - "mbox_message_dispose (lines 155-207)"
+        - "mbox_message_put (lines 210-293)"
+        - "k_mbox_put (line 295)"
+        - "k_mbox_get (lines 382-440)"
+        - "k_mbox_data_get (line 335)"
+      gale-file: plain/src/mbox.rs
+      gale-module: gale::mbox
+      scope: partial-functions

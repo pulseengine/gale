@@ -33,6 +33,12 @@ jobs:
             test_path: tests/kernel/stack/stack
           - primitive: pipe
             test_path: tests/kernel/pipe/pipe_api
+          - primitive: timer
+            test_path: tests/kernel/timer/timer_api
+          - primitive: event
+            test_path: tests/kernel/events/event_api
+          - primitive: mem_slab
+            test_path: tests/kernel/mem_slab/mslab
 
     steps:
       - name: Checkout Gale

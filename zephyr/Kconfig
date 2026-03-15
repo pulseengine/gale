@@ -105,3 +105,47 @@ config GALE_KERNEL_TIMER
 	  Rust code. Timeout scheduling, callbacks, work queues, and
 	  tracing remain native Zephyr C.
 	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_FIFO
+	bool "Use Gale formally verified fifo"
+	depends on MULTITHREADING
+	help
+	  Replace the k_fifo count tracking in kernel/queue.c with the
+	  Gale formally verified Rust implementation. The unbounded
+	  queue counter increment/decrement is handled by verified
+	  Rust code. Linked list management, wait queues, scheduling,
+	  alloc nodes, polling, and tracing remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_LIFO
+	bool "Use Gale formally verified lifo"
+	depends on MULTITHREADING
+	help
+	  Replace the k_lifo count tracking in kernel/queue.c with the
+	  Gale formally verified Rust implementation. The unbounded
+	  queue counter increment/decrement is handled by verified
+	  Rust code. Linked list management, wait queues, scheduling,
+	  alloc nodes, polling, and tracing remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_QUEUE
+	bool "Use Gale formally verified queue"
+	depends on MULTITHREADING
+	help
+	  Replace kernel/queue.c with the Gale formally verified Rust
+	  implementation. The unbounded queue counter for append,
+	  prepend, and get operations is handled by verified Rust code.
+	  Linked list management, wait queues, scheduling, alloc nodes,
+	  polling, and tracing remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_MBOX
+	bool "Use Gale formally verified mailbox"
+	depends on MULTITHREADING
+	help
+	  Replace kernel/mailbox.c with the Gale formally verified Rust
+	  implementation. The send validation, message ID matching, and
+	  data exchange size computation are handled by verified Rust
+	  code. Wait queues, scheduling, async message descriptors,
+	  data copy, and tracing remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
