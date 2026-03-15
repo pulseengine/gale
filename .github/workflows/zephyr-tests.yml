@@ -39,6 +39,14 @@ jobs:
             test_path: tests/kernel/events/event_api
           - primitive: mem_slab
             test_path: tests/kernel/mem_slab/mslab
+          - primitive: fifo
+            test_path: tests/kernel/fifo/fifo_api
+          - primitive: lifo
+            test_path: tests/kernel/lifo/lifo_api
+          - primitive: queue
+            test_path: tests/kernel/queue
+          - primitive: mbox
+            test_path: tests/kernel/mbox/mbox_api
 
     steps:
       - name: Checkout Gale
@@ -48,6 +56,7 @@ jobs:
 
       - name: Install Rust + ARM target
         run: |
+          export HOME=/root
           apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           . "$HOME/.cargo/env"
@@ -65,6 +74,7 @@ jobs:
         env:
           TEST_PATH: ${{ matrix.test_path }}
         run: |
+          export HOME=/root
           . "$HOME/.cargo/env"
           export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
           export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
