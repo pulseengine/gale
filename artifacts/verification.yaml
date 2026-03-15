@@ -1354,6 +1354,56 @@ artifacts:
       - type: verifies
         target: SYSREQ-PP-001
 
+  - id: SV-TM-001
+    type: sys-verification
+    title: Timer Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel timer test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_TIMER=y. Tests exercise timer start/stop,
+      periodic/one-shot, status get/sync, user data, and remaining time
+      through the Gale FFI/C shim layer. Test suite:
+      zephyr/tests/kernel/timer/timer_api.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-TM-001
+
+  - id: SV-EV-001
+    type: sys-verification
+    title: Event Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel event test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_EVENT=y. Tests exercise event post/set/clear,
+      wait_any/wait_all, safe variants, and multi-thread delivery through
+      the Gale FFI/C shim layer. Test suite:
+      zephyr/tests/kernel/events/event_api.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-EV-001
+
+  - id: SV-MS-001
+    type: sys-verification
+    title: MemSlab Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel mem_slab test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_MEM_SLAB=y. Tests exercise alloc/free with
+      blocking, timeout, multi-thread contention through the Gale FFI/C
+      shim layer. Test suite: zephyr/tests/kernel/mem_slab/mslab.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-MS-001
+
   # ── SWE.4: Unit verification — Timer ──────────────────────────────────
 
   - id: UV-TM-001

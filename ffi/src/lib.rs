@@ -45,12 +45,40 @@
 //!   pipe.c:220-271  read state check + byte count
 //!
 //! Verified: PP1-PP10 (state machine, byte count bounds, conservation).
+//!
+//! ## Memory Slab (gale_mem_slab_*)
+//!
+//! Pure functions replacing block count tracking from kernel/mem_slab.c:
+//!   mem_slab.c:109-111 block_size/num_blocks validation
+//!   mem_slab.c:245     num_used++ (alloc)
+//!   mem_slab.c:308     num_used-- (free)
+//!
+//! Verified: MS1-MS8 (bounds, conservation, no overflow/underflow).
+//!
+//! ## Event (gale_event_*)
+//!
+//! Pure functions replacing bitmask operations from kernel/events.c:
+//!   events.c:191-192  post (OR bits) + set_masked
+//!   events.c:238-240  set (replace all)
+//!   events.c:268-270  clear (AND complement)
+//!   events.c:95-107   are_wait_conditions_met (any/all check)
+//!
+//! Verified: EV1-EV8 (bitmask ops, monotonicity, wait conditions).
+//!
+//! ## Timer (gale_timer_*)
+//!
+//! Pure functions replacing status counter arithmetic from kernel/timer.c:
+//!   timer.c expiry handler  status++ (checked)
+//!   timer.c status_get      read + reset to 0
+//!   timer.c init            period validation
+//!
+//! Verified: TM1-TM8 (status bounds, increment, reset, no overflow).
 
 #![cfg_attr(not(any(test, kani)), no_std)]
 // FFI boundary crate — unsafe is inherent (no_mangle, raw pointers).
 // The verified pure logic lives in the `gale` crate which denies unsafe.
 
-use gale::error::{EAGAIN, EBUSY, ECANCELED, EINVAL, ENOMEM, ENOMSG, EPERM, EPIPE, OK};
+use gale::error::{EAGAIN, EBUSY, ECANCELED, EINVAL, ENOMEM, ENOMSG, EOVERFLOW, EPERM, EPIPE, OK};
 
 // ---------------------------------------------------------------------------
 // FFI exports — pure count arithmetic
@@ -782,6 +810,369 @@ pub extern "C" fn gale_stack_pop_validate(
     }
 }
 
+/// Validate timer init parameters.
+///
+/// timer.c init:
+///   Timer period can be 0 (one-shot) or >0 (periodic).
+///   Always succeeds — no invalid period values.
+///
+/// Returns:
+///   0 (OK) — always valid
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_timer_init_validate(period: u32) -> i32 {
+    // Period 0 = one-shot, period > 0 = periodic.  Both are valid.
+    let _ = period;
+    OK
+}
+
+/// Record a timer expiry: checked status increment.
+///
+/// timer.c expiry handler:
+///   timer->status++;
+///
+/// Arguments:
+///   status:     current expiry count
+///   new_status: pointer to receive status + 1
+///
+/// Returns:
+///   0 (OK)       — *new_status set to status + 1
+///   -EOVERFLOW   — status == u32::MAX, output unchanged
+///   -EINVAL      — new_status is null
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_timer_expire(
+    status: u32,
+    new_status: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_status.is_null() {
+            return EINVAL;
+        }
+
+        if status == u32::MAX {
+            return EOVERFLOW;
+        }
+
+        // Verified: status < u32::MAX, no overflow.
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_status = status + 1;
+        }
+        OK
+    }
+}
+
+/// Read and reset the status counter.
+///
+/// timer.c k_timer_status_get:
+///   result = timer->status;
+///   timer->status = 0;
+///   return result;
+///
+/// Arguments:
+///   status:     current expiry count
+///   new_status: pointer to receive 0 (reset value)
+///
+/// Returns:
+///   The old status value.
+///   If new_status is non-null, *new_status is set to 0.
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_timer_status_get(
+    status: u32,
+    new_status: *mut u32,
+) -> u32 {
+    unsafe {
+        if !new_status.is_null() {
+            *new_status = 0;
+        }
+        status
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Memory Slab — verified block count tracking
+// ---------------------------------------------------------------------------
+
+/// Validate memory slab init parameters.
+///
+/// mem_slab.c:109-111:
+///   CHECKIF(slab->info.block_size == 0U) { return -EINVAL; }
+///
+/// Returns:
+///   0 (OK)   — valid parameters
+///   -EINVAL  — block_size == 0 or num_blocks == 0
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_mem_slab_init_validate(block_size: u32, num_blocks: u32) -> i32 {
+    if block_size == 0 || num_blocks == 0 {
+        EINVAL
+    } else {
+        OK
+    }
+}
+
+/// Validate an alloc operation and compute new num_used.
+///
+/// mem_slab.c:245:
+///   slab->info.num_used++;
+///
+/// Arguments:
+///   num_used:     current allocated block count
+///   num_blocks:   total blocks in the slab
+///   new_num_used: pointer to receive num_used + 1
+///
+/// Returns:
+///   0 (OK)    — block available, *new_num_used set
+///   -ENOMEM   — slab full, output unchanged
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_mem_slab_alloc_validate(
+    num_used: u32,
+    num_blocks: u32,
+    new_num_used: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_num_used.is_null() {
+            return EINVAL;
+        }
+
+        if num_used >= num_blocks {
+            return ENOMEM;
+        }
+
+        // Verified: num_used < num_blocks <= u32::MAX, no overflow.
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_num_used = num_used + 1;
+        }
+        OK
+    }
+}
+
+/// Validate a free operation and compute new num_used.
+///
+/// mem_slab.c:308:
+///   slab->info.num_used--;
+///
+/// Arguments:
+///   num_used:     current allocated block count
+///   new_num_used: pointer to receive num_used - 1
+///
+/// Returns:
+///   0 (OK)    — block freed, *new_num_used set
+///   -EINVAL   — all blocks already free, output unchanged
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_mem_slab_free_validate(
+    num_used: u32,
+    new_num_used: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_num_used.is_null() {
+            return EINVAL;
+        }
+
+        if num_used == 0 {
+            return EINVAL;
+        }
+
+        // Verified: num_used > 0, no underflow.
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_num_used = num_used - 1;
+        }
+        OK
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — event bitmask operations
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the bitmask arithmetic from kernel/events.c:
+//
+//   events.c:191-192  k_event_post_internal — (events & ~mask) | (new & mask)
+//   events.c:238-240  k_event_set — replace all bits
+//   events.c:268-270  k_event_clear — AND complement
+//   events.c:95-107   are_wait_conditions_met — any/all bit check
+//
+// All other event logic (wait queues, scheduling, tracing, userspace)
+// remains native Zephyr C in gale_event.c.
+//
+// Verified by Verus (SMT/Z3):
+//   EV1: post ORs bits: events |= new
+//   EV2: set replaces: events = new
+//   EV3: clear ANDs complement: events &= !clear_bits
+//   EV4: set_masked: events = (events & !mask) | (new & mask)
+//   EV5: wait_any: returns true when (events & desired) != 0
+//   EV6: wait_all: returns true when (events & desired) == desired
+//   EV7: events is always a valid u32
+//   EV8: post is monotonic (never clears bits)
+
+/// Post (OR) new event bits into the bitmask.
+///
+/// events.c:
+///   event->events |= new_events;
+///
+/// Arguments:
+///   events:     current event bitmask
+///   new_events: bits to OR in
+///   result:     pointer to receive events | new_events
+///
+/// Returns:
+///   0 (OK)    — *result set
+///   -EINVAL   — result is null
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_event_post(
+    events: u32,
+    new_events: u32,
+    result: *mut u32,
+) -> i32 {
+    unsafe {
+        if result.is_null() {
+            return EINVAL;
+        }
+
+        *result = events | new_events;
+        OK
+    }
+}
+
+/// Set the event bitmask to an exact value, returning the old value.
+///
+/// events.c:
+///   old = event->events; event->events = new_events;
+///
+/// Arguments:
+///   new_events: the new bitmask value
+///   old_events: pointer to receive the previous bitmask
+///   current:    current event bitmask
+///
+/// Returns:
+///   0 (OK)    — *old_events set to current
+///   -EINVAL   — old_events is null
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_event_set(
+    new_events: u32,
+    old_events: *mut u32,
+    current: u32,
+) -> i32 {
+    unsafe {
+        if old_events.is_null() {
+            return EINVAL;
+        }
+
+        *old_events = current;
+        // Caller uses new_events directly; we just record the old value.
+        let _ = new_events;
+        OK
+    }
+}
+
+/// Clear specific event bits.
+///
+/// events.c:
+///   event->events &= ~clear_events;
+///
+/// Arguments:
+///   events:     current event bitmask
+///   clear_bits: bits to clear
+///   result:     pointer to receive events & ~clear_bits
+///
+/// Returns:
+///   0 (OK)    — *result set
+///   -EINVAL   — result is null
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_event_clear(
+    events: u32,
+    clear_bits: u32,
+    result: *mut u32,
+) -> i32 {
+    unsafe {
+        if result.is_null() {
+            return EINVAL;
+        }
+
+        *result = events & !clear_bits;
+        OK
+    }
+}
+
+/// Set only the bits selected by a mask, leaving other bits unchanged.
+///
+/// events.c:
+///   event->events = (event->events & ~mask) | (events & mask);
+///
+/// Arguments:
+///   events:   current event bitmask
+///   new_bits: new values for the masked bits
+///   mask:     which bits to update
+///   result:   pointer to receive (events & ~mask) | (new_bits & mask)
+///
+/// Returns:
+///   0 (OK)    — *result set
+///   -EINVAL   — result is null
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_event_set_masked(
+    events: u32,
+    new_bits: u32,
+    mask: u32,
+    result: *mut u32,
+) -> i32 {
+    unsafe {
+        if result.is_null() {
+            return EINVAL;
+        }
+
+        *result = (events & !mask) | (new_bits & mask);
+        OK
+    }
+}
+
+/// Check if any of the desired event bits are set.
+///
+/// events.c:
+///   match = (event->events & desired) != 0
+///
+/// Arguments:
+///   events:  current event bitmask
+///   desired: bits to check
+///
+/// Returns:
+///   1 — at least one desired bit is set
+///   0 — no desired bits are set
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_event_wait_check_any(
+    events: u32,
+    desired: u32,
+) -> i32 {
+    if (events & desired) != 0 {
+        1
+    } else {
+        0
+    }
+}
+
+/// Check if all of the desired event bits are set.
+///
+/// events.c:
+///   match = (event->events & desired) == desired
+///
+/// Arguments:
+///   events:  current event bitmask
+///   desired: bits to check
+///
+/// Returns:
+///   1 — all desired bits are set
+///   0 — not all desired bits are set
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_event_wait_check_all(
+    events: u32,
+    desired: u32,
+) -> i32 {
+    if (events & desired) == desired {
+        1
+    } else {
+        0
+    }
+}
+
 // Panic handler for no_std
 #[cfg(not(any(test, kani)))]
 #[panic_handler]
@@ -1391,5 +1782,273 @@ mod kani_stack_proofs {
     fn stack_null_pointers() {
         assert!(gale_stack_push_validate(0, 10, core::ptr::null_mut()) == EINVAL);
         assert!(gale_stack_pop_validate(1, core::ptr::null_mut()) == EINVAL);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — timer
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_timer_proofs {
+    use super::*;
+
+    /// Init always succeeds for any period value.
+    #[kani::proof]
+    fn timer_init_always_ok() {
+        let period: u32 = kani::any();
+        let ret = gale_timer_init_validate(period);
+        assert!(ret == OK);
+    }
+
+    /// TM5/TM8: expire validates overflow and increments status.
+    #[kani::proof]
+    fn timer_expire_validates() {
+        let status: u32 = kani::any();
+
+        let mut new_status: u32 = 0;
+        let ret = gale_timer_expire(status, &mut new_status);
+
+        if status == u32::MAX {
+            assert!(ret == EOVERFLOW);
+        } else {
+            assert!(ret == OK);
+            assert!(new_status == status + 1);
+        }
+    }
+
+    /// TM2: status_get returns old value and resets to 0.
+    #[kani::proof]
+    fn timer_status_get_resets() {
+        let status: u32 = kani::any();
+
+        let mut new_status: u32 = 99;
+        let old = gale_timer_status_get(status, &mut new_status);
+
+        assert!(old == status);
+        assert!(new_status == 0);
+    }
+
+    /// Expire then status_get roundtrip.
+    #[kani::proof]
+    fn timer_expire_status_get_roundtrip() {
+        let status: u32 = kani::any();
+        kani::assume(status < u32::MAX);
+
+        let mut after_expire: u32 = 0;
+        let ret = gale_timer_expire(status, &mut after_expire);
+        assert!(ret == OK);
+        assert!(after_expire == status + 1);
+
+        let mut after_get: u32 = 99;
+        let old = gale_timer_status_get(after_expire, &mut after_get);
+        assert!(old == status + 1);
+        assert!(after_get == 0);
+    }
+
+    /// Null pointer checks return EINVAL.
+    #[kani::proof]
+    fn timer_null_pointers() {
+        assert!(gale_timer_expire(0, core::ptr::null_mut()) == EINVAL);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — memory slab
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_mem_slab_proofs {
+    use super::*;
+
+    /// MS2/MS3: init rejects zero block_size or num_blocks.
+    #[kani::proof]
+    fn mem_slab_init_validates() {
+        let block_size: u32 = kani::any();
+        let num_blocks: u32 = kani::any();
+        let ret = gale_mem_slab_init_validate(block_size, num_blocks);
+        if block_size == 0 || num_blocks == 0 {
+            assert!(ret == EINVAL);
+        } else {
+            assert!(ret == OK);
+        }
+    }
+
+    /// MS4/MS5: alloc validates capacity and increments num_used.
+    #[kani::proof]
+    fn mem_slab_alloc_validates() {
+        let num_used: u32 = kani::any();
+        let num_blocks: u32 = kani::any();
+        kani::assume(num_blocks > 0 && num_blocks <= 16);
+        kani::assume(num_used <= num_blocks);
+
+        let mut new_num_used: u32 = 0;
+        let ret = gale_mem_slab_alloc_validate(num_used, num_blocks, &mut new_num_used);
+
+        if num_used < num_blocks {
+            assert!(ret == OK);
+            assert!(new_num_used == num_used + 1);
+            assert!(new_num_used <= num_blocks);
+        } else {
+            assert!(ret == ENOMEM);
+        }
+    }
+
+    /// MS6: free validates non-empty and decrements num_used.
+    #[kani::proof]
+    fn mem_slab_free_validates() {
+        let num_used: u32 = kani::any();
+
+        let mut new_num_used: u32 = 0;
+        let ret = gale_mem_slab_free_validate(num_used, &mut new_num_used);
+
+        if num_used > 0 {
+            assert!(ret == OK);
+            assert!(new_num_used == num_used - 1);
+        } else {
+            assert!(ret == EINVAL);
+        }
+    }
+
+    /// MS4+MS6: alloc-free roundtrip preserves num_used.
+    #[kani::proof]
+    fn mem_slab_alloc_free_roundtrip() {
+        let num_used: u32 = kani::any();
+        let num_blocks: u32 = kani::any();
+        kani::assume(num_blocks > 0 && num_blocks <= 16);
+        kani::assume(num_used < num_blocks); // not full
+
+        let mut after_alloc: u32 = 0;
+        let ret1 = gale_mem_slab_alloc_validate(num_used, num_blocks, &mut after_alloc);
+        assert!(ret1 == OK);
+        assert!(after_alloc == num_used + 1);
+
+        let mut after_free: u32 = 0;
+        let ret2 = gale_mem_slab_free_validate(after_alloc, &mut after_free);
+        assert!(ret2 == OK);
+        assert!(after_free == num_used);
+    }
+
+    /// Null pointer checks return EINVAL.
+    #[kani::proof]
+    fn mem_slab_null_pointers() {
+        assert!(gale_mem_slab_alloc_validate(0, 10, core::ptr::null_mut()) == EINVAL);
+        assert!(gale_mem_slab_free_validate(1, core::ptr::null_mut()) == EINVAL);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — event
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_event_proofs {
+    use super::*;
+
+    /// EV1: post ORs bits correctly.
+    #[kani::proof]
+    fn event_post_ors_bits() {
+        let events: u32 = kani::any();
+        let new_events: u32 = kani::any();
+        let mut result: u32 = 0;
+        let ret = gale_event_post(events, new_events, &mut result);
+        assert!(ret == OK);
+        assert!(result == events | new_events);
+        // EV8: monotonic — old bits preserved
+        assert!(result & events == events);
+    }
+
+    /// EV2: set records old value.
+    #[kani::proof]
+    fn event_set_records_old() {
+        let new_events: u32 = kani::any();
+        let current: u32 = kani::any();
+        let mut old_events: u32 = 0;
+        let ret = gale_event_set(new_events, &mut old_events, current);
+        assert!(ret == OK);
+        assert!(old_events == current);
+    }
+
+    /// EV3: clear ANDs complement.
+    #[kani::proof]
+    fn event_clear_ands_complement() {
+        let events: u32 = kani::any();
+        let clear_bits: u32 = kani::any();
+        let mut result: u32 = 0;
+        let ret = gale_event_clear(events, clear_bits, &mut result);
+        assert!(ret == OK);
+        assert!(result == events & !clear_bits);
+    }
+
+    /// EV4: set_masked applies mask correctly.
+    #[kani::proof]
+    fn event_set_masked_applies_mask() {
+        let events: u32 = kani::any();
+        let new_bits: u32 = kani::any();
+        let mask: u32 = kani::any();
+        let mut result: u32 = 0;
+        let ret = gale_event_set_masked(events, new_bits, mask, &mut result);
+        assert!(ret == OK);
+        assert!(result == (events & !mask) | (new_bits & mask));
+    }
+
+    /// EV5: wait_check_any returns correct result.
+    #[kani::proof]
+    fn event_wait_check_any_correct() {
+        let events: u32 = kani::any();
+        let desired: u32 = kani::any();
+        let ret = gale_event_wait_check_any(events, desired);
+        if (events & desired) != 0 {
+            assert!(ret == 1);
+        } else {
+            assert!(ret == 0);
+        }
+    }
+
+    /// EV6: wait_check_all returns correct result.
+    #[kani::proof]
+    fn event_wait_check_all_correct() {
+        let events: u32 = kani::any();
+        let desired: u32 = kani::any();
+        let ret = gale_event_wait_check_all(events, desired);
+        if (events & desired) == desired {
+            assert!(ret == 1);
+        } else {
+            assert!(ret == 0);
+        }
+    }
+
+    /// EV5+EV6: wait_all implies wait_any for non-zero desired.
+    #[kani::proof]
+    fn event_wait_all_implies_any() {
+        let events: u32 = kani::any();
+        let desired: u32 = kani::any();
+        kani::assume(desired != 0);
+        let all = gale_event_wait_check_all(events, desired);
+        let any = gale_event_wait_check_any(events, desired);
+        if all == 1 {
+            assert!(any == 1);
+        }
+    }
+
+    /// EV1: double-post idempotence.
+    #[kani::proof]
+    fn event_post_idempotent() {
+        let events: u32 = kani::any();
+        let new_events: u32 = kani::any();
+        let mut after_first: u32 = 0;
+        let mut after_second: u32 = 0;
+        gale_event_post(events, new_events, &mut after_first);
+        gale_event_post(after_first, new_events, &mut after_second);
+        assert!(after_second == after_first);
+    }
+
+    /// Null pointer checks return EINVAL.
+    #[kani::proof]
+    fn event_null_pointers() {
+        assert!(gale_event_post(0, 0, core::ptr::null_mut()) == EINVAL);
+        assert!(gale_event_set(0, core::ptr::null_mut(), 0) == EINVAL);
+        assert!(gale_event_clear(0, 0, core::ptr::null_mut()) == EINVAL);
+        assert!(gale_event_set_masked(0, 0, 0, core::ptr::null_mut()) == EINVAL);
     }
 }

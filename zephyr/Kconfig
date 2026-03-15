@@ -72,3 +72,36 @@ config GALE_KERNEL_PIPE
 	  data transfer, wait queues, scheduling, direct-copy, and
 	  tracing remain native Zephyr C.
 	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_EVENT
+	bool "Use Gale formally verified event"
+	depends on MULTITHREADING
+	depends on EVENTS
+	help
+	  Replace kernel/events.c with the Gale formally verified Rust
+	  implementation. The bitmask operations (post, set, clear,
+	  set_masked, wait condition checks) are handled by verified
+	  Rust code. Wait queues, scheduling, tracing, and userspace
+	  remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_MEM_SLAB
+	bool "Use Gale formally verified memory slab"
+	help
+	  Replace kernel/mem_slab.c with the Gale formally verified Rust
+	  implementation. The block count tracking (num_used increment
+	  and decrement) is handled by verified Rust code. Free-list
+	  management, wait queues, scheduling, pointer validation,
+	  statistics, and tracing remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_TIMER
+	bool "Use Gale formally verified timer"
+	depends on MULTITHREADING
+	help
+	  Use Gale formally verified status counter arithmetic for
+	  kernel/timer.c. The status increment (checked for overflow)
+	  and status read-reset operations are handled by verified
+	  Rust code. Timeout scheduling, callbacks, work queues, and
+	  tracing remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
