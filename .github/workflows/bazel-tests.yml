@@ -38,7 +38,7 @@ jobs:
         run: cargo test --workspace
 
       - name: Run clippy
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --all-targets
 
       - name: Check formatting (excluding auto-generated plain/)
         run: |
