@@ -21,6 +21,16 @@
 
 #![no_std]
 #![allow(unused_imports)]
+// Verus-verified code: arithmetic safety and index bounds are proven by the
+// SMT solver (requires/ensures clauses). These clippy lints are redundant
+// for formally verified code and would require #[allow] on every function.
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::cast_possible_truncation,
+    clippy::self_assignment
+)]
 
 pub mod error;
 pub mod priority;

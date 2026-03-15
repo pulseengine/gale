@@ -79,7 +79,10 @@ mod posix_mutex {
 
     impl Mutex {
         pub fn init() -> Self {
-            Mutex { owner: None, lock_count: 0 }
+            Mutex {
+                owner: None,
+                lock_count: 0,
+            }
         }
 
         /// pthread_mutex_lock (PTHREAD_MUTEX_RECURSIVE) / xSemaphoreTakeRecursive
@@ -101,7 +104,7 @@ mod posix_mutex {
         /// pthread_mutex_unlock / xSemaphoreGiveRecursive
         pub fn unlock(&mut self, thread_id: u32) -> Result<bool, i32> {
             match self.owner {
-                None => Err(-22), // EINVAL
+                None => Err(-22),                       // EINVAL
                 Some(id) if id != thread_id => Err(-1), // EPERM
                 Some(_) => {
                     self.lock_count -= 1;
@@ -129,17 +132,31 @@ mod posix_msgq {
 
     impl MsgQ {
         pub fn init(max_msgs: u32) -> Result<Self, ()> {
-            if max_msgs == 0 { Err(()) } else { Ok(MsgQ { max_msgs, used: 0 }) }
+            if max_msgs == 0 {
+                Err(())
+            } else {
+                Ok(MsgQ { max_msgs, used: 0 })
+            }
         }
 
         /// mq_send / xQueueSend
         pub fn put(&mut self) -> bool {
-            if self.used < self.max_msgs { self.used += 1; true } else { false }
+            if self.used < self.max_msgs {
+                self.used += 1;
+                true
+            } else {
+                false
+            }
         }
 
         /// mq_receive / xQueueReceive
         pub fn get(&mut self) -> bool {
-            if self.used > 0 { self.used -= 1; true } else { false }
+            if self.used > 0 {
+                self.used -= 1;
+                true
+            } else {
+                false
+            }
         }
 
         pub fn purge(&mut self) -> u32 {
@@ -162,15 +179,29 @@ mod posix_stack {
 
     impl Stack {
         pub fn init(capacity: u32) -> Result<Self, ()> {
-            if capacity == 0 { Err(()) } else { Ok(Stack { capacity, count: 0 }) }
+            if capacity == 0 {
+                Err(())
+            } else {
+                Ok(Stack { capacity, count: 0 })
+            }
         }
 
         pub fn push(&mut self) -> bool {
-            if self.count < self.capacity { self.count += 1; true } else { false }
+            if self.count < self.capacity {
+                self.count += 1;
+                true
+            } else {
+                false
+            }
         }
 
         pub fn pop(&mut self) -> bool {
-            if self.count > 0 { self.count -= 1; true } else { false }
+            if self.count > 0 {
+                self.count -= 1;
+                true
+            } else {
+                false
+            }
         }
     }
 }
@@ -185,9 +216,9 @@ mod posix_stack {
 #[cfg(test)]
 mod differential {
     use super::*;
-    use gale::sem::{Semaphore, GiveResult, TakeResult};
-    use gale::mutex::{Mutex, LockResult, UnlockResult};
     use gale::msgq::MsgQ;
+    use gale::mutex::{LockResult, Mutex, UnlockResult};
+    use gale::sem::{GiveResult, Semaphore, TakeResult};
     use gale::stack::Stack;
     use gale::thread::ThreadId;
 
@@ -370,8 +401,11 @@ mod differential {
                 g.reset();
                 p.reset();
             }
-            assert_eq!(g.count_get(), p.count,
-                "Gale/POSIX sem diverged at iteration with rng={rng}");
+            assert_eq!(
+                g.count_get(),
+                p.count,
+                "Gale/POSIX sem diverged at iteration with rng={rng}"
+            );
         }
     }
 
@@ -390,8 +424,11 @@ mod differential {
                 g.pop();
                 p.pop();
             }
-            assert_eq!(g.num_used(), p.count,
-                "Gale/POSIX stack diverged at rng={rng}");
+            assert_eq!(
+                g.num_used(),
+                p.count,
+                "Gale/POSIX stack diverged at rng={rng}"
+            );
         }
     }
 }

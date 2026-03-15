@@ -35,11 +35,19 @@ mod equivalence {
     }
 
     fn c_stack_push_validate(count: u32, capacity: u32) -> (i32, u32) {
-        if count >= capacity { (ENOMEM, count) } else { (OK, count + 1) }
+        if count >= capacity {
+            (ENOMEM, count)
+        } else {
+            (OK, count + 1)
+        }
     }
 
     fn c_stack_pop_validate(count: u32) -> (i32, u32) {
-        if count == 0 { (EBUSY, 0) } else { (OK, count - 1) }
+        if count == 0 {
+            (EBUSY, 0)
+        } else {
+            (OK, count - 1)
+        }
     }
 
     #[kani::proof]
@@ -48,8 +56,14 @@ mod equivalence {
         kani::assume(cap <= 256);
         let c_rc = c_stack_init_validate(cap);
         match Stack::init(cap) {
-            Ok(s) => { assert!(c_rc == OK); assert!(s.num_used() == 0); }
-            Err(e) => { assert!(c_rc == EINVAL); assert!(e == EINVAL); }
+            Ok(s) => {
+                assert!(c_rc == OK);
+                assert!(s.num_used() == 0);
+            }
+            Err(e) => {
+                assert!(c_rc == EINVAL);
+                assert!(e == EINVAL);
+            }
         }
     }
 
@@ -60,7 +74,9 @@ mod equivalence {
         let count: u32 = kani::any();
         kani::assume(count <= cap);
         let mut s = Stack::init(cap).unwrap();
-        for _ in 0..count { s.push(); }
+        for _ in 0..count {
+            s.push();
+        }
         let (c_rc, c_new) = c_stack_push_validate(s.num_used(), cap);
         let r_rc = s.push();
         assert!(r_rc == c_rc);
@@ -74,7 +90,9 @@ mod equivalence {
         let count: u32 = kani::any();
         kani::assume(count <= cap);
         let mut s = Stack::init(cap).unwrap();
-        for _ in 0..count { s.push(); }
+        for _ in 0..count {
+            s.push();
+        }
         let (c_rc, c_new) = c_stack_pop_validate(s.num_used());
         let r_rc = s.pop();
         assert!(r_rc == c_rc);
@@ -106,10 +124,14 @@ mod equivalence {
     // Semaphore C↔Rust equivalence
     // =====================================================================
 
-    use gale::sem::{Semaphore, TakeResult, GiveResult};
+    use gale::sem::{GiveResult, Semaphore, TakeResult};
 
     fn c_sem_init_validate(initial_count: u32, limit: u32) -> i32 {
-        if limit == 0 || initial_count > limit { EINVAL } else { OK }
+        if limit == 0 || initial_count > limit {
+            EINVAL
+        } else {
+            OK
+        }
     }
 
     /// C model: sem.c:110 — give with no waiters.
@@ -119,7 +141,11 @@ mod equivalence {
 
     /// C model: sem.c:143-144 — take (non-blocking).
     fn c_sem_take(count: u32) -> (i32, u32) {
-        if count > 0 { (OK, count - 1) } else { (EBUSY, count) }
+        if count > 0 {
+            (OK, count - 1)
+        } else {
+            (EBUSY, count)
+        }
     }
 
     #[kani::proof]
@@ -186,7 +212,7 @@ mod equivalence {
     // Mutex C↔Rust equivalence
     // =====================================================================
 
-    use gale::mutex::{Mutex, LockResult, UnlockResult};
+    use gale::mutex::{LockResult, Mutex, UnlockResult};
     use gale::thread::ThreadId;
 
     /// C model: gale_mutex_lock_validate (mutex.c:96-224 state checks).
@@ -291,7 +317,9 @@ mod equivalence {
     use gale::msgq::MsgQ;
 
     fn c_msgq_init_validate(msg_size: u32, max_msgs: u32) -> i32 {
-        if msg_size == 0 || max_msgs == 0 { return EINVAL; }
+        if msg_size == 0 || max_msgs == 0 {
+            return EINVAL;
+        }
         match msg_size.checked_mul(max_msgs) {
             Some(_) => OK,
             None => EINVAL,
@@ -303,7 +331,11 @@ mod equivalence {
         if used == max_msgs {
             (ENOMSG, write_idx, used)
         } else {
-            ((write_idx + 1) % max_msgs, (write_idx + 1) % max_msgs, used + 1)
+            (
+                (write_idx + 1) % max_msgs,
+                (write_idx + 1) % max_msgs,
+                used + 1,
+            )
         }
     }
 
@@ -375,7 +407,9 @@ mod equivalence {
         let mut q = MsgQ::init(4, max_msgs).unwrap();
         let fill: u32 = kani::any();
         kani::assume(fill <= max_msgs);
-        for _ in 0..fill { let _ = q.put(); }
+        for _ in 0..fill {
+            let _ = q.put();
+        }
 
         let old_used = q.num_used_get();
         let purged = q.purge();
@@ -387,7 +421,7 @@ mod equivalence {
     // Pipe C↔Rust equivalence
     // =====================================================================
 
-    use gale::pipe::{Pipe, FLAG_OPEN, FLAG_RESET};
+    use gale::pipe::{FLAG_OPEN, FLAG_RESET, Pipe};
 
     fn c_pipe_init_validate(size: u32) -> i32 {
         if size == 0 { EINVAL } else { OK }
@@ -395,22 +429,46 @@ mod equivalence {
 
     /// C model: gale_pipe_write_check (pipe.c:138-220 state + byte count).
     fn c_pipe_write_check(used: u32, size: u32, flags: u8, request_len: u32) -> (i32, u32) {
-        if (flags & FLAG_RESET) != 0 { return (ECANCELED, used); }
-        if (flags & FLAG_OPEN) == 0 { return (EPIPE, used); }
-        if request_len == 0 { return (ENOMSG, used); }
+        if (flags & FLAG_RESET) != 0 {
+            return (ECANCELED, used);
+        }
+        if (flags & FLAG_OPEN) == 0 {
+            return (EPIPE, used);
+        }
+        if request_len == 0 {
+            return (ENOMSG, used);
+        }
         let free = size - used;
-        if free == 0 { return (EAGAIN, used); }
-        let n = if request_len <= free { request_len } else { free };
+        if free == 0 {
+            return (EAGAIN, used);
+        }
+        let n = if request_len <= free {
+            request_len
+        } else {
+            free
+        };
         (n as i32, used + n)
     }
 
     /// C model: gale_pipe_read_check (pipe.c:222-289 state + byte count).
     fn c_pipe_read_check(used: u32, size: u32, flags: u8, request_len: u32) -> (i32, u32) {
-        if (flags & FLAG_RESET) != 0 { return (ECANCELED, used); }
-        if (flags & FLAG_OPEN) == 0 && used == 0 { return (EPIPE, used); }
-        if request_len == 0 { return (ENOMSG, used); }
-        if used == 0 { return (EAGAIN, used); }
-        let n = if request_len <= used { request_len } else { used };
+        if (flags & FLAG_RESET) != 0 {
+            return (ECANCELED, used);
+        }
+        if (flags & FLAG_OPEN) == 0 && used == 0 {
+            return (EPIPE, used);
+        }
+        if request_len == 0 {
+            return (ENOMSG, used);
+        }
+        if used == 0 {
+            return (EAGAIN, used);
+        }
+        let n = if request_len <= used {
+            request_len
+        } else {
+            used
+        };
         (n as i32, used - n)
     }
 
@@ -441,7 +499,9 @@ mod equivalence {
         // Fill to some level
         let fill: u32 = kani::any();
         kani::assume(fill <= size);
-        if fill > 0 { let _ = p.write_check(fill); }
+        if fill > 0 {
+            let _ = p.write_check(fill);
+        }
 
         let used = p.data_get();
         let req: u32 = kani::any();
@@ -471,7 +531,9 @@ mod equivalence {
 
         let fill: u32 = kani::any();
         kani::assume(fill <= size);
-        if fill > 0 { let _ = p.write_check(fill); }
+        if fill > 0 {
+            let _ = p.write_check(fill);
+        }
 
         let used = p.data_get();
         let req: u32 = kani::any();

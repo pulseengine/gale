@@ -44,7 +44,7 @@ fn c1_init_empty() {
 fn c2_signal_wakes_highest_priority() {
     let mut cv = CondVar::init();
     cv.wait_blocking(make_running_thread(1, 10));
-    cv.wait_blocking(make_running_thread(2, 3));  // highest priority
+    cv.wait_blocking(make_running_thread(2, 3)); // highest priority
     cv.wait_blocking(make_running_thread(3, 7));
 
     match cv.signal() {
@@ -136,7 +136,10 @@ fn c7_signal_preserves_priority_order() {
     for (i, &expected_id) in expected.iter().enumerate() {
         match cv.signal() {
             SignalResult::Woke(t) => {
-                assert_eq!(t.id.id, expected_id, "signal {i}: expected thread {expected_id}");
+                assert_eq!(
+                    t.id.id, expected_id,
+                    "signal {i}: expected thread {expected_id}"
+                );
             }
             SignalResult::Empty => panic!("signal {i}: expected Woke, got Empty"),
         }

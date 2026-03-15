@@ -20,6 +20,13 @@
 //! - [`condvar`] — Condition variable (port of kernel/condvar.c)
 #![no_std]
 #![allow(unused_imports)]
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::cast_possible_truncation,
+    clippy::self_assignment
+)]
 pub mod error;
 pub mod priority;
 pub mod thread;

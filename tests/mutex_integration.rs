@@ -222,14 +222,20 @@ fn m11_priority_ordering() {
         let current_owner = m.owner_get().unwrap();
         match m.unlock(current_owner) {
             Ok(UnlockResult::Transferred(t)) => {
-                assert_eq!(t.id.id, expected_id, "transfer {i}: expected thread {expected_id}");
+                assert_eq!(
+                    t.id.id, expected_id,
+                    "transfer {i}: expected thread {expected_id}"
+                );
             }
             other => panic!("transfer {i}: expected Transferred, got {other:?}"),
         }
     }
     // Last unlock should fully release
     let current_owner = m.owner_get().unwrap();
-    assert!(matches!(m.unlock(current_owner), Ok(UnlockResult::Unlocked)));
+    assert!(matches!(
+        m.unlock(current_owner),
+        Ok(UnlockResult::Unlocked)
+    ));
 }
 
 // ==========================================================================

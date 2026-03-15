@@ -241,7 +241,10 @@ mod kani_mutex_proofs {
         m.try_lock(ThreadId { id: thread_id });
         m.try_lock(ThreadId { id: thread_id });
 
-        assert!(matches!(m.unlock(ThreadId { id: thread_id }), Ok(UnlockResult::Released)));
+        assert!(matches!(
+            m.unlock(ThreadId { id: thread_id }),
+            Ok(UnlockResult::Released)
+        ));
         assert_eq!(m.lock_count_get(), 2);
         assert_eq!(m.owner_get(), Some(ThreadId { id: thread_id }));
     }
@@ -253,7 +256,10 @@ mod kani_mutex_proofs {
         let mut m = Mutex::init();
         m.try_lock(ThreadId { id: thread_id });
 
-        assert!(matches!(m.unlock(ThreadId { id: thread_id }), Ok(UnlockResult::Unlocked)));
+        assert!(matches!(
+            m.unlock(ThreadId { id: thread_id }),
+            Ok(UnlockResult::Unlocked)
+        ));
         assert!(!m.is_locked());
         assert_eq!(m.lock_count_get(), 0);
         assert!(m.owner_get().is_none());
@@ -306,9 +312,15 @@ mod kani_mutex_proofs {
             kani::assume(op < 3);
 
             match op {
-                0 => { m.try_lock(ThreadId { id: tid }); }
-                1 => { let _ = m.unlock(ThreadId { id: tid }); }
-                _ => { m.is_locked(); }
+                0 => {
+                    m.try_lock(ThreadId { id: tid });
+                }
+                1 => {
+                    let _ = m.unlock(ThreadId { id: tid });
+                }
+                _ => {
+                    m.is_locked();
+                }
             }
 
             // M1 check
@@ -463,11 +475,7 @@ mod kani_msgq_proofs {
             }
             Err(e) => {
                 assert_eq!(e, EINVAL);
-                assert!(
-                    msg_size == 0
-                        || max_msgs == 0
-                        || msg_size.checked_mul(max_msgs).is_none()
-                );
+                assert!(msg_size == 0 || max_msgs == 0 || msg_size.checked_mul(max_msgs).is_none());
             }
         }
     }
@@ -612,10 +620,18 @@ mod kani_msgq_proofs {
             let op: u8 = kani::any();
             kani::assume(op < 4);
             match op {
-                0 => { let _ = mq.put(); }
-                1 => { let _ = mq.get(); }
-                2 => { let _ = mq.put_front(); }
-                _ => { mq.purge(); }
+                0 => {
+                    let _ = mq.put();
+                }
+                1 => {
+                    let _ = mq.get();
+                }
+                2 => {
+                    let _ = mq.put_front();
+                }
+                _ => {
+                    mq.purge();
+                }
             }
             assert!(mq.num_used_get() <= mq.max_msgs_get());
             let expected = (mq.read_idx_get() + mq.num_used_get()) % mq.max_msgs_get();

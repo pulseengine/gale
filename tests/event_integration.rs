@@ -4,7 +4,8 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::arithmetic_side_effects
+    clippy::arithmetic_side_effects,
+    clippy::shadow_unrelated
 )]
 
 use gale::event::Event;

@@ -269,18 +269,34 @@ fn mq_ring_consistency_across_operations() {
 
     let check_ring = |mq: &MsgQ| {
         let expected = (mq.read_idx_get() + mq.num_used_get()) % mq.max_msgs_get();
-        assert_eq!(mq.write_idx_get(), expected,
+        assert_eq!(
+            mq.write_idx_get(),
+            expected,
             "ring inconsistency: r={} u={} w={} max={}",
-            mq.read_idx_get(), mq.num_used_get(), mq.write_idx_get(), mq.max_msgs_get());
+            mq.read_idx_get(),
+            mq.num_used_get(),
+            mq.write_idx_get(),
+            mq.max_msgs_get()
+        );
     };
 
     check_ring(&mq);
-    for _ in 0..4 { mq.put().unwrap(); check_ring(&mq); }
-    for _ in 0..4 { mq.get().unwrap(); check_ring(&mq); }
-    mq.put().unwrap(); check_ring(&mq);
-    mq.put_front().unwrap(); check_ring(&mq);
-    mq.get().unwrap(); check_ring(&mq);
-    mq.purge(); check_ring(&mq);
+    for _ in 0..4 {
+        mq.put().unwrap();
+        check_ring(&mq);
+    }
+    for _ in 0..4 {
+        mq.get().unwrap();
+        check_ring(&mq);
+    }
+    mq.put().unwrap();
+    check_ring(&mq);
+    mq.put_front().unwrap();
+    check_ring(&mq);
+    mq.get().unwrap();
+    check_ring(&mq);
+    mq.purge();
+    check_ring(&mq);
 }
 
 #[test]
