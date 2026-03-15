@@ -53,3 +53,4 @@ pub mod futex;
 pub mod mbox;
 pub mod timeout;
 pub mod poll;
+pub mod sched;
