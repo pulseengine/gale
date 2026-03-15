@@ -42,6 +42,7 @@ jobs:
 
       - name: Install Rust + ARM target
         run: |
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           . "$HOME/.cargo/env"
           rustup target add thumbv7m-none-eabi
