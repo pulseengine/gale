@@ -108,6 +108,105 @@
 //!   mailbox.c:data  min(tx_size, rx_buf_size) computation
 //!
 //! Verified: MB1-MB6 (send validation, match logic, data exchange).
+//!
+//! ## Timeout (gale_timeout_*)
+//!
+//! Pure functions replacing tick arithmetic in kernel/timeout.c:
+//!   timeout.c:z_add_timeout    deadline = current_tick + duration
+//!   timeout.c:z_abort_timeout  deactivate pending timeout
+//!   timeout.c:sys_clock_announce advance tick, fire expired
+//!
+//! Verified: TO1-TO8 (deadline, overflow, abort, fire, forever, no_wait).
+//!
+//! ## Poll (gale_poll_*)
+//!
+//! Pure functions replacing poll event state machine in kernel/poll.c:
+//!   poll.c:k_poll_event_init     init to NOT_READY
+//!   poll.c:is_condition_met      check sem/signal/msgq
+//!   poll.c:k_poll_signal_raise   set signaled + result
+//!   poll.c:k_poll_signal_reset   clear signaled
+//!
+//! Verified: PL1-PL8 (state machine, conditions, signal raise/reset).
+//!
+//! ## Futex (gale_futex_*)
+//!
+//! Pure functions replacing value comparison in kernel/futex.c:
+//!   futex.c:z_impl_k_futex_wait  compare val to expected
+//!   futex.c:z_impl_k_futex_wake  wake count tracking
+//!
+//! Verified: FX1-FX6 (wait gating, wake count, no overflow).
+//!
+//! ## Timeslice (gale_timeslice_*)
+//!
+//! Pure functions replacing tick accounting in kernel/timeslicing.c:
+//!   timeslicing.c:z_reset_time_slice  reset to max
+//!   timeslicing.c:z_time_slice        decrement, detect expiry
+//!
+//! Verified: TS1-TS6 (bounds, reset, tick, expire, no underflow).
+//!
+//! ## KHeap (gale_kheap_*)
+//!
+//! Pure functions replacing byte count accounting in kernel/kheap.c:
+//!   kheap.c:k_heap_alloc  allocated_bytes += bytes
+//!   kheap.c:k_heap_free   allocated_bytes -= bytes
+//!
+//! Verified: KH1-KH6 (bounds, alloc, free, conservation, no overflow).
+//!
+//! ## Thread Lifecycle (gale_thread_*)
+//!
+//! Pure functions replacing thread counting and priority validation:
+//!   thread.c:k_thread_create     count++
+//!   thread.c:exit/abort          count--
+//!   sched.c:k_thread_priority_set  range check
+//!
+//! Verified: TH1-TH6 (priority range, count bounds, no overflow/underflow).
+//!
+//! ## Work (gale_work_*)
+//!
+//! Pure functions replacing work item state flag management in kernel/work.c:
+//!   work.c:submit_to_queue_locked  set QUEUED flag
+//!   work.c:cancel_async_locked     clear QUEUED, set CANCELING
+//!
+//! Verified: WK1-WK6 (init idle, submit, cancel, state consistency).
+//!
+//! ## Fatal (gale_fatal_*)
+//!
+//! Pure function replacing fatal error classification in kernel/fatal.c:
+//!   fatal.c:z_fatal_error  determine recovery action
+//!
+//! Verified: FT1-FT4 (reason mapping, panic halts, recovery, distinct codes).
+//!
+//! ## MemPool (gale_mempool_*)
+//!
+//! Pure functions replacing fixed-block pool counting:
+//!   pool alloc  allocated += 1
+//!   pool free   allocated -= 1
+//!
+//! Verified: MP1-MP6 (bounds, alloc, free, conservation, no overflow).
+//!
+//! ## Dynamic (gale_dynamic_*)
+//!
+//! Pure functions replacing dynamic thread pool tracking in kernel/dynamic.c:
+//!   dynamic.c:z_thread_stack_alloc_pool  active += 1
+//!   dynamic.c:z_impl_k_thread_stack_free active -= 1
+//!
+//! Verified: DY1-DY4 (bounds, alloc, free, no underflow).
+//!
+//! ## SMP State (gale_smp_*)
+//!
+//! Pure functions replacing SMP CPU state tracking in kernel/smp.c:
+//!   smp.c:k_smp_cpu_start  active_cpus += 1
+//!   smp.c:stop_cpu         active_cpus -= 1 (min 1)
+//!
+//! Verified: SM1-SM4 (bounds, start, stop, CPU 0 never stops).
+//!
+//! ## Sched (gale_sched_*)
+//!
+//! Pure functions replacing scheduler decisions in kernel/sched.c:
+//!   sched.c:next_up          select highest-priority thread
+//!   sched.c:should_preempt   cooperative protection
+//!
+//! Verified: SC1-SC16 (priority ordering, preemption, state FSM).
 
 #![cfg_attr(not(any(test, kani)), no_std)]
 // FFI boundary crate — unsafe is inherent (no_mangle, raw pointers).
@@ -1535,6 +1634,1111 @@ pub extern "C" fn gale_mbox_data_exchange(tx_size: u32, rx_buf_size: u32) -> u32
     } else {
         rx_buf_size
     }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — timeout (tick arithmetic + deadline tracking)
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the safety-critical tick arithmetic from
+// kernel/timeout.c:
+//
+//   timeout.c z_add_timeout     — deadline = current_tick + duration
+//   timeout.c z_abort_timeout   — deactivate pending timeout
+//   timeout.c sys_clock_announce — advance tick, fire expired timeouts
+//
+// All other timeout logic (linked-list, spinlock, callbacks, hardware timer)
+// remains native Zephyr C.
+//
+// Verified by Verus (SMT/Z3):
+//   TO1: deadline >= current_tick when active
+//   TO2: deadline = current_tick + duration
+//   TO3: abort clears to inactive
+//   TO4: fires when deadline <= now
+//   TO5: no overflow (u64 arithmetic)
+//   TO6: relative-to-absolute conversion correct
+//   TO7: K_FOREVER never expires
+//   TO8: K_NO_WAIT immediate
+
+const K_FOREVER_TICKS: u64 = u64::MAX;
+
+/// Schedule a timeout: compute absolute deadline from current tick + duration.
+///
+/// timeout.c z_add_timeout:
+///   deadline = curr_tick + duration
+///
+/// Arguments:
+///   current_tick: current system tick
+///   duration:     relative timeout in ticks
+///   deadline:     pointer to receive absolute deadline
+///
+/// Returns:
+///   0 (OK)   — *deadline set to current_tick + duration
+///   -EINVAL  — overflow (current_tick + duration >= u64::MAX)
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_timeout_add(
+    current_tick: u64,
+    duration: u64,
+    deadline: *mut u64,
+) -> i32 {
+    unsafe {
+        if deadline.is_null() {
+            return EINVAL;
+        }
+
+        if current_tick >= K_FOREVER_TICKS {
+            return EINVAL;
+        }
+
+        if duration >= K_FOREVER_TICKS - current_tick {
+            return EINVAL;
+        }
+
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *deadline = current_tick + duration;
+        }
+        OK
+    }
+}
+
+/// Abort a pending timeout.
+///
+/// timeout.c z_abort_timeout:
+///   Sets timeout to inactive.
+///
+/// Arguments:
+///   active: 1 if timeout is active, 0 if inactive
+///
+/// Returns:
+///   0 (OK)   — timeout was active and is now cancelled
+///   -EINVAL  — timeout was already inactive
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_timeout_abort(active: u32) -> i32 {
+    if active != 0 {
+        OK
+    } else {
+        EINVAL
+    }
+}
+
+/// Advance tick and check if a timeout has expired.
+///
+/// timeout.c sys_clock_announce:
+///   curr_tick += ticks; fire if deadline <= curr_tick
+///
+/// Arguments:
+///   current_tick: current system tick
+///   ticks:        ticks to advance
+///   deadline:     absolute deadline of this timeout
+///   active:       1 if timeout is active
+///   new_tick:     pointer to receive advanced tick
+///   fired:        pointer to receive 1 if expired, 0 otherwise
+///
+/// Returns:
+///   0 (OK)   — *new_tick and *fired set
+///   -EINVAL  — overflow or null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_timeout_announce(
+    current_tick: u64,
+    ticks: u64,
+    deadline: u64,
+    active: u32,
+    new_tick: *mut u64,
+    fired: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_tick.is_null() || fired.is_null() {
+            return EINVAL;
+        }
+
+        if ticks >= K_FOREVER_TICKS - current_tick {
+            return EINVAL;
+        }
+
+        #[allow(clippy::arithmetic_side_effects)]
+        let advanced = current_tick + ticks;
+        *new_tick = advanced;
+
+        if active != 0
+            && deadline != K_FOREVER_TICKS
+            && deadline <= advanced
+        {
+            *fired = 1;
+        } else {
+            *fired = 0;
+        }
+        OK
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — poll (event state machine + signal)
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the poll event state checks from
+// kernel/poll.c:
+//
+//   poll.c:46-62   k_poll_event_init — set type, clear state
+//   poll.c:65-103  is_condition_met — check sem/signal/msgq availability
+//   poll.c:475-498 k_poll_signal_init/raise/reset/check
+//
+// Verified by Verus (SMT/Z3):
+//   PL1: event starts NOT_READY
+//   PL3: SEM_AVAILABLE iff count > 0
+//   PL7: signal raise sets result + signaled
+//   PL8: signal reset clears signaled
+
+/// Initialize a poll event: validate type, output NOT_READY state.
+///
+/// Arguments:
+///   event_type: poll event type (K_POLL_TYPE_*)
+///   state:      pointer to receive initial state (0 = NOT_READY)
+///
+/// Returns:
+///   0 (OK)   — valid type, *state set to 0
+///   -EINVAL  — null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_poll_event_init(
+    event_type: u32,
+    state: *mut u32,
+) -> i32 {
+    unsafe {
+        if state.is_null() {
+            return EINVAL;
+        }
+
+        // All types are valid — Zephyr doesn't reject unknown types at init.
+        let _ = event_type;
+        *state = 0; // STATE_NOT_READY
+        OK
+    }
+}
+
+/// Check if a semaphore condition is met for a poll event.
+///
+/// poll.c:65-70: is_condition_met() K_POLL_TYPE_SEM_AVAILABLE case.
+///
+/// Arguments:
+///   event_type: poll event type
+///   sem_count:  current semaphore count
+///
+/// Returns:
+///   1 — condition met (type == SEM_AVAILABLE && count > 0)
+///   0 — condition not met
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_poll_check_sem(
+    event_type: u32,
+    sem_count: u32,
+) -> i32 {
+    const TYPE_SEM_AVAILABLE: u32 = 1;
+    if event_type == TYPE_SEM_AVAILABLE && sem_count > 0 {
+        1
+    } else {
+        0
+    }
+}
+
+/// Raise a poll signal: set signaled flag and result value.
+///
+/// poll.c:522-545: k_poll_signal_raise()
+///
+/// Arguments:
+///   signaled:    pointer to signaled flag (set to 1)
+///   result:      pointer to result value (set to result_val)
+///   result_val:  value to store
+///
+/// Returns:
+///   0 (OK)   — *signaled = 1, *result = result_val
+///   -EINVAL  — null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_poll_signal_raise(
+    signaled: *mut u32,
+    result: *mut i32,
+    result_val: i32,
+) -> i32 {
+    unsafe {
+        if signaled.is_null() || result.is_null() {
+            return EINVAL;
+        }
+
+        *result = result_val;
+        *signaled = 1;
+        OK
+    }
+}
+
+/// Reset a poll signal: clear signaled flag.
+///
+/// poll.c:494-498: k_poll_signal_reset()
+///
+/// Arguments:
+///   signaled: pointer to signaled flag (set to 0)
+///
+/// Returns:
+///   0 (OK)   — *signaled = 0
+///   -EINVAL  — null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_poll_signal_reset(
+    signaled: *mut u32,
+) -> i32 {
+    unsafe {
+        if signaled.is_null() {
+            return EINVAL;
+        }
+
+        *signaled = 0;
+        OK
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — futex (fast userspace mutex)
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the value comparison logic from
+// kernel/futex.c:
+//
+//   futex.c:69-94   z_impl_k_futex_wait — compare val to expected
+//   futex.c:27-57   z_impl_k_futex_wake — wake count tracking
+//
+// Verified by Verus (SMT/Z3):
+//   FX1: wait blocks when val == expected
+//   FX2: wait mismatch returns EAGAIN
+//   FX3: wake returns number woken
+
+/// Check if a futex wait should block.
+///
+/// futex.c:
+///   if (atomic_get(&futex->val) != expected) { return -EAGAIN; }
+///
+/// Arguments:
+///   val:      current futex value
+///   expected: expected value
+///
+/// Returns:
+///   0 (OK)    — val == expected, caller should block
+///   -EAGAIN   — val != expected, do not block
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_futex_wait_check(val: u32, expected: u32) -> i32 {
+    if val == expected {
+        OK
+    } else {
+        EAGAIN
+    }
+}
+
+/// Validate futex wake count and compute remaining waiters.
+///
+/// futex.c z_impl_k_futex_wake:
+///   Wake up to `wake_count` waiters (0 = none, u32::MAX = all).
+///
+/// Arguments:
+///   num_waiters: current number of threads waiting
+///   wake_all:    1 to wake all, 0 to wake at most 1
+///   woken:       pointer to receive number actually woken
+///   remaining:   pointer to receive remaining waiters
+///
+/// Returns:
+///   0 (OK)   — *woken and *remaining set
+///   -EINVAL  — null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_futex_wake(
+    num_waiters: u32,
+    wake_all: u32,
+    woken: *mut u32,
+    remaining: *mut u32,
+) -> i32 {
+    unsafe {
+        if woken.is_null() || remaining.is_null() {
+            return EINVAL;
+        }
+
+        if num_waiters == 0 {
+            *woken = 0;
+            *remaining = 0;
+        } else if wake_all != 0 {
+            *woken = num_waiters;
+            *remaining = 0;
+        } else {
+            *woken = 1;
+            #[allow(clippy::arithmetic_side_effects)]
+            {
+                *remaining = num_waiters - 1;
+            }
+        }
+        OK
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — timeslice (tick accounting for preemptive scheduling)
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the time-slice tick counter from
+// kernel/timeslicing.c:
+//
+//   timeslicing.c:75-86   z_reset_time_slice — reset to max
+//   timeslicing.c:131-161 z_time_slice — decrement, detect expiry
+//
+// Verified by Verus (SMT/Z3):
+//   TS1: 0 <= slice_ticks <= slice_max_ticks
+//   TS2: reset sets slice_ticks = slice_max_ticks
+//   TS3: tick decrements by 1
+//   TS4: expired when slice_ticks == 0
+//   TS5: no underflow
+
+/// Reset the time slice counter to its maximum value.
+///
+/// timeslicing.c z_reset_time_slice:
+///   slice_ticks = slice_max_ticks
+///
+/// Arguments:
+///   slice_max_ticks: configured time-slice size
+///   new_ticks:       pointer to receive reset value (= slice_max_ticks)
+///
+/// Returns:
+///   0 (OK) — *new_ticks set
+///   -EINVAL — null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_timeslice_reset(
+    slice_max_ticks: u32,
+    new_ticks: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_ticks.is_null() {
+            return EINVAL;
+        }
+
+        *new_ticks = slice_max_ticks;
+        OK
+    }
+}
+
+/// Consume one tick of the time slice.
+///
+/// timeslicing.c z_time_slice timer path:
+///   if (slice_ticks > 0) { slice_ticks--; }
+///   if (slice_ticks == 0) { expired = true; }
+///
+/// Arguments:
+///   slice_ticks: current remaining ticks
+///   new_ticks:   pointer to receive decremented value
+///   expired:     pointer to receive 1 if expired, 0 otherwise
+///
+/// Returns:
+///   0 (OK) — *new_ticks and *expired set
+///   -EINVAL — null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_timeslice_tick(
+    slice_ticks: u32,
+    new_ticks: *mut u32,
+    expired: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_ticks.is_null() || expired.is_null() {
+            return EINVAL;
+        }
+
+        if slice_ticks > 0 {
+            #[allow(clippy::arithmetic_side_effects)]
+            let decremented = slice_ticks - 1;
+            *new_ticks = decremented;
+            *expired = if decremented == 0 { 1 } else { 0 };
+        } else {
+            *new_ticks = 0;
+            *expired = 1;
+        }
+        OK
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — kheap (byte-level allocation tracking)
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the byte count accounting from
+// kernel/kheap.c:
+//
+//   kheap.c:119-129  k_heap_alloc — allocated_bytes += bytes
+//   kheap.c:206-218  k_heap_free — allocated_bytes -= bytes
+//
+// Verified by Verus (SMT/Z3):
+//   KH1: 0 <= allocated_bytes <= capacity
+//   KH2: alloc success: allocated += bytes
+//   KH3: alloc full: -ENOMEM
+//   KH4: free: allocated -= bytes
+//   KH5: conservation
+
+/// Validate a kheap allocation and compute new allocated_bytes.
+///
+/// Arguments:
+///   allocated_bytes: current bytes allocated
+///   capacity:        total heap capacity
+///   bytes:           bytes requested
+///   new_allocated:   pointer to receive updated allocated count
+///
+/// Returns:
+///   0 (OK)    — *new_allocated set
+///   -ENOMEM   — would exceed capacity
+///   -EINVAL   — null pointer or bytes == 0
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_kheap_alloc_validate(
+    allocated_bytes: u32,
+    capacity: u32,
+    bytes: u32,
+    new_allocated: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_allocated.is_null() || bytes == 0 {
+            return EINVAL;
+        }
+
+        #[allow(clippy::arithmetic_side_effects)]
+        let remaining = capacity - allocated_bytes.min(capacity);
+        if bytes <= remaining {
+            #[allow(clippy::arithmetic_side_effects)]
+            {
+                *new_allocated = allocated_bytes + bytes;
+            }
+            OK
+        } else {
+            ENOMEM
+        }
+    }
+}
+
+/// Validate a kheap free and compute new allocated_bytes.
+///
+/// Arguments:
+///   allocated_bytes: current bytes allocated
+///   bytes:           bytes to free
+///   new_allocated:   pointer to receive updated allocated count
+///
+/// Returns:
+///   0 (OK)    — *new_allocated set
+///   -EINVAL   — would underflow or null pointer or bytes == 0
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_kheap_free_validate(
+    allocated_bytes: u32,
+    bytes: u32,
+    new_allocated: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_allocated.is_null() || bytes == 0 {
+            return EINVAL;
+        }
+
+        if bytes <= allocated_bytes {
+            #[allow(clippy::arithmetic_side_effects)]
+            {
+                *new_allocated = allocated_bytes - bytes;
+            }
+            OK
+        } else {
+            EINVAL
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — thread_lifecycle (create/exit counting + priority validation)
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the safety-critical thread lifecycle
+// tracking from kernel/thread.c:
+//
+//   thread.c:383-500  k_thread_create — resource counting
+//   thread.c exit/abort — resource counting
+//   sched.c:1009-1023 k_thread_priority_set — range validation
+//
+// Verified by Verus (SMT/Z3):
+//   TH1: priority in [0, MAX_PRIORITY)
+//   TH5: count >= 0 (no underflow on exit)
+//   TH6: no overflow on thread count
+
+const MAX_THREADS: u32 = 256;
+const MAX_PRIORITY: u32 = 32;
+
+/// Validate thread creation: check count < max and increment.
+///
+/// Arguments:
+///   count:     current active thread count
+///   new_count: pointer to receive count + 1
+///
+/// Returns:
+///   0 (OK)    — *new_count set
+///   -EAGAIN   — at capacity
+///   -EINVAL   — null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_thread_create_validate(
+    count: u32,
+    new_count: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_count.is_null() {
+            return EINVAL;
+        }
+
+        if count >= MAX_THREADS {
+            return EAGAIN;
+        }
+
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_count = count + 1;
+        }
+        OK
+    }
+}
+
+/// Validate thread exit: check count > 0 and decrement.
+///
+/// Arguments:
+///   count:     current active thread count
+///   new_count: pointer to receive count - 1
+///
+/// Returns:
+///   0 (OK)    — *new_count set
+///   -EINVAL   — no threads active (underflow protection) or null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_thread_exit_validate(
+    count: u32,
+    new_count: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_count.is_null() {
+            return EINVAL;
+        }
+
+        if count == 0 {
+            return EINVAL;
+        }
+
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_count = count - 1;
+        }
+        OK
+    }
+}
+
+/// Validate a thread priority value.
+///
+/// sched.c k_thread_priority_set:
+///   Z_ASSERT_VALID_PRIO(prio, NULL)
+///
+/// Arguments:
+///   priority: proposed priority value
+///
+/// Returns:
+///   0 (OK)    — priority < MAX_PRIORITY
+///   -EINVAL   — priority out of range
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_thread_priority_validate(priority: u32) -> i32 {
+    if priority < MAX_PRIORITY {
+        OK
+    } else {
+        EINVAL
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — work (work item state machine)
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the work item state flag management
+// from kernel/work.c:
+//
+//   work.c:320-365  submit_to_queue_locked — set QUEUED flag
+//   work.c:501-520  cancel_async_locked — clear QUEUED, set CANCELING
+//
+// Verified by Verus (SMT/Z3):
+//   WK1: init produces IDLE
+//   WK2: submit from IDLE sets QUEUED
+//   WK3: submit while CANCELING returns EBUSY
+//   WK5: cancel clears QUEUED
+
+const FLAG_RUNNING: u8 = 1;
+const FLAG_CANCELING: u8 = 2;
+const FLAG_QUEUED: u8 = 4;
+const BUSY_MASK: u8 = 7;
+
+/// Validate a work submit operation.
+///
+/// work.c submit_to_queue_locked:
+///   if (flags & CANCELING) return -EBUSY
+///   if (flags & QUEUED) return 0 (already queued)
+///   flags |= QUEUED
+///
+/// Arguments:
+///   flags:     current work item flags
+///   new_flags: pointer to receive updated flags
+///
+/// Returns:
+///   1          — newly queued
+///   2          — was running, re-queued
+///   0          — already queued (no-op)
+///   -EBUSY     — canceling, rejected
+///   -EINVAL    — null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_work_submit_validate(
+    flags: u8,
+    new_flags: *mut u8,
+) -> i32 {
+    unsafe {
+        if new_flags.is_null() {
+            return EINVAL;
+        }
+
+        if (flags & FLAG_CANCELING) != 0 {
+            *new_flags = flags;
+            return EBUSY;
+        }
+        if (flags & FLAG_QUEUED) != 0 {
+            *new_flags = flags;
+            return 0;
+        }
+
+        let was_running = (flags & FLAG_RUNNING) != 0;
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_flags = flags | FLAG_QUEUED;
+        }
+        if was_running { 2 } else { 1 }
+    }
+}
+
+/// Validate a work cancel operation.
+///
+/// work.c cancel_async_locked:
+///   flags &= ~QUEUED
+///   if (flags & BUSY_MASK) flags |= CANCELING
+///
+/// Arguments:
+///   flags:     current work item flags
+///   new_flags: pointer to receive updated flags
+///   busy:      pointer to receive busy status after cancel
+///
+/// Returns:
+///   0 (OK) — *new_flags and *busy set
+///   -EINVAL — null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_work_cancel_validate(
+    flags: u8,
+    new_flags: *mut u8,
+    busy: *mut u8,
+) -> i32 {
+    unsafe {
+        if new_flags.is_null() || busy.is_null() {
+            return EINVAL;
+        }
+
+        #[allow(clippy::arithmetic_side_effects)]
+        let mut f = flags & !FLAG_QUEUED;
+        let b = f & BUSY_MASK;
+        if b != 0 {
+            #[allow(clippy::arithmetic_side_effects)]
+            {
+                f = f | FLAG_CANCELING;
+            }
+        }
+        *new_flags = f;
+        *busy = f & BUSY_MASK;
+        OK
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — fatal (error classification)
+// ---------------------------------------------------------------------------
+//
+// This pure function replaces the fatal error classification logic
+// from kernel/fatal.c:
+//
+//   fatal.c:85-179  z_fatal_error — determine recovery action
+//
+// Verified by Verus (SMT/Z3):
+//   FT1: all reason codes map to valid variants
+//   FT2: kernel panic always halts
+//   FT3: recovery depends on reason + context
+
+/// Classify a fatal error: determine recovery action.
+///
+/// Arguments:
+///   reason:    error reason code (0=CPU_EXCEPTION, 1=SPURIOUS_IRQ,
+///              2=STACK_CHECK_FAIL, 3=KERNEL_OOPS, 4=KERNEL_PANIC)
+///   is_isr:    1 if in ISR context, 0 if in thread context
+///   test_mode: 1 if CONFIG_TEST, 0 for production
+///
+/// Returns:
+///   0 — AbortThread (recoverable)
+///   1 — Halt (non-recoverable)
+///   2 — Ignore (test mode ISR)
+///   -EINVAL — unknown reason code
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_fatal_classify(
+    reason: u32,
+    is_isr: u32,
+    test_mode: u32,
+) -> i32 {
+    const ACTION_ABORT_THREAD: i32 = 0;
+    const ACTION_HALT: i32 = 1;
+    const ACTION_IGNORE: i32 = 2;
+
+    // Validate reason code
+    if reason > 4 {
+        return EINVAL;
+    }
+
+    if test_mode != 0 {
+        // Test mode — more permissive
+        if is_isr != 0 {
+            if reason == 2 {
+                // STACK_CHECK_FAIL — abort even in ISR
+                ACTION_ABORT_THREAD
+            } else {
+                ACTION_IGNORE
+            }
+        } else {
+            ACTION_ABORT_THREAD
+        }
+    } else {
+        // Production mode
+        if reason == 4 {
+            // KERNEL_PANIC — always halt
+            ACTION_HALT
+        } else if reason == 2 {
+            // STACK_CHECK_FAIL — always abort thread
+            ACTION_ABORT_THREAD
+        } else if is_isr != 0 {
+            // ISR context — halt
+            ACTION_HALT
+        } else {
+            // Thread context — abort
+            ACTION_ABORT_THREAD
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — mempool (fixed-block pool allocation tracking)
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the block count tracking for
+// variable-size memory pools:
+//
+//   pool alloc — allocated += 1
+//   pool free  — allocated -= 1
+//
+// Verified by Verus (SMT/Z3):
+//   MP1: 0 <= allocated <= capacity
+//   MP2: alloc success: allocated += 1
+//   MP3: alloc full: -ENOMEM
+
+/// Validate a mempool allocation: increment block count.
+///
+/// Arguments:
+///   allocated: current allocated block count
+///   capacity:  total blocks in pool
+///   new_allocated: pointer to receive allocated + 1
+///
+/// Returns:
+///   0 (OK)    — *new_allocated set
+///   -ENOMEM   — pool full
+///   -EINVAL   — null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_mempool_alloc_validate(
+    allocated: u32,
+    capacity: u32,
+    new_allocated: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_allocated.is_null() {
+            return EINVAL;
+        }
+
+        if allocated >= capacity {
+            return ENOMEM;
+        }
+
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_allocated = allocated + 1;
+        }
+        OK
+    }
+}
+
+/// Validate a mempool free: decrement block count.
+///
+/// Arguments:
+///   allocated:     current allocated block count
+///   new_allocated: pointer to receive allocated - 1
+///
+/// Returns:
+///   0 (OK)    — *new_allocated set
+///   -EINVAL   — no blocks allocated (underflow) or null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_mempool_free_validate(
+    allocated: u32,
+    new_allocated: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_allocated.is_null() {
+            return EINVAL;
+        }
+
+        if allocated == 0 {
+            return EINVAL;
+        }
+
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_allocated = allocated - 1;
+        }
+        OK
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — dynamic (dynamic thread pool tracking)
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the stack pool accounting from
+// kernel/dynamic.c:
+//
+//   dynamic.c:34-57   z_thread_stack_alloc_pool — active += 1
+//   dynamic.c:116-158 z_impl_k_thread_stack_free — active -= 1
+//
+// Verified by Verus (SMT/Z3):
+//   DY1: 0 <= active <= max_threads
+//   DY2: alloc: active += 1
+//   DY3: alloc full: -ENOMEM
+//   DY4: free: active -= 1
+
+/// Validate a dynamic pool allocation: increment active count.
+///
+/// Arguments:
+///   active:      current active stack count
+///   max_threads: maximum threads in pool
+///   new_active:  pointer to receive active + 1
+///
+/// Returns:
+///   0 (OK)    — *new_active set
+///   -ENOMEM   — pool full
+///   -EINVAL   — null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_dynamic_alloc_validate(
+    active: u32,
+    max_threads: u32,
+    new_active: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_active.is_null() {
+            return EINVAL;
+        }
+
+        if active >= max_threads {
+            return ENOMEM;
+        }
+
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_active = active + 1;
+        }
+        OK
+    }
+}
+
+/// Validate a dynamic pool free: decrement active count.
+///
+/// Arguments:
+///   active:     current active stack count
+///   new_active: pointer to receive active - 1
+///
+/// Returns:
+///   0 (OK)    — *new_active set
+///   -EINVAL   — no stacks active (underflow) or null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_dynamic_free_validate(
+    active: u32,
+    new_active: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_active.is_null() {
+            return EINVAL;
+        }
+
+        if active == 0 {
+            return EINVAL;
+        }
+
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_active = active - 1;
+        }
+        OK
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — smp_state (SMP CPU state tracking)
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the CPU state accounting from
+// kernel/smp.c:
+//
+//   smp.c:170-194  k_smp_cpu_start — active_cpus += 1
+//   smp.c stop     — active_cpus -= 1 (CPU 0 never stops)
+//
+// Verified by Verus (SMT/Z3):
+//   SM1: 0 <= active_cpus <= max_cpus
+//   SM2: start: active += 1
+//   SM3: stop: active -= 1 (min 1)
+
+/// Validate starting a CPU: increment active_cpus.
+///
+/// Arguments:
+///   active_cpus: current active CPU count
+///   max_cpus:    maximum CPUs in system
+///   new_active:  pointer to receive active + 1
+///
+/// Returns:
+///   0 (OK)    — *new_active set
+///   -EBUSY    — all CPUs already active
+///   -EINVAL   — null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_smp_start_cpu_validate(
+    active_cpus: u32,
+    max_cpus: u32,
+    new_active: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_active.is_null() {
+            return EINVAL;
+        }
+
+        if active_cpus >= max_cpus {
+            return EBUSY;
+        }
+
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_active = active_cpus + 1;
+        }
+        OK
+    }
+}
+
+/// Validate stopping a CPU: decrement active_cpus (min 1).
+///
+/// Arguments:
+///   active_cpus: current active CPU count
+///   new_active:  pointer to receive active - 1
+///
+/// Returns:
+///   0 (OK)    — *new_active set
+///   -EINVAL   — only CPU 0 left (cannot stop) or null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_smp_stop_cpu_validate(
+    active_cpus: u32,
+    new_active: *mut u32,
+) -> i32 {
+    unsafe {
+        if new_active.is_null() {
+            return EINVAL;
+        }
+
+        if active_cpus <= 1 {
+            return EINVAL;
+        }
+
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            *new_active = active_cpus - 1;
+        }
+        OK
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — sched (scheduler primitives)
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the scheduler priority comparison and
+// preemption decision from kernel/sched.c:
+//
+//   sched.c:101-104  runq_best — select highest-priority thread
+//   sched.c:128-145  should_preempt — cooperative protection
+//   sched.c:185-279  next_up — scheduling decision
+//
+// Verified by Verus (SMT/Z3):
+//   SC5: next_up returns highest-priority eligible thread
+//   SC6: cooperative threads not preempted by non-MetaIRQ
+//   SC7: idle only when no ready threads
+//   SC8: no overflow in priority comparison
+
+/// Select the next thread to run (uniprocessor).
+///
+/// Arguments:
+///   runq_best_prio:  priority of best thread in run queue (u32::MAX if empty)
+///   idle_prio:       priority of idle thread
+///   best_prio:       pointer to receive selected thread's priority
+///
+/// Returns:
+///   0 — selected the run queue best
+///   1 — selected idle (run queue was empty)
+///   -EINVAL — null pointer
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_sched_next_up(
+    runq_best_prio: u32,
+    idle_prio: u32,
+    best_prio: *mut u32,
+) -> i32 {
+    unsafe {
+        if best_prio.is_null() {
+            return EINVAL;
+        }
+
+        if runq_best_prio == u32::MAX {
+            // No threads in run queue — select idle
+            *best_prio = idle_prio;
+            1
+        } else {
+            *best_prio = runq_best_prio;
+            0
+        }
+    }
+}
+
+/// Check whether a candidate should preempt the current thread.
+///
+/// sched.c should_preempt:
+///   Cooperative current + non-MetaIRQ candidate -> no preemption
+///   swap_ok (yield) -> always preempt
+///
+/// Arguments:
+///   current_is_cooperative: 1 if current thread is cooperative
+///   candidate_is_metairq:  1 if candidate is a MetaIRQ thread
+///   swap_ok:               1 if explicit yield allows swap
+///
+/// Returns:
+///   1 — should preempt
+///   0 — should not preempt
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_sched_should_preempt(
+    current_is_cooperative: u32,
+    candidate_is_metairq: u32,
+    swap_ok: u32,
+) -> i32 {
+    if swap_ok != 0 {
+        return 1;
+    }
+    if current_is_cooperative != 0 && candidate_is_metairq == 0 {
+        return 0;
+    }
+    1
 }
 
 // Panic handler for no_std

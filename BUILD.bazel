@@ -28,6 +28,9 @@ VERUS_SRCS = [
     "src/msgq.rs",
     "src/pipe.rs",
     "src/stack.rs",
+    "src/stack_config.rs",
+    "src/device_init.rs",
+    "src/fault_decode.rs",
 ]
 
 PLAIN_SRCS = ["//plain:srcs"]

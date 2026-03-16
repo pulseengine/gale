@@ -149,3 +149,124 @@ config GALE_KERNEL_MBOX
 	  code. Wait queues, scheduling, async message descriptors,
 	  data copy, and tracing remain native Zephyr C.
 	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_TIMEOUT
+	bool "Use Gale formally verified timeout"
+	help
+	  Use Gale formally verified tick arithmetic for kernel/timeout.c.
+	  Deadline computation, overflow checks, and expiry detection are
+	  handled by verified Rust code. Linked-list management, spinlock,
+	  callbacks, and hardware timer remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_POLL
+	bool "Use Gale formally verified poll"
+	depends on MULTITHREADING
+	help
+	  Use Gale formally verified poll event state machine for
+	  kernel/poll.c. Event initialization, condition checks, and
+	  signal raise/reset are handled by verified Rust code. Wait
+	  queues, thread scheduling, and work queue integration remain
+	  native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_FUTEX
+	bool "Use Gale formally verified futex"
+	depends on MULTITHREADING
+	help
+	  Use Gale formally verified value comparison for kernel/futex.c.
+	  The wait condition check and wake count tracking are handled
+	  by verified Rust code. Spinlock, wait queue, scheduling, and
+	  timeout remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_TIMESLICE
+	bool "Use Gale formally verified timeslice"
+	depends on MULTITHREADING
+	help
+	  Use Gale formally verified tick accounting for
+	  kernel/timeslicing.c. Time-slice reset, tick decrement, and
+	  expiry detection are handled by verified Rust code. Timeout
+	  scheduling, IPI dispatch, and per-CPU arrays remain native
+	  Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_KHEAP
+	bool "Use Gale formally verified kheap"
+	help
+	  Use Gale formally verified byte-level allocation tracking for
+	  kernel/kheap.c. Allocation and free byte counting with overflow
+	  and underflow protection are handled by verified Rust code.
+	  sys_heap internals, free-list, coalescing, wait queues, and
+	  tracing remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_THREAD_LIFECYCLE
+	bool "Use Gale formally verified thread lifecycle"
+	depends on MULTITHREADING
+	help
+	  Use Gale formally verified thread create/exit counting and
+	  priority validation for kernel/thread.c. Thread count tracking
+	  and priority range validation are handled by verified Rust
+	  code. Stack setup, TLS, naming, scheduling, and arch-specific
+	  initialization remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_WORK
+	bool "Use Gale formally verified work"
+	depends on MULTITHREADING
+	help
+	  Use Gale formally verified work item state machine for
+	  kernel/work.c. Submit and cancel state flag management are
+	  handled by verified Rust code. Queue management, scheduling,
+	  handler dispatch, and delayable work remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_FATAL
+	bool "Use Gale formally verified fatal"
+	help
+	  Use Gale formally verified fatal error classification for
+	  kernel/fatal.c. Recovery action determination based on error
+	  reason and context is handled by verified Rust code. IRQ lock,
+	  coredump, thread abort, and halt remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_MEMPOOL
+	bool "Use Gale formally verified mempool"
+	help
+	  Use Gale formally verified fixed-block pool allocation tracking.
+	  Block count increment/decrement with bounds checking are handled
+	  by verified Rust code. Bitarray management, alignment, and actual
+	  memory allocation remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_DYNAMIC
+	bool "Use Gale formally verified dynamic"
+	depends on MULTITHREADING
+	help
+	  Use Gale formally verified dynamic thread pool tracking for
+	  kernel/dynamic.c. Stack pool active count tracking is handled
+	  by verified Rust code. Bitarray management, stack allocation,
+	  and thread creation remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_SMP_STATE
+	bool "Use Gale formally verified SMP state"
+	depends on SMP
+	help
+	  Use Gale formally verified SMP CPU state tracking for
+	  kernel/smp.c. CPU start/stop count tracking is handled by
+	  verified Rust code. IPI signaling, interrupt stack setup,
+	  and arch CPU start remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_SCHED
+	bool "Use Gale formally verified scheduler"
+	depends on MULTITHREADING
+	help
+	  Use Gale formally verified scheduler primitives for
+	  kernel/sched.c. next_up thread selection and preemption
+	  decision logic are handled by verified Rust code. Run queue
+	  data structures, thread state transitions, wait queues, and
+	  SMP IPI remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.

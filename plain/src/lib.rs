@@ -27,7 +27,8 @@
     clippy::cast_possible_truncation,
     clippy::self_assignment,
     clippy::absurd_extreme_comparisons,
-    clippy::wildcard_enum_match_arm
+    clippy::wildcard_enum_match_arm,
+    clippy::checked_conversions
 )]
 pub mod error;
 pub mod priority;
@@ -52,9 +53,16 @@ pub mod poll;
 pub mod sched;
 pub mod thread_lifecycle;
 pub mod timeslice;
+pub mod heap;
 pub mod kheap;
 pub mod work;
 pub mod fatal;
+pub mod fault_decode;
 pub mod mempool;
 pub mod dynamic;
 pub mod smp_state;
+pub mod stack_config;
+pub mod device_init;
+pub mod mem_domain;
+pub mod spinlock;
+pub mod atomic;
