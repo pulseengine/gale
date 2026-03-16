@@ -97,11 +97,7 @@ impl Pipe {
         if free == 0 {
             return Err(EAGAIN);
         }
-        let n = if request_len <= free {
-            request_len
-        } else {
-            free
-        };
+        let n = if request_len <= free { request_len } else { free };
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.used = self.used + n;
@@ -131,11 +127,7 @@ impl Pipe {
             }
             return Err(EAGAIN);
         }
-        let n = if request_len <= self.used {
-            request_len
-        } else {
-            self.used
-        };
+        let n = if request_len <= self.used { request_len } else { self.used };
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.used = self.used - n;

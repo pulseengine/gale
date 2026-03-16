@@ -135,11 +135,7 @@ impl MemPool {
     pub fn total_size(&self) -> Option<u32> {
         #[allow(clippy::arithmetic_side_effects)]
         let total: u64 = self.capacity as u64 * self.block_size as u64;
-        if total > u32::MAX as u64 {
-            None
-        } else {
-            Some(total as u32)
-        }
+        if total > u32::MAX as u64 { None } else { Some(total as u32) }
     }
     /// Check if the pool is full.
     pub fn is_full(&self) -> bool {

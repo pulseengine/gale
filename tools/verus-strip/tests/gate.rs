@@ -9,7 +9,12 @@ use std::path::Path;
 
 const FILES: &[&str] = &[
     "error", "priority", "thread", "wait_queue", "sem", "mutex",
-    "condvar", "msgq", "stack", "pipe", "lib",
+    "condvar", "msgq", "pipe", "stack", "fifo", "lifo", "timer",
+    "event", "mem_slab", "queue", "futex", "mbox", "timeout", "poll",
+    "sched", "thread_lifecycle", "timeslice", "heap", "kheap", "work",
+    "fatal", "fault_decode", "mempool", "dynamic", "smp_state",
+    "stack_config", "device_init", "mem_domain", "spinlock", "atomic",
+    "userspace", "ring_buf", "lib",
 ];
 
 fn find_gale_root() -> &'static Path {

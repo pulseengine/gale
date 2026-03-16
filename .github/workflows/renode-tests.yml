@@ -1,13 +1,9 @@
 name: Renode Multi-Arch Tests
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
-    # Weekly Monday 3am UTC -- nightly cadence for emulation tests
-    - cron: '0 3 * * 1'
+  # Disabled until Renode integration is fully tested.
+  # Build requires Zephyr SDK + cross-compilation for M4F/M33/R5 targets.
+  # Enable when renode-bazel-rules is wired into MODULE.bazel.
   workflow_dispatch:
 
 env:
