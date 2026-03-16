@@ -7,8 +7,8 @@
     clippy::arithmetic_side_effects
 )]
 
-use gale::error::*;
 use gale::dynamic::DynamicPool;
+use gale::error::*;
 use proptest::prelude::*;
 
 proptest! {

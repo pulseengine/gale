@@ -17,8 +17,10 @@ use proptest::prelude::*;
 /// in a given address range.
 fn valid_partition_strategy() -> impl Strategy<Value = MemPartition> {
     // Use 24-bit addresses to leave room for sizes without overflow
-    (0u32..0x00FF_0000, 1u32..0x1_0000, any::<u32>()).prop_map(|(start, size, attr)| {
-        MemPartition { start, size, attr }
+    (0u32..0x00FF_0000, 1u32..0x1_0000, any::<u32>()).prop_map(|(start, size, attr)| MemPartition {
+        start,
+        size,
+        attr,
     })
 }
 
@@ -33,7 +35,11 @@ fn non_overlapping_partitions(max_count: usize) -> impl Strategy<Value = Vec<Mem
             }
             // Each partition at i * 0x1_0000 with size 0x1000 — guaranteed no overlap
             let start = (i as u32) * 0x1_0000;
-            let p = MemPartition { start, size: 0x1000, attr: 0 };
+            let p = MemPartition {
+                start,
+                size: 0x1000,
+                attr: 0,
+            };
             parts.push(p);
         }
         parts

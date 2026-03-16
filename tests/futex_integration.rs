@@ -162,8 +162,8 @@ fn fx4_wake_one_from_multiple() {
 fn fx4_wake_one_wakes_highest_priority() {
     let mut f = Futex::init(0);
     f.wait(0, make_running_thread(10, 15)); // low priority
-    f.wait(0, make_running_thread(20, 1));  // highest priority
-    f.wait(0, make_running_thread(30, 8));  // medium priority
+    f.wait(0, make_running_thread(20, 1)); // highest priority
+    f.wait(0, make_running_thread(30, 8)); // medium priority
 
     let result = f.wake(false);
     assert_eq!(result.woken, 1);

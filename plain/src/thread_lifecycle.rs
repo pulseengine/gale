@@ -33,7 +33,7 @@
 //!   TH5: thread count >= 0 (no underflow on exit)
 //!   TH6: no overflow on thread count
 use crate::error::*;
-use crate::priority::{Priority, MAX_PRIORITY};
+use crate::priority::{MAX_PRIORITY, Priority};
 /// Maximum number of threads tracked by the system.
 /// Models CONFIG_MAX_THREAD_BYTES * 8 in Zephyr.
 pub const MAX_THREADS: u32 = 256;
@@ -66,7 +66,15 @@ impl StackInfo {
     ///   new_thread->stack_info.start = (uintptr_t)stack_buf_start;
     ///   new_thread->stack_info.size = stack_buf_size;
     pub fn init(base: u32, size: u32) -> Result<StackInfo, i32> {
-        if size == 0 { Err(EINVAL) } else { Ok(StackInfo { base, size, usage: 0 }) }
+        if size == 0 {
+            Err(EINVAL)
+        } else {
+            Ok(StackInfo {
+                base,
+                size,
+                usage: 0,
+            })
+        }
     }
     /// Record observed stack usage (watermark update).
     ///

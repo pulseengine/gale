@@ -177,9 +177,9 @@ fn interleaved_alloc_free() {
 
     assert_eq!(h.alloc(100), OK); // 100
     assert_eq!(h.alloc(200), OK); // 300
-    assert_eq!(h.free(50), OK);   // 250
+    assert_eq!(h.free(50), OK); // 250
     assert_eq!(h.alloc(100), OK); // 350
-    assert_eq!(h.free(200), OK);  // 150
+    assert_eq!(h.free(200), OK); // 150
     assert_eq!(h.allocated_get(), 150);
     assert_eq!(h.free_get(), 350);
 }

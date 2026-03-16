@@ -8,7 +8,7 @@
 )]
 
 use gale::error::*;
-use gale::heap::{Heap, CHUNK_UNIT};
+use gale::heap::{CHUNK_UNIT, Heap};
 use proptest::prelude::*;
 
 proptest! {

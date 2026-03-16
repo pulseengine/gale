@@ -9,7 +9,7 @@
 
 use gale::error::*;
 use gale::priority::MAX_PRIORITY;
-use gale::thread_lifecycle::{StackInfo, ThreadInfo, ThreadTracker, MAX_THREADS};
+use gale::thread_lifecycle::{MAX_THREADS, StackInfo, ThreadInfo, ThreadTracker};
 
 // =====================================================================
 // StackInfo tests
@@ -92,7 +92,10 @@ fn thread_info_new_valid() {
 #[test]
 fn thread_info_rejects_invalid_priority() {
     assert_eq!(ThreadInfo::new(1, MAX_PRIORITY, 0x1000, 4096), Err(EINVAL));
-    assert_eq!(ThreadInfo::new(1, MAX_PRIORITY + 1, 0x1000, 4096), Err(EINVAL));
+    assert_eq!(
+        ThreadInfo::new(1, MAX_PRIORITY + 1, 0x1000, 4096),
+        Err(EINVAL)
+    );
 }
 
 #[test]
@@ -243,7 +246,10 @@ fn tracker_many_create_exit_cycles() {
 
 #[test]
 fn tracker_at_capacity_rejects_create() {
-    let mut t = ThreadTracker { count: MAX_THREADS, peak: MAX_THREADS };
+    let mut t = ThreadTracker {
+        count: MAX_THREADS,
+        peak: MAX_THREADS,
+    };
     assert_eq!(t.create(), EAGAIN);
     assert_eq!(t.active_count(), MAX_THREADS);
 }
@@ -262,7 +268,10 @@ fn tracker_fill_to_capacity() {
 
 #[test]
 fn tracker_drain_from_full() {
-    let mut t = ThreadTracker { count: MAX_THREADS, peak: MAX_THREADS };
+    let mut t = ThreadTracker {
+        count: MAX_THREADS,
+        peak: MAX_THREADS,
+    };
     for i in 0..MAX_THREADS {
         assert_eq!(t.exit(), OK);
         assert_eq!(t.active_count(), MAX_THREADS - 1 - i);

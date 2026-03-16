@@ -17,7 +17,11 @@ pub struct Priority {
 impl Priority {
     /// Create a new priority. Fails if out of range.
     pub fn new(value: u32) -> Option<Self> {
-        if value < MAX_PRIORITY { Some(Priority { value }) } else { None }
+        if value < MAX_PRIORITY {
+            Some(Priority { value })
+        } else {
+            None
+        }
     }
     /// Get the raw priority value.
     pub fn get(&self) -> u32 {

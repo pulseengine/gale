@@ -9,7 +9,7 @@
 
 use gale::error::*;
 use gale::priority::MAX_PRIORITY;
-use gale::thread_lifecycle::{StackInfo, ThreadInfo, ThreadTracker, MAX_THREADS};
+use gale::thread_lifecycle::{MAX_THREADS, StackInfo, ThreadInfo, ThreadTracker};
 use proptest::prelude::*;
 
 proptest! {

@@ -21,10 +21,16 @@ use proptest::prelude::*;
 /// Operations that can be performed on a futex.
 #[derive(Debug, Clone)]
 enum FutexOp {
-    Wait { thread_id: u32, priority: u32, expected: u32 },
+    Wait {
+        thread_id: u32,
+        priority: u32,
+        expected: u32,
+    },
     WakeOne,
     WakeAll,
-    ValSet { new_val: u32 },
+    ValSet {
+        new_val: u32,
+    },
     ValGet,
     NumWaiters,
 }

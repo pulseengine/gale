@@ -108,13 +108,13 @@ fn interleaved_put_get() {
 #[test]
 fn peek_head_reflects_state() {
     let mut f = Fifo::init();
-    assert!(!f.peek_head());  // empty
+    assert!(!f.peek_head()); // empty
 
     f.put();
-    assert!(f.peek_head());   // has item
+    assert!(f.peek_head()); // has item
 
     f.get();
-    assert!(!f.peek_head());  // empty again
+    assert!(!f.peek_head()); // empty again
 }
 
 #[test]

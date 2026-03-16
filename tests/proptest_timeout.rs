@@ -8,7 +8,7 @@
 )]
 
 use gale::error::*;
-use gale::timeout::{Timeout, K_FOREVER_TICKS, K_NO_WAIT_TICKS};
+use gale::timeout::{K_FOREVER_TICKS, K_NO_WAIT_TICKS, Timeout};
 use proptest::prelude::*;
 
 /// Strategy for valid current_tick values (must be < u64::MAX).

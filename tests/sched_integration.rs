@@ -43,7 +43,7 @@ fn runq_add_single_thread() {
 fn runq_best_returns_highest_priority() {
     let mut rq = RunQueue::new();
     rq.add(make_ready_thread(1, 10));
-    rq.add(make_ready_thread(2, 5));  // higher priority (lower value)
+    rq.add(make_ready_thread(2, 5)); // higher priority (lower value)
     rq.add(make_ready_thread(3, 15));
 
     let best = rq.best().unwrap();
@@ -180,17 +180,32 @@ fn prio_cmp_equal_priorities() {
 
 #[test]
 fn valid_state_transitions() {
-    assert!(is_valid_transition(ThreadState::Ready, ThreadState::Running));
-    assert!(is_valid_transition(ThreadState::Running, ThreadState::Ready));
-    assert!(is_valid_transition(ThreadState::Running, ThreadState::Blocked));
-    assert!(is_valid_transition(ThreadState::Blocked, ThreadState::Ready));
+    assert!(is_valid_transition(
+        ThreadState::Ready,
+        ThreadState::Running
+    ));
+    assert!(is_valid_transition(
+        ThreadState::Running,
+        ThreadState::Ready
+    ));
+    assert!(is_valid_transition(
+        ThreadState::Running,
+        ThreadState::Blocked
+    ));
+    assert!(is_valid_transition(
+        ThreadState::Blocked,
+        ThreadState::Ready
+    ));
 }
 
 #[test]
 fn blocked_to_running_requires_ready_intermediate() {
     // Blocked -> Running should go through Ready first
     // But our FSM allows any -> Ready, so Blocked -> Ready is valid
-    assert!(is_valid_transition(ThreadState::Blocked, ThreadState::Ready));
+    assert!(is_valid_transition(
+        ThreadState::Blocked,
+        ThreadState::Ready
+    ));
 }
 
 // ── End-to-end scheduling simulation ────────────────────────────────
@@ -244,9 +259,8 @@ fn schedule_three_threads_priority_order() {
 // ═══════════════════════════════════════════════════════════════════════
 
 use gale::sched::{
-    SchedThreadState, sched_is_valid_transition,
-    sched_suspend, sched_resume, sched_abort,
-    sched_sleep, sched_wakeup, sched_pend, sched_unpend,
+    SchedThreadState, sched_abort, sched_is_valid_transition, sched_pend, sched_resume,
+    sched_sleep, sched_suspend, sched_unpend, sched_wakeup,
 };
 
 // ── Valid transitions ───────────────────────────────────────────────
@@ -660,11 +674,7 @@ fn pend_rejects_non_running() {
         SchedThreadState::Aborting,
     ];
     for &state in &non_running {
-        assert!(
-            sched_pend(state).is_err(),
-            "pend should reject {:?}",
-            state,
-        );
+        assert!(sched_pend(state).is_err(), "pend should reject {:?}", state,);
     }
 }
 
@@ -785,7 +795,8 @@ fn all_valid_transitions_are_consistent_with_operations() {
                 assert!(
                     sched_is_valid_transition(state, next),
                     "suspend({:?}) -> {:?} should be valid transition",
-                    state, next,
+                    state,
+                    next,
                 );
             }
         }
@@ -793,7 +804,8 @@ fn all_valid_transitions_are_consistent_with_operations() {
             assert!(
                 sched_is_valid_transition(state, next),
                 "resume({:?}) -> {:?} should be valid transition",
-                state, next,
+                state,
+                next,
             );
         }
         for smp in [false, true] {
@@ -801,7 +813,9 @@ fn all_valid_transitions_are_consistent_with_operations() {
                 assert!(
                     sched_is_valid_transition(state, next),
                     "abort({:?}, smp={}) -> {:?} should be valid transition",
-                    state, smp, next,
+                    state,
+                    smp,
+                    next,
                 );
             }
         }
@@ -809,28 +823,32 @@ fn all_valid_transitions_are_consistent_with_operations() {
             assert!(
                 sched_is_valid_transition(state, next),
                 "sleep({:?}) -> {:?} should be valid transition",
-                state, next,
+                state,
+                next,
             );
         }
         if let Ok(next) = sched_wakeup(state) {
             assert!(
                 sched_is_valid_transition(state, next),
                 "wakeup({:?}) -> {:?} should be valid transition",
-                state, next,
+                state,
+                next,
             );
         }
         if let Ok(next) = sched_pend(state) {
             assert!(
                 sched_is_valid_transition(state, next),
                 "pend({:?}) -> {:?} should be valid transition",
-                state, next,
+                state,
+                next,
             );
         }
         if let Ok(next) = sched_unpend(state) {
             assert!(
                 sched_is_valid_transition(state, next),
                 "unpend({:?}) -> {:?} should be valid transition",
-                state, next,
+                state,
+                next,
             );
         }
     }
@@ -875,9 +893,9 @@ fn test_metairq_preemption_preference() {
         Some(runq_best),
         current_metairq,
         &mut cpu,
-        true,   // current_is_active
-        false,  // current_is_queued
-        false,  // current_is_cooperative (MetaIRQ is preemptive)
+        true,  // current_is_active
+        false, // current_is_queued
+        false, // current_is_cooperative (MetaIRQ is preemptive)
         is_metairq,
     );
 
@@ -894,7 +912,7 @@ fn test_metairq_preemption_preference() {
         Some(runq_best),
         current_metairq,
         &mut cpu2,
-        false,  // current NOT active (e.g., it's blocking)
+        false, // current NOT active (e.g., it's blocking)
         false,
         false,
         is_metairq,
@@ -926,9 +944,9 @@ fn test_smp_current_stays_if_higher_prio() {
         Some(runq_best),
         current,
         &mut cpu,
-        true,   // active
-        false,  // not queued
-        false,  // preemptive
+        true,  // active
+        false, // not queued
+        false, // preemptive
         never_metairq,
     );
 
@@ -967,10 +985,9 @@ fn test_smp_ties_only_switch_on_yield() {
     );
 
     match outcome_no_yield.choice {
-        SchedChoice::Thread(t) => assert_eq!(
-            t.id.id, 1,
-            "SC11: without yield, tie keeps current (id=1)"
-        ),
+        SchedChoice::Thread(t) => {
+            assert_eq!(t.id.id, 1, "SC11: without yield, tie keeps current (id=1)")
+        }
         SchedChoice::Idle => panic!("should not be idle"),
     }
 
@@ -1008,16 +1025,16 @@ fn test_smp_current_requeued_when_preempted() {
 
     // --- Case 1: active, not queued, not idle, not mirq-preempted -> requeue ---
     let mut cpu1 = CpuSchedState::new(idle);
-    let current = make_ready_thread(1, 10);       // lower prio
-    let runq_best = make_ready_thread(2, 3);       // higher prio
+    let current = make_ready_thread(1, 10); // lower prio
+    let runq_best = make_ready_thread(2, 3); // higher prio
 
     let outcome1 = next_up_smp(
         Some(runq_best),
         current,
         &mut cpu1,
-        true,   // active
-        false,  // NOT queued
-        false,  // preemptive
+        true,  // active
+        false, // NOT queued
+        false, // preemptive
         never_metairq,
     );
 
@@ -1036,8 +1053,8 @@ fn test_smp_current_requeued_when_preempted() {
         Some(runq_best),
         current,
         &mut cpu2,
-        true,   // active
-        true,   // ALREADY queued
+        true, // active
+        true, // ALREADY queued
         false,
         never_metairq,
     );
@@ -1050,17 +1067,14 @@ fn test_smp_current_requeued_when_preempted() {
     let mut cpu3 = CpuSchedState::new(idle);
     let outcome3 = next_up_smp(
         Some(runq_best),
-        idle,   // current IS the idle thread
+        idle, // current IS the idle thread
         &mut cpu3,
         true,
         false,
         false,
         never_metairq,
     );
-    assert!(
-        !outcome3.requeue_current,
-        "SC12: idle thread -> no requeue"
-    );
+    assert!(!outcome3.requeue_current, "SC12: idle thread -> no requeue");
 
     // --- Case 4: not active (blocked/suspended) -> no requeue ---
     let mut cpu4 = CpuSchedState::new(idle);
@@ -1068,15 +1082,12 @@ fn test_smp_current_requeued_when_preempted() {
         Some(runq_best),
         current,
         &mut cpu4,
-        false,  // NOT active
+        false, // NOT active
         false,
         false,
         never_metairq,
     );
-    assert!(
-        !outcome4.requeue_current,
-        "SC12: not active -> no requeue"
-    );
+    assert!(!outcome4.requeue_current, "SC12: not active -> no requeue");
 
     // --- Case 5: current is the MetaIRQ-preempted thread -> no requeue ---
     let mut cpu5 = CpuSchedState::new(idle);

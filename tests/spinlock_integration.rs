@@ -8,7 +8,7 @@
 )]
 
 use gale::error::*;
-use gale::spinlock::{SpinlockState, MAX_NEST_DEPTH};
+use gale::spinlock::{MAX_NEST_DEPTH, SpinlockState};
 
 #[test]
 fn init_creates_unlocked() {

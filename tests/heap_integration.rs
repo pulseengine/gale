@@ -390,24 +390,39 @@ fn chunk_conservation_through_lifecycle() {
     let mut h = Heap::init(1024, 64).unwrap();
 
     // Initial: used + free == total
-    assert_eq!(h.used_chunks_get() + h.free_chunks_get(), h.total_chunks_get());
+    assert_eq!(
+        h.used_chunks_get() + h.free_chunks_get(),
+        h.total_chunks_get()
+    );
 
     // After alloc
     h.alloc(100).unwrap();
-    assert_eq!(h.used_chunks_get() + h.free_chunks_get(), h.total_chunks_get());
+    assert_eq!(
+        h.used_chunks_get() + h.free_chunks_get(),
+        h.total_chunks_get()
+    );
 
     // After split
     h.split(50, 100);
-    assert_eq!(h.used_chunks_get() + h.free_chunks_get(), h.total_chunks_get());
+    assert_eq!(
+        h.used_chunks_get() + h.free_chunks_get(),
+        h.total_chunks_get()
+    );
 
     // After free
     h.free(100);
-    assert_eq!(h.used_chunks_get() + h.free_chunks_get(), h.total_chunks_get());
+    assert_eq!(
+        h.used_chunks_get() + h.free_chunks_get(),
+        h.total_chunks_get()
+    );
 
     // After merge
     if h.free_chunks_get() > 1 && h.total_chunks_get() > 1 {
         h.merge();
-        assert_eq!(h.used_chunks_get() + h.free_chunks_get(), h.total_chunks_get());
+        assert_eq!(
+            h.used_chunks_get() + h.free_chunks_get(),
+            h.total_chunks_get()
+        );
     }
 }
 

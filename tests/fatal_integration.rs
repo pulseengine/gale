@@ -130,11 +130,26 @@ fn test_mode_thread_always_aborts() {
 
 #[test]
 fn reason_str_matches() {
-    assert_eq!(FatalError::reason_str(FatalReason::CpuException), "CPU exception");
-    assert_eq!(FatalError::reason_str(FatalReason::SpuriousIrq), "Unhandled interrupt");
-    assert_eq!(FatalError::reason_str(FatalReason::StackCheckFail), "Stack overflow");
-    assert_eq!(FatalError::reason_str(FatalReason::KernelOops), "Kernel oops");
-    assert_eq!(FatalError::reason_str(FatalReason::KernelPanic), "Kernel panic");
+    assert_eq!(
+        FatalError::reason_str(FatalReason::CpuException),
+        "CPU exception"
+    );
+    assert_eq!(
+        FatalError::reason_str(FatalReason::SpuriousIrq),
+        "Unhandled interrupt"
+    );
+    assert_eq!(
+        FatalError::reason_str(FatalReason::StackCheckFail),
+        "Stack overflow"
+    );
+    assert_eq!(
+        FatalError::reason_str(FatalReason::KernelOops),
+        "Kernel oops"
+    );
+    assert_eq!(
+        FatalError::reason_str(FatalReason::KernelPanic),
+        "Kernel panic"
+    );
 }
 
 #[test]

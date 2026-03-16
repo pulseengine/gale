@@ -8,7 +8,7 @@
 )]
 
 use gale::error::*;
-use gale::timeout::{Timeout, K_FOREVER_TICKS, K_NO_WAIT_TICKS};
+use gale::timeout::{K_FOREVER_TICKS, K_NO_WAIT_TICKS, Timeout};
 
 #[test]
 fn init_creates_inactive_timeout() {

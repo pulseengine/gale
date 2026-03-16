@@ -156,13 +156,21 @@ impl CortexMFault {
     ///
     /// FH2: Only returns Some when MMARVALID is set.
     pub fn mmfar_checked(&self) -> Option<u32> {
-        if (self.cfsr & MMFSR_MMARVALID) != 0 { Some(self.mmfar) } else { None }
+        if (self.cfsr & MMFSR_MMARVALID) != 0 {
+            Some(self.mmfar)
+        } else {
+            None
+        }
     }
     /// Get BFAR value, returning None if not valid.
     ///
     /// FH2: Only returns Some when BFARVALID is set.
     pub fn bfar_checked(&self) -> Option<u32> {
-        if (self.cfsr & BFSR_BFARVALID) != 0 { Some(self.bfar) } else { None }
+        if (self.cfsr & BFSR_BFARVALID) != 0 {
+            Some(self.bfar)
+        } else {
+            None
+        }
     }
     /// FH3: Check if HardFault was escalated from a configurable fault.
     ///

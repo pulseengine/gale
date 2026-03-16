@@ -66,3 +66,5 @@ pub mod device_init;
 pub mod mem_domain;
 pub mod spinlock;
 pub mod atomic;
+pub mod userspace;
+pub mod ring_buf;

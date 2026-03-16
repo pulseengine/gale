@@ -22,10 +22,7 @@ fn arb_reason() -> impl Strategy<Value = FatalReason> {
 }
 
 fn arb_context() -> impl Strategy<Value = FatalContext> {
-    prop_oneof![
-        Just(FatalContext::Thread),
-        Just(FatalContext::Isr),
-    ]
+    prop_oneof![Just(FatalContext::Thread), Just(FatalContext::Isr),]
 }
 
 proptest! {

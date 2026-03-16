@@ -23,6 +23,10 @@ pub const ENOSPC: i32 = -28;
 pub const ENOENT: i32 = -2;
 /// Value too large (arithmetic overflow).
 pub const EOVERFLOW: i32 = -75;
+/// Bad file descriptor / object not found or type mismatch.
+pub const EBADF: i32 = -9;
+/// Address already in use / object already initialized.
+pub const EADDRINUSE: i32 = -98;
 
 /// Success return value.
 pub const OK: i32 = 0;
