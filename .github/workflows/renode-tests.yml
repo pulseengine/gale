@@ -54,6 +54,11 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           . /root/.cargo/env
           rustup target add "${RUST_TARGET}"
+          # Also install non-hf variant in case FPU is disabled
+          NON_HF=$(echo "${RUST_TARGET}" | sed 's/eabihf$/eabi/')
+          if [ "${NON_HF}" != "${RUST_TARGET}" ]; then
+            rustup target add "${NON_HF}" || true
+          fi
 
       - name: Initialize west workspace
         run: |
