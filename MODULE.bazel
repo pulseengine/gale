@@ -54,6 +54,14 @@ crate.from_cargo(
 )
 use_repo(crate, "crates")
 
+# Lean 4 rules — scheduling theory proofs
+bazel_dep(name = "rules_lean", version = "0.1.0")
+git_override(
+    module_name = "rules_lean",
+    remote = "https://github.com/pulseengine/rules_lean.git",
+    commit = "2fe64f13f8df31678a27483286868a67636d7217",
+)
+
 # Nix integration for Rocq toolchain
 bazel_dep(name = "rules_nixpkgs_core", version = "0.13.0")
 

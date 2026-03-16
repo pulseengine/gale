@@ -64,6 +64,45 @@ def maxBlockingTime (cfg : SystemConfig) (t : PTask) : Nat :=
   let bs := blockingSections cfg t
   bs.foldl (fun acc cs => max acc cs.duration) 0
 
+/-! ## Fold Max Lemmas -/
+
+/-- foldl max is monotone in the accumulator. -/
+private theorem foldl_max_mono (init1 init2 : Nat) (l : List CriticalSection)
+    (h : init1 <= init2) :
+    List.foldl (fun acc cs => max acc cs.duration) init1 l <=
+    List.foldl (fun acc cs => max acc cs.duration) init2 l := by
+  induction l generalizing init1 init2 with
+  | nil => simpa [List.foldl]
+  | cons hd tl ih =>
+    simp [List.foldl]
+    apply ih
+    exact Nat.max_le_max_right hd.duration h
+
+/-- foldl max is >= the accumulator. -/
+private theorem foldl_max_ge_init (init : Nat) (l : List CriticalSection) :
+    init <= List.foldl (fun acc cs => max acc cs.duration) init l := by
+  induction l generalizing init with
+  | nil => simp [List.foldl]
+  | cons hd tl ih =>
+    simp [List.foldl]
+    calc init <= max init hd.duration := Nat.le_max_left init hd.duration
+      _ <= List.foldl (fun acc cs => max acc cs.duration) (max init hd.duration) tl := ih _
+
+/-- foldl max is >= any element's duration. -/
+private theorem foldl_max_ge_elem (init : Nat) (l : List CriticalSection)
+    (cs : CriticalSection) (hcs : cs ∈ l) :
+    cs.duration <= List.foldl (fun acc cs => max acc cs.duration) init l := by
+  induction l generalizing init with
+  | nil => simp at hcs
+  | cons hd tl ih =>
+    simp [List.foldl]
+    cases hcs with
+    | head =>
+      calc cs.duration <= max init cs.duration := Nat.le_max_right init cs.duration
+        _ <= List.foldl (fun acc cs => max acc cs.duration) (max init cs.duration) tl :=
+          foldl_max_ge_init _ _
+    | tail _ htl => exact ih htl _
+
 /-! ## Bounded Blocking Theorem -/
 
 /-- Under PCP, the blocking time of any task is bounded by the maximum
@@ -73,13 +112,7 @@ theorem pcp_bounded_blocking (cfg : SystemConfig) (t : PTask) :
     forall cs, cs ∈ blockingSections cfg t -> cs.duration <= maxBlockingTime cfg t := by
   intro cs hcs
   unfold maxBlockingTime
-  -- The max of a fold is >= any element
-  induction cfg.sections.filter (fun cs =>
-    cs.task.priority < t.priority && cs.resource.ceiling >= t.priority) with
-  | nil => simp [blockingSections] at hcs
-  | cons hd tl ih =>
-    simp [List.foldl]
-    sorry -- fold max property: foldl max 0 (hd :: tl) >= hd.duration
+  exact foldl_max_ge_elem 0 (blockingSections cfg t) cs hcs
 
 /-- The blocking time is zero if no lower-priority task holds resources
     with sufficiently high ceilings. -/
@@ -206,9 +239,34 @@ theorem pcp_single_blocking_per_access (cfg : SystemConfig) (t : PTask)
     maxBlockingTime cfg t >= 0 := by
   unfold maxBlockingTime
   -- foldl max 0 is always >= 0
-  sorry -- fold max nonneg
+  exact foldl_max_ge_init 0 (blockingSections cfg t)
 
 /-! ## Priority Inheritance as PCP Variant -/
+
+/-- foldl max over priorities is >= the initial accumulator. -/
+private theorem foldl_max_prio_ge_init (init : Nat) (ws : List PTask) :
+    init <= List.foldl (fun acc w => max acc w.priority) init ws := by
+  induction ws generalizing init with
+  | nil => simp [List.foldl]
+  | cons w ws ih =>
+    simp [List.foldl]
+    calc init <= max init w.priority := Nat.le_max_left init w.priority
+      _ <= List.foldl (fun acc w => max acc w.priority) (max init w.priority) ws := ih _
+
+/-- foldl max over priorities is >= any element's priority. -/
+private theorem foldl_max_prio_ge_elem (init : Nat) (w : PTask) (ws : List PTask)
+    (hw : w ∈ ws) :
+    w.priority <= List.foldl (fun acc w => max acc w.priority) init ws := by
+  induction ws generalizing init with
+  | nil => simp at hw
+  | cons hd tl ih =>
+    simp [List.foldl]
+    cases hw with
+    | head =>
+      calc w.priority <= max init w.priority := Nat.le_max_right init w.priority
+        _ <= List.foldl (fun acc w => max acc w.priority) (max init w.priority) tl :=
+          foldl_max_prio_ge_init _ _
+    | tail _ htl => exact ih htl _
 
 /-- Priority inheritance: when a high-priority task blocks on a resource,
     the holder's effective priority is raised to the blocked task's priority. -/
@@ -219,11 +277,7 @@ def inheritedPriority (holder : PTask) (waiters : List PTask) : Priority :=
 theorem inherited_geq_base (holder : PTask) (waiters : List PTask) :
     inheritedPriority holder waiters >= holder.priority := by
   unfold inheritedPriority
-  induction waiters with
-  | nil => simp [List.foldl]
-  | cons w ws ih =>
-    simp [List.foldl]
-    sorry -- fold max monotonicity
+  exact foldl_max_prio_ge_init holder.priority waiters
 
 /-- If a waiter has higher priority, inherited priority reflects it. -/
 theorem inherited_reflects_waiter (holder : PTask) (w : PTask) (ws : List PTask)
@@ -231,7 +285,9 @@ theorem inherited_reflects_waiter (holder : PTask) (w : PTask) (ws : List PTask)
     inheritedPriority holder (w :: ws) >= w.priority := by
   unfold inheritedPriority
   simp [List.foldl]
-  sorry -- fold max includes w.priority
+  calc w.priority <= max holder.priority w.priority := Nat.le_max_right holder.priority w.priority
+    _ <= List.foldl (fun acc w => max acc w.priority) (max holder.priority w.priority) ws :=
+      foldl_max_prio_ge_init _ _
 
 /-- With priority inheritance, the blocking analysis reduces to PCP analysis.
     Zephyr uses priority inheritance in its mutex implementation, which provides

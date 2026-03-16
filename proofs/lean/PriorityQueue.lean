@@ -225,11 +225,96 @@ def merge : List (PQEntry α) -> List (PQEntry α) -> List (PQEntry α)
       e2 :: merge (e1 :: t1) t2
 termination_by q1 q2 => q1.length + q2.length
 
+/-- Helper: head priority of merge result is min of input heads. -/
+private theorem merge_head_priority (e1 : PQEntry α) (t1 : List (PQEntry α))
+    (e2 : PQEntry α) (t2 : List (PQEntry α)) :
+    match (merge (e1 :: t1) (e2 :: t2)).head? with
+    | some e => e.priority = min e1.priority e2.priority
+    | none => False := by
+  simp [merge]
+  split
+  case isTrue hle =>
+    simp [List.head?]
+    omega
+  case isFalse hnle =>
+    simp [List.head?]
+    omega
+
+/-- Helper: the head priority of a merge is <= both input heads' priorities. -/
+private theorem merge_head_le_left (e1 : PQEntry α) (t1 : List (PQEntry α))
+    (e2 : PQEntry α) (t2 : List (PQEntry α)) :
+    ∀ e, (merge (e1 :: t1) (e2 :: t2)).head? = some e →
+    e.priority <= e1.priority := by
+  simp [merge]
+  split <;> simp [List.head?] <;> intro e he <;> subst he <;> omega
+
+private theorem merge_head_le_right (e1 : PQEntry α) (t1 : List (PQEntry α))
+    (e2 : PQEntry α) (t2 : List (PQEntry α)) :
+    ∀ e, (merge (e1 :: t1) (e2 :: t2)).head? = some e →
+    e.priority <= e2.priority := by
+  simp [merge]
+  split <;> simp [List.head?] <;> intro e he <;> subst he <;> omega
+
+/-- Helper: Sorted for cons when we know the head relationship with the tail. -/
+private theorem sorted_cons_of_head_le (e : PQEntry α) (rest : List (PQEntry α))
+    (h_sorted : Sorted rest)
+    (h_le : ∀ x, rest.head? = some x → e.priority <= x.priority) :
+    Sorted (e :: rest) := by
+  cases rest with
+  | nil => simp [Sorted]
+  | cons hd tl =>
+    unfold Sorted
+    constructor
+    · exact h_le hd (by simp [List.head?])
+    · exact h_sorted
+
 /-- Merge preserves sortedness. -/
 theorem merge_sorted (q1 q2 : List (PQEntry α))
     (h1 : Sorted q1) (h2 : Sorted q2) :
     Sorted (merge q1 q2) := by
-  sorry -- requires mutual induction on both lists with sortedness witnesses
+  induction q1, q2 using merge.induct with
+  | case1 q2 => simpa [merge]
+  | case2 e1 t1 => simpa [merge]
+  | case3 e1 t1 e2 t2 hle ih =>
+    -- e1.priority <= e2.priority, result = e1 :: merge t1 (e2 :: t2)
+    simp [merge, hle]
+    have ht1_sorted : Sorted t1 := by
+      cases t1 with
+      | nil => simp [Sorted]
+      | cons h t => exact h1.2
+    have ih_sorted := ih ht1_sorted h2
+    apply sorted_cons_of_head_le e1 (merge t1 (e2 :: t2)) ih_sorted
+    intro x hx
+    cases t1 with
+    | nil =>
+      simp [merge] at hx
+      simp [List.head?] at hx
+      subst hx; exact hle
+    | cons hd1 tl1 =>
+      have h_e1_hd1 : e1.priority <= hd1.priority := h1.1
+      have := merge_head_le_left hd1 tl1 e2 t2 x hx
+      have := merge_head_le_right hd1 tl1 e2 t2 x hx
+      omega
+  | case4 e1 t1 e2 t2 hnle ih =>
+    -- e1.priority > e2.priority, result = e2 :: merge (e1 :: t1) t2
+    simp [merge, hnle]
+    have ht2_sorted : Sorted t2 := by
+      cases t2 with
+      | nil => simp [Sorted]
+      | cons h t => exact h2.2
+    have ih_sorted := ih h1 ht2_sorted
+    apply sorted_cons_of_head_le e2 (merge (e1 :: t1) t2) ih_sorted
+    intro x hx
+    cases t2 with
+    | nil =>
+      simp [merge] at hx
+      simp [List.head?] at hx
+      subst hx; omega
+    | cons hd2 tl2 =>
+      have h_e2_hd2 : e2.priority <= hd2.priority := h2.1
+      have := merge_head_le_left e1 t1 hd2 tl2 x hx
+      have := merge_head_le_right e1 t1 hd2 tl2 x hx
+      omega
 
 /-- Merge preserves total length. -/
 theorem merge_length (q1 q2 : List (PQEntry α)) :

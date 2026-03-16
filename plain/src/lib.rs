@@ -26,7 +26,8 @@
     clippy::unwrap_used,
     clippy::cast_possible_truncation,
     clippy::self_assignment,
-    clippy::absurd_extreme_comparisons
+    clippy::absurd_extreme_comparisons,
+    clippy::wildcard_enum_match_arm
 )]
 pub mod error;
 pub mod priority;

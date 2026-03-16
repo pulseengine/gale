@@ -57,6 +57,16 @@ theorem task_utilization_bounded (t : Task) :
     unfold Task.utilization
     exact div_le_one_of_le t.wcet_le_period (le_of_lt t.period_pos)
 
+/-- Helper: foldl of addition can shift the accumulator out. -/
+private theorem foldl_add_shift (f : Task -> Rat) (init : Rat) (ts : List Task) :
+    List.foldl (fun acc t => acc + f t) init ts = init + List.foldl (fun acc t => acc + f t) 0 ts := by
+  induction ts generalizing init with
+  | nil => simp [List.foldl]
+  | cons t ts ih =>
+    simp [List.foldl]
+    rw [ih (init + f t), ih (0 + f t)]
+    ring
+
 /-- Total utilization is the sum of individual utilizations (structural). -/
 theorem utilization_additive (ts : TaskSet) :
     totalUtilization ts = List.foldl (fun acc t => acc + Task.utilization t) 0 ts := by
@@ -71,7 +81,7 @@ theorem utilization_additive (ts : TaskSet) :
       simp [List.foldl]
     rw [this]
     -- foldl (+) (a + 0) = a + foldl (+) 0
-    sorry -- commutative fold lemma; structurally correct
+    rw [foldl_add_shift Task.utilization (Task.utilization t) ts]
 
 /-- Total utilization of concatenation equals sum of parts. -/
 theorem utilization_append (ts1 ts2 : TaskSet) :
@@ -155,6 +165,34 @@ def rmOrdered : TaskSet -> Prop
   | [_] => True
   | t1 :: t2 :: ts => t1.period <= t2.period /\ rmOrdered (t2 :: ts)
 
+/-- Helper: rmOrdered implies head <= any later element. -/
+private theorem rmOrdered_head_le (t : Task) (ts : TaskSet) (h : rmOrdered (t :: ts))
+    (j : Nat) (hj : j < ts.length) :
+    t.period <= (ts.get ⟨j, hj⟩).period := by
+  induction ts generalizing j with
+  | nil => simp at hj
+  | cons t2 ts2 ih =>
+    match j with
+    | 0 =>
+      simp [List.get]
+      exact h.1
+    | j + 1 =>
+      simp [List.get]
+      have h_tail : rmOrdered (t2 :: ts2) := h.2
+      have h_t_le_t2 : t.period <= t2.period := h.1
+      have h_t2_le : t2.period <= (ts2.get ⟨j, by simp at hj; omega⟩).period :=
+        rmOrdered_head_le t2 ts2 h_tail j (by simp at hj; omega)
+      calc t.period <= t2.period := h_t_le_t2
+        _ <= (ts2.get ⟨j, by simp at hj; omega⟩).period := h_t2_le
+
+/-- Helper: rmOrdered is preserved by dropping the head. -/
+private theorem rmOrdered_tail (t : Task) (ts : TaskSet) (h : rmOrdered (t :: ts)) :
+    rmOrdered ts := by
+  cases ts with
+  | nil => simp [rmOrdered]
+  | cons t2 ts2 =>
+    exact h.2
+
 /-- Rate Monotonic assigns priorities correctly: in a properly ordered
     task set, each task has priority >= all subsequent tasks.
     This is optimal for fixed-priority preemptive scheduling of
@@ -163,17 +201,19 @@ theorem priority_ordering_optimal (ts : TaskSet) (h : rmOrdered ts) :
     forall i j, i < j -> j < ts.length ->
     (ts.get ⟨i, by omega⟩).period <= (ts.get ⟨j, by omega⟩).period := by
   intro i j hij hjlen
-  induction ts with
+  induction ts generalizing i j with
   | nil => simp at hjlen
   | cons t ts ih =>
     match i, j with
     | 0, 0 => omega
     | 0, j + 1 =>
-      -- First element has shortest period
-      sorry -- requires induction on rmOrdered chain
+      -- First element has shortest period among all subsequent elements
+      simp [List.get]
+      exact rmOrdered_head_le t ts h j (by simp at hjlen; omega)
     | i + 1, j + 1 =>
       -- Reduce to tail
-      sorry -- structural induction step
+      simp [List.get]
+      exact ih (rmOrdered_tail t ts h) i j (by omega) (by simp at hjlen ⊢; omega)
 
 /-- Swapping two tasks that violate RM order cannot improve schedulability. -/
 theorem rm_swap_optimality (t1 t2 : Task)
