@@ -2708,3 +2708,899 @@ artifacts:
         target: SWREQ-TL-TH06
       - type: function-maps-to
         target: PROV-TL-001
+
+  # ── Software architecture — Heap (SWE.2) ──────────────────────────────
+
+  - id: SWARCH-HP-001
+    type: sw-arch-component
+    title: Heap module (gale::heap)
+    status: approved
+    description: >
+      Sys_heap chunk allocator model with init/alloc/free/aligned_alloc/
+      split/merge/coalesce_free/realloc. Tracks aggregate chunk counts
+      and allocated bytes. No unsafe code. no_std compatible.
+    tags: [heap, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "Heap::init(capacity, overhead) -> Result<Self, i32>"
+          - "Heap::alloc(bytes) -> Result<u32, i32>"
+          - "Heap::free(bytes) -> i32"
+          - "Heap::aligned_alloc(bytes, align) -> Result<u32, i32>"
+          - "Heap::split(left_bytes, total_bytes) -> i32"
+          - "Heap::merge() -> i32"
+          - "Heap::coalesce_free(bytes, merge_left, merge_right) -> i32"
+          - "Heap::realloc(old_bytes, new_bytes) -> Result<u32, i32>"
+        required:
+          - "gale::error::{OK, EINVAL, ENOMEM}"
+      concurrency: "single-threaded (model — Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-HP-HP01
+      - type: allocated-from
+        target: SWREQ-HP-HP02
+      - type: allocated-from
+        target: SWREQ-HP-HP03
+      - type: replaces
+        target: PROV-HP-001
+
+  - id: SWDD-HP-INIT
+    type: sw-detail-design
+    title: "Heap::init — sys_heap_init port"
+    status: approved
+    description: >
+      Validates capacity > 0 and overhead < capacity.
+      Constructs Heap with 2 chunks (metadata + 1 free).
+      C source: lib/heap/heap.c lines 528-592.
+    tags: [heap, init]
+    fields:
+      unit: src/heap.rs
+      function: "Heap::init"
+      algorithm: >
+        if capacity == 0 || overhead == 0 || overhead >= capacity: Err(EINVAL).
+        Ok(Heap { capacity, allocated_bytes: overhead, total_chunks: 2, free_chunks: 1, next_slot_id: 1 })
+    links:
+      - type: refines
+        target: SWARCH-HP-001
+      - type: satisfies
+        target: SWREQ-HP-HP01
+      - type: satisfies
+        target: SWREQ-HP-HP02
+      - type: function-maps-to
+        target: PROV-HP-001
+
+  - id: SWDD-HP-ALLOC
+    type: sw-detail-design
+    title: "Heap::alloc — sys_heap_alloc port"
+    status: approved
+    description: >
+      Check free chunks > 0 and bytes <= free capacity.
+      Allocate slot ID, update counts.
+      C source: lib/heap/heap.c lines 266-303.
+    tags: [heap, alloc]
+    fields:
+      unit: src/heap.rs
+      function: "Heap::alloc"
+      algorithm: >
+        if free_chunks == 0 || bytes > capacity - allocated: Err(ENOMEM).
+        allocated += bytes; free_chunks -= 1; Ok(next_slot_id++)
+    links:
+      - type: refines
+        target: SWARCH-HP-001
+      - type: satisfies
+        target: SWREQ-HP-HP03
+      - type: satisfies
+        target: SWREQ-HP-HP05
+      - type: satisfies
+        target: SWREQ-HP-HP07
+      - type: function-maps-to
+        target: PROV-HP-001
+
+  - id: SWDD-HP-FREE
+    type: sw-detail-design
+    title: "Heap::free — sys_heap_free port"
+    status: approved
+    description: >
+      Validate double-free and underflow, then return bytes to pool.
+      C source: lib/heap/heap.c lines 166-201.
+    tags: [heap, free]
+    fields:
+      unit: src/heap.rs
+      function: "Heap::free"
+      algorithm: >
+        if free_chunks >= total_chunks: EINVAL (double-free).
+        if bytes > allocated: EINVAL.
+        allocated -= bytes; free_chunks += 1; OK
+    links:
+      - type: refines
+        target: SWARCH-HP-001
+      - type: satisfies
+        target: SWREQ-HP-HP04
+      - type: satisfies
+        target: SWREQ-HP-HP05
+      - type: function-maps-to
+        target: PROV-HP-001
+
+  # ── Software architecture — MemDomain (SWE.2) ─────────────────────────
+
+  - id: SWARCH-MD-001
+    type: sw-arch-component
+    title: Memory domain module (gale::mem_domain)
+    status: approved
+    description: >
+      Memory domain partition manager with init/add_partition/remove_partition.
+      Maintains non-overlap invariant across up to 16 partition slots.
+      No unsafe code. no_std compatible.
+    tags: [mem-domain, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "MemDomain::init() -> Self"
+          - "MemDomain::add_partition(part) -> Result<u32, i32>"
+          - "MemDomain::remove_partition(start, size) -> Result<u32, i32>"
+          - "MemDomain::contains_addr(addr) -> bool"
+        required:
+          - "gale::error::{OK, EINVAL, ENOSPC, ENOENT}"
+      concurrency: "single-threaded (model — Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-MD-MD01
+      - type: allocated-from
+        target: SWREQ-MD-MD04
+      - type: replaces
+        target: PROV-MD-001
+
+  - id: SWDD-MD-ADD
+    type: sw-detail-design
+    title: "MemDomain::add_partition — k_mem_domain_add_partition port"
+    status: approved
+    description: >
+      Validate partition (size > 0, no overflow, no overlap with existing).
+      Find free slot, place partition, increment count.
+      C source: kernel/mem_domain.c lines 208-259.
+    tags: [mem-domain, add]
+    fields:
+      unit: src/mem_domain.rs
+      function: "MemDomain::add_partition"
+      algorithm: >
+        check_add_partition(part); find slot with size==0; place partition; num_partitions++
+    links:
+      - type: refines
+        target: SWARCH-MD-001
+      - type: satisfies
+        target: SWREQ-MD-MD01
+      - type: satisfies
+        target: SWREQ-MD-MD05
+      - type: satisfies
+        target: SWREQ-MD-MD06
+      - type: function-maps-to
+        target: PROV-MD-001
+
+  # ── Software architecture — Spinlock (SWE.2) ──────────────────────────
+
+  - id: SWARCH-SL-001
+    type: sw-arch-component
+    title: Spinlock module (gale::spinlock)
+    status: approved
+    description: >
+      Spinlock ownership and nesting discipline model with init/acquire/
+      acquire_nested/release. Tracks owner identity, nesting depth,
+      and IRQ state. No unsafe code. no_std compatible.
+    tags: [spinlock, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "SpinlockState::init() -> Self"
+          - "SpinlockState::acquire(tid) -> i32"
+          - "SpinlockState::acquire_nested(tid) -> i32"
+          - "SpinlockState::release(tid) -> i32"
+          - "SpinlockState::is_held() -> bool"
+        required:
+          - "gale::error::{OK, EBUSY, EPERM}"
+      concurrency: "single-threaded (model — hardware provides actual atomicity)"
+    links:
+      - type: allocated-from
+        target: SWREQ-SL-SL01
+      - type: allocated-from
+        target: SWREQ-SL-SL02
+      - type: replaces
+        target: PROV-SL-001
+
+  - id: SWDD-SL-ACQUIRE
+    type: sw-detail-design
+    title: "SpinlockState::acquire — z_spin_lock_valid/set_owner port"
+    status: approved
+    description: >
+      Acquire if free (owner=None). Set owner, nest_count=1, irq_saved=true.
+      C source: kernel/spinlock_validate.c lines 10-42.
+    tags: [spinlock, acquire]
+    fields:
+      unit: src/spinlock.rs
+      function: "SpinlockState::acquire"
+      algorithm: >
+        if owner.is_some(): EBUSY.
+        owner = Some(tid); nest_count = 1; irq_saved = true; OK
+    links:
+      - type: refines
+        target: SWARCH-SL-001
+      - type: satisfies
+        target: SWREQ-SL-SL01
+      - type: satisfies
+        target: SWREQ-SL-SL05
+      - type: function-maps-to
+        target: PROV-SL-001
+
+  - id: SWDD-SL-RELEASE
+    type: sw-detail-design
+    title: "SpinlockState::release — z_spin_unlock_valid port"
+    status: approved
+    description: >
+      Release by owner only. Decrement nest_count. If 0, clear owner.
+      C source: kernel/spinlock_validate.c lines 23-37.
+    tags: [spinlock, release]
+    fields:
+      unit: src/spinlock.rs
+      function: "SpinlockState::release"
+      algorithm: >
+        if owner != Some(tid): EPERM.
+        if nest_count == 1: owner=None, nest=0.
+        else: nest_count -= 1.
+    links:
+      - type: refines
+        target: SWARCH-SL-001
+      - type: satisfies
+        target: SWREQ-SL-SL02
+      - type: satisfies
+        target: SWREQ-SL-SL03
+      - type: satisfies
+        target: SWREQ-SL-SL04
+      - type: function-maps-to
+        target: PROV-SL-001
+
+  # ── Software architecture — Atomic (SWE.2) ────────────────────────────
+
+  - id: SWARCH-AT-001
+    type: sw-arch-component
+    title: Atomic module (gale::atomic)
+    status: approved
+    description: >
+      Atomic value model with get/set/add/sub/or/and/xor/nand/cas/
+      test_and_set/clear/inc/dec. Models wrapping u32 arithmetic.
+      No unsafe code. no_std compatible.
+    tags: [atomic, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "AtomicVal::new(initial) -> Self"
+          - "AtomicVal::add(value) -> u32"
+          - "AtomicVal::sub(value) -> u32"
+          - "AtomicVal::cas(expected, new_value) -> bool"
+          - "AtomicVal::test_and_set() -> u32"
+        required:
+          - "gale::error::{OK, EINVAL}"
+      concurrency: "single-threaded (model — Zephyr provides spinlock atomicity)"
+    links:
+      - type: allocated-from
+        target: SWREQ-AT-AT01
+      - type: allocated-from
+        target: SWREQ-AT-AT03
+      - type: replaces
+        target: PROV-AT-001
+
+  - id: SWDD-AT-CAS
+    type: sw-detail-design
+    title: "AtomicVal::cas — z_impl_atomic_cas port"
+    status: approved
+    description: >
+      If current == expected: store new_value, return true.
+      Else: leave unchanged, return false.
+      C source: kernel/atomic_c.c lines 88-108.
+    tags: [atomic, cas]
+    fields:
+      unit: src/atomic.rs
+      function: "AtomicVal::cas"
+      algorithm: >
+        if val == expected: val = new_value; true.
+        else: false.
+    links:
+      - type: refines
+        target: SWARCH-AT-001
+      - type: satisfies
+        target: SWREQ-AT-AT03
+      - type: satisfies
+        target: SWREQ-AT-AT04
+      - type: function-maps-to
+        target: PROV-AT-001
+
+  # ── Software architecture — StackConfig (SWE.2) ───────────────────────
+
+  - id: SWARCH-SKS-001
+    type: sw-arch-component
+    title: Stack config module (gale::stack_config)
+    status: approved
+    description: >
+      Thread stack geometry validator with validate/usable_size/top/
+      usable_start/is_valid_sp/is_in_guard. Validates alignment,
+      guard region, and overflow constraints. No unsafe code.
+    tags: [stack-config, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "StackConfig::validate(base, size, guard_size, alignment) -> Result<Self, i32>"
+          - "StackConfig::usable_size() -> u32"
+          - "StackConfig::is_valid_sp(sp) -> bool"
+          - "StackConfig::is_in_guard(sp) -> bool"
+        required:
+          - "gale::error::{OK, EINVAL}"
+      concurrency: "single-threaded (validation only)"
+    links:
+      - type: allocated-from
+        target: SWREQ-SKS-SK01
+      - type: allocated-from
+        target: SWREQ-SKS-SK03
+      - type: replaces
+        target: PROV-SKS-001
+
+  - id: SWDD-SKS-VALIDATE
+    type: sw-detail-design
+    title: "StackConfig::validate — setup_thread_stack port"
+    status: approved
+    description: >
+      Validate alignment (power of 2), size (aligned, positive),
+      guard_size (< size), and base+size (no overflow).
+      C source: kernel/thread.c lines 383-470.
+    tags: [stack-config, validate]
+    fields:
+      unit: src/stack_config.rs
+      function: "StackConfig::validate"
+      algorithm: >
+        check alignment power-of-2; check size > 0 && size % alignment == 0;
+        check guard_size < size; check base + size <= u32::MAX
+    links:
+      - type: refines
+        target: SWARCH-SKS-001
+      - type: satisfies
+        target: SWREQ-SKS-SK01
+      - type: satisfies
+        target: SWREQ-SKS-SK02
+      - type: satisfies
+        target: SWREQ-SKS-SK03
+      - type: satisfies
+        target: SWREQ-SKS-SK04
+      - type: satisfies
+        target: SWREQ-SKS-SK05
+      - type: function-maps-to
+        target: PROV-SKS-001
+
+  # ── Software architecture — DeviceInit (SWE.2) ────────────────────────
+
+  - id: SWARCH-DI-001
+    type: sw-arch-component
+    title: Device init module (gale::device_init)
+    status: approved
+    description: >
+      Device initialization ordering model with init/init_device/
+      advance_level/check_deps_satisfied/is_device_ready.
+      Tracks init levels, device state, and dependencies.
+      No unsafe code. no_std compatible.
+    tags: [device-init, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "DeviceInitState::init(total_devices) -> Result<Self, i32>"
+          - "DeviceInitState::init_device(dev, success) -> i32"
+          - "DeviceInitState::advance_level() -> i32"
+          - "DeviceInitState::check_deps_satisfied(dev, devices) -> bool"
+        required:
+          - "gale::error::{OK, EINVAL, EBUSY}"
+      concurrency: "single-threaded (init sequence is sequential)"
+    links:
+      - type: allocated-from
+        target: SWREQ-DI-DI01
+      - type: allocated-from
+        target: SWREQ-DI-DI05
+      - type: replaces
+        target: PROV-DI-001
+
+  - id: SWDD-DI-INIT-DEVICE
+    type: sw-detail-design
+    title: "DeviceInitState::init_device — do_device_init port"
+    status: approved
+    description: >
+      Reject double-init (EBUSY). Check level ordering. Call init function
+      and record result. Increment initialized count.
+      C source: kernel/device.c lines 18-61.
+    tags: [device-init, init]
+    fields:
+      unit: src/device_init.rs
+      function: "DeviceInitState::init_device"
+      algorithm: >
+        if dev.initialized: EBUSY.
+        if dev.level < current_level: EINVAL.
+        dev.initialized = true; dev.init_res = success ? 0 : 1; num_initialized++
+    links:
+      - type: refines
+        target: SWARCH-DI-001
+      - type: satisfies
+        target: SWREQ-DI-DI01
+      - type: satisfies
+        target: SWREQ-DI-DI02
+      - type: satisfies
+        target: SWREQ-DI-DI05
+      - type: function-maps-to
+        target: PROV-DI-001
+
+  # ── Software architecture — FaultDecode (SWE.2) ───────────────────────
+
+  - id: SWARCH-FD-001
+    type: sw-arch-component
+    title: Fault decode module (gale::fault_decode)
+    status: approved
+    description: >
+      ARM Cortex-M fault register decode model with classify/mmfar_checked/
+      bfar_checked/is_escalated and individual bit checks.
+      Exhaustive CFSR/HFSR decode. No unsafe code. no_std compatible.
+    tags: [fault-decode, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "CortexMFault::new(cfsr, hfsr, mmfar, bfar) -> Self"
+          - "CortexMFault::classify() -> FaultCategory"
+          - "CortexMFault::mmfar_checked() -> Option<u32>"
+          - "CortexMFault::bfar_checked() -> Option<u32>"
+          - "CortexMFault::is_escalated() -> bool"
+        required: []
+      concurrency: "single-threaded (fault analysis is post-fault)"
+    links:
+      - type: allocated-from
+        target: SWREQ-FD-FH01
+      - type: allocated-from
+        target: SWREQ-FD-FH02
+      - type: replaces
+        target: PROV-FD-001
+
+  - id: SWDD-FD-CLASSIFY
+    type: sw-detail-design
+    title: "CortexMFault::classify — fault classification"
+    status: approved
+    description: >
+      Priority-ordered classification: HardFault (HFSR) > MemManage
+      (CFSR 0-7) > BusFault (CFSR 8-15) > UsageFault (CFSR 16-31) > None.
+    tags: [fault-decode, classify]
+    fields:
+      unit: src/fault_decode.rs
+      function: "CortexMFault::classify"
+      algorithm: >
+        if HFSR FORCED|VECTTBL: HardFault.
+        elif CFSR[0:7]: MemManage. elif CFSR[8:15]: BusFault.
+        elif CFSR[16:31]: UsageFault. else: None.
+    links:
+      - type: refines
+        target: SWARCH-FD-001
+      - type: satisfies
+        target: SWREQ-FD-FH01
+      - type: satisfies
+        target: SWREQ-FD-FH03
+      - type: function-maps-to
+        target: PROV-FD-001
+
+  # ── Software architecture — RingBuf (SWE.2) ───────────────────────────
+
+  - id: SWARCH-RB-001
+    type: sw-arch-component
+    title: Ring buffer module (gale::ring_buf)
+    status: approved
+    description: >
+      Lock-free ring buffer index model with init/put/get/put_n/get_n/
+      peek_at/reset. Tracks head, tail, size with modular arithmetic.
+      No unsafe code. no_std compatible.
+    tags: [ring-buf, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "RingBuf::init(capacity) -> Result<Self, i32>"
+          - "RingBuf::put() -> Result<u32, i32>"
+          - "RingBuf::get() -> Result<u32, i32>"
+          - "RingBuf::put_n(count) -> u32"
+          - "RingBuf::get_n(count) -> u32"
+          - "RingBuf::peek_at(idx) -> Result<u32, i32>"
+          - "RingBuf::reset()"
+        required:
+          - "gale::error::{OK, EINVAL, EAGAIN}"
+      concurrency: "single-threaded (model — Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-RB-RB01
+      - type: allocated-from
+        target: SWREQ-RB-RB03
+      - type: replaces
+        target: PROV-RB-001
+
+  - id: SWDD-RB-PUT
+    type: sw-detail-design
+    title: "RingBuf::put — ring_buf_put port"
+    status: approved
+    description: >
+      If full: return EAGAIN. Else: record tail slot, advance tail
+      with wrap, increment size.
+      C source: lib/utils/ring_buffer.c lines 53-76.
+    tags: [ring-buf, put]
+    fields:
+      unit: src/ring_buf.rs
+      function: "RingBuf::put"
+      algorithm: >
+        if size >= capacity: Err(EAGAIN).
+        slot = tail; tail = next_idx(tail); size += 1; Ok(slot)
+    links:
+      - type: refines
+        target: SWARCH-RB-001
+      - type: satisfies
+        target: SWREQ-RB-RB03
+      - type: satisfies
+        target: SWREQ-RB-RB05
+      - type: function-maps-to
+        target: PROV-RB-001
+
+  - id: SWDD-RB-GET
+    type: sw-detail-design
+    title: "RingBuf::get — ring_buf_get port"
+    status: approved
+    description: >
+      If empty: return EAGAIN. Else: record head slot, advance head
+      with wrap, decrement size.
+      C source: lib/utils/ring_buffer.c lines 78-103.
+    tags: [ring-buf, get]
+    fields:
+      unit: src/ring_buf.rs
+      function: "RingBuf::get"
+      algorithm: >
+        if size == 0: Err(EAGAIN).
+        slot = head; head = next_idx(head); size -= 1; Ok(slot)
+    links:
+      - type: refines
+        target: SWARCH-RB-001
+      - type: satisfies
+        target: SWREQ-RB-RB04
+      - type: satisfies
+        target: SWREQ-RB-RB06
+      - type: function-maps-to
+        target: PROV-RB-001
+
+  # ── Software architecture — Userspace (SWE.2) ─────────────────────────
+
+  - id: SWARCH-US-001
+    type: sw-arch-component
+    title: Userspace module (gale::userspace)
+    status: approved
+    description: >
+      Kernel object permission model with grant_access/revoke_access/
+      check_access/validate/init_object/uninit_object/recycle/make_public.
+      Tracks per-thread permission bitmask and object flags.
+      No unsafe code. no_std compatible.
+    tags: [userspace, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "KernelObject::new(obj_type) -> Self"
+          - "KernelObject::grant_access(tid) -> i32"
+          - "KernelObject::revoke_access(tid) -> i32"
+          - "KernelObject::check_access(tid, is_supervisor) -> bool"
+          - "KernelObject::validate(expected_type, tid, is_supervisor, init_check) -> Result<(), i32>"
+          - "KernelObject::recycle(current_tid) -> i32"
+        required:
+          - "gale::error::{OK, EINVAL, EBADF, EPERM, EADDRINUSE}"
+      concurrency: "single-threaded (model — Zephyr provides spinlock)"
+    links:
+      - type: allocated-from
+        target: SWREQ-US-US01
+      - type: allocated-from
+        target: SWREQ-US-US04
+      - type: replaces
+        target: PROV-US-001
+
+  - id: SWDD-US-VALIDATE
+    type: sw-detail-design
+    title: "KernelObject::validate — k_object_validate port"
+    status: approved
+    description: >
+      1. Type check (EBADF if mismatch, unless Any).
+      2. Permission check (EPERM if no access).
+      3. Initialization check (EINVAL/EADDRINUSE based on mode).
+      C source: kernel/userspace.c lines 754-785.
+    tags: [userspace, validate]
+    fields:
+      unit: src/userspace.rs
+      function: "KernelObject::validate"
+      algorithm: >
+        if type mismatch: Err(EBADF).
+        if !check_access: Err(EPERM).
+        if MustBeInit && !initialized: Err(EINVAL).
+        if MustNotBeInit && initialized: Err(EADDRINUSE).
+        Ok(())
+    links:
+      - type: refines
+        target: SWARCH-US-001
+      - type: satisfies
+        target: SWREQ-US-US01
+      - type: satisfies
+        target: SWREQ-US-US04
+      - type: satisfies
+        target: SWREQ-US-US05
+      - type: satisfies
+        target: SWREQ-US-US07
+      - type: function-maps-to
+        target: PROV-US-001
+
+  # ── Software architecture — Work (SWE.2) ──────────────────────────────
+
+  - id: SWARCH-WK-001
+    type: sw-arch-component
+    title: Work module (gale::work)
+    status: approved
+    description: >
+      Work item state machine model with init/submit/start_running/
+      finish_running/cancel/finish_cancel. Tracks RUNNING, CANCELING,
+      QUEUED, FLUSHING flags. No unsafe code. no_std compatible.
+    tags: [work, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "WorkItem::init() -> Self"
+          - "WorkItem::submit() -> i32"
+          - "WorkItem::cancel() -> u8"
+          - "WorkItem::start_running()"
+          - "WorkItem::finish_running()"
+          - "WorkItem::busy_get() -> u8"
+        required:
+          - "gale::error::{OK, EBUSY}"
+      concurrency: "single-threaded (model — Zephyr provides spinlock)"
+    links:
+      - type: allocated-from
+        target: SWREQ-WK-WK01
+      - type: allocated-from
+        target: SWREQ-WK-WK02
+      - type: replaces
+        target: PROV-WK-001
+
+  - id: SWDD-WK-SUBMIT
+    type: sw-detail-design
+    title: "WorkItem::submit — submit_to_queue_locked port"
+    status: approved
+    description: >
+      If CANCELING: return EBUSY. If QUEUED: return 0 (idempotent).
+      Else: set QUEUED flag, return 1 (new) or 2 (re-queued while running).
+      C source: kernel/work.c lines 320-365.
+    tags: [work, submit]
+    fields:
+      unit: src/work.rs
+      function: "WorkItem::submit"
+      algorithm: >
+        if CANCELING: EBUSY.
+        if QUEUED: 0.
+        flags |= FLAG_QUEUED; if was_running: 2 else: 1
+    links:
+      - type: refines
+        target: SWARCH-WK-001
+      - type: satisfies
+        target: SWREQ-WK-WK02
+      - type: satisfies
+        target: SWREQ-WK-WK03
+      - type: satisfies
+        target: SWREQ-WK-WK04
+      - type: function-maps-to
+        target: PROV-WK-001
+
+  # ── Software architecture — Fatal (SWE.2) ─────────────────────────────
+
+  - id: SWARCH-FT-001
+    type: sw-arch-component
+    title: Fatal module (gale::fatal)
+    status: approved
+    description: >
+      Fatal error classification model with classify/from_code/is_panic.
+      Maps reason codes to recovery actions based on context and mode.
+      No unsafe code. no_std compatible.
+    tags: [fatal, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "FatalError::new(reason, context, test_mode) -> Self"
+          - "FatalError::classify() -> RecoveryAction"
+          - "FatalError::from_code(code) -> Option<FatalReason>"
+          - "FatalError::is_panic() -> bool"
+        required: []
+      concurrency: "single-threaded (fatal handling is non-concurrent)"
+    links:
+      - type: allocated-from
+        target: SWREQ-FT-FT01
+      - type: allocated-from
+        target: SWREQ-FT-FT02
+      - type: replaces
+        target: PROV-FT-001
+
+  - id: SWDD-FT-CLASSIFY
+    type: sw-detail-design
+    title: "FatalError::classify — z_fatal_error port"
+    status: approved
+    description: >
+      Decision tree: production mode: panic -> Halt, ISR non-stack -> Halt,
+      thread -> AbortThread, stack_check -> AbortThread.
+      Test mode: ISR -> Ignore (except stack -> AbortThread),
+      thread -> AbortThread.
+      C source: kernel/fatal.c lines 85-179.
+    tags: [fatal, classify]
+    fields:
+      unit: src/fatal.rs
+      function: "FatalError::classify"
+      algorithm: >
+        if !test_mode: match reason/context for Halt/AbortThread.
+        if test_mode: ISR -> Ignore (stack -> AbortThread), thread -> AbortThread.
+    links:
+      - type: refines
+        target: SWARCH-FT-001
+      - type: satisfies
+        target: SWREQ-FT-FT02
+      - type: satisfies
+        target: SWREQ-FT-FT03
+      - type: function-maps-to
+        target: PROV-FT-001
+
+  # ── Software architecture — MemPool (SWE.2) ───────────────────────────
+
+  - id: SWARCH-MP-001
+    type: sw-arch-component
+    title: Memory pool module (gale::mempool)
+    status: approved
+    description: >
+      Fixed-block memory pool model with init/alloc/free/alloc_many/free_many.
+      Tracks allocation count against capacity. No unsafe code. no_std compatible.
+    tags: [mempool, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "MemPool::init(capacity, block_size) -> Result<Self, i32>"
+          - "MemPool::alloc() -> i32"
+          - "MemPool::free() -> i32"
+          - "MemPool::alloc_many(count) -> i32"
+          - "MemPool::free_many(count) -> i32"
+        required:
+          - "gale::error::{OK, EINVAL, ENOMEM}"
+      concurrency: "single-threaded (model — Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-MP-MP01
+      - type: allocated-from
+        target: SWREQ-MP-MP02
+      - type: replaces
+        target: PROV-MP-001
+
+  - id: SWDD-MP-ALLOC
+    type: sw-detail-design
+    title: "MemPool::alloc — pool alloc port"
+    status: approved
+    description: >
+      If allocated < capacity: allocated++, OK.
+      If full: ENOMEM.
+    tags: [mempool, alloc]
+    fields:
+      unit: src/mempool.rs
+      function: "MemPool::alloc"
+      algorithm: >
+        if allocated < capacity: allocated += 1; OK.
+        else: ENOMEM.
+    links:
+      - type: refines
+        target: SWARCH-MP-001
+      - type: satisfies
+        target: SWREQ-MP-MP02
+      - type: satisfies
+        target: SWREQ-MP-MP03
+      - type: function-maps-to
+        target: PROV-MP-001
+
+  # ── Software architecture — Dynamic (SWE.2) ───────────────────────────
+
+  - id: SWARCH-DY-001
+    type: sw-arch-component
+    title: Dynamic pool module (gale::dynamic)
+    status: approved
+    description: >
+      Dynamic thread pool model with init/alloc/free/can_serve.
+      Tracks active stack count against pool maximum.
+      No unsafe code. no_std compatible.
+    tags: [dynamic, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "DynamicPool::init(max_threads, stack_size) -> Result<Self, i32>"
+          - "DynamicPool::alloc() -> i32"
+          - "DynamicPool::free() -> i32"
+          - "DynamicPool::can_serve(requested_size) -> bool"
+        required:
+          - "gale::error::{OK, EINVAL, ENOMEM}"
+      concurrency: "single-threaded (model — Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-DY-DY01
+      - type: allocated-from
+        target: SWREQ-DY-DY02
+      - type: replaces
+        target: PROV-DY-001
+
+  - id: SWDD-DY-ALLOC
+    type: sw-detail-design
+    title: "DynamicPool::alloc — z_thread_stack_alloc_pool port"
+    status: approved
+    description: >
+      If active < max_threads: active++, OK.
+      If full: ENOMEM.
+      C source: kernel/dynamic.c lines 34-57.
+    tags: [dynamic, alloc]
+    fields:
+      unit: src/dynamic.rs
+      function: "DynamicPool::alloc"
+      algorithm: >
+        if active < max_threads: active += 1; OK.
+        else: ENOMEM.
+    links:
+      - type: refines
+        target: SWARCH-DY-001
+      - type: satisfies
+        target: SWREQ-DY-DY02
+      - type: satisfies
+        target: SWREQ-DY-DY03
+      - type: function-maps-to
+        target: PROV-DY-001
+
+  # ── Software architecture — SmpState (SWE.2) ──────────────────────────
+
+  - id: SWARCH-SM-001
+    type: sw-arch-component
+    title: SMP state module (gale::smp_state)
+    status: approved
+    description: >
+      SMP CPU lifecycle model with init/start_cpu/stop_cpu/resume_cpu/
+      global_lock/global_unlock. Tracks active CPU count and global
+      lock reference count. No unsafe code. no_std compatible.
+    tags: [smp, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "SmpState::init(max_cpus) -> Result<Self, i32>"
+          - "SmpState::start_cpu() -> i32"
+          - "SmpState::stop_cpu() -> i32"
+          - "SmpState::resume_cpu() -> i32"
+          - "SmpState::global_lock() -> i32"
+          - "SmpState::global_unlock() -> i32"
+        required:
+          - "gale::error::{OK, EINVAL, EBUSY}"
+      concurrency: "single-threaded (model — actual SMP uses IPIs)"
+    links:
+      - type: allocated-from
+        target: SWREQ-SM-SM01
+      - type: allocated-from
+        target: SWREQ-SM-SM02
+      - type: replaces
+        target: PROV-SM-001
+
+  - id: SWDD-SM-START
+    type: sw-detail-design
+    title: "SmpState::start_cpu — k_smp_cpu_start port"
+    status: approved
+    description: >
+      If active < max: active++, OK. If all active: EBUSY.
+      C source: kernel/smp.c lines 170-194.
+    tags: [smp, start]
+    fields:
+      unit: src/smp_state.rs
+      function: "SmpState::start_cpu"
+      algorithm: >
+        if active_cpus < max_cpus: active_cpus += 1; OK.
+        else: EBUSY.
+    links:
+      - type: refines
+        target: SWARCH-SM-001
+      - type: satisfies
+        target: SWREQ-SM-SM02
+      - type: function-maps-to
+        target: PROV-SM-001

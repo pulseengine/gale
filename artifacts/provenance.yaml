@@ -546,3 +546,371 @@ artifacts:
       gale-file: plain/src/thread_lifecycle.rs
       gale-module: gale::thread_lifecycle
       scope: partial-functions
+
+  - id: PROV-HP-001
+    type: source-provenance
+    title: "Zephyr lib/heap/heap.c — sys_heap chunk allocator"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's sys_heap allocator.
+      Contains sys_heap_init, sys_heap_alloc, sys_heap_free,
+      sys_heap_aligned_alloc, split_chunks, merge_chunks,
+      free_chunk (coalesce), sys_heap_realloc.
+      The Gale port models chunk-level allocation invariants
+      only — actual free-list traversal stays in C.
+    tags: [upstream, heap, lib]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: lib/heap/heap.c
+      upstream-sha256: "11287b665b9e85df047e295b744151e7dbf87644d5a6aaefe72b05eec3c4bd4c"
+      upstream-lines: 592
+      upstream-functions:
+        - "sys_heap_init (lines 528-592)"
+        - "sys_heap_alloc (lines 266-303)"
+        - "sys_heap_free (lines 166-201)"
+        - "sys_heap_aligned_alloc (lines 312-388)"
+        - "split_chunks (lines 112-125)"
+        - "merge_chunks (lines 128-134)"
+        - "free_chunk (lines 136-152)"
+        - "sys_heap_realloc (lines 467-492)"
+      gale-file: src/heap.rs
+      gale-module: gale::heap
+      scope: partial-functions
+
+  - id: PROV-MD-001
+    type: source-provenance
+    title: "Zephyr kernel/mem_domain.c — memory domain partition management"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's memory domain subsystem.
+      Contains check_add_partition, k_mem_domain_init,
+      k_mem_domain_add_partition, k_mem_domain_remove_partition.
+      The Gale port models partition slot arithmetic and
+      non-overlap invariant only — MPU/MMU programming stays in C.
+    tags: [upstream, mem-domain, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/mem_domain.c
+      upstream-sha256: "ee9d203a677fc2f12809ad769bea87b75e4904ad0fd7b13d33f7b35e36909c04"
+      upstream-lines: 424
+      upstream-functions:
+        - "check_add_partition (lines 24-86)"
+        - "k_mem_domain_init (lines 88-160)"
+        - "k_mem_domain_add_partition (lines 208-259)"
+        - "k_mem_domain_remove_partition (lines 261-306)"
+      gale-file: src/mem_domain.rs
+      gale-module: gale::mem_domain
+      scope: partial-functions
+
+  - id: PROV-SL-001
+    type: source-provenance
+    title: "Zephyr kernel/spinlock_validate.c — spinlock validation"
+    status: approved
+    description: >
+      The spinlock validation layer of Zephyr's spinlock.
+      Contains z_spin_lock_valid, z_spin_unlock_valid,
+      z_spin_lock_set_owner. The Gale port models ownership
+      and nesting discipline only — hardware atomics stay in C.
+    tags: [upstream, spinlock, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/spinlock_validate.c
+      upstream-sha256: "7381c74097cce8994361406057e0bd1271d884ec08c30d22b859731725929b17"
+      upstream-lines: 52
+      upstream-functions:
+        - "z_spin_lock_valid (lines 10-20)"
+        - "z_spin_unlock_valid (lines 23-37)"
+        - "z_spin_lock_set_owner (lines 39-42)"
+      gale-file: src/spinlock.rs
+      gale-module: gale::spinlock
+      scope: partial-functions
+
+  - id: PROV-AT-001
+    type: source-provenance
+    title: "Zephyr kernel/atomic_c.c — software atomic operations"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's software-based atomic
+      operations. Contains atomic_get, z_impl_atomic_set,
+      z_impl_atomic_add, z_impl_atomic_sub, z_impl_atomic_or,
+      z_impl_atomic_and, z_impl_atomic_xor, z_impl_atomic_nand,
+      z_impl_atomic_cas. The Gale port models value transformation
+      semantics only — spinlock-based atomicity stays in C.
+    tags: [upstream, atomic, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/atomic_c.c
+      upstream-sha256: "cdeade908ca2ce57fdab5f5d3da5a9ff035a59474c8d251a0577108ed02fef01"
+      upstream-lines: 414
+      upstream-functions:
+        - "atomic_get (lines 233-236)"
+        - "z_impl_atomic_set (lines 254-266)"
+        - "z_impl_atomic_add (lines 178-191)"
+        - "z_impl_atomic_sub (lines 209-222)"
+        - "z_impl_atomic_or (lines 285-297)"
+        - "z_impl_atomic_and (lines 339-351)"
+        - "z_impl_atomic_xor (lines 312-324)"
+        - "z_impl_atomic_nand (lines 366-378)"
+        - "z_impl_atomic_cas (lines 88-108)"
+      gale-file: src/atomic.rs
+      gale-module: gale::atomic
+      scope: partial-functions
+
+  - id: PROV-SKS-001
+    type: source-provenance
+    title: "Zephyr kernel/thread.c — thread stack setup"
+    status: approved
+    description: >
+      Stack geometry validation from Zephyr's thread creation.
+      Contains setup_thread_stack (lines 383-470) including
+      K_THREAD_STACK_LEN, K_THREAD_STACK_BUFFER,
+      K_THREAD_STACK_RESERVED, and STACK_SENTINEL checks.
+      The Gale port models stack geometry validation only.
+    tags: [upstream, stack-config, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/thread.c
+      upstream-sha256: "40d700460d80b408f5a1d8b090e34186c3bca5be2019f1d0c53863c58a24dcd0"
+      upstream-lines: 1367
+      upstream-functions:
+        - "setup_thread_stack (lines 383-470)"
+        - "z_check_stack_sentinel (lines 317-348)"
+      gale-file: src/stack_config.rs
+      gale-module: gale::stack_config
+      scope: partial-functions
+
+  - id: PROV-DI-001
+    type: source-provenance
+    title: "Zephyr kernel/device.c — device initialization ordering"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's device initialization.
+      Contains do_device_init, z_impl_device_init,
+      z_impl_device_is_ready. The init level ordering is from
+      kernel/init.c z_sys_init_run_level. The Gale port models
+      init level ordering and dependency checking only.
+    tags: [upstream, device-init, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/device.c
+      upstream-sha256: "3bfb8a7855e03bd33cc11eea2220b93977fe5df639fcedc8d076412f95788b4e"
+      upstream-lines: 277
+      upstream-functions:
+        - "do_device_init (lines 18-61)"
+        - "z_impl_device_init (lines 63-70)"
+        - "z_impl_device_is_ready (lines 186-197)"
+      gale-file: src/device_init.rs
+      gale-module: gale::device_init
+      scope: partial-functions
+
+  - id: PROV-FD-001
+    type: source-provenance
+    title: "ARM Cortex-M fault registers — architecture reference"
+    status: approved
+    description: >
+      ARM Cortex-M CFSR/HFSR/MMFAR/BFAR fault register decode.
+      Based on the ARMv7-M Architecture Reference Manual (B3.2.15).
+      No single upstream C file — semantics ported from architecture
+      specification and Zephyr's arch/arm/core/cortex_m/fault.c.
+    tags: [upstream, fault-decode, arch, arm]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: "arch/arm/core/cortex_m/fault.c"
+      upstream-sha256: "n/a — architecture specification, semantics ported not byte-for-byte"
+      upstream-lines: 0
+      upstream-functions:
+        - "z_arm_fault (fault classification)"
+        - "SCB->CFSR decode (MMFSR/BFSR/UFSR)"
+        - "SCB->HFSR decode (FORCED/VECTTBL/DEBUGEVT)"
+      gale-file: src/fault_decode.rs
+      gale-module: gale::fault_decode
+      scope: full-file
+
+  - id: PROV-RB-001
+    type: source-provenance
+    title: "Zephyr lib/utils/ring_buffer.c — ring buffer implementation"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's ring buffer.
+      Contains ring_buf_init, ring_buf_put, ring_buf_get,
+      ring_buf_peek, ring_buf_reset, ring_buf_size_get,
+      ring_buf_space_get. The Gale port models byte-level
+      index arithmetic only — actual buffer memory stays in C.
+    tags: [upstream, ring-buf, lib]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: lib/utils/ring_buffer.c
+      upstream-sha256: "f9b6ce0d0aed74e80164beb61671b144fe6bc1b1093922145c3372cad7ff0fa1"
+      upstream-lines: 234
+      upstream-functions:
+        - "ring_buf_put (lines 53-76)"
+        - "ring_buf_get (lines 78-103)"
+        - "ring_buf_peek (lines 105-130)"
+      gale-file: src/ring_buf.rs
+      gale-module: gale::ring_buf
+      scope: partial-functions
+
+  - id: PROV-US-001
+    type: source-provenance
+    title: "Zephyr kernel/userspace.c — kernel object permissions"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's userspace subsystem.
+      Contains k_object_validate, k_thread_perms_set/clear,
+      thread_perms_test, k_object_init/uninit, k_object_recycle,
+      k_object_access_all_grant. The Gale port models the permission
+      bitmask and object type validation only — gperf lookup,
+      dynamic allocation, and memory copy helpers stay in C.
+    tags: [upstream, userspace, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/userspace.c
+      upstream-sha256: "b26de1f284a48faca5ad64804c9d93354f969ce5071502590a5729116f888bde"
+      upstream-lines: 1039
+      upstream-functions:
+        - "k_object_validate (lines 754-785)"
+        - "k_thread_perms_set (lines 635-642)"
+        - "k_thread_perms_clear (lines 644-652)"
+        - "thread_perms_test (lines 670-683)"
+        - "k_object_init (lines 787-810)"
+        - "k_object_uninit (lines 823-834)"
+        - "k_object_recycle (lines 812-821)"
+        - "k_object_access_all_grant (lines 745-752)"
+      gale-file: src/userspace.rs
+      gale-module: gale::userspace
+      scope: partial-functions
+
+  - id: PROV-WK-001
+    type: source-provenance
+    title: "Zephyr kernel/work.c — work queue state machine"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's work queue subsystem.
+      Contains k_work_init, k_work_busy_get, k_work_submit_to_queue,
+      k_work_cancel, finalize_cancel_locked. The Gale port models
+      the work item state machine only — queue management and
+      handler dispatch stay in C.
+    tags: [upstream, work, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/work.c
+      upstream-sha256: "2398a9026c297849f7430203420e4c4a11ecc1034f1fbef64599d1b9505ff0a6"
+      upstream-lines: 1275
+      upstream-functions:
+        - "k_work_init (lines 153-161)"
+        - "k_work_busy_get (lines 169-177)"
+        - "submit_to_queue_locked (lines 320-365)"
+        - "k_work_cancel (lines 501-520)"
+        - "finalize_cancel_locked (lines 128-151)"
+      gale-file: src/work.rs
+      gale-module: gale::work
+      scope: partial-functions
+
+  - id: PROV-FT-001
+    type: source-provenance
+    title: "Zephyr kernel/fatal.c — fatal error handling"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's fatal error subsystem.
+      Contains z_fatal_error, k_fatal_halt, reason_to_str.
+      The Gale port models fault classification and recovery
+      decision logic only — IRQ lock, coredump, and thread
+      abort stay in C.
+    tags: [upstream, fatal, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/fatal.c
+      upstream-sha256: "63a403ccdf73d0961e7a8d3b586e8a06908b1352ce226073434cdef5298fc30f"
+      upstream-lines: 179
+      upstream-functions:
+        - "z_fatal_error (lines 85-179)"
+        - "reason_to_str (lines 60-76)"
+        - "k_fatal_halt (lines 79-82)"
+      gale-file: src/fatal.rs
+      gale-module: gale::fatal
+      scope: partial-functions
+
+  - id: PROV-MP-001
+    type: source-provenance
+    title: "Zephyr memory pool pattern — fixed-block pool allocator"
+    status: approved
+    description: >
+      Models the fixed-block pool allocator pattern used by
+      CONFIG_DYNAMIC_THREAD_POOL_SIZE and sys_mem_pool. No single
+      upstream C file — the pattern appears in kernel/dynamic.c
+      and lib/heap infrastructure.
+    tags: [upstream, mempool, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: "n/a — pattern, not single file"
+      upstream-sha256: "n/a — pattern model"
+      upstream-lines: 0
+      upstream-functions:
+        - "pool init (block counting)"
+        - "pool alloc (block allocation)"
+        - "pool free (block deallocation)"
+      gale-file: src/mempool.rs
+      gale-module: gale::mempool
+      scope: full-file
+
+  - id: PROV-DY-001
+    type: source-provenance
+    title: "Zephyr kernel/dynamic.c — dynamic thread pool"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's dynamic thread pool.
+      Contains z_thread_stack_alloc_pool, z_impl_k_thread_stack_free.
+      The Gale port models thread stack pool accounting only —
+      bitarray management and actual stack allocation stay in C.
+    tags: [upstream, dynamic, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/dynamic.c
+      upstream-sha256: "1e48af469e72341144d3b2ba81a7ed7b0b76849c3d1aaf4694a0661a0d04a460"
+      upstream-lines: 175
+      upstream-functions:
+        - "z_thread_stack_alloc_pool (lines 34-57)"
+        - "z_impl_k_thread_stack_free (lines 116-158)"
+      gale-file: src/dynamic.rs
+      gale-module: gale::dynamic
+      scope: partial-functions
+
+  - id: PROV-SM-001
+    type: source-provenance
+    title: "Zephyr kernel/smp.c — SMP CPU state management"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's SMP subsystem.
+      Contains z_smp_init, k_smp_cpu_start, k_smp_cpu_resume,
+      z_smp_global_lock, z_smp_global_unlock. The Gale port
+      models CPU state tracking only — IPI signaling and
+      arch CPU start stay in C.
+    tags: [upstream, smp, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/smp.c
+      upstream-sha256: "d51e79060b219169401814309e956dca55f3950d2d57e753d64d9981be413121"
+      upstream-lines: 264
+      upstream-functions:
+        - "z_smp_init (lines 222-241)"
+        - "k_smp_cpu_start (lines 170-194)"
+        - "k_smp_cpu_resume (lines 196-219)"
+        - "z_smp_global_lock (lines 57-70)"
+        - "z_smp_global_unlock (lines 72-83)"
+      gale-file: src/smp_state.rs
+      gale-module: gale::smp_state
+      scope: partial-functions

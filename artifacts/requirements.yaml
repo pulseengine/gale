@@ -22,6 +22,20 @@
 #     → SYSREQ-TS-001  (system) → SWREQ-TS-TS01..TS06 (software)
 #     → SYSREQ-KH-001  (system) → SWREQ-KH-KH01..KH06 (software)
 #     → SYSREQ-TL-001  (system) → SWREQ-TL-TH01..TH06 (software)
+#     → SYSREQ-HP-001  (system) → SWREQ-HP-HP01..HP08 (software)
+#     → SYSREQ-MD-001  (system) → SWREQ-MD-MD01..MD06 (software)
+#     → SYSREQ-SL-001  (system) → SWREQ-SL-SL01..SL05 (software)
+#     → SYSREQ-AT-001  (system) → SWREQ-AT-AT01..AT06 (software)
+#     → SYSREQ-SKS-001 (system) → SWREQ-SKS-SK01..SK05 (software)
+#     → SYSREQ-DI-001  (system) → SWREQ-DI-DI01..DI05 (software)
+#     → SYSREQ-FD-001  (system) → SWREQ-FD-FH01..FH03 (software)
+#     → SYSREQ-RB-001  (system) → SWREQ-RB-RB01..RB08 (software)
+#     → SYSREQ-US-001  (system) → SWREQ-US-US01..US08 (software)
+#     → SYSREQ-WK-001  (system) → SWREQ-WK-WK01..WK06 (software)
+#     → SYSREQ-FT-001  (system) → SWREQ-FT-FT01..FT04 (software)
+#     → SYSREQ-MP-001  (system) → SWREQ-MP-MP01..MP06 (software)
+#     → SYSREQ-DY-001  (system) → SWREQ-DY-DY01..DY04 (software)
+#     → SYSREQ-SM-001  (system) → SWREQ-SM-SM01..SM04 (software)
 #
 # The verified properties are the ASIL-D formal specifications.
 # Each maps directly to a property in the Verus/Rocq specs.
@@ -3513,3 +3527,1627 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TL-001
+
+  # ── Heap: System requirement ─────────────────────────────────────────────
+
+  - id: SYSREQ-HP-001
+    type: system-req
+    title: Sys_heap chunk allocator with alloc/free/split/merge
+    status: approved
+    description: >
+      A chunk-level heap allocator model that matches the Zephyr sys_heap API
+      semantics: initialization, allocation, free, aligned allocation,
+      split, merge, coalesce, and realloc.  Must maintain chunk conservation,
+      prevent double-free, and never exhibit arithmetic overflow.
+    tags: [heap, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 8 properties (HP1-HP8) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SWREQ-HP-HP01
+    type: sw-req
+    title: "HP1: allocated_bytes <= capacity (bounds invariant)"
+    status: approved
+    description: >
+      The total allocated bytes never exceed heap capacity.
+      This is the fundamental invariant maintained across all operations.
+    tags: [heap, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures/invariant on all methods.
+    links:
+      - type: derives-from
+        target: SYSREQ-HP-001
+
+  - id: SWREQ-HP-HP02
+    type: sw-req
+    title: "HP2: free_chunks + used_chunks == total_chunks (conservation)"
+    status: approved
+    description: >
+      The sum of free and used chunks always equals the total chunk count.
+      This conservation law prevents chunk leaks.
+    tags: [heap, conservation, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus proof lemma_chunk_conservation.
+    links:
+      - type: derives-from
+        target: SYSREQ-HP-001
+
+  - id: SWREQ-HP-HP03
+    type: sw-req
+    title: "HP3: alloc succeeds only when enough free space"
+    status: approved
+    description: >
+      Allocation succeeds only when there is sufficient free capacity
+      and at least one free chunk. Full heap rejects allocation.
+    tags: [heap, alloc, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on alloc(). Proof lemma_full_rejects_alloc.
+    links:
+      - type: derives-from
+        target: SYSREQ-HP-001
+
+  - id: SWREQ-HP-HP04
+    type: sw-req
+    title: "HP4: free returns exactly what was allocated (no partial free)"
+    status: approved
+    description: >
+      Freeing a chunk returns exactly the allocated byte count back
+      to the free pool.
+    tags: [heap, free, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on free(). Proof lemma_alloc_free_roundtrip.
+    links:
+      - type: derives-from
+        target: SYSREQ-HP-001
+
+  - id: SWREQ-HP-HP05
+    type: sw-req
+    title: "HP5: no double-free (chunk state tracking)"
+    status: approved
+    description: >
+      Free is rejected when all chunks are already free, preventing
+      double-free corruption.
+    tags: [heap, safety, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on free(). Proof lemma_double_free_rejected.
+    links:
+      - type: derives-from
+        target: SYSREQ-HP-001
+
+  - id: SWREQ-HP-HP06
+    type: sw-req
+    title: "HP6: aligned allocation respects alignment constraints"
+    status: approved
+    description: >
+      Aligned allocation accepts only power-of-2 alignment values
+      and computes correct padding without overflow.
+    tags: [heap, alignment, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus requires on aligned_alloc(). Proof lemma_small_align_is_plain_alloc.
+    links:
+      - type: derives-from
+        target: SYSREQ-HP-001
+
+  - id: SWREQ-HP-HP07
+    type: sw-req
+    title: "HP7: no overflow in size calculations"
+    status: approved
+    description: >
+      All size arithmetic (alloc, aligned_alloc, realloc, bytes_to_chunks)
+      is overflow-safe via u64 intermediates or bounds checks.
+    tags: [heap, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Proof lemma_bytes_to_chunks_safe.
+    links:
+      - type: derives-from
+        target: SYSREQ-HP-001
+
+  - id: SWREQ-HP-HP08
+    type: sw-req
+    title: "HP8: merge adjacent free chunks maintains invariant"
+    status: approved
+    description: >
+      Split and merge operations preserve chunk conservation and
+      allocated bytes. Split-then-merge is identity on chunk count.
+    tags: [heap, merge, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on split/merge. Proof lemma_split_merge_identity.
+    links:
+      - type: derives-from
+        target: SYSREQ-HP-001
+
+  # ── MemDomain: System requirement ──────────────────────────────────────
+
+  - id: SYSREQ-MD-001
+    type: system-req
+    title: Memory domain partition management with non-overlap invariant
+    status: approved
+    description: >
+      A memory domain partition manager that matches Zephyr's k_mem_domain
+      API semantics: initialization, add_partition, remove_partition.
+      Must maintain partition non-overlap invariant, address arithmetic
+      safety, and bounded partition count.
+    tags: [mem-domain, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 6 properties (MD1-MD6) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SWREQ-MD-MD01
+    type: sw-req
+    title: "MD1: partitions don't overlap (no address collision)"
+    status: approved
+    description: >
+      No two active partitions in a memory domain have overlapping
+      address ranges. The non-overlap invariant is maintained by
+      check_add_partition validation.
+    tags: [mem-domain, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus forall invariant in inv(). Proof lemma_overlap_symmetric.
+    links:
+      - type: derives-from
+        target: SYSREQ-MD-001
+
+  - id: SWREQ-MD-MD02
+    type: sw-req
+    title: "MD2: partition alignment constraints satisfied (size > 0)"
+    status: approved
+    description: >
+      Only partitions with size > 0 are considered active. Zero-size
+      slots are treated as free.
+    tags: [mem-domain, alignment, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus is_valid() spec. Unit test rejects_zero_size.
+    links:
+      - type: derives-from
+        target: SYSREQ-MD-001
+
+  - id: SWREQ-MD-MD03
+    type: sw-req
+    title: "MD3: partition size > 0 for all active partitions"
+    status: approved
+    description: >
+      All active partition slots have strictly positive size.
+      Enforced by check_add_partition and is_valid().
+    tags: [mem-domain, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus invariant on all methods.
+    links:
+      - type: derives-from
+        target: SYSREQ-MD-001
+
+  - id: SWREQ-MD-MD04
+    type: sw-req
+    title: "MD4: num_partitions <= MAX_PARTITIONS"
+    status: approved
+    description: >
+      The number of active partitions never exceeds the maximum
+      (CONFIG_MAX_DOMAIN_PARTITIONS = 16).
+    tags: [mem-domain, bounds, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus invariant. Unit test add_rejects_when_full.
+    links:
+      - type: derives-from
+        target: SYSREQ-MD-001
+
+  - id: SWREQ-MD-MD05
+    type: sw-req
+    title: "MD5: add/remove preserve non-overlap invariant"
+    status: approved
+    description: >
+      Both add_partition and remove_partition preserve the domain
+      invariant including the non-overlap property.
+    tags: [mem-domain, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures self.inv() on both operations. Proof lemma_add_remove_roundtrip.
+    links:
+      - type: derives-from
+        target: SYSREQ-MD-001
+
+  - id: SWREQ-MD-MD06
+    type: sw-req
+    title: "MD6: no overflow in address arithmetic (start + size <= u32::MAX)"
+    status: approved
+    description: >
+      All address computations (start + size) are checked for u32 overflow
+      using u64 intermediates.
+    tags: [mem-domain, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus is_valid() check. Proof lemma_valid_partition_no_overflow.
+    links:
+      - type: derives-from
+        target: SYSREQ-MD-001
+
+  # ── Spinlock: System requirement ───────────────────────────────────────
+
+  - id: SYSREQ-SL-001
+    type: system-req
+    title: Spinlock ownership and nesting discipline model
+    status: approved
+    description: >
+      A spinlock state model that matches Zephyr's spinlock_validate.c
+      semantics: ownership tracking, nesting depth, and IRQ state.
+      Must enforce single-owner discipline and correct nesting depth.
+    tags: [spinlock, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 5 properties (SL1-SL5) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SWREQ-SL-SL01
+    type: sw-req
+    title: "SL1: lock can only be acquired when not held"
+    status: approved
+    description: >
+      A spinlock acquisition succeeds only when the lock is free.
+      Already-held locks reject acquisition.
+    tags: [spinlock, acquire, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on acquire(). Proof lemma_acquire_release_roundtrip.
+    links:
+      - type: derives-from
+        target: SYSREQ-SL-001
+
+  - id: SWREQ-SL-SL02
+    type: sw-req
+    title: "SL2: release only by current owner"
+    status: approved
+    description: >
+      A spinlock can only be released by the thread that currently
+      holds it. Non-owner release returns EPERM.
+    tags: [spinlock, release, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on release().
+    links:
+      - type: derives-from
+        target: SYSREQ-SL-001
+
+  - id: SWREQ-SL-SL03
+    type: sw-req
+    title: "SL3: nest_count tracks depth correctly"
+    status: approved
+    description: >
+      Recursive acquisition increments nest_count, release decrements it.
+      The count is bounded by MAX_NEST_DEPTH (255).
+    tags: [spinlock, nesting, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on acquire_nested/release. Proof lemma_nested_acquire_release.
+    links:
+      - type: derives-from
+        target: SYSREQ-SL-001
+
+  - id: SWREQ-SL-SL04
+    type: sw-req
+    title: "SL4: fully released when nest_count reaches 0"
+    status: approved
+    description: >
+      When the last release brings nest_count to 0, the lock becomes
+      fully unlocked (owner = None).
+    tags: [spinlock, release, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on release(). Proof lemma_n_acquires_n_releases.
+    links:
+      - type: derives-from
+        target: SYSREQ-SL-001
+
+  - id: SWREQ-SL-SL05
+    type: sw-req
+    title: "SL5: no double-acquire without nesting support"
+    status: approved
+    description: >
+      acquire() (non-recursive) rejects a lock already held by the
+      same owner, returning EBUSY.
+    tags: [spinlock, safety, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on acquire_check(). Proof lemma_double_acquire_rejected.
+    links:
+      - type: derives-from
+        target: SYSREQ-SL-001
+
+  # ── Atomic: System requirement ─────────────────────────────────────────
+
+  - id: SYSREQ-AT-001
+    type: system-req
+    title: Atomic operations model with wrapping arithmetic
+    status: approved
+    description: >
+      An atomic value model that matches Zephyr's atomic_c.c semantics:
+      get, set, add, sub, or, and, xor, nand, cas, test_and_set, clear.
+      Must preserve correct wrapping arithmetic and CAS semantics.
+    tags: [atomic, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 6 properties (AT1-AT6) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SWREQ-AT-AT01
+    type: sw-req
+    title: "AT1: add returns old value, stores old + val (wrapping)"
+    status: approved
+    description: >
+      Atomic add returns the previous value and stores the sum using
+      wrapping u32 arithmetic.
+    tags: [atomic, add, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on add(). Proof lemma_add_sub_roundtrip.
+    links:
+      - type: derives-from
+        target: SYSREQ-AT-001
+
+  - id: SWREQ-AT-AT02
+    type: sw-req
+    title: "AT2: sub returns old value, stores old - val (wrapping)"
+    status: approved
+    description: >
+      Atomic sub returns the previous value and stores the difference
+      using wrapping u32 arithmetic.
+    tags: [atomic, sub, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on sub(). Proof lemma_add_sub_roundtrip.
+    links:
+      - type: derives-from
+        target: SYSREQ-AT-001
+
+  - id: SWREQ-AT-AT03
+    type: sw-req
+    title: "AT3: cas succeeds only when current == expected"
+    status: approved
+    description: >
+      Compare-and-swap succeeds (stores new value, returns true) only
+      when the current value matches the expected value.
+    tags: [atomic, cas, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on cas(). Proof lemma_cas_semantics.
+    links:
+      - type: derives-from
+        target: SYSREQ-AT-001
+
+  - id: SWREQ-AT-AT04
+    type: sw-req
+    title: "AT4: cas failure leaves value unchanged"
+    status: approved
+    description: >
+      When CAS fails (current != expected), the stored value is
+      not modified.
+    tags: [atomic, cas, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on cas().
+    links:
+      - type: derives-from
+        target: SYSREQ-AT-001
+
+  - id: SWREQ-AT-AT05
+    type: sw-req
+    title: "AT5: test_and_set returns old value, sets to 1"
+    status: approved
+    description: >
+      test_and_set returns the previous value and unconditionally
+      stores 1.
+    tags: [atomic, test-and-set, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on test_and_set(). Proof lemma_test_and_set_always_one.
+    links:
+      - type: derives-from
+        target: SYSREQ-AT-001
+
+  - id: SWREQ-AT-AT06
+    type: sw-req
+    title: "AT6: wrapping semantics for add/sub (matching hardware u32 behavior)"
+    status: approved
+    description: >
+      Add and sub use wrapping arithmetic: result = (a op b) mod 2^32.
+      This matches hardware u32 behavior on Cortex-M.
+    tags: [atomic, wrapping, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on add/sub with wrapping spec.
+    links:
+      - type: derives-from
+        target: SYSREQ-AT-001
+
+  # ── StackConfig: System requirement ────────────────────────────────────
+
+  - id: SYSREQ-SKS-001
+    type: system-req
+    title: Thread stack geometry validation model
+    status: approved
+    description: >
+      A stack configuration validator that matches Zephyr's setup_thread_stack
+      semantics: validates base, size, guard_size, alignment constraints.
+      Must prevent stack overflow via guard region validation and reject
+      invalid configurations.
+    tags: [stack-config, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 5 properties (SK_S1-SK_S5) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SWREQ-SKS-SK01
+    type: sw-req
+    title: "SK_S1: size is aligned to alignment"
+    status: approved
+    description: >
+      The stack size must be a multiple of the required alignment.
+      Enforced by validate() rejecting size % alignment != 0.
+    tags: [stack-config, alignment, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on validate(). Proof lemma_size_aligned.
+    links:
+      - type: derives-from
+        target: SYSREQ-SKS-001
+
+  - id: SWREQ-SKS-SK02
+    type: sw-req
+    title: "SK_S2: guard_size <= size"
+    status: approved
+    description: >
+      The guard region size must be strictly less than total stack size,
+      ensuring usable stack space remains.
+    tags: [stack-config, guard, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on validate(). Proof lemma_guard_less_than_size.
+    links:
+      - type: derives-from
+        target: SYSREQ-SKS-001
+
+  - id: SWREQ-SKS-SK03
+    type: sw-req
+    title: "SK_S3: base + size doesn't overflow u32"
+    status: approved
+    description: >
+      The stack top address (base + size) must not overflow the u32
+      address space.
+    tags: [stack-config, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on validate(). Proof lemma_no_overflow.
+    links:
+      - type: derives-from
+        target: SYSREQ-SKS-001
+
+  - id: SWREQ-SKS-SK04
+    type: sw-req
+    title: "SK_S4: guard region doesn't overlap usable stack"
+    status: approved
+    description: >
+      A valid stack pointer is never in the guard region. Guard
+      region and usable region partition the stack.
+    tags: [stack-config, guard, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures. Proof lemma_valid_sp_not_in_guard.
+    links:
+      - type: derives-from
+        target: SYSREQ-SKS-001
+
+  - id: SWREQ-SKS-SK05
+    type: sw-req
+    title: "SK_S5: alignment is power of 2"
+    status: approved
+    description: >
+      The alignment constraint must be a power of 2. Enforced by
+      validate() checking alignment & (alignment - 1) == 0.
+    tags: [stack-config, alignment, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on validate(). Proof lemma_alignment_power_of_two.
+    links:
+      - type: derives-from
+        target: SYSREQ-SKS-001
+
+  # ── DeviceInit: System requirement ─────────────────────────────────────
+
+  - id: SYSREQ-DI-001
+    type: system-req
+    title: Device initialization ordering model
+    status: approved
+    description: >
+      A device init ordering model that matches Zephyr's device.c/init.c
+      semantics: init levels, priority ordering, dependency checking,
+      and double-init prevention.
+    tags: [device-init, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 5 properties (DI1-DI5) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SWREQ-DI-DI01
+    type: sw-req
+    title: "DI1: devices init in level order (lower level first)"
+    status: approved
+    description: >
+      Init levels are processed in strictly ascending order (EARLY < PRE_KERNEL_1
+      < PRE_KERNEL_2 < POST_KERNEL < APPLICATION < SMP).
+    tags: [device-init, ordering, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on advance_level(). Proof lemma_levels_ascending.
+    links:
+      - type: derives-from
+        target: SYSREQ-DI-001
+
+  - id: SWREQ-DI-DI02
+    type: sw-req
+    title: "DI2: within same level, init in priority order"
+    status: approved
+    description: >
+      Devices within the same init level are initialized by priority
+      (lower priority number first).
+    tags: [device-init, ordering, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on init_device() level check.
+    links:
+      - type: derives-from
+        target: SYSREQ-DI-001
+
+  - id: SWREQ-DI-DI03
+    type: sw-req
+    title: "DI3: no circular dependencies (DAG property)"
+    status: approved
+    description: >
+      The device dependency graph is a DAG. Level ordering prevents
+      cycles since devices at lower levels cannot depend on higher-level
+      devices.
+    tags: [device-init, dag, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus level ordering proof.
+    links:
+      - type: derives-from
+        target: SYSREQ-DI-001
+
+  - id: SWREQ-DI-DI04
+    type: sw-req
+    title: "DI4: all deps initialized before dependent"
+    status: approved
+    description: >
+      A device can only be initialized after all its dependencies
+      have been successfully initialized.
+    tags: [device-init, deps, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on check_deps_satisfied().
+    links:
+      - type: derives-from
+        target: SYSREQ-DI-001
+
+  - id: SWREQ-DI-DI05
+    type: sw-req
+    title: "DI5: no double-init (idempotence)"
+    status: approved
+    description: >
+      A device that is already initialized cannot be initialized again.
+      Double-init returns EBUSY.
+    tags: [device-init, safety, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on init_device(). Proof lemma_no_double_init.
+    links:
+      - type: derives-from
+        target: SYSREQ-DI-001
+
+  # ── FaultDecode: System requirement ────────────────────────────────────
+
+  - id: SYSREQ-FD-001
+    type: system-req
+    title: ARM Cortex-M fault register decode model
+    status: approved
+    description: >
+      A fault register decode model for ARM Cortex-M CFSR/HFSR/MMFAR/BFAR
+      registers. Must exhaustively classify all fault categories and
+      validate fault address register validity bits.
+    tags: [fault-decode, arch, arm]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 3 properties (FH1-FH3) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SWREQ-FD-FH01
+    type: sw-req
+    title: "FH1: CFSR decode is exhaustive (all bit combinations mapped)"
+    status: approved
+    description: >
+      If any fault status bits are set in CFSR or HFSR, the classify()
+      function returns a non-None fault category. The MMFSR/BFSR/UFSR
+      masks partition all 32 bits of CFSR.
+    tags: [fault-decode, exhaustive, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on classify(). Proof lemma_classify_exhaustive.
+        Proof lemma_cfsr_masks_partition (bit_vector).
+    links:
+      - type: derives-from
+        target: SYSREQ-FD-001
+
+  - id: SWREQ-FD-FH02
+    type: sw-req
+    title: "FH2: fault address valid only when MMARVALID/BFARVALID set"
+    status: approved
+    description: >
+      MMFAR and BFAR values are only reported when their respective
+      validity bits (MMARVALID, BFARVALID) are set in CFSR.
+    tags: [fault-decode, validity, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on mmfar_checked/bfar_checked.
+        Proofs lemma_mmfar_validity, lemma_bfar_validity.
+    links:
+      - type: derives-from
+        target: SYSREQ-FD-001
+
+  - id: SWREQ-FD-FH03
+    type: sw-req
+    title: "FH3: HardFault FORCED bit indicates escalated fault"
+    status: approved
+    description: >
+      The FORCED bit in HFSR indicates that a configurable fault was
+      escalated to HardFault. FORCED always classifies as HardFault.
+    tags: [fault-decode, escalation, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on is_escalated/classify.
+        Proofs lemma_forced_is_escalated, lemma_forced_is_hardfault.
+    links:
+      - type: derives-from
+        target: SYSREQ-FD-001
+
+  # ── RingBuf: System requirement ────────────────────────────────────────
+
+  - id: SYSREQ-RB-001
+    type: system-req
+    title: Lock-free ring buffer index model
+    status: approved
+    description: >
+      A ring buffer index model that matches Zephyr's ring_buffer.c
+      semantics: init, put, get, peek, reset.  Must maintain index
+      bounds, capacity invariant, and modular arithmetic consistency.
+    tags: [ring-buf, lib]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 8 properties (RB1-RB8) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SWREQ-RB-RB01
+    type: sw-req
+    title: "RB1: 0 <= size <= capacity (bounds invariant)"
+    status: approved
+    description: >
+      The buffer occupancy is always bounded by capacity.
+    tags: [ring-buf, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures/invariant on all methods.
+    links:
+      - type: derives-from
+        target: SYSREQ-RB-001
+
+  - id: SWREQ-RB-RB02
+    type: sw-req
+    title: "RB2: head < capacity, tail < capacity (index bounds)"
+    status: approved
+    description: >
+      Both head and tail indices are always strictly less than capacity.
+    tags: [ring-buf, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus invariant on all methods.
+    links:
+      - type: derives-from
+        target: SYSREQ-RB-001
+
+  - id: SWREQ-RB-RB03
+    type: sw-req
+    title: "RB3: put advances tail = (tail + 1) % capacity"
+    status: approved
+    description: >
+      On successful put, the tail index advances by one with
+      wrap-around at capacity.
+    tags: [ring-buf, put, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on put().
+    links:
+      - type: derives-from
+        target: SYSREQ-RB-001
+
+  - id: SWREQ-RB-RB04
+    type: sw-req
+    title: "RB4: get advances head = (head + 1) % capacity"
+    status: approved
+    description: >
+      On successful get, the head index advances by one with
+      wrap-around at capacity.
+    tags: [ring-buf, get, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on get().
+    links:
+      - type: derives-from
+        target: SYSREQ-RB-001
+
+  - id: SWREQ-RB-RB05
+    type: sw-req
+    title: "RB5: put on full buffer returns error"
+    status: approved
+    description: >
+      When the buffer is full (size == capacity), put returns EAGAIN
+      without modifying state.
+    tags: [ring-buf, put, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on put().
+    links:
+      - type: derives-from
+        target: SYSREQ-RB-001
+
+  - id: SWREQ-RB-RB06
+    type: sw-req
+    title: "RB6: get on empty buffer returns error"
+    status: approved
+    description: >
+      When the buffer is empty (size == 0), get returns EAGAIN
+      without modifying state.
+    tags: [ring-buf, get, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on get().
+    links:
+      - type: derives-from
+        target: SYSREQ-RB-001
+
+  - id: SWREQ-RB-RB07
+    type: sw-req
+    title: "RB7: size == (tail - head + capacity) % capacity (consistency)"
+    status: approved
+    description: >
+      The ring buffer consistency invariant: tail tracks head + size
+      modulo capacity.
+    tags: [ring-buf, consistency, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ring_consistent() spec. Proof lemma_ring_consistency.
+    links:
+      - type: derives-from
+        target: SYSREQ-RB-001
+
+  - id: SWREQ-RB-RB08
+    type: sw-req
+    title: "RB8: no overflow in modular arithmetic"
+    status: approved
+    description: >
+      All index arithmetic uses u64 intermediates or bounds checks
+      to prevent overflow.
+    tags: [ring-buf, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof via u64 casts.
+    links:
+      - type: derives-from
+        target: SYSREQ-RB-001
+
+  # ── Userspace: System requirement ──────────────────────────────────────
+
+  - id: SYSREQ-US-001
+    type: system-req
+    title: Userspace syscall validation and permission model
+    status: approved
+    description: >
+      A kernel object permission model that matches Zephyr's userspace.c
+      semantics: object validation, per-thread permission bitmask,
+      grant/revoke access, initialization tracking, and supervisor bypass.
+    tags: [userspace, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 8 properties (US1-US8) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SWREQ-US-US01
+    type: sw-req
+    title: "US1: object access requires permission bit set for calling thread"
+    status: approved
+    description: >
+      A user-mode thread can only access a kernel object if its
+      permission bit is set in the object's bitmask.
+    tags: [userspace, access, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on check_access().
+    links:
+      - type: derives-from
+        target: SYSREQ-US-001
+
+  - id: SWREQ-US-US02
+    type: sw-req
+    title: "US2: grant_access sets the permission bit"
+    status: approved
+    description: >
+      After grant_access(tid), the permission bit for thread tid is set.
+      Grant is idempotent.
+    tags: [userspace, grant, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on grant_access(). Proofs lemma_grant_idempotent,
+        lemma_grant_then_check.
+    links:
+      - type: derives-from
+        target: SYSREQ-US-001
+
+  - id: SWREQ-US-US03
+    type: sw-req
+    title: "US3: revoke_access clears the permission bit"
+    status: approved
+    description: >
+      After revoke_access(tid), the permission bit for thread tid is
+      cleared. Revoke is idempotent.
+    tags: [userspace, revoke, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on revoke_access(). Proofs lemma_revoke_idempotent,
+        lemma_revoke_then_check.
+    links:
+      - type: derives-from
+        target: SYSREQ-US-001
+
+  - id: SWREQ-US-US04
+    type: sw-req
+    title: "US4: object type validation (type must match expected type)"
+    status: approved
+    description: >
+      Syscall validation rejects type mismatches (returns EBADF) unless
+      expected_type is Any (wildcard).
+    tags: [userspace, type-check, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on validate(). Proof lemma_type_mismatch_fails.
+    links:
+      - type: derives-from
+        target: SYSREQ-US-001
+
+  - id: SWREQ-US-US05
+    type: sw-req
+    title: "US5: supervisor mode bypasses permission checks"
+    status: approved
+    description: >
+      Supervisor-mode threads always pass access checks regardless
+      of permission bits.
+    tags: [userspace, supervisor, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on check_access(). Proof lemma_supervisor_always_granted.
+    links:
+      - type: derives-from
+        target: SYSREQ-US-001
+
+  - id: SWREQ-US-US06
+    type: sw-req
+    title: "US6: no permission bits set for uninitialized objects"
+    status: approved
+    description: >
+      Newly created kernel objects have no permission bits set
+      (thread_perms == 0).
+    tags: [userspace, init, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on new(). Proof lemma_new_no_perms.
+    links:
+      - type: derives-from
+        target: SYSREQ-US-001
+
+  - id: SWREQ-US-US07
+    type: sw-req
+    title: "US7: K_OBJ_FLAG_INITIALIZED required for access (MustBeInit)"
+    status: approved
+    description: >
+      When init_check is MustBeInit, validation fails with EINVAL
+      if the INITIALIZED flag is not set.
+    tags: [userspace, init-check, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on validate(). Proof lemma_uninit_fails_must_be_init.
+    links:
+      - type: derives-from
+        target: SYSREQ-US-001
+
+  - id: SWREQ-US-US08
+    type: sw-req
+    title: "US8: thread ID must be valid (< MAX_THREADS)"
+    status: approved
+    description: >
+      Permission operations reject invalid thread IDs (>= MAX_THREADS)
+      with EINVAL.
+    tags: [userspace, validation, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on grant_access/revoke_access/check_access.
+    links:
+      - type: derives-from
+        target: SYSREQ-US-001
+
+  # ── Work: System requirement ───────────────────────────────────────────
+
+  - id: SYSREQ-WK-001
+    type: system-req
+    title: Work item state machine model
+    status: approved
+    description: >
+      A work item state machine model that matches Zephyr's work.c
+      semantics: init, submit, start_running, finish_running, cancel,
+      and finish_cancel. Must maintain correct flag transitions.
+    tags: [work, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 6 properties (WK1-WK6) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SWREQ-WK-WK01
+    type: sw-req
+    title: "WK1: init produces IDLE state (no flags set)"
+    status: approved
+    description: >
+      After init, the work item has flags == 0 (idle, not queued,
+      not running, not canceling).
+    tags: [work, init, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on init(). Proof lemma_init_is_idle.
+    links:
+      - type: derives-from
+        target: SYSREQ-WK-001
+
+  - id: SWREQ-WK-WK02
+    type: sw-req
+    title: "WK2: submit from IDLE sets QUEUED flag"
+    status: approved
+    description: >
+      Submitting an idle work item sets the QUEUED flag and returns 1
+      (newly queued).
+    tags: [work, submit, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on submit().
+    links:
+      - type: derives-from
+        target: SYSREQ-WK-001
+
+  - id: SWREQ-WK-WK03
+    type: sw-req
+    title: "WK3: submit while CANCELING returns EBUSY"
+    status: approved
+    description: >
+      A work item that is being canceled cannot be resubmitted.
+      Submit returns EBUSY and state is unchanged.
+    tags: [work, cancel, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on submit(). Proof lemma_submit_rejects_canceling.
+    links:
+      - type: derives-from
+        target: SYSREQ-WK-001
+
+  - id: SWREQ-WK-WK04
+    type: sw-req
+    title: "WK4: submit while already QUEUED is idempotent"
+    status: approved
+    description: >
+      Submitting a work item that is already queued returns 0 and
+      state is unchanged.
+    tags: [work, submit, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on submit(). Proof lemma_submit_idempotent.
+    links:
+      - type: derives-from
+        target: SYSREQ-WK-001
+
+  - id: SWREQ-WK-WK05
+    type: sw-req
+    title: "WK5: cancel clears QUEUED and sets CANCELING if RUNNING"
+    status: approved
+    description: >
+      Cancel always clears the QUEUED flag. If still busy (RUNNING),
+      the CANCELING flag is set.
+    tags: [work, cancel, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on cancel(). Proof lemma_cancel_clears_queued.
+    links:
+      - type: derives-from
+        target: SYSREQ-WK-001
+
+  - id: SWREQ-WK-WK06
+    type: sw-req
+    title: "WK6: state flags are mutually consistent"
+    status: approved
+    description: >
+      Only defined flag bits (RUNNING, CANCELING, QUEUED, FLUSHING)
+      may be set. The invariant ensures no undefined bits are used.
+    tags: [work, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus invariant on all methods.
+    links:
+      - type: derives-from
+        target: SYSREQ-WK-001
+
+  # ── Fatal: System requirement ──────────────────────────────────────────
+
+  - id: SYSREQ-FT-001
+    type: system-req
+    title: Fatal error classification and recovery model
+    status: approved
+    description: >
+      A fatal error classification model that matches Zephyr's fatal.c
+      semantics: reason code mapping, recovery decision based on
+      context (thread/ISR) and mode (production/test).
+    tags: [fatal, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 4 properties (FT1-FT4) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SWREQ-FT-FT01
+    type: sw-req
+    title: "FT1: all reason codes map to a valid FatalReason variant"
+    status: approved
+    description: >
+      All valid numeric reason codes (0-4) map to a defined FatalReason
+      variant. Invalid codes return None.
+    tags: [fatal, mapping, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on from_code(). Proof lemma_valid_codes_map.
+    links:
+      - type: derives-from
+        target: SYSREQ-FT-001
+
+  - id: SWREQ-FT-FT02
+    type: sw-req
+    title: "FT2: kernel panic is always non-recoverable"
+    status: approved
+    description: >
+      KernelPanic always results in Halt in production mode,
+      regardless of thread or ISR context.
+    tags: [fatal, panic, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on classify(). Proof lemma_panic_halts.
+    links:
+      - type: derives-from
+        target: SYSREQ-FT-001
+
+  - id: SWREQ-FT-FT03
+    type: sw-req
+    title: "FT3: recoverable decision depends on reason and context"
+    status: approved
+    description: >
+      Thread-context non-panic faults are recoverable (AbortThread).
+      ISR-context faults in production generally halt. Test mode is
+      more permissive.
+    tags: [fatal, recovery, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on classify(). Proofs lemma_thread_faults_recoverable,
+        lemma_test_mode_permissive.
+    links:
+      - type: derives-from
+        target: SYSREQ-FT-001
+
+  - id: SWREQ-FT-FT04
+    type: sw-req
+    title: "FT4: reason codes are distinct (no overlap)"
+    status: approved
+    description: >
+      Each reason code maps to a unique FatalReason variant. No two
+      codes produce the same variant.
+    tags: [fatal, distinct, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures. Proof lemma_reason_codes_distinct.
+    links:
+      - type: derives-from
+        target: SYSREQ-FT-001
+
+  # ── MemPool: System requirement ────────────────────────────────────────
+
+  - id: SYSREQ-MP-001
+    type: system-req
+    title: Fixed-block memory pool model
+    status: approved
+    description: >
+      A fixed-block memory pool model with alloc/free tracking.
+      Must maintain allocation bounds, conservation invariant,
+      and overflow safety.
+    tags: [mempool, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 6 properties (MP1-MP6) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SWREQ-MP-MP01
+    type: sw-req
+    title: "MP1: 0 <= allocated <= capacity (bounds invariant)"
+    status: approved
+    description: >
+      The number of allocated blocks never exceeds the pool capacity.
+    tags: [mempool, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures/invariant on all methods.
+    links:
+      - type: derives-from
+        target: SYSREQ-MP-001
+
+  - id: SWREQ-MP-MP02
+    type: sw-req
+    title: "MP2: alloc when allocated < capacity increments by 1"
+    status: approved
+    description: >
+      When a block is available, alloc increments the allocated count.
+    tags: [mempool, alloc, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on alloc().
+    links:
+      - type: derives-from
+        target: SYSREQ-MP-001
+
+  - id: SWREQ-MP-MP03
+    type: sw-req
+    title: "MP3: alloc when full returns ENOMEM"
+    status: approved
+    description: >
+      When the pool is full (allocated == capacity), alloc returns
+      ENOMEM without modifying state.
+    tags: [mempool, alloc, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on alloc(). Proof lemma_full_rejects_alloc.
+    links:
+      - type: derives-from
+        target: SYSREQ-MP-001
+
+  - id: SWREQ-MP-MP04
+    type: sw-req
+    title: "MP4: free when allocated > 0 decrements by 1"
+    status: approved
+    description: >
+      When blocks are allocated, free decrements the allocated count.
+    tags: [mempool, free, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on free(). Proof lemma_alloc_free_roundtrip.
+    links:
+      - type: derives-from
+        target: SYSREQ-MP-001
+
+  - id: SWREQ-MP-MP05
+    type: sw-req
+    title: "MP5: conservation: free_blocks + allocated == capacity"
+    status: approved
+    description: >
+      The sum of free and allocated blocks always equals the pool
+      capacity.
+    tags: [mempool, conservation, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus free_get ensures. Proof lemma_conservation.
+    links:
+      - type: derives-from
+        target: SYSREQ-MP-001
+
+  - id: SWREQ-MP-MP06
+    type: sw-req
+    title: "MP6: no arithmetic overflow in any operation"
+    status: approved
+    description: >
+      All arithmetic (alloc, free, total_size) is overflow-safe
+      via bounds checks or u64 intermediates.
+    tags: [mempool, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Proof lemma_total_size_overflow.
+    links:
+      - type: derives-from
+        target: SYSREQ-MP-001
+
+  # ── Dynamic: System requirement ────────────────────────────────────────
+
+  - id: SYSREQ-DY-001
+    type: system-req
+    title: Dynamic thread pool stack accounting model
+    status: approved
+    description: >
+      A dynamic thread pool model that matches Zephyr's dynamic.c
+      semantics: thread stack alloc/free with bounded pool tracking.
+    tags: [dynamic, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 4 properties (DY1-DY4) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SWREQ-DY-DY01
+    type: sw-req
+    title: "DY1: 0 <= active <= max_threads (bounds invariant)"
+    status: approved
+    description: >
+      The number of active thread stacks never exceeds the pool maximum.
+    tags: [dynamic, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures/invariant on all methods.
+    links:
+      - type: derives-from
+        target: SYSREQ-DY-001
+
+  - id: SWREQ-DY-DY02
+    type: sw-req
+    title: "DY2: alloc when active < max_threads increments by 1"
+    status: approved
+    description: >
+      When a stack slot is available, alloc increments the active count.
+    tags: [dynamic, alloc, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on alloc().
+    links:
+      - type: derives-from
+        target: SYSREQ-DY-001
+
+  - id: SWREQ-DY-DY03
+    type: sw-req
+    title: "DY3: alloc when full returns ENOMEM"
+    status: approved
+    description: >
+      When the pool is full, alloc returns ENOMEM without modifying state.
+    tags: [dynamic, alloc, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on alloc(). Proof lemma_full_rejects_alloc.
+    links:
+      - type: derives-from
+        target: SYSREQ-DY-001
+
+  - id: SWREQ-DY-DY04
+    type: sw-req
+    title: "DY4: free when active > 0 decrements by 1, no underflow"
+    status: approved
+    description: >
+      When stacks are allocated, free decrements the active count.
+      Empty pool rejects free.
+    tags: [dynamic, free, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on free(). Proof lemma_alloc_free_roundtrip.
+    links:
+      - type: derives-from
+        target: SYSREQ-DY-001
+
+  # ── SmpState: System requirement ───────────────────────────────────────
+
+  - id: SYSREQ-SM-001
+    type: system-req
+    title: SMP CPU state tracking model
+    status: approved
+    description: >
+      An SMP CPU lifecycle model that matches Zephyr's smp.c
+      semantics: init, start_cpu, stop_cpu, resume_cpu, global
+      lock/unlock. Must maintain CPU count bounds and lock consistency.
+    tags: [smp, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 4 properties (SM1-SM4) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SWREQ-SM-SM01
+    type: sw-req
+    title: "SM1: 0 <= active_cpus <= max_cpus (bounds invariant)"
+    status: approved
+    description: >
+      The number of active CPUs is always between 1 (CPU 0 never stops)
+      and max_cpus.
+    tags: [smp, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures/invariant on all methods.
+    links:
+      - type: derives-from
+        target: SYSREQ-SM-001
+
+  - id: SWREQ-SM-SM02
+    type: sw-req
+    title: "SM2: start_cpu when active < max increments by 1"
+    status: approved
+    description: >
+      Starting a CPU increments the active count. Returns EBUSY
+      when all CPUs are already active.
+    tags: [smp, start, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on start_cpu().
+    links:
+      - type: derives-from
+        target: SYSREQ-SM-001
+
+  - id: SWREQ-SM-SM03
+    type: sw-req
+    title: "SM3: stop_cpu when active > 1 decrements (CPU 0 never stops)"
+    status: approved
+    description: >
+      Stopping a CPU decrements the active count but never below 1,
+      preserving CPU 0 as always active.
+    tags: [smp, stop, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on stop_cpu(). Proof lemma_cpu0_never_stops.
+    links:
+      - type: derives-from
+        target: SYSREQ-SM-001
+
+  - id: SWREQ-SM-SM04
+    type: sw-req
+    title: "SM4: global lock count is non-negative and bounded"
+    status: approved
+    description: >
+      The global lock count is always non-negative. Lock increments,
+      unlock decrements with underflow check.
+    tags: [smp, lock, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus ensures on global_lock/global_unlock. Proof lemma_lock_unlock_roundtrip.
+    links:
+      - type: derives-from
+        target: SYSREQ-SM-001

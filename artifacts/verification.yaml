@@ -2710,3 +2710,1027 @@ artifacts:
     links:
       - type: verifies
         target: SWREQ-TL-TH01
+
+  # ── SWE.4: Unit verification — Heap ──────────────────────────────────
+
+  - id: UV-HP-001
+    type: unit-verification
+    title: Heap unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in src/heap.rs covering init validation, alloc/free
+      roundtrip, double-free rejection, aligned allocation, split/merge
+      identity, realloc shrink/grow, coalesce, capacity checks, and
+      bytes_to_chunks overflow safety.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-HP-INIT
+      - type: verifies
+        target: SWDD-HP-ALLOC
+      - type: verifies
+        target: SWDD-HP-FREE
+
+  - id: IV-HP-001
+    type: sw-integration-verification
+    title: Heap integration tests
+    status: approved
+    description: >
+      Integration tests exercising the full heap API surface across
+      module boundaries including compositional alloc/free/split/merge
+      sequences.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-HP-001
+
+  - id: FV-HP-001
+    type: sw-verification
+    title: Heap Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/heap.rs with requires/ensures clauses
+      that formally verify all 8 properties (HP1-HP8) via SMT solving.
+      Includes compositional proofs for invariant inductiveness,
+      chunk conservation, byte conservation, alloc-free roundtrip,
+      double-free rejection, bytes_to_chunks safety, and split-merge
+      identity.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-HP-HP01
+      - type: verifies
+        target: SWREQ-HP-HP02
+      - type: verifies
+        target: SWREQ-HP-HP03
+      - type: verifies
+        target: SWREQ-HP-HP04
+      - type: verifies
+        target: SWREQ-HP-HP05
+      - type: verifies
+        target: SWREQ-HP-HP06
+      - type: verifies
+        target: SWREQ-HP-HP07
+      - type: verifies
+        target: SWREQ-HP-HP08
+
+  - id: FV-HP-003
+    type: sw-verification
+    title: Heap Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all heap code.
+      Same deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-HP-HP01
+
+  # ── SWE.4: Unit verification — MemDomain ─────────────────────────────
+
+  - id: UV-MD-001
+    type: unit-verification
+    title: MemDomain unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in src/mem_domain.rs covering init, add_partition
+      (valid, overlap, overflow, full), remove_partition, contains_addr,
+      partition_get, and has_free_slot.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-MD-ADD
+
+  - id: IV-MD-001
+    type: sw-integration-verification
+    title: MemDomain integration tests
+    status: approved
+    description: >
+      Integration tests exercising add/remove roundtrips and
+      non-overlap enforcement across module boundaries.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-MD-001
+
+  - id: FV-MD-001
+    type: sw-verification
+    title: MemDomain Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/mem_domain.rs with requires/ensures
+      clauses that formally verify all 6 properties (MD1-MD6) via SMT.
+      Includes proofs for invariant inductiveness, add-remove roundtrip,
+      overlap symmetry, valid partition no-overflow, and non-overlap
+      disjointness.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-MD-MD01
+      - type: verifies
+        target: SWREQ-MD-MD02
+      - type: verifies
+        target: SWREQ-MD-MD03
+      - type: verifies
+        target: SWREQ-MD-MD04
+      - type: verifies
+        target: SWREQ-MD-MD05
+      - type: verifies
+        target: SWREQ-MD-MD06
+
+  - id: FV-MD-003
+    type: sw-verification
+    title: MemDomain Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all mem_domain code.
+      Same deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-MD-MD01
+
+  # ── SWE.4: Unit verification — Spinlock ──────────────────────────────
+
+  - id: UV-SL-001
+    type: unit-verification
+    title: Spinlock unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in src/spinlock.rs covering init, acquire (free/held),
+      acquire_nested (same/different owner, max depth), release
+      (owner/non-owner, nested), is_held, is_free, and owner queries.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-SL-ACQUIRE
+      - type: verifies
+        target: SWDD-SL-RELEASE
+
+  - id: IV-SL-001
+    type: sw-integration-verification
+    title: Spinlock integration tests
+    status: approved
+    description: >
+      Integration tests exercising acquire-release roundtrips, nested
+      acquire sequences, and cross-module spinlock interactions.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-SL-001
+
+  - id: FV-SL-001
+    type: sw-verification
+    title: Spinlock Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/spinlock.rs with requires/ensures
+      clauses that formally verify all 5 properties (SL1-SL5) via SMT.
+      Includes proofs for invariant inductiveness, acquire-release
+      roundtrip, nested acquire-release, N acquires = N releases,
+      and double-acquire rejection.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-SL-SL01
+      - type: verifies
+        target: SWREQ-SL-SL02
+      - type: verifies
+        target: SWREQ-SL-SL03
+      - type: verifies
+        target: SWREQ-SL-SL04
+      - type: verifies
+        target: SWREQ-SL-SL05
+
+  - id: FV-SL-003
+    type: sw-verification
+    title: Spinlock Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all spinlock code.
+      Same deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-SL-SL01
+
+  # ── SWE.4: Unit verification — Atomic ────────────────────────────────
+
+  - id: UV-AT-001
+    type: unit-verification
+    title: Atomic unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in src/atomic.rs covering new, get, set, add, sub,
+      or, and, xor, nand, cas (match/mismatch), test_and_set, clear,
+      inc, dec, wrapping arithmetic, and idempotence properties.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-AT-CAS
+
+  - id: IV-AT-001
+    type: sw-integration-verification
+    title: Atomic integration tests
+    status: approved
+    description: >
+      Integration tests exercising atomic operation sequences including
+      add-sub roundtrips, CAS retry patterns, and xor self-inverse.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-AT-001
+
+  - id: FV-AT-001
+    type: sw-verification
+    title: Atomic Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/atomic.rs with requires/ensures
+      clauses that formally verify all 6 properties (AT1-AT6) via SMT.
+      Includes proofs for add-sub roundtrip, CAS semantics,
+      test_and_set, OR/AND idempotence, XOR self-inverse, and
+      set-clear identity.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-AT-AT01
+      - type: verifies
+        target: SWREQ-AT-AT02
+      - type: verifies
+        target: SWREQ-AT-AT03
+      - type: verifies
+        target: SWREQ-AT-AT04
+      - type: verifies
+        target: SWREQ-AT-AT05
+      - type: verifies
+        target: SWREQ-AT-AT06
+
+  - id: FV-AT-003
+    type: sw-verification
+    title: Atomic Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all atomic code.
+      Same deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-AT-AT01
+
+  # ── SWE.4: Unit verification — StackConfig ──────────────────────────
+
+  - id: UV-SKS-001
+    type: unit-verification
+    title: StackConfig unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in src/stack_config.rs covering validate (valid/invalid
+      alignment, zero size, guard >= size, overflow), usable_size, top,
+      usable_start, is_valid_sp, is_in_guard, and is_power_of_two.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-SKS-VALIDATE
+
+  - id: IV-SKS-001
+    type: sw-integration-verification
+    title: StackConfig integration tests
+    status: approved
+    description: >
+      Integration tests exercising stack configuration validation
+      across module boundaries.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-SKS-001
+
+  - id: FV-SKS-001
+    type: sw-verification
+    title: StackConfig Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/stack_config.rs with requires/ensures
+      clauses that formally verify all 5 properties (SK_S1-SK_S5) via SMT.
+      Includes proofs for size alignment, guard < size, no overflow,
+      alignment power-of-2, usable positive, stack partition, and
+      valid SP not in guard.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-SKS-SK01
+      - type: verifies
+        target: SWREQ-SKS-SK02
+      - type: verifies
+        target: SWREQ-SKS-SK03
+      - type: verifies
+        target: SWREQ-SKS-SK04
+      - type: verifies
+        target: SWREQ-SKS-SK05
+
+  - id: FV-SKS-003
+    type: sw-verification
+    title: StackConfig Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all stack_config code.
+      Same deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-SKS-SK01
+
+  # ── SWE.4: Unit verification — DeviceInit ────────────────────────────
+
+  - id: UV-DI-001
+    type: unit-verification
+    title: DeviceInit unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in src/device_init.rs covering init, init_device
+      (normal, double-init, wrong level), advance_level, check_deps_satisfied,
+      is_device_ready, level enum conversions and roundtrip.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-DI-INIT-DEVICE
+
+  - id: IV-DI-001
+    type: sw-integration-verification
+    title: DeviceInit integration tests
+    status: approved
+    description: >
+      Integration tests exercising full init sequence across levels
+      with dependency checking.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-DI-001
+
+  - id: FV-DI-001
+    type: sw-verification
+    title: DeviceInit Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/device_init.rs with requires/ensures
+      clauses that formally verify all 5 properties (DI1-DI5) via SMT.
+      Includes proofs for level ascending order, level codes complete,
+      no double-init, advance monotonic, invariant inductive, and
+      level roundtrip.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-DI-DI01
+      - type: verifies
+        target: SWREQ-DI-DI02
+      - type: verifies
+        target: SWREQ-DI-DI03
+      - type: verifies
+        target: SWREQ-DI-DI04
+      - type: verifies
+        target: SWREQ-DI-DI05
+
+  - id: FV-DI-003
+    type: sw-verification
+    title: DeviceInit Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all device_init code.
+      Same deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-DI-DI01
+
+  # ── SWE.4: Unit verification — FaultDecode ───────────────────────────
+
+  - id: UV-FD-001
+    type: unit-verification
+    title: FaultDecode unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in src/fault_decode.rs covering classify (all fault
+      categories), mmfar_checked/bfar_checked (valid/invalid), is_escalated,
+      is_vecttbl_fault, individual bit checks, and clean-register no-fault.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-FD-CLASSIFY
+
+  - id: IV-FD-001
+    type: sw-integration-verification
+    title: FaultDecode integration tests
+    status: approved
+    description: >
+      Integration tests exercising fault register decode across
+      various CFSR/HFSR combinations.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-FD-001
+
+  - id: FV-FD-001
+    type: sw-verification
+    title: FaultDecode Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/fault_decode.rs with requires/ensures
+      clauses that formally verify all 3 properties (FH1-FH3) via SMT.
+      Includes bit_vector proofs for classify exhaustiveness, MMFAR/BFAR
+      validity, FORCED escalation, and CFSR mask partition.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-FD-FH01
+      - type: verifies
+        target: SWREQ-FD-FH02
+      - type: verifies
+        target: SWREQ-FD-FH03
+
+  - id: FV-FD-003
+    type: sw-verification
+    title: FaultDecode Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all fault_decode code.
+      Same deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-FD-FH01
+
+  # ── SWE.4: Unit verification — RingBuf ──────────────────────────────
+
+  - id: UV-RB-001
+    type: unit-verification
+    title: RingBuf unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in src/ring_buf.rs covering init (valid/zero), put
+      (normal/full), get (normal/empty), put_n/get_n (partial), peek_at
+      (valid/invalid), reset, size_get, space_get, capacity_get,
+      is_empty, is_full, and head/tail consistency.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-RB-PUT
+      - type: verifies
+        target: SWDD-RB-GET
+
+  - id: IV-RB-001
+    type: sw-integration-verification
+    title: RingBuf integration tests
+    status: approved
+    description: >
+      Integration tests exercising put-get roundtrips, fill-drain
+      cycles, and multi-byte operations.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-RB-001
+
+  - id: FV-RB-001
+    type: sw-verification
+    title: RingBuf Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/ring_buf.rs with requires/ensures
+      clauses that formally verify all 8 properties (RB1-RB8) via SMT.
+      Includes proofs for invariant inductiveness, put-get roundtrip,
+      ring consistency, conservation, reset empties, and fill-drain
+      symmetry.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-RB-RB01
+      - type: verifies
+        target: SWREQ-RB-RB02
+      - type: verifies
+        target: SWREQ-RB-RB03
+      - type: verifies
+        target: SWREQ-RB-RB04
+      - type: verifies
+        target: SWREQ-RB-RB05
+      - type: verifies
+        target: SWREQ-RB-RB06
+      - type: verifies
+        target: SWREQ-RB-RB07
+      - type: verifies
+        target: SWREQ-RB-RB08
+
+  - id: FV-RB-003
+    type: sw-verification
+    title: RingBuf Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all ring_buf code.
+      Same deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-RB-RB01
+
+  # ── SWE.4: Unit verification — Userspace ─────────────────────────────
+
+  - id: UV-US-001
+    type: unit-verification
+    title: Userspace unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in src/userspace.rs covering new (no perms), grant_access
+      (valid/invalid tid), revoke_access, check_access (supervisor/public/
+      per-thread/invalid-tid), validate (type mismatch, no perm, init check),
+      init_object, uninit_object, recycle, make_public, and has_perm.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-US-VALIDATE
+
+  - id: IV-US-001
+    type: sw-integration-verification
+    title: Userspace integration tests
+    status: approved
+    description: >
+      Integration tests exercising grant-revoke roundtrips, validate
+      with various init/perm/type combinations, and recycle lifecycle.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-US-001
+
+  - id: FV-US-001
+    type: sw-verification
+    title: Userspace Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/userspace.rs with requires/ensures
+      clauses that formally verify all 8 properties (US1-US8) via SMT.
+      Includes proofs for invariant inductiveness, grant-revoke roundtrip,
+      grant/revoke idempotence, supervisor bypass, new no-perms,
+      type mismatch fails, uninit fails must-be-init, grant-then-check,
+      revoke-then-check, and recycle single perm.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-US-US01
+      - type: verifies
+        target: SWREQ-US-US02
+      - type: verifies
+        target: SWREQ-US-US03
+      - type: verifies
+        target: SWREQ-US-US04
+      - type: verifies
+        target: SWREQ-US-US05
+      - type: verifies
+        target: SWREQ-US-US06
+      - type: verifies
+        target: SWREQ-US-US07
+      - type: verifies
+        target: SWREQ-US-US08
+
+  - id: FV-US-003
+    type: sw-verification
+    title: Userspace Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all userspace code.
+      Same deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-US-US01
+
+  # ── SWE.4: Unit verification — Work ──────────────────────────────────
+
+  - id: UV-WK-001
+    type: unit-verification
+    title: Work unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in src/work.rs covering init (idle), submit (idle/queued/
+      canceling/running), start_running, finish_running, cancel,
+      finish_cancel, busy_get, is_idle/is_queued/is_running/is_canceling.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-WK-SUBMIT
+
+  - id: IV-WK-001
+    type: sw-integration-verification
+    title: Work integration tests
+    status: approved
+    description: >
+      Integration tests exercising full work item lifecycle including
+      submit-run-finish and submit-cancel-finish sequences.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-WK-001
+
+  - id: FV-WK-001
+    type: sw-verification
+    title: Work Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/work.rs with requires/ensures clauses
+      that formally verify all 6 properties (WK1-WK6) via SMT solving.
+      Includes proofs for init-is-idle, submit idempotent, submit rejects
+      canceling, cancel clears queued, full lifecycle, and cancel-running
+      lifecycle.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-WK-WK01
+      - type: verifies
+        target: SWREQ-WK-WK02
+      - type: verifies
+        target: SWREQ-WK-WK03
+      - type: verifies
+        target: SWREQ-WK-WK04
+      - type: verifies
+        target: SWREQ-WK-WK05
+      - type: verifies
+        target: SWREQ-WK-WK06
+
+  - id: FV-WK-003
+    type: sw-verification
+    title: Work Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all work code.
+      Same deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-WK-WK01
+
+  # ── SWE.4: Unit verification — Fatal ─────────────────────────────────
+
+  - id: UV-FT-001
+    type: unit-verification
+    title: Fatal unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in src/fatal.rs covering from_code (valid/invalid),
+      classify (all reason/context/mode combinations), is_panic,
+      is_isr, reason_str, and recovery action correctness.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-FT-CLASSIFY
+
+  - id: IV-FT-001
+    type: sw-integration-verification
+    title: Fatal integration tests
+    status: approved
+    description: >
+      Integration tests exercising fault classification across all
+      reason/context/mode combinations.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-FT-001
+
+  - id: FV-FT-001
+    type: sw-verification
+    title: Fatal Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/fatal.rs with requires/ensures clauses
+      that formally verify all 4 properties (FT1-FT4) via SMT solving.
+      Includes proofs for valid codes map, panic halts, thread faults
+      recoverable, reason codes distinct, stack check always abort,
+      and test mode permissive.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-FT-FT01
+      - type: verifies
+        target: SWREQ-FT-FT02
+      - type: verifies
+        target: SWREQ-FT-FT03
+      - type: verifies
+        target: SWREQ-FT-FT04
+
+  - id: FV-FT-003
+    type: sw-verification
+    title: Fatal Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all fatal code.
+      Same deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-FT-FT01
+
+  # ── SWE.4: Unit verification — MemPool ──────────────────────────────
+
+  - id: UV-MP-001
+    type: unit-verification
+    title: MemPool unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in src/mempool.rs covering init (valid/zero), alloc
+      (available/full), free (allocated/empty), alloc_many, free_many,
+      total_size (overflow detection), is_full, is_empty, and
+      allocated/free/capacity/block_size queries.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-MP-ALLOC
+
+  - id: IV-MP-001
+    type: sw-integration-verification
+    title: MemPool integration tests
+    status: approved
+    description: >
+      Integration tests exercising alloc-free roundtrips, fill-drain
+      cycles, and multi-block operations.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-MP-001
+
+  - id: FV-MP-001
+    type: sw-verification
+    title: MemPool Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/mempool.rs with requires/ensures clauses
+      that formally verify all 6 properties (MP1-MP6) via SMT solving.
+      Includes proofs for invariant inductiveness, alloc-free roundtrip,
+      conservation, full rejects alloc, empty rejects free, and
+      total_size overflow detection.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-MP-MP01
+      - type: verifies
+        target: SWREQ-MP-MP02
+      - type: verifies
+        target: SWREQ-MP-MP03
+      - type: verifies
+        target: SWREQ-MP-MP04
+      - type: verifies
+        target: SWREQ-MP-MP05
+      - type: verifies
+        target: SWREQ-MP-MP06
+
+  - id: FV-MP-003
+    type: sw-verification
+    title: MemPool Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all mempool code.
+      Same deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-MP-MP01
+
+  # ── SWE.4: Unit verification — Dynamic ──────────────────────────────
+
+  - id: UV-DY-001
+    type: unit-verification
+    title: Dynamic unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in src/dynamic.rs covering init (valid/zero), alloc
+      (available/full), free (allocated/empty), can_serve, active/available
+      queries, is_full, and is_empty.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-DY-ALLOC
+
+  - id: IV-DY-001
+    type: sw-integration-verification
+    title: Dynamic integration tests
+    status: approved
+    description: >
+      Integration tests exercising alloc-free roundtrips and pool
+      capacity management.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-DY-001
+
+  - id: FV-DY-001
+    type: sw-verification
+    title: Dynamic Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/dynamic.rs with requires/ensures clauses
+      that formally verify all 4 properties (DY1-DY4) via SMT solving.
+      Includes proofs for invariant inductiveness, alloc-free roundtrip,
+      full rejects alloc, empty rejects free, and conservation.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-DY-DY01
+      - type: verifies
+        target: SWREQ-DY-DY02
+      - type: verifies
+        target: SWREQ-DY-DY03
+      - type: verifies
+        target: SWREQ-DY-DY04
+
+  - id: FV-DY-003
+    type: sw-verification
+    title: Dynamic Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all dynamic code.
+      Same deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-DY-DY01
+
+  # ── SWE.4: Unit verification — SmpState ─────────────────────────────
+
+  - id: UV-SM-001
+    type: unit-verification
+    title: SmpState unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in src/smp_state.rs covering init (valid/invalid),
+      start_cpu (available/full), stop_cpu (multi/single-CPU), resume_cpu,
+      global_lock, global_unlock (held/empty), active/inactive queries,
+      all_active, and is_locked.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-SM-START
+
+  - id: IV-SM-001
+    type: sw-integration-verification
+    title: SmpState integration tests
+    status: approved
+    description: >
+      Integration tests exercising start-stop roundtrips, lock-unlock
+      sequences, and multi-CPU lifecycle management.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-SM-001
+
+  - id: FV-SM-001
+    type: sw-verification
+    title: SmpState Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/smp_state.rs with requires/ensures
+      clauses that formally verify all 4 properties (SM1-SM4) via SMT.
+      Includes proofs for invariant inductiveness, start-stop roundtrip,
+      CPU 0 never stops, lock-unlock roundtrip, and all-active rejects
+      start.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-SM-SM01
+      - type: verifies
+        target: SWREQ-SM-SM02
+      - type: verifies
+        target: SWREQ-SM-SM03
+      - type: verifies
+        target: SWREQ-SM-SM04
+
+  - id: FV-SM-003
+    type: sw-verification
+    title: SmpState Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all smp_state code.
+      Same deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-SM-SM01
