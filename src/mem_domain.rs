@@ -420,7 +420,6 @@ impl MemDomain {
     pub fn partition_get(&self, idx: u32) -> (r: Option<MemPartition>)
         requires
             self.inv(),
-            idx < MAX_PARTITIONS,
         ensures
             match r {
                 Some(p) => {
@@ -430,6 +429,9 @@ impl MemDomain {
                 None => self.partitions[idx as int].size == 0,
             },
     {
+        if idx >= MAX_PARTITIONS {
+            return None;
+        }
         let p = &self.partitions[idx as usize];
         if p.size == 0 {
             None

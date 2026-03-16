@@ -219,6 +219,9 @@ impl Heap {
     /// HP2: total_chunks decreases by 1, free_chunks decreases by 1.
     /// HP8: total allocated bytes unchanged (both chunks were free).
     pub fn merge(&mut self) -> i32 {
+        if self.total_chunks <= 1 || self.free_chunks <= 1 {
+            return EINVAL;
+        }
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.total_chunks = self.total_chunks - 1;

@@ -400,6 +400,9 @@ impl Heap {
                 &&& self.allocated_bytes == old(self).allocated_bytes
             },
     {
+        if self.total_chunks <= 1 || self.free_chunks <= 1 {
+            return EINVAL;
+        }
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.total_chunks = self.total_chunks - 1;

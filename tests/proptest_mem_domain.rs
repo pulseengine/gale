@@ -3,6 +3,8 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
+    clippy::cast_possible_truncation,
+    clippy::checked_conversions,
     clippy::panic,
     clippy::arithmetic_side_effects
 )]

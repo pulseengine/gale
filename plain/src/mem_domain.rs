@@ -218,6 +218,9 @@ impl MemDomain {
     ///
     /// Returns None if the slot is empty (size == 0) or index is out of range.
     pub fn partition_get(&self, idx: u32) -> Option<MemPartition> {
+        if idx >= MAX_PARTITIONS {
+            return None;
+        }
         let p = &self.partitions[idx as usize];
         if p.size == 0 { None } else { Some(*p) }
     }
