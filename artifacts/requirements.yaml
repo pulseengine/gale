@@ -19,6 +19,9 @@
 #     → SYSREQ-TO-001  (system) → SWREQ-TO-TO01..TO08 (software)
 #     → SYSREQ-PL-001  (system) → SWREQ-PL-PL01..PL08 (software)
 #     → SYSREQ-SC-001  (system) → SWREQ-SC-SC01..SC16 (software)
+#     → SYSREQ-TS-001  (system) → SWREQ-TS-TS01..TS06 (software)
+#     → SYSREQ-KH-001  (system) → SWREQ-KH-KH01..KH06 (software)
+#     → SYSREQ-TL-001  (system) → SWREQ-TL-TH01..TH06 (software)
 #
 # The verified properties are the ASIL-D formal specifications.
 # Each maps directly to a property in the Verus/Rocq specs.
@@ -3097,3 +3100,416 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SC-001
+
+  # ── Timeslice: System requirement ──────────────────────────────────────────
+
+  - id: SYSREQ-TS-001
+    type: system-req
+    title: Time-slicing for preemptive round-robin scheduling
+    status: approved
+    description: >
+      A time-slice subsystem that matches the Zephyr timeslicing
+      semantics: per-thread and global slice durations, eligibility
+      checking based on priority and thread state, slice expiry
+      detection, and round-robin rotation via move_to_end_of_prio_q.
+      Must maintain scheduling fairness invariants and never exhibit
+      undefined behavior or arithmetic overflow.
+    tags: [timeslice, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 6 properties (TS1-TS6) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Timeslice: Software requirements (6 ASIL-D properties) ─────────────────
+
+  - id: SWREQ-TS-TS01
+    type: sw-req
+    title: "TS1: slice_time returns per-thread slice or global default"
+    status: approved
+    description: >
+      When a thread has a non-zero per-thread slice, that value is returned.
+      Otherwise the global slice_ticks is returned.
+      Maps to timeslicing.c:25-37.
+    tags: [timeslice, config, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on slice_time(). Unit test per_thread_overrides_global.
+    links:
+      - type: derives-from
+        target: SYSREQ-TS-001
+
+  - id: SWREQ-TS-TS02
+    type: sw-req
+    title: "TS2: ineligible threads get zero slice size"
+    status: approved
+    description: >
+      Threads that are idle, prevented from running, or cooperative
+      with priority higher than slice_max_prio receive a zero slice
+      size, disabling time-slicing for them.
+      Maps to timeslicing.c:39-59.
+    tags: [timeslice, eligibility, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on z_time_slice_size(). Unit test idle_gets_zero_slice.
+    links:
+      - type: derives-from
+        target: SYSREQ-TS-001
+
+  - id: SWREQ-TS-TS03
+    type: sw-req
+    title: "TS3: reset cancels pending timeout and re-arms if eligible"
+    status: approved
+    description: >
+      z_reset_time_slice aborts any pending slice timeout, clears the
+      expired flag, and re-arms the timeout only if the thread has
+      a non-zero slice size.
+      Maps to timeslicing.c:75-86.
+    tags: [timeslice, reset, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on reset(). Unit test reset_rearms_when_eligible.
+    links:
+      - type: derives-from
+        target: SYSREQ-TS-001
+
+  - id: SWREQ-TS-TS04
+    type: sw-req
+    title: "TS4: expired slice triggers move_to_end_of_prio_q"
+    status: approved
+    description: >
+      When z_time_slice detects an expired slice on an eligible thread
+      that is not prevented from running, the thread is moved to the
+      end of its priority queue for round-robin rotation.
+      Maps to timeslicing.c:131-161.
+    tags: [timeslice, expiry, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on z_time_slice(). Unit test expiry_rotates_thread.
+    links:
+      - type: derives-from
+        target: SYSREQ-TS-001
+
+  - id: SWREQ-TS-TS05
+    type: sw-req
+    title: "TS5: global set updates slice_ticks and slice_max_prio"
+    status: approved
+    description: >
+      k_sched_time_slice_set updates the global slice duration and
+      maximum eligible priority, then resets the current thread's
+      slice unless it defines its own per-thread slice.
+      Maps to timeslicing.c:97-115.
+    tags: [timeslice, config, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on set(). Unit test global_set_updates_config.
+    links:
+      - type: derives-from
+        target: SYSREQ-TS-001
+
+  - id: SWREQ-TS-TS06
+    type: sw-req
+    title: "TS6: no overflow in slice tick arithmetic"
+    status: approved
+    description: >
+      No arithmetic operation on slice tick values, priority comparisons,
+      or timeout computations causes integer overflow. All arithmetic
+      is guarded by bounds checks.
+    tags: [timeslice, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-TS-001
+
+  # ── Kernel Heap: System requirement ────────────────────────────────────────
+
+  - id: SYSREQ-KH-001
+    type: system-req
+    title: Kernel heap allocator with blocking wait
+    status: approved
+    description: >
+      A kernel heap allocator that matches the Zephyr k_heap
+      semantics: init, alloc/aligned_alloc with blocking wait,
+      calloc with overflow-safe size computation, realloc with
+      blocking retry, and free with unpend-all wake. Must maintain
+      heap consistency invariants and never exhibit undefined behavior
+      or arithmetic overflow.
+    tags: [kheap, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 6 properties (KH1-KH6) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Kernel Heap: Software requirements (6 ASIL-D properties) ───────────────
+
+  - id: SWREQ-KH-KH01
+    type: sw-req
+    title: "KH1: init establishes empty heap with wait queue"
+    status: approved
+    description: >
+      k_heap_init initializes the wait queue, resets the spinlock,
+      and delegates to sys_heap_init for the backing memory region.
+      Maps to kheap.c:26-33.
+    tags: [kheap, init, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on init(). Unit test init_establishes_empty_heap.
+    links:
+      - type: derives-from
+        target: SYSREQ-KH-001
+
+  - id: SWREQ-KH-KH02
+    type: sw-req
+    title: "KH2: alloc blocks until memory available or timeout"
+    status: approved
+    description: >
+      k_heap_alloc attempts allocation; if it fails and timeout is not
+      K_NO_WAIT, the thread pends on the wait queue and retries upon
+      wake. Returns NULL on timeout.
+      Maps to kheap.c:79-129.
+    tags: [kheap, alloc, blocking, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on alloc(). Unit test alloc_blocks_until_available.
+    links:
+      - type: derives-from
+        target: SYSREQ-KH-001
+
+  - id: SWREQ-KH-KH03
+    type: sw-req
+    title: "KH3: aligned_alloc enforces power-of-two alignment"
+    status: approved
+    description: >
+      k_heap_aligned_alloc requires align to be a power of two (or zero),
+      then delegates to the blocking alloc helper with the specified
+      alignment.
+      Maps to kheap.c:131-155.
+    tags: [kheap, aligned, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus requires on aligned_alloc(). Unit test alignment_power_of_two.
+    links:
+      - type: derives-from
+        target: SYSREQ-KH-001
+
+  - id: SWREQ-KH-KH04
+    type: sw-req
+    title: "KH4: calloc guards against size_t multiplication overflow"
+    status: approved
+    description: >
+      k_heap_calloc uses size_mul_overflow to check num * size before
+      allocating. Returns NULL if the multiplication would overflow.
+      The allocated memory is zeroed.
+      Maps to kheap.c:157-174.
+    tags: [kheap, calloc, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Unit test calloc_rejects_overflow.
+    links:
+      - type: derives-from
+        target: SYSREQ-KH-001
+
+  - id: SWREQ-KH-KH05
+    type: sw-req
+    title: "KH5: free unpends all waiters and reschedules"
+    status: approved
+    description: >
+      k_heap_free frees memory back to the sys_heap, then unpends
+      all threads waiting on the heap's wait queue and triggers
+      rescheduling if any were woken.
+      Maps to kheap.c:206-218.
+    tags: [kheap, free, wake, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on free(). Unit test free_wakes_all_waiters.
+    links:
+      - type: derives-from
+        target: SYSREQ-KH-001
+
+  - id: SWREQ-KH-KH06
+    type: sw-req
+    title: "KH6: no overflow in heap size arithmetic"
+    status: approved
+    description: >
+      No arithmetic operation on heap sizes, alignment values, or
+      allocation counts causes integer overflow. All arithmetic
+      is guarded by bounds checks or overflow-safe intrinsics.
+    tags: [kheap, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-KH-001
+
+  # ── Thread Lifecycle: System requirement ───────────────────────────────────
+
+  - id: SYSREQ-TL-001
+    type: system-req
+    title: Thread lifecycle management (create/start/abort/join)
+    status: approved
+    description: >
+      A thread lifecycle subsystem that matches the Zephyr thread
+      semantics: thread creation with stack and entry point, delayed
+      start, priority and option configuration, abort with cleanup,
+      join with blocking wait, and essential-thread enforcement.
+      Must maintain thread state invariants and never exhibit
+      undefined behavior or arithmetic overflow.
+    tags: [thread, lifecycle, kernel]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        All 6 properties (TH1-TH6) verified by Verus SMT proofs
+        and runtime test suites.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Thread Lifecycle: Software requirements (6 ASIL-D properties) ──────────
+
+  - id: SWREQ-TL-TH01
+    type: sw-req
+    title: "TH1: create initializes thread with valid stack, entry, and priority"
+    status: approved
+    description: >
+      k_thread_create sets up a new thread with the specified stack,
+      stack size, entry point, arguments, priority, and options.
+      The thread begins in a non-started state if delay is non-zero.
+      Maps to thread.c:785-807.
+    tags: [thread, create, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on create(). Unit test create_initializes_thread.
+    links:
+      - type: derives-from
+        target: SYSREQ-TL-001
+
+  - id: SWREQ-TL-TH02
+    type: sw-req
+    title: "TH2: setup_new_thread configures base fields and arch state"
+    status: approved
+    description: >
+      z_setup_new_thread initializes the thread struct, sets priority,
+      configures thread options (essential, user, inherit_perms), sets
+      up the stack, and prepares architecture-specific context.
+      Maps to thread.c:579-720.
+    tags: [thread, setup, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on setup(). Unit test setup_configures_fields.
+    links:
+      - type: derives-from
+        target: SYSREQ-TL-001
+
+  - id: SWREQ-TL-TH03
+    type: sw-req
+    title: "TH3: priority_get returns current thread priority"
+    status: approved
+    description: >
+      k_thread_priority_get returns the thread's current scheduling
+      priority from base.prio.
+      Maps to thread.c:124-131.
+    tags: [thread, priority, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on priority_get(). Unit test priority_get_returns_prio.
+    links:
+      - type: derives-from
+        target: SYSREQ-TL-001
+
+  - id: SWREQ-TL-TH04
+    type: sw-req
+    title: "TH4: is_preempt_thread correctly classifies thread type"
+    status: approved
+    description: >
+      k_is_preempt_thread returns non-zero if the current thread is
+      preemptible (non-negative priority and not in ISR context).
+      Maps to thread.c:111-121.
+    tags: [thread, preempt, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on is_preempt(). Unit test preempt_classification.
+    links:
+      - type: derives-from
+        target: SYSREQ-TL-001
+
+  - id: SWREQ-TL-TH05
+    type: sw-req
+    title: "TH5: abort cleanup handles resource release and reuse"
+    status: approved
+    description: >
+      k_thread_abort_cleanup releases thread resources and marks
+      the thread struct for potential reuse. Handles the case where
+      cleanup is deferred due to scheduling constraints.
+      Maps to thread.c:1290-1330.
+    tags: [thread, abort, cleanup, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus ensures on abort_cleanup(). Unit test abort_releases_resources.
+    links:
+      - type: derives-from
+        target: SYSREQ-TL-001
+
+  - id: SWREQ-TL-TH06
+    type: sw-req
+    title: "TH6: no overflow in thread priority or stack arithmetic"
+    status: approved
+    description: >
+      No arithmetic operation on thread priorities, stack sizes, or
+      option flags causes integer overflow. All arithmetic is guarded
+      by bounds checks.
+    tags: [thread, safety, overflow, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus overflow-free proof. Clippy arithmetic_side_effects lint.
+    links:
+      - type: derives-from
+        target: SYSREQ-TL-001

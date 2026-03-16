@@ -2297,3 +2297,414 @@ artifacts:
         target: SWREQ-SC-SC10
       - type: function-maps-to
         target: PROV-SC-001
+
+  # ── Software architecture — Timeslice (SWE.2) ─────────────────────────────
+
+  - id: SWARCH-TS-001
+    type: sw-arch-component
+    title: Timeslice module (gale::timeslice)
+    status: approved
+    description: >
+      Time-slicing model with per-thread and global slice durations,
+      eligibility determination, and expiry-triggered round-robin
+      rotation. Tracks slice configuration, thread eligibility, and
+      rotation state. Actual timeout management, spinlocks, and IPI
+      coordination stays in C — Gale verifies eligibility logic,
+      duration selection, and rotation correctness only. No unsafe code.
+    tags: [timeslice, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "Timeslice::slice_time(Thread) -> i32"
+          - "Timeslice::slice_size(Thread) -> i32"
+          - "Timeslice::reset(Thread)"
+          - "Timeslice::set_global(i32, i32)"
+          - "Timeslice::on_tick(Thread) -> bool"
+        required:
+          - "gale::thread::Thread"
+          - "gale::sched::Scheduler"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-TS-TS01
+      - type: allocated-from
+        target: SWREQ-TS-TS02
+      - type: allocated-from
+        target: SWREQ-TS-TS04
+      - type: replaces
+        target: PROV-TS-001
+
+  # ── Software detailed design — Timeslice (SWE.3) ──────────────────────────
+
+  - id: SWDD-TS-SLICE-TIME
+    type: sw-detail-design
+    title: "Timeslice::slice_time — slice_time port"
+    status: approved
+    description: >
+      Return per-thread slice_ticks if non-zero, else global slice_ticks.
+      C source: kernel/timeslicing.c lines 25-37.
+    tags: [timeslice, config]
+    fields:
+      unit: plain/src/timeslice.rs
+      function: "Timeslice::slice_time"
+      algorithm: >
+        if thread.slice_ticks != 0: thread.slice_ticks; else: global_slice_ticks
+    links:
+      - type: refines
+        target: SWARCH-TS-001
+      - type: satisfies
+        target: SWREQ-TS-TS01
+      - type: function-maps-to
+        target: PROV-TS-001
+
+  - id: SWDD-TS-SLICE-SIZE
+    type: sw-detail-design
+    title: "Timeslice::slice_size — z_time_slice_size port"
+    status: approved
+    description: >
+      Return 0 for idle/prevented/ineligible threads; per-thread slice
+      if defined; global slice if preemptible and priority <= max_prio.
+      C source: kernel/timeslicing.c lines 39-59.
+    tags: [timeslice, eligibility]
+    fields:
+      unit: plain/src/timeslice.rs
+      function: "Timeslice::slice_size"
+      algorithm: >
+        if prevented || idle || slice_time == 0: 0;
+        elif per_thread_slice: per_thread_slice;
+        elif preemptible && prio <= max_prio: global_slice;
+        else: 0
+    links:
+      - type: refines
+        target: SWARCH-TS-001
+      - type: satisfies
+        target: SWREQ-TS-TS02
+      - type: function-maps-to
+        target: PROV-TS-001
+
+  - id: SWDD-TS-RESET
+    type: sw-detail-design
+    title: "Timeslice::reset — z_reset_time_slice port"
+    status: approved
+    description: >
+      Abort pending timeout, clear expired flag, re-arm if slice_size > 0.
+      C source: kernel/timeslicing.c lines 75-86.
+    tags: [timeslice, reset]
+    fields:
+      unit: plain/src/timeslice.rs
+      function: "Timeslice::reset"
+      algorithm: >
+        abort_timeout(); expired = false;
+        if slice_size(thread) != 0: add_timeout(slice_size - 1)
+    links:
+      - type: refines
+        target: SWARCH-TS-001
+      - type: satisfies
+        target: SWREQ-TS-TS03
+      - type: satisfies
+        target: SWREQ-TS-TS06
+      - type: function-maps-to
+        target: PROV-TS-001
+
+  - id: SWDD-TS-ON-TICK
+    type: sw-detail-design
+    title: "Timeslice::on_tick — z_time_slice port"
+    status: approved
+    description: >
+      If expired and eligible: invoke per-thread handler if set, move
+      current to end of prio queue, reset slice. Returns whether
+      rotation occurred.
+      C source: kernel/timeslicing.c lines 131-161.
+    tags: [timeslice, expiry, rotation]
+    fields:
+      unit: plain/src/timeslice.rs
+      function: "Timeslice::on_tick"
+      algorithm: >
+        if expired[cpu] && slice_size(curr) != 0:
+          if !prevented: move_to_end_of_prio_q();
+          reset(curr); return true
+        return false
+    links:
+      - type: refines
+        target: SWARCH-TS-001
+      - type: satisfies
+        target: SWREQ-TS-TS04
+      - type: satisfies
+        target: SWREQ-TS-TS05
+      - type: function-maps-to
+        target: PROV-TS-001
+
+  # ── Software architecture — Kernel Heap (SWE.2) ───────────────────────────
+
+  - id: SWARCH-KH-001
+    type: sw-arch-component
+    title: Kernel heap module (gale::kheap)
+    status: approved
+    description: >
+      Kernel heap allocator model with blocking alloc/realloc, overflow-safe
+      calloc, and free-with-unpend-all. Tracks allocation state and wait
+      queue interactions. Actual sys_heap management, spinlocks, and memory
+      operations stay in C — Gale verifies the allocation state machine,
+      overflow protection, and wake correctness only. No unsafe code.
+    tags: [kheap, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "KHeap::init(mem, bytes)"
+          - "KHeap::alloc(bytes, timeout) -> Option<*mut u8>"
+          - "KHeap::aligned_alloc(align, bytes, timeout) -> Option<*mut u8>"
+          - "KHeap::calloc(num, size, timeout) -> Option<*mut u8>"
+          - "KHeap::realloc(ptr, bytes, timeout) -> Option<*mut u8>"
+          - "KHeap::free(ptr)"
+        required:
+          - "gale::wait_queue::WaitQueue"
+          - "gale::thread::Thread"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-KH-KH01
+      - type: allocated-from
+        target: SWREQ-KH-KH02
+      - type: allocated-from
+        target: SWREQ-KH-KH05
+      - type: replaces
+        target: PROV-KH-001
+
+  # ── Software detailed design — Kernel Heap (SWE.3) ────────────────────────
+
+  - id: SWDD-KH-INIT
+    type: sw-detail-design
+    title: "KHeap::init — k_heap_init port"
+    status: approved
+    description: >
+      Initialize wait queue, reset spinlock, delegate to sys_heap_init.
+      C source: kernel/kheap.c lines 26-33.
+    tags: [kheap, init]
+    fields:
+      unit: plain/src/kheap.rs
+      function: "KHeap::init"
+      algorithm: >
+        waitq_init(); lock = default(); sys_heap_init(mem, bytes)
+    links:
+      - type: refines
+        target: SWARCH-KH-001
+      - type: satisfies
+        target: SWREQ-KH-KH01
+      - type: function-maps-to
+        target: PROV-KH-001
+
+  - id: SWDD-KH-ALLOC
+    type: sw-detail-design
+    title: "KHeap::alloc — k_heap_alloc / z_heap_alloc_helper port"
+    status: approved
+    description: >
+      Attempt allocation; if NULL and timeout != K_NO_WAIT, pend on
+      wait queue and retry loop. Return pointer or NULL on timeout.
+      C source: kernel/kheap.c lines 79-129.
+    tags: [kheap, alloc, blocking]
+    fields:
+      unit: plain/src/kheap.rs
+      function: "KHeap::alloc"
+      algorithm: >
+        loop: ret = sys_heap_alloc(bytes);
+          if ret || no_wait: break;
+          z_pend_curr(wait_q, timeout);
+        return ret
+    links:
+      - type: refines
+        target: SWARCH-KH-001
+      - type: satisfies
+        target: SWREQ-KH-KH02
+      - type: satisfies
+        target: SWREQ-KH-KH03
+      - type: satisfies
+        target: SWREQ-KH-KH06
+      - type: function-maps-to
+        target: PROV-KH-001
+
+  - id: SWDD-KH-CALLOC
+    type: sw-detail-design
+    title: "KHeap::calloc — k_heap_calloc port"
+    status: approved
+    description: >
+      Guard num * size against overflow via size_mul_overflow. If safe,
+      allocate and memset to zero. Return NULL on overflow or alloc failure.
+      C source: kernel/kheap.c lines 157-174.
+    tags: [kheap, calloc, overflow]
+    fields:
+      unit: plain/src/kheap.rs
+      function: "KHeap::calloc"
+      algorithm: >
+        if size_mul_overflow(num, size, &bounds): return NULL;
+        ret = alloc(bounds); if ret: memset(ret, 0, bounds);
+        return ret
+    links:
+      - type: refines
+        target: SWARCH-KH-001
+      - type: satisfies
+        target: SWREQ-KH-KH04
+      - type: satisfies
+        target: SWREQ-KH-KH06
+      - type: function-maps-to
+        target: PROV-KH-001
+
+  - id: SWDD-KH-FREE
+    type: sw-detail-design
+    title: "KHeap::free — k_heap_free port"
+    status: approved
+    description: >
+      Free memory to sys_heap, unpend all waiters, reschedule if any woken.
+      C source: kernel/kheap.c lines 206-218.
+    tags: [kheap, free, wake]
+    fields:
+      unit: plain/src/kheap.rs
+      function: "KHeap::free"
+      algorithm: >
+        sys_heap_free(mem); if z_unpend_all(wait_q) != 0: z_reschedule()
+    links:
+      - type: refines
+        target: SWARCH-KH-001
+      - type: satisfies
+        target: SWREQ-KH-KH05
+      - type: function-maps-to
+        target: PROV-KH-001
+
+  # ── Software architecture — Thread Lifecycle (SWE.2) ──────────────────────
+
+  - id: SWARCH-TL-001
+    type: sw-arch-component
+    title: Thread lifecycle module (gale::thread_lifecycle)
+    status: approved
+    description: >
+      Thread lifecycle model with create, setup, priority query,
+      preemptibility classification, and abort cleanup. Tracks thread
+      state validation, priority bounds, and lifecycle state machine.
+      Actual arch context, stack setup, userspace verification, and
+      custom data stay in C — Gale verifies state validation, priority
+      classification, and cleanup correctness only. No unsafe code.
+    tags: [thread, lifecycle, architecture]
+    fields:
+      interfaces:
+        provided:
+          - "ThreadLifecycle::create(stack, size, entry, prio, opts, delay) -> Thread"
+          - "ThreadLifecycle::setup(thread, stack, size, entry, prio, opts)"
+          - "ThreadLifecycle::priority_get(Thread) -> i32"
+          - "ThreadLifecycle::is_preempt(Thread) -> bool"
+          - "ThreadLifecycle::abort_cleanup(Thread)"
+        required:
+          - "gale::thread::Thread"
+          - "gale::sched::Scheduler"
+          - "gale::error::{OK, EINVAL}"
+      concurrency: "single-threaded (spinlock elided; Zephyr provides external locking)"
+    links:
+      - type: allocated-from
+        target: SWREQ-TL-TH01
+      - type: allocated-from
+        target: SWREQ-TL-TH02
+      - type: allocated-from
+        target: SWREQ-TL-TH04
+      - type: replaces
+        target: PROV-TL-001
+
+  # ── Software detailed design — Thread Lifecycle (SWE.3) ───────────────────
+
+  - id: SWDD-TL-CREATE
+    type: sw-detail-design
+    title: "ThreadLifecycle::create — z_impl_k_thread_create port"
+    status: approved
+    description: >
+      Create thread with stack, entry, args, priority, options. Delegate
+      to setup_new_thread, then start or schedule delayed start.
+      C source: kernel/thread.c lines 785-807.
+    tags: [thread, create]
+    fields:
+      unit: plain/src/thread_lifecycle.rs
+      function: "ThreadLifecycle::create"
+      algorithm: >
+        setup_new_thread(thread, stack, size, entry, p1, p2, p3, prio, opts);
+        if delay == K_NO_WAIT: start(thread)
+    links:
+      - type: refines
+        target: SWARCH-TL-001
+      - type: satisfies
+        target: SWREQ-TL-TH01
+      - type: satisfies
+        target: SWREQ-TL-TH06
+      - type: function-maps-to
+        target: PROV-TL-001
+
+  - id: SWDD-TL-SETUP
+    type: sw-detail-design
+    title: "ThreadLifecycle::setup — z_setup_new_thread port"
+    status: approved
+    description: >
+      Initialize thread struct, set priority, configure options
+      (essential, user, inherit_perms), prepare stack and arch context.
+      C source: kernel/thread.c lines 579-720.
+    tags: [thread, setup]
+    fields:
+      unit: plain/src/thread_lifecycle.rs
+      function: "ThreadLifecycle::setup"
+      algorithm: >
+        check_reuse(thread); init_base(prio, opts);
+        arch_new_thread(stack, size, entry, p1, p2, p3)
+    links:
+      - type: refines
+        target: SWARCH-TL-001
+      - type: satisfies
+        target: SWREQ-TL-TH02
+      - type: satisfies
+        target: SWREQ-TL-TH06
+      - type: function-maps-to
+        target: PROV-TL-001
+
+  - id: SWDD-TL-PRIORITY
+    type: sw-detail-design
+    title: "ThreadLifecycle::priority_get / is_preempt port"
+    status: approved
+    description: >
+      priority_get: return thread.base.prio.
+      is_preempt: return prio >= 0 && !in_isr.
+      C source: kernel/thread.c lines 111-131.
+    tags: [thread, priority, preempt]
+    fields:
+      unit: plain/src/thread_lifecycle.rs
+      function: "ThreadLifecycle::priority_get / is_preempt"
+      algorithm: >
+        priority_get: thread.base.prio;
+        is_preempt: !arch_is_in_isr() && prio >= 0
+    links:
+      - type: refines
+        target: SWARCH-TL-001
+      - type: satisfies
+        target: SWREQ-TL-TH03
+      - type: satisfies
+        target: SWREQ-TL-TH04
+      - type: function-maps-to
+        target: PROV-TL-001
+
+  - id: SWDD-TL-ABORT
+    type: sw-detail-design
+    title: "ThreadLifecycle::abort_cleanup — k_thread_abort_cleanup port"
+    status: approved
+    description: >
+      Release thread resources, mark for reuse. Handle deferred cleanup
+      if scheduling constraints prevent immediate release.
+      C source: kernel/thread.c lines 1290-1330.
+    tags: [thread, abort, cleanup]
+    fields:
+      unit: plain/src/thread_lifecycle.rs
+      function: "ThreadLifecycle::abort_cleanup"
+      algorithm: >
+        release_resources(thread);
+        if can_reuse: mark_reusable(thread);
+        else: defer_cleanup(thread)
+    links:
+      - type: refines
+        target: SWARCH-TL-001
+      - type: satisfies
+        target: SWREQ-TL-TH05
+      - type: satisfies
+        target: SWREQ-TL-TH06
+      - type: function-maps-to
+        target: PROV-TL-001

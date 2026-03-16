@@ -58,3 +58,8 @@ pub mod sched;
 pub mod thread_lifecycle;
 pub mod timeslice;
 pub mod kheap;
+pub mod work;
+pub mod fatal;
+pub mod mempool;
+pub mod dynamic;
+pub mod smp_state;

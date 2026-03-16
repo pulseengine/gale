@@ -1,0 +1,51 @@
+load("@rules_renode//renode:defs.bzl", "renode_test")
+
+# ==========================================================================
+# Renode multi-architecture emulation tests for Gale kernel primitives
+#
+# These tests run pre-built Zephyr+Gale ELF binaries on Renode's
+# instruction-set simulator. They validate that Gale's Rust FFI layer
+# works correctly on real ARM instruction sets (M4F, M33, R5).
+#
+# Toolchain constraint: Linux x86_64 only (Renode portable).
+# On macOS, these targets are silently skipped (incompatible).
+# ==========================================================================
+
+# ---------------------------------------------------------------------------
+# Cortex-M4F: STM32F4 Discovery (thumbv7em-none-eabihf)
+# ---------------------------------------------------------------------------
+
+renode_test(
+    name = "stm32f4_sem_test",
+    timeout = "long",
+    robot_test = "stm32f4_sem.robot",
+    variables_with_label = {
+        "ELF": "elfs/stm32f4_disco_sem.elf",
+    },
+)
+
+# ---------------------------------------------------------------------------
+# Cortex-M33: STM32L552 / Nucleo L552ZE-Q (thumbv8m.main-none-eabihf)
+# ---------------------------------------------------------------------------
+
+renode_test(
+    name = "stm32l552_sem_test",
+    timeout = "long",
+    robot_test = "stm32l552_sem.robot",
+    variables_with_label = {
+        "ELF": "elfs/nucleo_l552ze_q_sem.elf",
+    },
+)
+
+# ---------------------------------------------------------------------------
+# Cortex-R5: Xilinx ZynqMP RPU (armv7r-none-eabihf)
+# ---------------------------------------------------------------------------
+
+renode_test(
+    name = "zynqmp_r5_sem_test",
+    timeout = "long",
+    robot_test = "zynqmp_r5_sem.robot",
+    variables_with_label = {
+        "ELF": "elfs/qemu_cortex_r5_sem.elf",
+    },
+)

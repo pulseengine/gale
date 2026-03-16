@@ -2452,3 +2452,261 @@ artifacts:
         target: SWREQ-SC-SC05
       - type: verifies
         target: SWREQ-SC-SC12
+
+  # ── SWE.4: Unit verification — Timeslice ─────────────────────────────────
+
+  - id: UV-TS-001
+    type: unit-verification
+    title: Timeslice unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/timeslice.rs covering per-thread vs global
+      slice selection, eligibility determination for idle/cooperative/
+      preemptible threads, reset re-arming logic, expiry-triggered
+      rotation, and global configuration updates.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-TS-SLICE-TIME
+      - type: verifies
+        target: SWDD-TS-SLICE-SIZE
+      - type: verifies
+        target: SWDD-TS-RESET
+      - type: verifies
+        target: SWDD-TS-ON-TICK
+
+  # ── SWE.4: Unit verification — Kernel Heap ───────────────────────────────
+
+  - id: UV-KH-001
+    type: unit-verification
+    title: Kernel heap unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/kheap.rs covering heap initialization,
+      alloc/aligned_alloc state transitions, calloc overflow rejection,
+      free-with-unpend-all wake behavior, and allocation state machine
+      correctness.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-KH-INIT
+      - type: verifies
+        target: SWDD-KH-ALLOC
+      - type: verifies
+        target: SWDD-KH-CALLOC
+      - type: verifies
+        target: SWDD-KH-FREE
+
+  # ── SWE.4: Unit verification — Thread Lifecycle ──────────────────────────
+
+  - id: UV-TL-001
+    type: unit-verification
+    title: Thread lifecycle unit tests (cargo test --lib)
+    status: approved
+    description: >
+      Unit tests in plain/src/thread_lifecycle.rs covering create
+      initialization, setup field configuration, priority_get correctness,
+      is_preempt classification, abort cleanup resource release, and
+      lifecycle state transitions.
+    tags: [testing, unit, swe-4]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWDD-TL-CREATE
+      - type: verifies
+        target: SWDD-TL-SETUP
+      - type: verifies
+        target: SWDD-TL-PRIORITY
+      - type: verifies
+        target: SWDD-TL-ABORT
+
+  # ── SWE.5: Integration verification — Timeslice ─────────────────────────
+
+  - id: IV-TS-001
+    type: sw-integration-verification
+    title: Timeslice integration tests
+    status: approved
+    description: >
+      Integration tests in tests/timeslice_integration.rs exercising the
+      full timeslice API surface across module boundaries. Tests slice
+      duration selection, eligibility filtering, reset/re-arm cycles,
+      expiry-triggered rotation, and global config update propagation.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-TS-001
+
+  # ── SWE.5: Integration verification — Kernel Heap ───────────────────────
+
+  - id: IV-KH-001
+    type: sw-integration-verification
+    title: Kernel heap integration tests
+    status: approved
+    description: >
+      Integration tests in tests/kheap_integration.rs exercising the
+      full kernel heap API surface across module boundaries. Tests
+      init/alloc/free sequences, blocking alloc with timeout, calloc
+      overflow edge cases, free-triggered wake-all, and aligned_alloc
+      power-of-two validation.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-KH-001
+
+  # ── SWE.5: Integration verification — Thread Lifecycle ──────────────────
+
+  - id: IV-TL-001
+    type: sw-integration-verification
+    title: Thread lifecycle integration tests
+    status: approved
+    description: >
+      Integration tests in tests/thread_lifecycle_integration.rs
+      exercising the full thread lifecycle API surface across module
+      boundaries. Tests create/setup sequences, priority queries,
+      preemptibility classification, abort cleanup with deferred
+      release, and lifecycle state machine transitions.
+    tags: [testing, integration, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-TL-001
+
+  # ── SWE.6: Software verification — Timeslice ───────────────────────────
+
+  - id: FV-TS-001
+    type: sw-verification
+    title: Timeslice Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/timeslice.rs with requires/ensures clauses
+      that formally verify all timeslice properties (TS01-TS06) via SMT
+      solving. Proves eligibility logic, duration selection, reset
+      correctness, rotation triggering, and overflow protection.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-TS-TS01
+      - type: verifies
+        target: SWREQ-TS-TS02
+      - type: verifies
+        target: SWREQ-TS-TS03
+      - type: verifies
+        target: SWREQ-TS-TS04
+      - type: verifies
+        target: SWREQ-TS-TS05
+      - type: verifies
+        target: SWREQ-TS-TS06
+
+  - id: FV-TS-003
+    type: sw-verification
+    title: Timeslice Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all timeslice code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-TS-TS01
+
+  # ── SWE.6: Software verification — Kernel Heap ─────────────────────────
+
+  - id: FV-KH-001
+    type: sw-verification
+    title: Kernel heap Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/kheap.rs with requires/ensures clauses
+      that formally verify all kernel heap properties (KH01-KH06) via SMT
+      solving. Proves init postconditions, alloc state machine, calloc
+      overflow protection, free wake correctness, and arithmetic safety.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-KH-KH01
+      - type: verifies
+        target: SWREQ-KH-KH02
+      - type: verifies
+        target: SWREQ-KH-KH03
+      - type: verifies
+        target: SWREQ-KH-KH04
+      - type: verifies
+        target: SWREQ-KH-KH05
+      - type: verifies
+        target: SWREQ-KH-KH06
+
+  - id: FV-KH-003
+    type: sw-verification
+    title: Kernel heap Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all kernel heap code. Same
+      deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-KH-KH01
+
+  # ── SWE.6: Software verification — Thread Lifecycle ────────────────────
+
+  - id: FV-TL-001
+    type: sw-verification
+    title: Thread lifecycle Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/thread_lifecycle.rs with requires/ensures
+      clauses that formally verify all thread lifecycle properties
+      (TH01-TH06) via SMT solving. Proves create initialization, setup
+      field correctness, priority query accuracy, preempt classification,
+      abort cleanup safety, and overflow protection.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-TL-TH01
+      - type: verifies
+        target: SWREQ-TL-TH02
+      - type: verifies
+        target: SWREQ-TL-TH03
+      - type: verifies
+        target: SWREQ-TL-TH04
+      - type: verifies
+        target: SWREQ-TL-TH05
+      - type: verifies
+        target: SWREQ-TL-TH06
+
+  - id: FV-TL-003
+    type: sw-verification
+    title: Thread lifecycle Clippy safety-critical lint profile
+    status: approved
+    description: >
+      Clippy with ASIL-D lint profile applied to all thread lifecycle code.
+      Same deny set as project-wide Cargo.toml [lints.clippy].
+    tags: [static-analysis, clippy, safety, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-TL-TH01

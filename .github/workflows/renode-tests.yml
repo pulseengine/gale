@@ -1,0 +1,138 @@
+name: Renode Multi-Arch Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly Monday 3am UTC -- nightly cadence for emulation tests
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+env:
+  ZEPHYR_SDK_VERSION: "0.17.4"
+
+jobs:
+  # -----------------------------------------------------------------------
+  # Stage 1: Build Zephyr+Gale ELF binaries for each target architecture
+  # -----------------------------------------------------------------------
+  build-elfs:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - board: stm32f4_disco
+            arch: cortex-m4f
+            rust_target: thumbv7em-none-eabihf
+            test_path: tests/kernel/semaphore/semaphore
+          - board: nucleo_l552ze_q
+            arch: cortex-m33
+            rust_target: thumbv8m.main-none-eabihf
+            test_path: tests/kernel/semaphore/semaphore
+          - board: qemu_cortex_r5
+            arch: cortex-r5
+            rust_target: armv7r-none-eabihf
+            test_path: tests/kernel/semaphore/semaphore
+
+    steps:
+      - name: Checkout Gale
+        uses: actions/checkout@v4
+        with:
+          path: gale
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install west and dependencies
+        run: pip3 install west
+
+      - name: Initialize west workspace
+        run: |
+          west init -m https://github.com/zephyrproject-rtos/zephyr --mr main workspace
+          cd workspace
+          west update --narrow -o=--depth=1
+
+      - name: Install Zephyr Python dependencies
+        run: pip3 install -r workspace/zephyr/scripts/requirements.txt
+
+      - name: Install Zephyr SDK (ARM toolchain only)
+        env:
+          SDK_VERSION: "0.17.4"
+        run: |
+          cd /tmp
+          wget -q "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${SDK_VERSION}/zephyr-sdk-${SDK_VERSION}_linux-x86_64_minimal.tar.xz"
+          tar xf "zephyr-sdk-${SDK_VERSION}_linux-x86_64_minimal.tar.xz" -C /opt
+          "/opt/zephyr-sdk-${SDK_VERSION}/setup.sh" -t arm-zephyr-eabi -c
+
+      - name: Install Rust target
+        env:
+          RUST_TARGET: "${{ matrix.rust_target }}"
+        run: rustup target add "${RUST_TARGET}"
+
+      - name: Build Zephyr+Gale semaphore test
+        env:
+          ZEPHYR_BASE: "${{ github.workspace }}/workspace/zephyr"
+          ZEPHYR_SDK_INSTALL_DIR: "/opt/zephyr-sdk-0.17.4"
+          BOARD: "${{ matrix.board }}"
+          TEST_PATH: "${{ matrix.test_path }}"
+          GALE_DIR: "${{ github.workspace }}/gale"
+        run: |
+          cd workspace
+          west build -b "${BOARD}" \
+            -s "zephyr/${TEST_PATH}" \
+            -- "-DZEPHYR_EXTRA_MODULES=${GALE_DIR}" \
+               "-DOVERLAY_CONFIG=${GALE_DIR}/zephyr/gale_overlay.conf"
+
+      - name: Upload ELF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "elf-${{ matrix.arch }}-sem"
+          path: workspace/build/zephyr/zephyr.elf
+          retention-days: 7
+
+  # -----------------------------------------------------------------------
+  # Stage 2: Run Renode emulation tests via Bazel
+  # -----------------------------------------------------------------------
+  renode-test:
+    needs: build-elfs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Gale
+        uses: actions/checkout@v4
+
+      - name: Download all ELF artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/elfs
+
+      - name: Stage ELFs for Renode tests
+        run: |
+          mkdir -p renode/elfs
+          cp /tmp/elfs/elf-cortex-m4f-sem/zephyr.elf renode/elfs/stm32f4_disco_sem.elf
+          cp /tmp/elfs/elf-cortex-m33-sem/zephyr.elf renode/elfs/nucleo_l552ze_q_sem.elf
+          cp /tmp/elfs/elf-cortex-r5-sem/zephyr.elf  renode/elfs/qemu_cortex_r5_sem.elf
+          ls -la renode/elfs/
+
+      - name: Install Bazelisk
+        run: |
+          wget -q "https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-linux-amd64" -O /usr/local/bin/bazel
+          chmod +x /usr/local/bin/bazel
+
+      - name: Run Renode tests
+        run: |
+          bazel test //renode:all \
+            --test_output=all \
+            --test_timeout=300 \
+            --nozip_undeclared_test_outputs
+
+      - name: Upload Renode test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renode-test-logs
+          path: bazel-testlogs/renode/*/test.outputs/
+          retention-days: 14

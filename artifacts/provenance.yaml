@@ -457,3 +457,92 @@ artifacts:
       gale-file: plain/src/sched.rs
       gale-module: gale::sched
       scope: partial-functions
+
+  - id: PROV-TS-001
+    type: source-provenance
+    title: "Zephyr kernel/timeslicing.c — time-slice subsystem implementation"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's time-slicing subsystem.
+      Contains slice_time, z_time_slice_size, slice_timeout,
+      z_reset_time_slice, k_sched_time_slice_set, k_thread_time_slice_set,
+      z_time_slice.  The Gale port models the eligibility logic, slice
+      duration selection, and expiry-triggered rotation only — actual
+      timeout management and spinlocks stay in C.
+    tags: [upstream, timeslice, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/timeslicing.c
+      upstream-sha256: "187a3efd48ef4d3df81aa8677631c4e8bf27a068761bbff4e004df8705be7017"
+      upstream-lines: 161
+      upstream-functions:
+        - "slice_time (lines 25-37)"
+        - "z_time_slice_size (lines 39-59)"
+        - "slice_timeout (lines 61-73)"
+        - "z_reset_time_slice (lines 75-86)"
+        - "k_sched_time_slice_set (lines 97-115)"
+        - "z_time_slice (lines 131-161)"
+      gale-file: plain/src/timeslice.rs
+      gale-module: gale::timeslice
+      scope: partial-functions
+
+  - id: PROV-KH-001
+    type: source-provenance
+    title: "Zephyr kernel/kheap.c — kernel heap allocator implementation"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's kernel heap allocator.
+      Contains k_heap_init, z_heap_alloc_helper, k_heap_alloc,
+      k_heap_aligned_alloc, k_heap_calloc, k_heap_realloc, k_heap_free.
+      The Gale port models the allocation state machine and overflow-safe
+      size computation only — actual sys_heap management and spinlocks
+      stay in C.
+    tags: [upstream, kheap, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/kheap.c
+      upstream-sha256: "187d9b6ae3277d11b6e30e84e45aee2da5bdc852eaf0d6c4baa8938bbdab8767"
+      upstream-lines: 218
+      upstream-functions:
+        - "k_heap_init (lines 26-33)"
+        - "z_heap_alloc_helper (lines 79-117)"
+        - "k_heap_alloc (lines 119-129)"
+        - "k_heap_aligned_alloc (lines 131-155)"
+        - "k_heap_calloc (lines 157-174)"
+        - "k_heap_realloc (lines 176-204)"
+        - "k_heap_free (lines 206-218)"
+      gale-file: plain/src/kheap.rs
+      gale-module: gale::kheap
+      scope: partial-functions
+
+  - id: PROV-TL-001
+    type: source-provenance
+    title: "Zephyr kernel/thread.c — thread lifecycle implementation"
+    status: approved
+    description: >
+      The primary C implementation of Zephyr's thread lifecycle management.
+      Contains z_impl_k_thread_create, z_setup_new_thread,
+      z_impl_k_thread_priority_get, z_impl_k_is_preempt_thread,
+      k_thread_abort_cleanup, k_thread_abort_cleanup_check_reuse,
+      plus name management, custom data, and stack safety checks.
+      The Gale port models thread state validation, priority classification,
+      and lifecycle state machine only — actual arch context, stack setup,
+      and userspace verification stays in C.
+    tags: [upstream, thread, lifecycle, kernel]
+    fields:
+      upstream-project: zephyr
+      upstream-version: "4.3.99-dev"
+      upstream-file: kernel/thread.c
+      upstream-sha256: "40d700460d80b408f5a1d8b090e34186c3bca5be2019f1d0c53863c58a24dcd0"
+      upstream-lines: 1367
+      upstream-functions:
+        - "z_impl_k_is_preempt_thread (lines 111-121)"
+        - "z_impl_k_thread_priority_get (lines 124-131)"
+        - "z_setup_new_thread (lines 579-720)"
+        - "z_impl_k_thread_create (lines 785-807)"
+        - "k_thread_abort_cleanup (lines 1290-1330)"
+      gale-file: plain/src/thread_lifecycle.rs
+      gale-module: gale::thread_lifecycle
+      scope: partial-functions
