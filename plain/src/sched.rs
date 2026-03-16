@@ -228,6 +228,11 @@ pub fn next_up(runq_best: Option<Thread>, idle: Thread) -> SchedChoice {
         None => SchedChoice::Thread(idle),
     }
 }
+
+// =====================================================================
+// SMP scheduling — MetaIRQ preemption + full next_up_smp()
+// =====================================================================
+
 /// Tracks MetaIRQ cooperative preemption state (per-CPU).
 ///
 /// Models the scheduler-relevant fields of Zephyr's `struct _cpu`:
@@ -248,6 +253,7 @@ pub struct CpuSchedState {
     /// Zephyr: `_current_cpu->idle_thread`
     pub idle_thread: Thread,
 }
+
 impl CpuSchedState {
     /// Create a new per-CPU scheduler state.
     pub fn new(idle_thread: Thread) -> Self {
@@ -258,6 +264,7 @@ impl CpuSchedState {
         }
     }
 }
+
 /// Outcome of the SMP next_up decision, including side-effect flags.
 ///
 /// Beyond just the chosen thread, the SMP scheduler must communicate
@@ -271,6 +278,7 @@ pub struct SmpSchedOutcome {
     /// and not the MetaIRQ-preempted thread).
     pub requeue_current: bool,
 }
+
 /// Select the next thread to run (SMP mode).
 ///
 /// Models sched.c:next_up() for the CONFIG_SMP case (lines 221-278).
@@ -282,6 +290,7 @@ pub struct SmpSchedOutcome {
 ///   SC11: Ties only switch if swap_ok (yield)
 ///   SC12: Current re-queued only if active + not queued + not idle
 ///         + not MetaIRQ preempted
+#[allow(clippy::fn_params_excessive_bools)]
 pub fn next_up_smp(
     runq_best: Option<Thread>,
     current: Thread,
@@ -291,7 +300,9 @@ pub fn next_up_smp(
     current_is_cooperative: bool,
     candidate_is_metairq_fn: fn(&Thread) -> bool,
 ) -> SmpSchedOutcome {
+    // --- Step 1: MetaIRQ preemption recovery (sched.c:202-210) ---
     let mut thread: Option<Thread> = runq_best;
+
     if let Some(mirqp) = cpu_state.metairq_preempted {
         let best_is_metairq = match thread {
             Some(ref t) => candidate_is_metairq_fn(t),
@@ -305,17 +316,24 @@ pub fn next_up_smp(
             }
         }
     }
+
+    // --- Step 2: Fall back to idle if nothing in queue (sched.c:236-238) ---
     let candidate = match thread {
         Some(t) => t,
         None => cpu_state.idle_thread,
     };
+
+    // --- Step 3: Compare current vs candidate (sched.c:240-251) ---
     let mut chosen = candidate;
     if current_is_active {
         #[allow(clippy::arithmetic_side_effects)]
         let cmp = current.priority.get() as i64 - chosen.priority.get() as i64;
+
+        // SC10/SC11
         if (cmp < 0) || ((cmp == 0) && !cpu_state.swap_ok) {
             chosen = current;
         }
+
         if !should_preempt(
             current_is_cooperative,
             candidate_is_metairq_fn(&chosen),
@@ -324,14 +342,23 @@ pub fn next_up_smp(
             chosen = current;
         }
     }
+
+    // --- Step 4: Determine requeue (sched.c:253-268) ---
     let is_switching = chosen.id != current.id;
     let is_current_idle = current.id == cpu_state.idle_thread.id;
     let is_current_mirq_preempted = match cpu_state.metairq_preempted {
         Some(mirqp) => current.id == mirqp.id,
         None => false,
     };
-    let requeue_current = is_switching && current_is_active && !current_is_queued
-        && !is_current_idle && !is_current_mirq_preempted;
+
+    // SC12
+    let requeue_current = is_switching
+        && current_is_active
+        && !current_is_queued
+        && !is_current_idle
+        && !is_current_mirq_preempted;
+
+    // --- Step 5: Update MetaIRQ tracking (sched.c:254) ---
     if is_switching {
         update_metairq_preempt(
             &chosen,
@@ -341,12 +368,16 @@ pub fn next_up_smp(
             cpu_state,
         );
     }
+
+    // --- Step 6: Clear swap_ok (sched.c:276) ---
     cpu_state.swap_ok = false;
+
     SmpSchedOutcome {
         choice: SchedChoice::Thread(chosen),
         requeue_current,
     }
 }
+
 /// Update MetaIRQ preemption tracking when switching threads.
 ///
 /// Models sched.c:update_metairq_preempt() (lines 166-180).
@@ -363,6 +394,7 @@ fn update_metairq_preempt(
         cpu_state.metairq_preempted = None;
     }
 }
+
 /// Model of Zephyr's update_cache() for the non-SMP path.
 ///
 /// Source mapping: sched.c:294-319
@@ -380,12 +412,14 @@ pub fn update_cache(
         Some(t) => t,
         None => cpu_state.idle_thread,
     };
+
     if should_preempt(current_is_cooperative, candidate_is_metairq, preempt_ok) {
         thread
     } else {
         current
     }
 }
+
 /// Valid scheduler state transitions.
 /// Returns true if the transition from `from` to `to` is valid.
 pub fn is_valid_transition(from: ThreadState, to: ThreadState) -> bool {
@@ -398,6 +432,11 @@ pub fn is_valid_transition(from: ThreadState, to: ThreadState) -> bool {
         _ => false,
     }
 }
+
+// =====================================================================
+// Extended Thread Lifecycle State Machine
+// =====================================================================
+
 /// Complete scheduler thread state, modelling all Zephyr _THREAD_* flags.
 ///
 /// This is separate from `ThreadState` (used by synchronization primitives)
@@ -430,46 +469,65 @@ pub enum SchedThreadState {
     /// Transitions to Dead once the target CPU processes the IPI.
     Aborting,
 }
+
 /// Check whether a transition from `from` to `to` is valid in the
 /// scheduler thread lifecycle FSM.
 ///
 /// SC13: Dead is a terminal state — no outgoing transitions.
 pub fn sched_is_valid_transition(from: SchedThreadState, to: SchedThreadState) -> bool {
     match (from, to) {
+        // Ready transitions
         (SchedThreadState::Ready, SchedThreadState::Running) => true,
         (SchedThreadState::Ready, SchedThreadState::Dead) => true,
         (SchedThreadState::Ready, SchedThreadState::Aborting) => true,
+
+        // Running transitions
         (SchedThreadState::Running, SchedThreadState::Ready) => true,
         (SchedThreadState::Running, SchedThreadState::Pending) => true,
         (SchedThreadState::Running, SchedThreadState::Suspended) => true,
         (SchedThreadState::Running, SchedThreadState::Sleeping) => true,
         (SchedThreadState::Running, SchedThreadState::Dead) => true,
         (SchedThreadState::Running, SchedThreadState::Aborting) => true,
+
+        // Pending transitions
         (SchedThreadState::Pending, SchedThreadState::Ready) => true,
         (SchedThreadState::Pending, SchedThreadState::Suspended) => true,
         (SchedThreadState::Pending, SchedThreadState::Dead) => true,
         (SchedThreadState::Pending, SchedThreadState::Aborting) => true,
+
+        // Suspended transitions
         (SchedThreadState::Suspended, SchedThreadState::Ready) => true,
         (SchedThreadState::Suspended, SchedThreadState::Dead) => true,
         (SchedThreadState::Suspended, SchedThreadState::Aborting) => true,
+
+        // Sleeping transitions
         (SchedThreadState::Sleeping, SchedThreadState::Ready) => true,
         (SchedThreadState::Sleeping, SchedThreadState::Dead) => true,
         (SchedThreadState::Sleeping, SchedThreadState::Aborting) => true,
+
+        // Aborting transitions
         (SchedThreadState::Aborting, SchedThreadState::Dead) => true,
+
+        // Dead is terminal — no transitions out
         (SchedThreadState::Dead, _) => false,
+
+        // All other transitions are invalid
         _ => false,
     }
 }
+
 /// Suspend a thread. Corresponds to k_thread_suspend().
 ///
 /// SC14: suspend is idempotent — suspending an already-suspended thread
 /// returns Ok(Suspended) without error.
 ///
 /// Valid source states: Running, Pending, Suspended (idempotent).
+/// Returns EINVAL for Dead, Aborting, Ready, Sleeping.
 pub fn sched_suspend(state: SchedThreadState) -> Result<SchedThreadState, i32> {
     match state {
         SchedThreadState::Running => Ok(SchedThreadState::Suspended),
         SchedThreadState::Pending => Ok(SchedThreadState::Suspended),
+        // SC14: idempotent
         SchedThreadState::Suspended => Ok(SchedThreadState::Suspended),
         SchedThreadState::Dead => Err(EINVAL),
         SchedThreadState::Aborting => Err(EINVAL),
@@ -477,9 +535,11 @@ pub fn sched_suspend(state: SchedThreadState) -> Result<SchedThreadState, i32> {
         SchedThreadState::Sleeping => Err(EINVAL),
     }
 }
+
 /// Resume a suspended thread. Corresponds to k_thread_resume().
 ///
 /// SC15: resume only from Suspended.
+/// Returns EINVAL for all other states.
 pub fn sched_resume(state: SchedThreadState) -> Result<SchedThreadState, i32> {
     match state {
         SchedThreadState::Suspended => Ok(SchedThreadState::Ready),
@@ -491,31 +551,26 @@ pub fn sched_resume(state: SchedThreadState) -> Result<SchedThreadState, i32> {
         SchedThreadState::Aborting => Err(EINVAL),
     }
 }
+
 /// Abort a thread. Corresponds to k_thread_abort() / z_thread_halt(terminate=true).
 ///
-/// SC16: abort always succeeds from any non-Dead/non-Aborting state.
+/// SC16: abort always succeeds from any non-Dead state.
+///
+/// On uniprocessor (or when thread is not running on another CPU):
+///   any state -> Dead
+/// On SMP when thread is running on another CPU:
+///   Running -> Aborting (then Aborting -> Dead when IPI processed)
 ///
 /// The `smp_remote` flag indicates the thread is running on another CPU.
-pub fn sched_abort(
-    state: SchedThreadState,
-    smp_remote: bool,
-) -> Result<SchedThreadState, i32> {
+pub fn sched_abort(state: SchedThreadState, smp_remote: bool) -> Result<SchedThreadState, i32> {
     match state {
         SchedThreadState::Dead => Err(EINVAL),
         SchedThreadState::Aborting => Err(EINVAL),
-        SchedThreadState::Running => {
-            if smp_remote {
-                Ok(SchedThreadState::Aborting)
-            } else {
-                Ok(SchedThreadState::Dead)
-            }
-        }
-        SchedThreadState::Ready => Ok(SchedThreadState::Dead),
-        SchedThreadState::Pending => Ok(SchedThreadState::Dead),
-        SchedThreadState::Suspended => Ok(SchedThreadState::Dead),
-        SchedThreadState::Sleeping => Ok(SchedThreadState::Dead),
+        SchedThreadState::Running if smp_remote => Ok(SchedThreadState::Aborting),
+        _ => Ok(SchedThreadState::Dead),
     }
 }
+
 /// Put thread to sleep. Corresponds to k_sleep() / z_tick_sleep().
 ///
 /// Only valid from Running (thread calls k_sleep on itself).
@@ -530,6 +585,7 @@ pub fn sched_sleep(state: SchedThreadState) -> Result<SchedThreadState, i32> {
         SchedThreadState::Aborting => Err(EINVAL),
     }
 }
+
 /// Wake a sleeping thread. Corresponds to timeout expiry or k_wakeup().
 ///
 /// Only valid from Sleeping.
@@ -544,6 +600,7 @@ pub fn sched_wakeup(state: SchedThreadState) -> Result<SchedThreadState, i32> {
         SchedThreadState::Aborting => Err(EINVAL),
     }
 }
+
 /// Pend a running thread on a kernel object. Corresponds to z_pend_curr().
 ///
 /// Only valid from Running (the current thread blocks itself).
@@ -558,6 +615,7 @@ pub fn sched_pend(state: SchedThreadState) -> Result<SchedThreadState, i32> {
         SchedThreadState::Aborting => Err(EINVAL),
     }
 }
+
 /// Unpend a thread from a kernel object. Corresponds to z_unpend_thread() /
 /// z_sched_wake_thread_locked().
 ///
