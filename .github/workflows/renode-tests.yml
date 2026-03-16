@@ -33,9 +33,9 @@ jobs:
             test_path: tests/kernel/semaphore/semaphore
           - board: mps2/an386
             arch: cortex-m4
-            rust_target: thumbv7em-none-eabi
+            rust_target: thumbv7em-none-eabihf
             test_path: tests/kernel/semaphore/semaphore
-          - board: mps2/an521
+          - board: mps2/an521/cpu0
             arch: cortex-m33
             rust_target: thumbv8m.main-none-eabihf
             test_path: tests/kernel/semaphore/semaphore
