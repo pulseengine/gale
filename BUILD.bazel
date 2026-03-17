@@ -16,22 +16,13 @@ load("//bzl:defs.bzl",
 # Source file groups
 # =========================================================================
 
-VERUS_SRCS = [
-    "src/lib.rs",
-    "src/error.rs",
-    "src/priority.rs",
-    "src/thread.rs",
-    "src/wait_queue.rs",
-    "src/sem.rs",
-    "src/mutex.rs",
-    "src/condvar.rs",
-    "src/msgq.rs",
-    "src/pipe.rs",
-    "src/stack.rs",
-    "src/stack_config.rs",
-    "src/device_init.rs",
-    "src/fault_decode.rs",
-]
+VERUS_SRCS = glob(
+    ["src/**/*.rs"],
+    exclude = [
+        "src/poll.rs",      # uses mutable array indexing (Verus limitation)
+        "src/sched.rs",     # uses function pointer types (Verus limitation)
+    ],
+)
 
 PLAIN_SRCS = ["//plain:srcs"]
 

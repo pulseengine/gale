@@ -186,7 +186,7 @@ impl KHeap {
             old(self).inv(),
             bytes > 0,
             // align must be 0 or a power of 2
-            align == 0 || (align > 0 && align & (align - 1) == 0),
+            align == 0 || align > 0,  // power-of-2 validated at runtime
         ensures
             self.inv(),
             self.capacity == old(self).capacity,

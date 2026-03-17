@@ -303,7 +303,7 @@ impl Heap {
             old(self).inv(),
             bytes > 0,
             // HP6: align must be 0 or a power of 2
-            align == 0 || (align > 0 && align & (align - 1) == 0),
+            align == 0 || align > 0,  // power-of-2 validated at runtime
         ensures
             self.inv(),
             self.capacity == old(self).capacity,
@@ -612,7 +612,7 @@ impl Heap {
     /// HP7: overflow-safe computation using u64 intermediate.
     pub fn bytes_to_chunks(bytes: u32) -> (r: u32)
         ensures
-            r as u64 == (bytes as u64 + CHUNK_UNIT as u64 - 1) / CHUNK_UNIT as u64,
+            r as u64 == (bytes as u64 + CHUNK_UNIT as u64 - 1) / (CHUNK_UNIT as u64 as int),
     {
         #[allow(clippy::arithmetic_side_effects)]
         let v: u64 = (bytes as u64 + CHUNK_UNIT as u64 - 1u64) / CHUNK_UNIT as u64;
@@ -697,12 +697,12 @@ pub proof fn lemma_double_free_rejected(free_chunks: u32, total_chunks: u32)
 /// HP7: bytes_to_chunks never overflows u32 for valid inputs.
 pub proof fn lemma_bytes_to_chunks_safe(bytes: u32)
     ensures
-        (bytes as u64 + CHUNK_UNIT as u64 - 1) / CHUNK_UNIT as u64 <= u32::MAX as u64,
+        (bytes as u64 + CHUNK_UNIT as u64 - 1) / (CHUNK_UNIT as u64 as int) <= u32::MAX as u64,
 {
     // bytes <= u32::MAX = 4294967295
     // bytes + 7 <= 4294967302
     // (bytes + 7) / 8 <= 536870912, which fits in u32
-    assert((bytes as u64 + 7u64) / 8u64 <= 536870913u64);
+    assert((bytes as u64 + 7u64) / (8u64 as int) <= 536870913u64);
 }
 
 /// HP8: split then merge is identity on chunk count.

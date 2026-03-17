@@ -87,7 +87,7 @@ impl MemPartition {
     }
 
     /// End address (exclusive) — spec only, avoids overflow in exec code.
-    pub open spec fn end_spec(&self) -> u64 {
+    pub open spec fn end_spec(&self) -> int {
         self.start as u64 + self.size as u64
     }
 

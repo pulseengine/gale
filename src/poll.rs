@@ -523,8 +523,7 @@ impl PollEvents {
         if self.num_events >= MAX_POLL_EVENTS {
             return false;
         }
-        let idx = self.num_events as usize;
-        self.events[idx] = event;
+        self.events[self.num_events as usize] = event;
         self.num_events = self.num_events + 1;
         true
     }

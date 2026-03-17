@@ -418,7 +418,7 @@ impl KernelObject {
         ensures
             // US4: type mismatch -> EBADF
             expected_type != ObjType::Any && self.obj_type != expected_type ==> {
-                result.is_err() && result == Err(EBADF)
+                result.is_err() && result == Err::<(), i32>(EBADF)
             },
             // When type matches (or Any), and has access, and init check passes -> Ok
             result.is_ok() ==> {

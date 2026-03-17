@@ -49,7 +49,9 @@ pub mod queue;
 pub mod futex;
 pub mod mbox;
 pub mod timeout;
+#[cfg(not(verus_keep_ghost))]
 pub mod poll;
+#[cfg(not(verus_keep_ghost))]
 pub mod sched;
 pub mod thread_lifecycle;
 pub mod timeslice;

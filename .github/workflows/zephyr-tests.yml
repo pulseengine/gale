@@ -54,6 +54,28 @@ jobs:
             test_path: tests/kernel/queue
           - primitive: mbox
             test_path: tests/kernel/mbox/mbox_api
+          # --- Phase 3 modules (timeout, poll, timeslice, kheap, work, sched, thread_lifecycle) ---
+          - primitive: timeout
+            test_path: tests/kernel/timer/timeout
+          - primitive: poll
+            test_path: tests/kernel/poll
+          - primitive: timeslice
+            test_path: tests/kernel/sched/schedule_api
+          - primitive: kheap
+            test_path: tests/kernel/mem_heap/k_heap_api
+          - primitive: work
+            test_path: tests/kernel/workq/work
+          - primitive: sched
+            test_path: tests/kernel/sched/preempt
+          - primitive: thread_lifecycle
+            test_path: tests/kernel/threads/thread_apis
+          # NOT added (no compatible test suite for qemu_cortex_m3):
+          #   futex       - tests/kernel/mem_protect/futex requires CONFIG_ARCH_HAS_USERSPACE (needs MPU)
+          #   fatal       - tests/kernel/fatal/exception requires CONFIG_ARCH_HAS_STACK_PROTECTION (needs MPU);
+          #                 fatal/message_capture uses console harness (regex), not PROJECT EXECUTION SUCCESSFUL
+          #   mempool     - no dedicated kernel test suite exists (only CMSIS RTOS portability layer)
+          #   dynamic     - tests/kernel/threads/dynamic_thread requires CONFIG_ARCH_HAS_USERSPACE (needs MPU)
+          #   smp_state   - tests/kernel/smp requires CONFIG_MP_MAX_NUM_CPUS > 1 (M3 is single-core)
 
     steps:
       - name: Checkout Gale

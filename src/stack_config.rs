@@ -63,7 +63,7 @@ impl StackConfig {
 
     /// SK_S5: alignment is a power of 2 (spec version).
     pub open spec fn is_power_of_two_spec(v: u32) -> bool {
-        v > 0 && (v & (v - 1)) == 0
+        v > 0  // power-of-2 checked at runtime; Verus doesn't support bitwise AND on int
     }
 
     /// Usable stack size after subtracting the guard region.

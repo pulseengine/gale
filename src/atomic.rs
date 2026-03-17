@@ -91,11 +91,11 @@ impl AtomicVal {
     ///
     /// atomic_c.c:254-266:
     ///   ret = *target; *target = value; return ret;
-    pub fn set(&mut self, value: u32) -> (old: u32)
+    pub fn set(&mut self, value: u32) -> (ret: u32)
         requires old(self).inv(),
         ensures
             self.inv(),
-            old == old(self).val,
+            ret == old(self).val,
             self.val == value,
     {
         let old_val = self.val;
@@ -110,11 +110,11 @@ impl AtomicVal {
     ///
     /// AT1: returns old value, stores old + val.
     /// AT6: wrapping semantics.
-    pub fn add(&mut self, value: u32) -> (old: u32)
+    pub fn add(&mut self, value: u32) -> (ret: u32)
         requires old(self).inv(),
         ensures
             self.inv(),
-            old == old(self).val,
+            ret == old(self).val,
             // AT1 + AT6: wrapping add
             self.val == add_u32_wrapping(old(self).val, value),
     {
@@ -130,11 +130,11 @@ impl AtomicVal {
     ///
     /// AT2: returns old value, stores old - val.
     /// AT6: wrapping semantics.
-    pub fn sub(&mut self, value: u32) -> (old: u32)
+    pub fn sub(&mut self, value: u32) -> (ret: u32)
         requires old(self).inv(),
         ensures
             self.inv(),
-            old == old(self).val,
+            ret == old(self).val,
             // AT2 + AT6: wrapping sub
             self.val == sub_u32_wrapping(old(self).val, value),
     {
@@ -147,11 +147,11 @@ impl AtomicVal {
     ///
     /// atomic_c.c:285-297:
     ///   ret = *target; *target |= value; return ret;
-    pub fn or(&mut self, value: u32) -> (old: u32)
+    pub fn or(&mut self, value: u32) -> (ret: u32)
         requires old(self).inv(),
         ensures
             self.inv(),
-            old == old(self).val,
+            ret == old(self).val,
             self.val == (old(self).val | value),
     {
         let old_val = self.val;
@@ -163,11 +163,11 @@ impl AtomicVal {
     ///
     /// atomic_c.c:339-351:
     ///   ret = *target; *target &= value; return ret;
-    pub fn and(&mut self, value: u32) -> (old: u32)
+    pub fn and(&mut self, value: u32) -> (ret: u32)
         requires old(self).inv(),
         ensures
             self.inv(),
-            old == old(self).val,
+            ret == old(self).val,
             self.val == (old(self).val & value),
     {
         let old_val = self.val;
@@ -179,11 +179,11 @@ impl AtomicVal {
     ///
     /// atomic_c.c:312-324:
     ///   ret = *target; *target ^= value; return ret;
-    pub fn xor(&mut self, value: u32) -> (old: u32)
+    pub fn xor(&mut self, value: u32) -> (ret: u32)
         requires old(self).inv(),
         ensures
             self.inv(),
-            old == old(self).val,
+            ret == old(self).val,
             self.val == (old(self).val ^ value),
     {
         let old_val = self.val;
@@ -195,11 +195,11 @@ impl AtomicVal {
     ///
     /// atomic_c.c:366-378:
     ///   ret = *target; *target = ~(*target & value); return ret;
-    pub fn nand(&mut self, value: u32) -> (old: u32)
+    pub fn nand(&mut self, value: u32) -> (ret: u32)
         requires old(self).inv(),
         ensures
             self.inv(),
-            old == old(self).val,
+            ret == old(self).val,
             self.val == !(old(self).val & value),
     {
         let old_val = self.val;
@@ -243,11 +243,11 @@ impl AtomicVal {
     /// Equivalent to: old = *target; *target = 1; return old;
     ///
     /// AT5: returns old value, sets to 1.
-    pub fn test_and_set(&mut self) -> (old: u32)
+    pub fn test_and_set(&mut self) -> (ret: u32)
         requires old(self).inv(),
         ensures
             self.inv(),
-            old == old(self).val,
+            ret == old(self).val,
             self.val == 1u32,
     {
         let old_val = self.val;
@@ -268,22 +268,22 @@ impl AtomicVal {
     }
 
     /// Atomic increment — add 1, return old (wrapping).
-    pub fn inc(&mut self) -> (old: u32)
+    pub fn inc(&mut self) -> (ret: u32)
         requires old(self).inv(),
         ensures
             self.inv(),
-            old == old(self).val,
+            ret == old(self).val,
             self.val == add_u32_wrapping(old(self).val, 1u32),
     {
         self.add(1)
     }
 
     /// Atomic decrement — subtract 1, return old (wrapping).
-    pub fn dec(&mut self) -> (old: u32)
+    pub fn dec(&mut self) -> (ret: u32)
         requires old(self).inv(),
         ensures
             self.inv(),
-            old == old(self).val,
+            ret == old(self).val,
             self.val == sub_u32_wrapping(old(self).val, 1u32),
     {
         self.sub(1)
@@ -298,7 +298,7 @@ impl AtomicVal {
 /// Result = (a + b) mod 2^32.
 pub fn add_u32_wrapping(a: u32, b: u32) -> (result: u32)
     ensures
-        result == ((a as u64 + b as u64) % 0x1_0000_0000u64) as u32,
+        result == ((a as u64 + b as u64) % (0x1_0000_0000u64 as int)) as u32,
 {
     #[allow(clippy::arithmetic_side_effects)]
     let result = a.wrapping_add(b);
@@ -309,7 +309,7 @@ pub fn add_u32_wrapping(a: u32, b: u32) -> (result: u32)
 /// Result = (a - b) mod 2^32.
 pub fn sub_u32_wrapping(a: u32, b: u32) -> (result: u32)
     ensures
-        result == ((a as u64 + 0x1_0000_0000u64 - b as u64) % 0x1_0000_0000u64) as u32,
+        result == ((a as u64 + 0x1_0000_0000u64 - b as u64) % (0x1_0000_0000u64 as int)) as u32,
 {
     #[allow(clippy::arithmetic_side_effects)]
     let result = a.wrapping_sub(b);
@@ -324,8 +324,8 @@ pub fn sub_u32_wrapping(a: u32, b: u32) -> (result: u32)
 pub proof fn lemma_add_sub_roundtrip(val: u32, delta: u32)
     ensures ({
         // add then sub: (val + delta) - delta == val (mod 2^32)
-        let after_add = ((val as u64 + delta as u64) % 0x1_0000_0000u64) as u32;
-        let after_sub = ((after_add as u64 + 0x1_0000_0000u64 - delta as u64) % 0x1_0000_0000u64) as u32;
+        let after_add = ((val as u64 + delta as u64) % (0x1_0000_0000u64 as int)) as u32;
+        let after_sub = ((after_add as u64 + 0x1_0000_0000u64 - delta as u64) % (0x1_0000_0000u64 as int)) as u32;
         after_sub == val
     })
 {

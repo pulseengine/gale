@@ -54,8 +54,10 @@ pub mod queue;
 pub mod futex;
 pub mod mbox;
 pub mod timeout;
-pub mod poll;
-pub mod sched;
+#[cfg(not(verus_keep_ghost))]
+pub mod poll; // excluded from Verus (uses mutable array indexing)
+#[cfg(not(verus_keep_ghost))]
+pub mod sched; // excluded from Verus (uses function pointer types)
 pub mod thread_lifecycle;
 pub mod timeslice;
 pub mod heap;

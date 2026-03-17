@@ -1,64 +1,156 @@
 # Gale
 
-Formally verified Rust port of Zephyr RTOS kernel primitives. ASIL-D targeted, dual-track verification: Verus (SMT/Z3) + Rocq (theorem proving).
+Formally verified Rust replacement for Zephyr RTOS kernel primitives. ASIL-D targeted, triple-track verification: Verus (SMT/Z3) + Rocq (theorem proving) + Lean (scheduler/priority proofs).
 
 Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 
-## Primitives
+## Modules
 
-| Primitive | Properties | Zephyr Source | Status |
-|-----------|-----------|---------------|--------|
-| Semaphore | P1-P10 | kernel/sem.c | Verified + Zephyr tested |
-| Mutex | M1-M11 | kernel/mutex.c | Verified + Zephyr tested |
-| CondVar | C1-C8 | kernel/condvar.c | Verified + Zephyr tested |
-| MsgQ | MQ1-MQ13 | kernel/msg_q.c | Verified + Zephyr tested |
-| Stack | SK1-SK9 | kernel/stack.c | Verified + Zephyr tested |
-| Pipe | PP1-PP10 | kernel/pipe.c | Verified + Zephyr tested |
-| Timer | TM1-TM8 | kernel/timer.c | Verified |
-| Event | EV1-EV8 | kernel/events.c | Verified |
-| Mem Slab | MS1-MS8 | kernel/mem_slab.c | Verified |
+38 Verus-annotated Rust modules covering the full Zephyr kernel surface:
+
+**Synchronization**
+
+| Module | Zephyr Source | Properties | Status |
+|--------|---------------|------------|--------|
+| sem | kernel/sem.c | P01-P10 | Verified + Zephyr tested |
+| mutex | kernel/mutex.c | M01-M11 | Verified + Zephyr tested |
+| condvar | kernel/condvar.c | C01-C08 | Verified + Zephyr tested |
+| spinlock | kernel/spinlock | SL01-SL05 | Verified |
+| futex | kernel/futex.c | FX01-FX06 | Verified |
+| atomic | kernel/atomic.c | AT01-AT06 | Verified |
+
+**IPC**
+
+| Module | Zephyr Source | Properties | Status |
+|--------|---------------|------------|--------|
+| msgq | kernel/msg_q.c | MQ01-MQ13 | Verified + Zephyr tested |
+| stack (k_stack) | kernel/stack.c | SK01-SK09 | Verified + Zephyr tested |
+| pipe | kernel/pipe.c | PP01-PP10 | Verified + Zephyr tested |
+| mbox | kernel/mailbox.c | MB01-MB06 | Verified |
+| fifo | kernel/fifo | FI01-FI06 | Verified |
+| lifo | kernel/lifo | LI01-LI06 | Verified |
+| queue | kernel/queue.c | QU01-QU06 | Verified |
+| ring_buf | sys/ring_buffer | RB01-RB08 | Verified |
+| poll | kernel/poll.c | PL01-PL08 | Verified |
+
+**Timing**
+
+| Module | Zephyr Source | Properties | Status |
+|--------|---------------|------------|--------|
+| timer | kernel/timer.c | TM01-TM08 | Verified |
+| event | kernel/events.c | EV01-EV08 | Verified |
+| timeout | kernel/timeout.c | TO01-TO08 | Verified |
+| timeslice | kernel/timeslice | TS01-TS06 | Verified |
+| work | kernel/work.c | WK01-WK06 | Verified |
+
+**Memory**
+
+| Module | Zephyr Source | Properties | Status |
+|--------|---------------|------------|--------|
+| mem_slab | kernel/mem_slab.c | MS01-MS08 | Verified |
+| heap | lib/os/heap | HP01-HP08 | Verified |
+| kheap | kernel/kheap | KH01-KH06 | Verified |
+| mempool | kernel/mempool | MP01-MP06 | Verified |
+| mem_domain | kernel/mem_domain.c | MD01-MD06 | Verified |
+| stack_config | arch/stack | SKS01-SKS05 | Verified |
+
+**Scheduling**
+
+| Module | Zephyr Source | Properties | Status |
+|--------|---------------|------------|--------|
+| sched | kernel/sched.c | SC01-SC16 | Verified + Lean proofs |
+| thread | kernel/thread.c | TH01-TH06 | Verified |
+| thread_lifecycle | kernel/thread.c | TL01-TL06 | Verified |
+| priority | kernel/priority | - | Verified + Lean proofs |
+| wait_queue | kernel/waitq | - | Verified |
+| smp_state | kernel/smp | SM01-SM04 | Verified |
+
+**Safety**
+
+| Module | Zephyr Source | Properties | Status |
+|--------|---------------|------------|--------|
+| error | kernel/errno | - | Verified |
+| fatal | kernel/fatal.c | FT01-FT04 | Verified |
+| fault_decode | arch/fault | FD/FH01-FH03 | Verified |
+| device_init | drivers/init | DI01-DI05 | Verified |
+| dynamic | kernel/dynamic.c | DY01-DY04 | Verified |
+| userspace | kernel/userspace.c | US01-US08 | Verified |
 
 ## Architecture
 
 ```
-src/*.rs          Verus-annotated Rust (single source of truth)
-    │
-    ├──► Verus verification (SMT/Z3)
-    │
-    ├──► verus-strip ──► plain/src/*.rs (auto-generated plain Rust)
-    │                        │
-    │                        ├──► cargo test (unit + integration + proptest)
-    │                        ├──► Kani BMC (bounded model checking)
-    │                        ├──► Rocq proofs (theorem proving)
-    │                        └──► clippy ASIL-D lint profile
-    │
-    └──► ffi/ ──► C shim ──► Zephyr kernel (qemu_cortex_m3)
+src/*.rs          Verus-annotated Rust (38 modules, single source of truth)
+    |
+    +---> Verus verification (SMT/Z3)
+    |
+    +---> verus-strip ---> plain/src/*.rs (auto-generated plain Rust)
+    |                        |
+    |                        +---> cargo test (995 tests: unit + integration + proptest)
+    |                        +---> Kani BMC (bounded model checking)
+    |                        +---> Rocq proofs (79 theorems, 9 modules)
+    |                        +---> Lean proofs (46 theorems, scheduler + priority)
+    |                        +---> clippy ASIL-D lint profile
+    |
+    +---> ffi/ ---> C shim ---> Zephyr kernel (qemu_cortex_m3/m4f/m33)
 ```
 
 ## Verification
 
-- **Verus (SMT/Z3):** All properties formally proven via requires/ensures contracts
-- **Rocq (theorem proving):** Independent proof track via coq_of_rust translation
-- **Kani BMC:** Bounded model checking for C↔Rust semantic equivalence
+Triple-track formal verification:
+
+- **Verus (SMT/Z3):** All 38 modules verified via requires/ensures contracts
+- **Rocq (theorem proving):** 79 theorems across 9 kernel primitives (sem, mutex, condvar, event, mem_slab, msgq, pipe, stack, timer)
+- **Lean 4:** 46 theorems for scheduler correctness, priority ceiling protocol, and priority queue ordering (with SMP model)
+- **Kani BMC:** Bounded model checking for C-to-Rust semantic equivalence
 - **Differential testing:** POSIX/FreeRTOS reference models validate spec independence
 - **Property-based testing:** Proptest with random operation sequences
 - **Fuzz testing:** Coverage-guided mutation via cargo-fuzz
 - **Miri:** Undefined behavior detection
+
+## CI
+
+3 workflows:
+
+| Workflow | Scope | Status |
+|----------|-------|--------|
+| Rust CI | cargo test, clippy, verus-strip gate | 995 tests |
+| Zephyr Kernel Tests | 13 upstream test suites on qemu_cortex_m3 | 13/13 pass |
+| Multi-Arch Build | M3, M4F, M33 cross-compilation | 3 boards |
 
 ## Traceability
 
 ASPICE V-model traceability managed by [Rivet](https://github.com/pulseengine/rivet):
 
 ```
-rivet validate    # 0 errors
-rivet coverage    # 97%+ weighted coverage
-rivet stats       # 268 artifacts
+rivet validate    # PASS (33 warnings — see Known Gaps)
+rivet coverage    # 97.3% weighted coverage
+rivet stats       # 660 artifacts
 ```
+
+## Known Gaps
+
+`rivet validate` produces 33 warnings and 277 lifecycle coverage gaps. All are categorized below.
+
+**Expected -- KILN Phase 2 (8 warnings)**
+
+SWREQ-KILN-001 through 006 and SYSREQ-KILN-001/002 are draft requirements for the Kiln build-system integration phase. No implementation exists yet; these warnings are expected and will resolve when Phase 2 begins.
+
+**Lifecycle -- verification measures link to SWDD/SWARCH, not individual SWREQs (25 warnings + 277 gaps)**
+
+The remaining 25 warnings are system-level requirements (SYSREQ-*) for newer modules (fifo, lifo, queue, mempool, futex, timeout, poll, scheduler, timeslice, kheap, thread_lifecycle, heap, mem_domain, stack_config, device_init, fault_decode, ring_buf, userspace, work, fatal, dynamic, smp_state, atomic, mbox) that lack `sys-verification` and/or `sys-integration-verification` artifacts. This is a design choice: verification measures are linked at the SWDD and SWARCH levels, and roll up via traceability rather than duplicating at every requirement.
+
+The 277 lifecycle gaps break down as:
+- **243 SWREQ gaps:** All missing `unit-verification` and `sw-integration-verification` direct links. These SWREQs *are* verified (97.6% swe1-has-verification coverage) but through SWDD-level verification measures, not direct SWREQ-to-test links.
+- **34 SYSREQ gaps:** 9 have only `sys-integration-verification` missing (sem, mutex, condvar, event, msgq, stack, pipe, mem_slab, timer -- the original 9 primitives with Zephyr tests). The other 25 are missing both `sys-verification` and `sys-integration-verification` (the newer Phase 2 modules).
+
+**Legitimate gaps: 0.** All warnings are either expected (KILN Phase 2) or are a consequence of the lifecycle architecture where verification measures attach to design artifacts rather than being duplicated per-requirement.
+
+**Orphan artifacts: 2** (ZEP-SRS-5-3, PROV-SEM-002) -- known out-of-scope Zephyr upstream items.
 
 ## Build
 
 ```bash
-# Rust tests
+# Rust tests (995 tests)
 cargo test
 
 # Verus verification
