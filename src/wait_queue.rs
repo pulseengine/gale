@@ -273,10 +273,12 @@ impl WaitQueue {
                 && old(self).entries[k].unwrap().id.id != thread.id.id,
         ensures
             self.inv(),
-            result == true ==> self.len == old(self).len + 1,
-            result == false ==> self.len == old(self).len,
+            result == true,
+            self.len == old(self).len + 1,
     {
         if self.len >= MAX_WAITERS {
+            // Precondition guarantees old(self).len < MAX_WAITERS,
+            // so this branch is unreachable.
             return false;
         }
 

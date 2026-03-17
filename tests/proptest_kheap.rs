@@ -46,7 +46,7 @@ proptest! {
         if fill > 0 {
             prop_assert_eq!(h.alloc(fill), OK);
         }
-        let original = h.clone();
+        let original = h;
 
         // Try to alloc alloc_size more
         let remaining = capacity - fill;
@@ -114,8 +114,8 @@ proptest! {
         size in 2u32..=u32::MAX
     ) {
         let mut h = KHeap::init(capacity).unwrap();
-        let product = num as u64 * size as u64;
-        if product > u32::MAX as u64 {
+        let product = u64::from(num) * u64::from(size);
+        if product > u64::from(u32::MAX) {
             prop_assert_eq!(h.calloc(num, size), ENOMEM);
             prop_assert_eq!(h.allocated_get(), 0);
         }

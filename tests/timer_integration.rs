@@ -164,10 +164,10 @@ fn many_expiries() {
 #[test]
 fn clone_and_eq() {
     let t1 = Timer::init(50);
-    let t2 = t1.clone();
+    let t2 = t1;
     assert_eq!(t1, t2);
 
-    let mut t3 = t1.clone();
+    let mut t3 = t1;
     t3.start();
     assert_ne!(t1, t3);
 }

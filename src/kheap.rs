@@ -224,9 +224,19 @@ impl KHeap {
                 &&& self.allocated_bytes == old(self).allocated_bytes
             },
     {
+        // Proof hint: u32 values cast to u64 have product <= u32::MAX^2 < u64::MAX.
+        let num64: u64 = num as u64;
+        let size64: u64 = size as u64;
+        proof {
+            assert(num64 as int <= u32::MAX as int);
+            assert(size64 as int <= u32::MAX as int);
+            assert((u32::MAX as int) * (u32::MAX as int) < (u64::MAX as int));
+            assert(num64 as int * size64 as int <= (u32::MAX as int) * (u32::MAX as int));
+            assert(num64 as int * size64 as int < u64::MAX as int);
+        }
         // Check for multiplication overflow (models size_mul_overflow)
         #[allow(clippy::arithmetic_side_effects)]
-        let total: u64 = num as u64 * size as u64;
+        let total: u64 = num64 * size64;
         if total == 0 || total > u32::MAX as u64 {
             return ENOMEM;
         }

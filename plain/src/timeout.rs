@@ -175,9 +175,7 @@ impl Timeout {
         #[allow(clippy::arithmetic_side_effects)]
         let new_tick = self.current_tick + ticks;
         self.current_tick = new_tick;
-        if self.active && self.deadline != K_FOREVER_TICKS
-            && self.deadline <= self.current_tick
-        {
+        if self.active && self.deadline != K_FOREVER_TICKS && self.deadline <= self.current_tick {
             self.active = false;
             Ok(true)
         } else {
@@ -208,7 +206,11 @@ impl Timeout {
     /// timeout.c z_timeout_expires:
     ///   ticks = curr_tick + timeout_rem(timeout);
     pub fn expires(&self) -> u64 {
-        if self.active { self.deadline } else { self.current_tick }
+        if self.active {
+            self.deadline
+        } else {
+            self.current_tick
+        }
     }
     /// Check if the timeout is active.
     pub fn is_active(&self) -> bool {

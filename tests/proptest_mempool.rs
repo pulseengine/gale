@@ -48,7 +48,7 @@ proptest! {
         for _ in 0..fill {
             p.alloc();
         }
-        let original = p.clone();
+        let original = p;
 
         // Alloc one more (if room)
         if fill < capacity {
@@ -85,8 +85,8 @@ proptest! {
         block_size in 2u32..=u32::MAX
     ) {
         let p = MemPool::init(capacity, block_size).unwrap();
-        let product = capacity as u64 * block_size as u64;
-        if product > u32::MAX as u64 {
+        let product = u64::from(capacity) * u64::from(block_size);
+        if product > u64::from(u32::MAX) {
             prop_assert!(p.total_size().is_none());
         } else {
             prop_assert_eq!(p.total_size(), Some(product as u32));

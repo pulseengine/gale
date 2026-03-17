@@ -7,7 +7,6 @@
     clippy::arithmetic_side_effects
 )]
 
-use gale::error::*;
 use gale::fatal::*;
 use proptest::prelude::*;
 
@@ -78,7 +77,7 @@ proptest! {
         let e = FatalError::new(reason, context, test_mode);
         let action = e.classify();
         // Just verify it doesn't panic and returns one of the three variants
-        let _valid = matches!(action, RecoveryAction::AbortThread | RecoveryAction::Halt | RecoveryAction::Ignore);
-        prop_assert!(_valid);
+        let valid = matches!(action, RecoveryAction::AbortThread | RecoveryAction::Halt | RecoveryAction::Ignore);
+        prop_assert!(valid);
     }
 }

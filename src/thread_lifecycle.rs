@@ -468,7 +468,6 @@ pub proof fn lemma_stack_conservation(usage: u32, size: u32)
 pub proof fn lemma_priority_range()
     ensures
         MAX_PRIORITY > 0,
-        forall|p: u32| p < MAX_PRIORITY ==> p < MAX_PRIORITY,
 {
 }
 

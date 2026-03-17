@@ -268,10 +268,10 @@ fn stress_inc_dec() {
 
 #[test]
 fn all_bitwise_ops_return_old() {
-    let mut a = AtomicVal::new(0xDEADBEEF);
-    assert_eq!(a.or(0), 0xDEADBEEF);
-    assert_eq!(a.and(u32::MAX), 0xDEADBEEF);
-    assert_eq!(a.xor(0), 0xDEADBEEF);
+    let mut a = AtomicVal::new(0xDEAD_BEEF);
+    assert_eq!(a.or(0), 0xDEAD_BEEF);
+    assert_eq!(a.and(u32::MAX), 0xDEAD_BEEF);
+    assert_eq!(a.xor(0), 0xDEAD_BEEF);
     // After these no-ops, value unchanged
-    assert_eq!(a.get(), 0xDEADBEEF);
+    assert_eq!(a.get(), 0xDEAD_BEEF);
 }

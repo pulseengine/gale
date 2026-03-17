@@ -76,7 +76,7 @@ fn free_when_empty_returns_einval() {
 #[test]
 fn alloc_free_roundtrip() {
     let mut p = DynamicPool::init(4, 2048).unwrap();
-    let original = p.clone();
+    let original = p;
     assert_eq!(p.alloc(), OK);
     assert_eq!(p.free(), OK);
     assert_eq!(p, original);
@@ -106,10 +106,10 @@ fn conservation_invariant() {
 #[test]
 fn clone_and_eq() {
     let p1 = DynamicPool::init(8, 4096).unwrap();
-    let p2 = p1.clone();
+    let p2 = p1;
     assert_eq!(p1, p2);
 
-    let mut p3 = p1.clone();
+    let mut p3 = p1;
     p3.alloc();
     assert_ne!(p1, p3);
 }

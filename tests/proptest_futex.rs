@@ -21,24 +21,17 @@ use proptest::prelude::*;
 /// Operations that can be performed on a futex.
 #[derive(Debug, Clone)]
 enum FutexOp {
-    Wait {
-        thread_id: u32,
-        priority: u32,
-        expected: u32,
-    },
+    Wait { priority: u32, expected: u32 },
     WakeOne,
     WakeAll,
-    ValSet {
-        new_val: u32,
-    },
+    ValSet { new_val: u32 },
     ValGet,
     NumWaiters,
 }
 
 fn futex_op_strategy() -> impl Strategy<Value = FutexOp> {
     prop_oneof![
-        (0u32..1000, 1u32..32, 0u32..10).prop_map(|(id, prio, exp)| FutexOp::Wait {
-            thread_id: id,
+        (1u32..32, 0u32..10).prop_map(|(prio, exp)| FutexOp::Wait {
             priority: prio,
             expected: exp,
         }),
@@ -63,14 +56,11 @@ proptest! {
 
         for op in ops {
             match op {
-                FutexOp::Wait { thread_id: _, priority, expected } => {
+                FutexOp::Wait { priority, expected } => {
                     if expected_waiters < 60 {
                         // Use unique thread IDs to avoid duplicate-in-queue issues
                         next_tid += 1;
-                        let p = match Priority::new(priority) {
-                            Some(p) => p,
-                            None => continue,
-                        };
+                        let Some(p) = Priority::new(priority) else { continue };
                         let mut t = Thread::new(next_tid, p);
                         t.dispatch();
                         let result = f.wait(expected, t);
@@ -198,7 +188,7 @@ proptest! {
         // Wait (mismatch)
         let mut t2 = Thread::new(2, Priority::new(5).unwrap());
         t2.dispatch();
-        let mismatch_val = if val == 0 { 1 } else { 0 };
+        let mismatch_val = u32::from(val == 0);
         f.wait(mismatch_val, t2);
         prop_assert_eq!(f.val_get(), val);
     }

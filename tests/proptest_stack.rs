@@ -29,7 +29,7 @@ proptest! {
         for _ in 0..fill {
             prop_assert_eq!(s.push(), OK);
         }
-        let original = s.clone();
+        let original = s;
 
         // Push one more (not full since fill < capacity)
         prop_assert_eq!(s.push(), OK);

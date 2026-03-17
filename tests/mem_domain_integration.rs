@@ -68,7 +68,7 @@ fn partition_max_valid() {
         attr: 0,
     };
     assert!(p.is_valid_rt());
-    assert_eq!(p.end_u64(), u32::MAX as u64);
+    assert_eq!(p.end_u64(), u64::from(u32::MAX));
 }
 
 #[test]
@@ -416,7 +416,7 @@ fn partition_near_max() {
     // start = 0xFFFF_F000, size = 0xFFF => end = 0xFFFF_FFFF = u32::MAX
     let start = 0xFFFF_F000u32;
     let size = 0xFFFu32;
-    assert_eq!(start as u64 + size as u64, u32::MAX as u64);
+    assert_eq!(u64::from(start) + u64::from(size), u64::from(u32::MAX));
     let p = MemPartition {
         start,
         size,

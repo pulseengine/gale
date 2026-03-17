@@ -350,24 +350,41 @@ impl CortexMFault {
                 && self.cfsr == 0
                 ==> result === FaultCategory::None,
     {
+        let hfsr = self.hfsr;
+        let cfsr = self.cfsr;
+
         // Check HardFault first (highest priority)
-        if (self.hfsr & HFSR_FORCED) != 0 || (self.hfsr & HFSR_VECTTBL) != 0 {
+        if (hfsr & HFSR_FORCED) != 0 || (hfsr & HFSR_VECTTBL) != 0 {
             FaultCategory::HardFault
         }
         // Check MemManage (CFSR bits 0-7)
-        else if (self.cfsr & 0x0000_00FFu32) != 0 {
+        else if (cfsr & 0x0000_00FFu32) != 0 {
+            // Hint: individual bit tests being false implies OR-mask is zero
+            proof {
+                lemma_hfsr_split(hfsr);
+            }
             FaultCategory::MemManage
         }
         // Check BusFault (CFSR bits 8-15)
-        else if (self.cfsr & 0x0000_FF00u32) != 0 {
+        else if (cfsr & 0x0000_FF00u32) != 0 {
+            proof {
+                lemma_hfsr_split(hfsr);
+            }
             FaultCategory::BusFault
         }
         // Check UsageFault (CFSR bits 16-31)
-        else if (self.cfsr & 0xFFFF_0000u32) != 0 {
+        else if (cfsr & 0xFFFF_0000u32) != 0 {
+            proof {
+                lemma_hfsr_split(hfsr);
+            }
             FaultCategory::UsageFault
         }
         // No fault detected
         else {
+            proof {
+                lemma_hfsr_split(hfsr);
+                lemma_cfsr_zero(cfsr);
+            }
             FaultCategory::None
         }
     }
@@ -458,6 +475,40 @@ impl CortexMFault {
 }
 
 // ======================================================================
+// Bitwise helper lemmas
+// ======================================================================
+
+/// If both individual HFSR bit tests are zero, the OR-mask test is also zero.
+proof fn lemma_hfsr_split(hfsr: u32)
+    requires
+        hfsr & HFSR_FORCED == 0,
+        hfsr & HFSR_VECTTBL == 0,
+    ensures
+        (hfsr & (HFSR_FORCED | HFSR_VECTTBL)) == 0,
+{
+    assert((hfsr & ((1u32 << 30u32) | (1u32 << 1u32))) == 0u32) by (bit_vector)
+        requires
+            hfsr & (1u32 << 30u32) == 0u32,
+            hfsr & (1u32 << 1u32) == 0u32;
+}
+
+/// If all three CFSR sub-register masks are zero, CFSR is zero.
+proof fn lemma_cfsr_zero(cfsr: u32)
+    requires
+        cfsr & 0x0000_00FFu32 == 0,
+        cfsr & 0x0000_FF00u32 == 0,
+        cfsr & 0xFFFF_0000u32 == 0,
+    ensures
+        cfsr == 0,
+{
+    assert(cfsr == 0u32) by (bit_vector)
+        requires
+            cfsr & 0x0000_00FFu32 == 0u32,
+            cfsr & 0x0000_FF00u32 == 0u32,
+            cfsr & 0xFFFF_0000u32 == 0u32;
+}
+
+// ======================================================================
 // Compositional proofs
 // ======================================================================
 
@@ -536,7 +587,10 @@ pub proof fn lemma_forced_is_escalated()
         let clean = CortexMFault { cfsr: 0, hfsr: 0, mmfar: 0, bfar: 0 };
         (forced.hfsr & HFSR_FORCED) != 0 && (clean.hfsr & HFSR_FORCED) == 0
     })
-{}
+{
+    assert(((1u32 << 30u32) & (1u32 << 30u32)) != 0u32) by (bit_vector);
+    assert((0u32 & (1u32 << 30u32)) == 0u32) by (bit_vector);
+}
 
 /// FH3: FORCED HardFault always classifies as HardFault.
 /// Follows from classify's first branch: (hfsr & HFSR_FORCED) != 0 => HardFault.
@@ -545,7 +599,9 @@ pub proof fn lemma_forced_is_hardfault()
         let f = CortexMFault { cfsr: 0, hfsr: HFSR_FORCED, mmfar: 0, bfar: 0 };
         (f.hfsr & HFSR_FORCED) != 0
     })
-{}
+{
+    assert(((1u32 << 30u32) & (1u32 << 30u32)) != 0u32) by (bit_vector);
+}
 
 /// Clean registers produce no fault.
 /// Follows from classify's final else branch: cfsr==0, no HFSR bits => None.
@@ -554,7 +610,9 @@ pub proof fn lemma_clean_no_fault()
         let f = CortexMFault { cfsr: 0, hfsr: 0, mmfar: 0, bfar: 0 };
         f.cfsr == 0 && (f.hfsr & (HFSR_FORCED | HFSR_VECTTBL)) == 0
     })
-{}
+{
+    assert((0u32 & ((1u32 << 30u32) | (1u32 << 1u32))) == 0u32) by (bit_vector);
+}
 
 /// MMFSR/BFSR/UFSR masks are non-overlapping and cover all 32 bits of CFSR.
 pub proof fn lemma_cfsr_masks_partition()

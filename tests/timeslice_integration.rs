@@ -207,7 +207,7 @@ fn disabled_tick_still_marks_expired() {
 fn clone_and_eq() {
     let mut ts1 = TimeSlice::init_disabled();
     ts1.set_config(50);
-    let ts2 = ts1.clone();
+    let ts2 = ts1;
     assert_eq!(ts1, ts2);
 
     ts1.tick();

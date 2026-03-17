@@ -141,7 +141,7 @@ fn clone_and_eq() {
     let mut q = Lifo::init();
     q.put();
     q.put();
-    let q2 = q.clone();
+    let q2 = q;
     assert_eq!(q, q2);
     assert_eq!(q.num_items(), q2.num_items());
 }
@@ -149,7 +149,7 @@ fn clone_and_eq() {
 #[test]
 fn debug_format() {
     let q = Lifo::init();
-    let dbg = format!("{:?}", q);
+    let dbg = format!("{q:?}");
     assert!(dbg.contains("Lifo"));
     assert!(dbg.contains("count: 0"));
 }

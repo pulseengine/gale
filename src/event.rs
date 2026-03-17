@@ -93,6 +93,8 @@ impl Event {
             old(self).events & self.events == old(self).events,
     {
         self.events = self.events | new_events;
+        assert(old(self).events & self.events == old(self).events) by (bit_vector)
+            requires self.events == (old(self).events | new_events);
         self.events
     }
 
@@ -206,6 +208,7 @@ pub proof fn lemma_post_monotonic(events: u32, new_events: u32)
     ensures
         (events | new_events) & events == events,
 {
+    assert((events | new_events) & events == events) by (bit_vector);
 }
 
 /// EV2+EV3: set then clear roundtrip.
@@ -214,6 +217,7 @@ pub proof fn lemma_set_clear_roundtrip(value: u32)
     ensures
         value & !value == 0u32,
 {
+    assert(value & !value == 0u32) by (bit_vector);
 }
 
 /// EV5+EV6: wait condition correctness.
@@ -233,6 +237,7 @@ pub proof fn lemma_post_idempotent(events: u32, new_events: u32)
     ensures
         (events | new_events) | new_events == events | new_events,
 {
+    assert((events | new_events) | new_events == (events | new_events)) by (bit_vector);
 }
 
 /// EV4: set_masked with full mask is equivalent to set.
@@ -240,6 +245,7 @@ pub proof fn lemma_set_masked_full(events: u32, new_events: u32)
     ensures
         (events & !0xFFFF_FFFFu32) | (new_events & 0xFFFF_FFFFu32) == new_events,
 {
+    assert((events & !0xFFFF_FFFFu32) | (new_events & 0xFFFF_FFFFu32) == new_events) by (bit_vector);
 }
 
 /// EV4: set_masked with zero mask is identity.
@@ -247,6 +253,7 @@ pub proof fn lemma_set_masked_zero(events: u32, new_events: u32)
     ensures
         (events & !0u32) | (new_events & 0u32) == events,
 {
+    assert((events & !0u32) | (new_events & 0u32) == events) by (bit_vector);
 }
 
 } // verus!

@@ -233,7 +233,11 @@ impl MsgQ {
         }
         let sum: u64 = self.read_idx as u64 + idx as u64;
         let max: u64 = self.max_msgs as u64;
-        if sum < max { Ok(sum as u32) } else { Ok((sum - max) as u32) }
+        if sum < max {
+            Ok(sum as u32)
+        } else {
+            Ok((sum - max) as u32)
+        }
     }
     /// Purge the queue (reset indices).
     ///

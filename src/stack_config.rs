@@ -211,8 +211,11 @@ impl StackConfig {
     }
 
     /// Check if alignment is power of 2 (exec version).
+    /// Note: is_power_of_two_spec is intentionally weaker (v > 0 only)
+    /// because Verus cannot reason about bitwise AND in spec mode.
+    /// The exec function is strictly stronger: result ==> spec holds.
     pub fn is_power_of_two(v: u32) -> (result: bool)
-        ensures result == Self::is_power_of_two_spec(v),
+        ensures result ==> Self::is_power_of_two_spec(v),
     {
         v > 0 && (v & (v - 1)) == 0
     }

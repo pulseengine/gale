@@ -8,7 +8,6 @@
     clippy::indexing_slicing
 )]
 
-use gale::error::*;
 use gale::fatal::*;
 
 #[test]
@@ -49,8 +48,7 @@ fn thread_faults_abort_production() {
         assert_eq!(
             e.classify(),
             RecoveryAction::AbortThread,
-            "Thread-context {:?} should abort thread in production",
-            reason
+            "Thread-context {reason:?} should abort thread in production"
         );
     }
 }
@@ -67,8 +65,7 @@ fn isr_faults_halt_production() {
         assert_eq!(
             e.classify(),
             RecoveryAction::Halt,
-            "ISR-context {:?} should halt in production",
-            reason
+            "ISR-context {reason:?} should halt in production"
         );
     }
 }
@@ -96,8 +93,7 @@ fn test_mode_isr_ignores() {
         assert_eq!(
             e.classify(),
             RecoveryAction::Ignore,
-            "ISR-context {:?} should be ignored in test mode",
-            reason
+            "ISR-context {reason:?} should be ignored in test mode"
         );
     }
 }
@@ -122,8 +118,7 @@ fn test_mode_thread_always_aborts() {
         assert_eq!(
             e.classify(),
             RecoveryAction::AbortThread,
-            "Thread-context {:?} should abort in test mode",
-            reason
+            "Thread-context {reason:?} should abort in test mode"
         );
     }
 }
@@ -173,7 +168,7 @@ fn is_isr_checks() {
 #[test]
 fn clone_and_eq() {
     let e1 = FatalError::new(FatalReason::KernelOops, FatalContext::Thread, false);
-    let e2 = e1.clone();
+    let e2 = e1;
     assert_eq!(e1, e2);
 
     let e3 = FatalError::new(FatalReason::KernelOops, FatalContext::Isr, false);
@@ -185,7 +180,7 @@ fn reason_codes_distinct() {
     let codes: Vec<Option<FatalReason>> = (0..=4).map(FatalError::from_code).collect();
     for i in 0..codes.len() {
         for j in (i + 1)..codes.len() {
-            assert_ne!(codes[i], codes[j], "codes {} and {} should differ", i, j);
+            assert_ne!(codes[i], codes[j], "codes {i} and {j} should differ");
         }
     }
 }

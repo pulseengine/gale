@@ -74,14 +74,14 @@ proptest! {
         let mut p = Pipe::init(size).unwrap();
 
         // Closed pipe
-        let mut closed = p.clone();
+        let mut closed = p;
         closed.close();
         prop_assert_eq!(closed.write_check(1), Err(EPIPE));
         prop_assert_eq!(closed.read_check(1), Err(EPIPE));
 
         // Resetting pipe
         p.write_check(1).unwrap();
-        let mut resetting = p.clone();
+        let mut resetting = p;
         resetting.reset();
         prop_assert_eq!(resetting.write_check(1), Err(ECANCELED));
         prop_assert_eq!(resetting.read_check(1), Err(ECANCELED));

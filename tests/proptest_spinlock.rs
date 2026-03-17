@@ -46,7 +46,7 @@ proptest! {
     #[test]
     fn acquire_release_roundtrip(tid in 0u32..=10000) {
         let mut s = SpinlockState::init();
-        let original = s.clone();
+        let original = s;
         s.acquire(tid);
         s.release(tid);
         prop_assert_eq!(s, original);

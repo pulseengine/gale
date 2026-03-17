@@ -17,12 +17,9 @@ fn valid_tick() -> impl Strategy<Value = u64> {
 }
 
 /// Strategy for valid durations that won't overflow when added to a tick.
+#[allow(dead_code)]
 fn valid_duration(max_tick: u64) -> impl Strategy<Value = u64> {
-    let max_dur = if max_tick >= K_FOREVER_TICKS - 1 {
-        0u64
-    } else {
-        K_FOREVER_TICKS - 1 - max_tick
-    };
+    let max_dur = (K_FOREVER_TICKS - 1).saturating_sub(max_tick);
     0u64..=max_dur
 }
 

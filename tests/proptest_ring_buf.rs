@@ -133,9 +133,9 @@ proptest! {
                 _ => { let _ = rb.peek_at(0); }
             }
             let expected_tail =
-                (rb.head_get() as u64 + rb.size_get() as u64) % rb.capacity_get() as u64;
+                (u64::from(rb.head_get()) + u64::from(rb.size_get())) % u64::from(rb.capacity_get());
             prop_assert_eq!(
-                rb.tail_get() as u64,
+                u64::from(rb.tail_get()),
                 expected_tail,
                 "ring inconsistency: h={} s={} t={} cap={}",
                 rb.head_get(), rb.size_get(), rb.tail_get(), rb.capacity_get()
@@ -321,8 +321,8 @@ proptest! {
             prop_assert!(rb.tail_get() < rb.capacity_get());
             // RB7: ring consistency
             let expected_tail =
-                (rb.head_get() as u64 + rb.size_get() as u64) % rb.capacity_get() as u64;
-            prop_assert_eq!(rb.tail_get() as u64, expected_tail);
+                (u64::from(rb.head_get()) + u64::from(rb.size_get())) % u64::from(rb.capacity_get());
+            prop_assert_eq!(u64::from(rb.tail_get()), expected_tail);
             // Conservation
             prop_assert_eq!(rb.size_get() + rb.space_get(), rb.capacity_get());
         }

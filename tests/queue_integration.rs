@@ -159,7 +159,7 @@ fn clone_and_equality() {
     let mut q = Queue::init();
     q.append();
     q.append();
-    let q2 = q.clone();
+    let q2 = q;
     assert_eq!(q, q2);
     assert_eq!(q.count_get(), q2.count_get());
 }

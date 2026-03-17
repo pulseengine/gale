@@ -782,7 +782,7 @@ mod kani_stack_proofs {
             s.push();
             i += 1;
         }
-        let original = s.clone();
+        let original = s;
 
         assert_eq!(s.push(), OK);
         assert_eq!(s.pop(), OK);
@@ -925,14 +925,14 @@ mod kani_pipe_proofs {
         let mut p = Pipe::init(size).unwrap();
 
         // Closed pipe
-        let mut closed = p.clone();
+        let mut closed = p;
         closed.close();
         assert_eq!(closed.write_check(1), Err(EPIPE));
         assert_eq!(closed.read_check(1), Err(EPIPE));
 
         // Resetting pipe
         p.write_check(1).unwrap();
-        let mut resetting = p.clone();
+        let mut resetting = p;
         resetting.reset();
         assert_eq!(resetting.write_check(1), Err(ECANCELED));
         assert_eq!(resetting.read_check(1), Err(ECANCELED));
@@ -958,7 +958,8 @@ mod kani_pipe_proofs {
 
         let p = Pipe::init(size).unwrap();
         assert!(p.is_empty());
-        assert_eq!(p.clone().read_check(1), Err(EAGAIN));
+        let mut p2 = p;
+        assert_eq!(p2.read_check(1), Err(EAGAIN));
     }
 
     /// PP10: conservation after arbitrary operations.
@@ -1287,7 +1288,7 @@ mod kani_mem_slab_proofs {
             s.alloc();
             i += 1;
         }
-        let original = s.clone();
+        let original = s;
 
         assert_eq!(s.alloc(), OK);
         assert_eq!(s.free(), OK);

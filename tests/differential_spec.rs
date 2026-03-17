@@ -159,6 +159,7 @@ mod posix_msgq {
             }
         }
 
+        #[allow(dead_code)]
         pub fn purge(&mut self) -> u32 {
             let old = self.used;
             self.used = 0;
@@ -368,8 +369,8 @@ mod posix_mem_pool {
 mod differential {
     use super::*;
     use gale::msgq::MsgQ;
-    use gale::mutex::{LockResult, Mutex, UnlockResult};
-    use gale::sem::{GiveResult, Semaphore, TakeResult};
+    use gale::mutex::Mutex;
+    use gale::sem::{Semaphore, TakeResult};
     use gale::stack::Stack;
     use gale::thread::ThreadId;
 
@@ -541,7 +542,7 @@ mod differential {
         // Deterministic pseudo-random sequence
         let mut rng: u32 = 0xDEAD_BEEF;
         for _ in 0..1000 {
-            rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
+            rng = rng.wrapping_mul(1_103_515_245).wrapping_add(12_345);
             if rng % 3 == 0 {
                 g.give();
                 p.give();
@@ -567,7 +568,7 @@ mod differential {
 
         let mut rng: u32 = 0xCAFE_BABE;
         for _ in 0..1000 {
-            rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
+            rng = rng.wrapping_mul(1_103_515_245).wrapping_add(12_345);
             if rng % 2 == 0 {
                 g.push();
                 p.push();
@@ -746,7 +747,7 @@ mod differential {
 
         let mut rng: u32 = 0xBAAD_F00D;
         for _ in 0..500 {
-            rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
+            rng = rng.wrapping_mul(1_103_515_245).wrapping_add(12_345);
             match rng % 4 {
                 0 => {
                     let _ = g.expire();
@@ -788,7 +789,7 @@ mod differential {
 
         let mut rng: u32 = 0xDEAD_C0DE;
         for _ in 0..1000 {
-            rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
+            rng = rng.wrapping_mul(1_103_515_245).wrapping_add(12_345);
             let bits = rng >> 16; // use upper 16 bits as event mask
             match rng % 3 {
                 0 => {
@@ -826,7 +827,7 @@ mod differential {
 
         let mut rng: u32 = 0xFACE_CAFE;
         for _ in 0..1000 {
-            rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
+            rng = rng.wrapping_mul(1_103_515_245).wrapping_add(12_345);
             if rng % 2 == 0 {
                 let g_ok = g.alloc() == OK;
                 let p_ok = p.alloc();

@@ -11,7 +11,7 @@
 
 use gale::priority::Priority;
 use gale::sched::*;
-use gale::thread::{Thread, ThreadId, ThreadState};
+use gale::thread::{Thread, ThreadState};
 
 fn make_ready_thread(id: u32, prio: u32) -> Thread {
     let mut t = Thread::new(id, Priority::new(prio).unwrap());
@@ -112,7 +112,7 @@ fn runq_full_rejects_add() {
 fn next_up_returns_best_from_queue() {
     let best = make_ready_thread(1, 5);
     let idle = make_ready_thread(0, 31);
-    let result = next_up(Some(best.clone()), idle);
+    let result = next_up(Some(best), idle);
     match result {
         SchedChoice::Thread(t) => assert_eq!(t.id.id, best.id.id),
         SchedChoice::Idle => panic!("expected thread"),
@@ -122,7 +122,7 @@ fn next_up_returns_best_from_queue() {
 #[test]
 fn next_up_returns_idle_when_empty() {
     let idle = make_ready_thread(0, 31);
-    let result = next_up(None, idle.clone());
+    let result = next_up(None, idle);
     match result {
         SchedChoice::Thread(t) => assert_eq!(t.id.id, idle.id.id),
         SchedChoice::Idle => panic!("expected idle thread"),
@@ -133,21 +133,21 @@ fn next_up_returns_idle_when_empty() {
 
 #[test]
 fn cooperative_thread_not_preempted() {
-    let cand = make_ready_thread(1, 5);
+    let _cand = make_ready_thread(1, 5);
     // Current is cooperative, candidate is NOT MetaIRQ, no swap_ok
     assert!(!should_preempt(true, false, false));
 }
 
 #[test]
 fn cooperative_thread_preempted_by_metairq() {
-    let cand = make_ready_thread(1, 0);
+    let _cand = make_ready_thread(1, 0);
     // Current is cooperative, but candidate IS MetaIRQ
     assert!(should_preempt(true, true, false));
 }
 
 #[test]
 fn swap_ok_always_preempts() {
-    let cand = make_ready_thread(1, 5);
+    let _cand = make_ready_thread(1, 5);
     // swap_ok = true (yield) always allows preemption
     assert!(should_preempt(true, false, true));
     assert!(should_preempt(false, false, true));
@@ -155,7 +155,7 @@ fn swap_ok_always_preempts() {
 
 #[test]
 fn preemptive_thread_preempted_normally() {
-    let cand = make_ready_thread(1, 5);
+    let _cand = make_ready_thread(1, 5);
     // Current is preemptive (not cooperative), any candidate preempts
     assert!(should_preempt(false, false, false));
 }
@@ -221,7 +221,7 @@ fn schedule_three_threads_priority_order() {
 
     // First schedule: should pick thread 2 (prio 5)
     let best = rq.best();
-    let choice = next_up(best, idle.clone());
+    let choice = next_up(best, idle);
     match choice {
         SchedChoice::Thread(t) => assert_eq!(t.priority.get(), 5),
         SchedChoice::Idle => panic!("should not be idle"),
@@ -230,7 +230,7 @@ fn schedule_three_threads_priority_order() {
     // Simulate: remove best, schedule next
     rq.remove_best();
     let best = rq.best();
-    let choice = next_up(best, idle.clone());
+    let choice = next_up(best, idle);
     match choice {
         SchedChoice::Thread(t) => assert_eq!(t.priority.get(), 10),
         SchedChoice::Idle => panic!("should not be idle"),
@@ -238,7 +238,7 @@ fn schedule_three_threads_priority_order() {
 
     rq.remove_best();
     let best = rq.best();
-    let choice = next_up(best, idle.clone());
+    let choice = next_up(best, idle);
     match choice {
         SchedChoice::Thread(t) => assert_eq!(t.priority.get(), 15),
         SchedChoice::Idle => panic!("should not be idle"),
@@ -247,7 +247,7 @@ fn schedule_three_threads_priority_order() {
     // Queue empty — should get idle
     rq.remove_best();
     let best = rq.best();
-    let choice = next_up(best, idle.clone());
+    let choice = next_up(best, idle);
     match choice {
         SchedChoice::Thread(t) => assert_eq!(t.id.id, 0), // idle
         SchedChoice::Idle => panic!("should be idle thread, not Idle variant"),
@@ -378,8 +378,7 @@ fn lifecycle_dead_is_terminal() {
     for &to in &all_states {
         assert!(
             !sched_is_valid_transition(SchedThreadState::Dead, to),
-            "Dead should not transition to {:?}",
-            to,
+            "Dead should not transition to {to:?}",
         );
     }
 }
@@ -508,8 +507,7 @@ fn resume_rejects_non_suspended() {
     for &state in &non_suspended {
         assert!(
             sched_resume(state).is_err(),
-            "resume should reject {:?}",
-            state,
+            "resume should reject {state:?}",
         );
     }
 }
@@ -540,8 +538,7 @@ fn abort_from_any_live_state_uniprocessor() {
         assert_eq!(
             result,
             Ok(SchedThreadState::Dead),
-            "abort({:?}, smp=false) should give Dead",
-            state,
+            "abort({state:?}, smp=false) should give Dead",
         );
     }
 }
@@ -609,11 +606,7 @@ fn sleep_rejects_non_running() {
         SchedThreadState::Aborting,
     ];
     for &state in &non_running {
-        assert!(
-            sched_sleep(state).is_err(),
-            "sleep should reject {:?}",
-            state,
-        );
+        assert!(sched_sleep(state).is_err(), "sleep should reject {state:?}",);
     }
 }
 
@@ -638,8 +631,7 @@ fn wakeup_rejects_non_sleeping() {
     for &state in &non_sleeping {
         assert!(
             sched_wakeup(state).is_err(),
-            "wakeup should reject {:?}",
-            state,
+            "wakeup should reject {state:?}",
         );
     }
 }
@@ -674,7 +666,7 @@ fn pend_rejects_non_running() {
         SchedThreadState::Aborting,
     ];
     for &state in &non_running {
-        assert!(sched_pend(state).is_err(), "pend should reject {:?}", state,);
+        assert!(sched_pend(state).is_err(), "pend should reject {state:?}");
     }
 }
 
@@ -699,8 +691,7 @@ fn unpend_rejects_non_pending() {
     for &state in &non_pending {
         assert!(
             sched_unpend(state).is_err(),
-            "unpend should reject {:?}",
-            state,
+            "unpend should reject {state:?}",
         );
     }
 }
@@ -794,61 +785,46 @@ fn all_valid_transitions_are_consistent_with_operations() {
             if state != next {
                 assert!(
                     sched_is_valid_transition(state, next),
-                    "suspend({:?}) -> {:?} should be valid transition",
-                    state,
-                    next,
+                    "suspend({state:?}) -> {next:?} should be valid transition",
                 );
             }
         }
         if let Ok(next) = sched_resume(state) {
             assert!(
                 sched_is_valid_transition(state, next),
-                "resume({:?}) -> {:?} should be valid transition",
-                state,
-                next,
+                "resume({state:?}) -> {next:?} should be valid transition",
             );
         }
         for smp in [false, true] {
             if let Ok(next) = sched_abort(state, smp) {
                 assert!(
                     sched_is_valid_transition(state, next),
-                    "abort({:?}, smp={}) -> {:?} should be valid transition",
-                    state,
-                    smp,
-                    next,
+                    "abort({state:?}, smp={smp}) -> {next:?} should be valid transition",
                 );
             }
         }
         if let Ok(next) = sched_sleep(state) {
             assert!(
                 sched_is_valid_transition(state, next),
-                "sleep({:?}) -> {:?} should be valid transition",
-                state,
-                next,
+                "sleep({state:?}) -> {next:?} should be valid transition",
             );
         }
         if let Ok(next) = sched_wakeup(state) {
             assert!(
                 sched_is_valid_transition(state, next),
-                "wakeup({:?}) -> {:?} should be valid transition",
-                state,
-                next,
+                "wakeup({state:?}) -> {next:?} should be valid transition",
             );
         }
         if let Ok(next) = sched_pend(state) {
             assert!(
                 sched_is_valid_transition(state, next),
-                "pend({:?}) -> {:?} should be valid transition",
-                state,
-                next,
+                "pend({state:?}) -> {next:?} should be valid transition",
             );
         }
         if let Ok(next) = sched_unpend(state) {
             assert!(
                 sched_is_valid_transition(state, next),
-                "unpend({:?}) -> {:?} should be valid transition",
-                state,
-                next,
+                "unpend({state:?}) -> {next:?} should be valid transition",
             );
         }
     }
@@ -858,7 +834,7 @@ fn all_valid_transitions_are_consistent_with_operations() {
 // SMP scheduling: next_up_smp + MetaIRQ preemption + update_cache
 // ═══════════════════════════════════════════════════════════════════════
 
-use gale::sched::{CpuSchedState, SmpSchedOutcome, next_up_smp, update_cache};
+use gale::sched::{CpuSchedState, next_up_smp};
 
 /// Helper: predicate for identifying MetaIRQ threads.
 /// Convention: priority 0 is MetaIRQ in our test model.
@@ -889,7 +865,7 @@ fn test_metairq_preemption_preference() {
     // Current is the MetaIRQ thread (prio 0), now finishing
     let current_metairq = make_ready_thread(99, 0);
 
-    let outcome = next_up_smp(
+    let _outcome = next_up_smp(
         Some(runq_best),
         current_metairq,
         &mut cpu,
@@ -986,7 +962,7 @@ fn test_smp_ties_only_switch_on_yield() {
 
     match outcome_no_yield.choice {
         SchedChoice::Thread(t) => {
-            assert_eq!(t.id.id, 1, "SC11: without yield, tie keeps current (id=1)")
+            assert_eq!(t.id.id, 1, "SC11: without yield, tie keeps current (id=1)");
         }
         SchedChoice::Idle => panic!("should not be idle"),
     }
