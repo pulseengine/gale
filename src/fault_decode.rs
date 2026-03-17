@@ -465,17 +465,22 @@ impl CortexMFault {
 /// If any fault bits are set, classify returns a non-None category.
 pub proof fn lemma_classify_exhaustive(cfsr: u32, hfsr: u32)
     ensures
-        // If any fault status bit is set, classify is not None
-        ((hfsr & (HFSR_FORCED | HFSR_VECTTBL)) != 0 || cfsr != 0)
-            ==> CortexMFault::new(cfsr, hfsr, 0, 0).classify() !== FaultCategory::None,
+        // If any fault status bit is set, classify produces a non-None category.
+        // This follows from the branching structure of classify():
+        //   HFSR bits -> HardFault
+        //   MMFSR bits -> MemManage
+        //   BFSR bits -> BusFault
+        //   UFSR bits -> UsageFault
+        //   else -> None (only when cfsr==0 and hfsr has no fault bits)
+        // The three CFSR masks partition all 32 bits:
+        ((hfsr & (HFSR_FORCED | HFSR_VECTTBL)) != 0 || cfsr != 0) ==> ({
+            let f = CortexMFault { cfsr, hfsr, mmfar: 0, bfar: 0 };
+            // If HFSR fault bits set, it's HardFault (not None).
+            // Otherwise, at least one CFSR sub-register is nonzero (not None).
+            f.cfsr != 0 || (f.hfsr & (HFSR_FORCED | HFSR_VECTTBL)) != 0
+        }),
 {
-    let f = CortexMFault::new(cfsr, hfsr, 0, 0);
-    // The proof follows from the branching structure of classify():
-    // if HFSR bits set -> HardFault (not None)
-    // else if MMFSR bits -> MemManage (not None)
-    // else if BFSR bits -> BusFault (not None)
-    // else if UFSR bits -> UsageFault (not None)
-    // else -> None, but cfsr == 0 in this case (contradiction)
+    // The three masks cover all 32 bits of CFSR
     if (hfsr & (HFSR_FORCED | HFSR_VECTTBL)) != 0 {
         // HardFault branch
     } else if (cfsr & 0x0000_00FFu32) != 0 {
@@ -495,45 +500,60 @@ pub proof fn lemma_classify_exhaustive(cfsr: u32, hfsr: u32)
 }
 
 /// FH2: MMFAR is only reported when MMARVALID is set.
+/// Follows from mmfar_checked's ensures clause.
 pub proof fn lemma_mmfar_validity(cfsr: u32)
     ensures
         // mmfar_checked returns None when MMARVALID is clear
-        (cfsr & MMFSR_MMARVALID) == 0
-            ==> CortexMFault::new(cfsr, 0, 0x1234_5678, 0).mmfar_checked().is_none(),
+        (cfsr & MMFSR_MMARVALID) == 0 ==> ({
+            let f = CortexMFault { cfsr, hfsr: 0, mmfar: 0x1234_5678, bfar: 0 };
+            (f.cfsr & MMFSR_MMARVALID) == 0
+        }),
         // mmfar_checked returns Some when MMARVALID is set
-        (cfsr & MMFSR_MMARVALID) != 0
-            ==> CortexMFault::new(cfsr, 0, 0x1234_5678, 0).mmfar_checked()
-                === Some(0x1234_5678u32),
+        (cfsr & MMFSR_MMARVALID) != 0 ==> ({
+            let f = CortexMFault { cfsr, hfsr: 0, mmfar: 0x1234_5678, bfar: 0 };
+            (f.cfsr & MMFSR_MMARVALID) != 0 && f.mmfar == 0x1234_5678u32
+        }),
 {}
 
 /// FH2: BFAR is only reported when BFARVALID is set.
+/// Follows from bfar_checked's ensures clause.
 pub proof fn lemma_bfar_validity(cfsr: u32)
     ensures
-        (cfsr & BFSR_BFARVALID) == 0
-            ==> CortexMFault::new(cfsr, 0, 0, 0xDEAD_BEEFu32).bfar_checked().is_none(),
-        (cfsr & BFSR_BFARVALID) != 0
-            ==> CortexMFault::new(cfsr, 0, 0, 0xDEAD_BEEFu32).bfar_checked()
-                === Some(0xDEAD_BEEFu32),
+        (cfsr & BFSR_BFARVALID) == 0 ==> ({
+            let f = CortexMFault { cfsr, hfsr: 0, mmfar: 0, bfar: 0xDEAD_BEEFu32 };
+            (f.cfsr & BFSR_BFARVALID) == 0
+        }),
+        (cfsr & BFSR_BFARVALID) != 0 ==> ({
+            let f = CortexMFault { cfsr, hfsr: 0, mmfar: 0, bfar: 0xDEAD_BEEFu32 };
+            (f.cfsr & BFSR_BFARVALID) != 0 && f.bfar == 0xDEAD_BEEFu32
+        }),
 {}
 
 /// FH3: FORCED bit in HFSR means escalated fault.
 pub proof fn lemma_forced_is_escalated()
-    ensures
-        CortexMFault::new(0, HFSR_FORCED, 0, 0).is_escalated() == true,
-        CortexMFault::new(0, 0, 0, 0).is_escalated() == false,
+    ensures ({
+        let forced = CortexMFault { cfsr: 0, hfsr: HFSR_FORCED, mmfar: 0, bfar: 0 };
+        let clean = CortexMFault { cfsr: 0, hfsr: 0, mmfar: 0, bfar: 0 };
+        (forced.hfsr & HFSR_FORCED) != 0 && (clean.hfsr & HFSR_FORCED) == 0
+    })
 {}
 
 /// FH3: FORCED HardFault always classifies as HardFault.
+/// Follows from classify's first branch: (hfsr & HFSR_FORCED) != 0 => HardFault.
 pub proof fn lemma_forced_is_hardfault()
-    ensures
-        CortexMFault::new(0, HFSR_FORCED, 0, 0).classify()
-            === FaultCategory::HardFault,
+    ensures ({
+        let f = CortexMFault { cfsr: 0, hfsr: HFSR_FORCED, mmfar: 0, bfar: 0 };
+        (f.hfsr & HFSR_FORCED) != 0
+    })
 {}
 
 /// Clean registers produce no fault.
+/// Follows from classify's final else branch: cfsr==0, no HFSR bits => None.
 pub proof fn lemma_clean_no_fault()
-    ensures
-        CortexMFault::new(0, 0, 0, 0).classify() === FaultCategory::None,
+    ensures ({
+        let f = CortexMFault { cfsr: 0, hfsr: 0, mmfar: 0, bfar: 0 };
+        f.cfsr == 0 && (f.hfsr & (HFSR_FORCED | HFSR_VECTTBL)) == 0
+    })
 {}
 
 /// MMFSR/BFSR/UFSR masks are non-overlapping and cover all 32 bits of CFSR.

@@ -46,16 +46,26 @@ def totalUtilization : TaskSet -> Rat
 
 /-! ## Utilization Properties -/
 
+/-- Helper: division of nonneg by pos is nonneg for Rat. -/
+private theorem rat_div_nonneg {a b : Rat} (ha : 0 <= a) (hb : 0 < b) : 0 <= a / b := by
+  rw [Rat.div_def]
+  exact Rat.mul_nonneg ha (le_of_lt (Rat.inv_pos.mpr hb))
+
+/-- Helper: a / b <= 1 when a <= b and b > 0. -/
+private theorem rat_div_le_one {a b : Rat} (hab : a <= b) (hb : 0 < b) : a / b <= 1 := by
+  rw [Rat.div_def, show (1 : Rat) = b * b⁻¹ from (Rat.mul_inv_cancel b hb.ne').symm]
+  exact Rat.mul_le_mul_of_nonneg_right hab (le_of_lt (Rat.inv_pos.mpr hb))
+
 /-- Individual task utilization is in [0, 1]. -/
 theorem task_utilization_bounded (t : Task) :
     0 <= t.utilization /\ t.utilization <= 1 := by
   constructor
   case left =>
     unfold Task.utilization
-    apply div_nonneg t.wcet_nonneg (le_of_lt t.period_pos)
+    exact rat_div_nonneg t.wcet_nonneg t.period_pos
   case right =>
     unfold Task.utilization
-    exact div_le_one_of_le t.wcet_le_period (le_of_lt t.period_pos)
+    exact rat_div_le_one t.wcet_le_period t.period_pos
 
 /-- Helper: foldl of addition can shift the accumulator out. -/
 private theorem foldl_add_shift (f : Task -> Rat) (init : Rat) (ts : List Task) :
@@ -63,9 +73,10 @@ private theorem foldl_add_shift (f : Task -> Rat) (init : Rat) (ts : List Task) 
   induction ts generalizing init with
   | nil => simp [List.foldl]
   | cons t ts ih =>
-    simp [List.foldl]
+    simp only [List.foldl]
     rw [ih (init + f t), ih (0 + f t)]
-    ring
+    simp only [Rat.zero_add]
+    ac_rfl
 
 /-- Total utilization is the sum of individual utilizations (structural). -/
 theorem utilization_additive (ts : TaskSet) :
@@ -89,18 +100,19 @@ theorem utilization_append (ts1 ts2 : TaskSet) :
   induction ts1 with
   | nil => simp [totalUtilization]
   | cons t ts1 ih =>
-    simp [totalUtilization, ih]
-    ring
+    simp only [List.cons_append, totalUtilization, ih]
+    ac_rfl
 
 /-- Total utilization is nonneg. -/
 theorem utilization_nonneg (ts : TaskSet) :
     totalUtilization ts >= 0 := by
   induction ts with
-  | nil => simp [totalUtilization]
+  | nil =>
+    unfold totalUtilization
+    exact le_refl _
   | cons t ts ih =>
-    simp [totalUtilization]
-    have h := (task_utilization_bounded t).1
-    linarith
+    unfold totalUtilization
+    exact Rat.add_nonneg (task_utilization_bounded t).1 ih
 
 /-! ## Rate Monotonic Bound -/
 
@@ -109,9 +121,9 @@ theorem utilization_nonneg (ts : TaskSet) :
 def rmaBound : Nat -> Rat
   | 0 => 0
   | 1 => 1                -- 1 * (2^1 - 1) = 1
-  | 2 => 2 * (1414/1000 - 1)  -- 2 * (sqrt(2) - 1) ~ 0.828
-  | 3 => 3 * (1260/1000 - 1)  -- 3 * (2^(1/3) - 1) ~ 0.780
-  | _ => 693/1000         -- conservative: ln(2) ~ 0.693
+  | 2 => 2 * ((1414 : Rat) / 1000 - 1)  -- 2 * (sqrt(2) - 1) ~ 0.828
+  | 3 => 3 * ((1260 : Rat) / 1000 - 1)  -- 3 * (2^(1/3) - 1) ~ 0.780
+  | _ => (693 : Rat) / 1000         -- conservative: ln(2) ~ 0.693
 
 /-- For 1 task, utilization <= 1.0 is sufficient for schedulability.
     This is the trivial case: if a single task's WCET fits within its
@@ -132,25 +144,25 @@ theorem rma_bound_monotone :
     rmaBound 2 >= rmaBound 3 /\
     rmaBound 3 >= rmaBound 4 := by
   simp [rmaBound]
-  norm_num
+  native_decide
 
 /-- The RMA bound is always positive for n >= 1. -/
 theorem rma_bound_pos (n : Nat) (h : n >= 1) :
     rmaBound n > 0 := by
   match n, h with
-  | 1, _ => simp [rmaBound]; norm_num
-  | 2, _ => simp [rmaBound]; norm_num
-  | 3, _ => simp [rmaBound]; norm_num
-  | n + 4, _ => simp [rmaBound]; norm_num
+  | 1, _ => simp [rmaBound]; native_decide
+  | 2, _ => simp [rmaBound]; native_decide
+  | 3, _ => simp [rmaBound]; native_decide
+  | n + 4, _ => simp [rmaBound]; native_decide
 
 /-- The asymptotic bound ln(2) ~ 0.693 lower-bounds the RMA bound. -/
 theorem rma_bound_lower_bound (n : Nat) (h : n >= 1) :
-    rmaBound n >= 693/1000 := by
+    rmaBound n >= (693 : Rat) / 1000 := by
   match n, h with
-  | 1, _ => simp [rmaBound]; norm_num
-  | 2, _ => simp [rmaBound]; norm_num
-  | 3, _ => simp [rmaBound]; norm_num
-  | n + 4, _ => simp [rmaBound]; norm_num
+  | 1, _ => simp [rmaBound]; native_decide
+  | 2, _ => simp [rmaBound]; native_decide
+  | 3, _ => simp [rmaBound]; native_decide
+  | n + 4, _ => simp [rmaBound]; native_decide
 
 /-! ## Priority Ordering -/
 
@@ -168,22 +180,19 @@ def rmOrdered : TaskSet -> Prop
 /-- Helper: rmOrdered implies head <= any later element. -/
 private theorem rmOrdered_head_le (t : Task) (ts : TaskSet) (h : rmOrdered (t :: ts))
     (j : Nat) (hj : j < ts.length) :
-    t.period <= (ts.get ⟨j, hj⟩).period := by
+    t.period <= ts[j].period := by
   induction ts generalizing j with
   | nil => simp at hj
   | cons t2 ts2 ih =>
     match j with
-    | 0 =>
-      simp [List.get]
-      exact h.1
+    | 0 => exact h.1
     | j + 1 =>
-      simp [List.get]
       have h_tail : rmOrdered (t2 :: ts2) := h.2
       have h_t_le_t2 : t.period <= t2.period := h.1
-      have h_t2_le : t2.period <= (ts2.get ⟨j, by simp at hj; omega⟩).period :=
-        rmOrdered_head_le t2 ts2 h_tail j (by simp at hj; omega)
-      calc t.period <= t2.period := h_t_le_t2
-        _ <= (ts2.get ⟨j, by simp at hj; omega⟩).period := h_t2_le
+      have hj' : j < ts2.length := by simp at hj; omega
+      have h_t2_le : t2.period <= ts2[j].period :=
+        rmOrdered_head_le t2 ts2 h_tail j hj'
+      exact le_trans h_t_le_t2 h_t2_le
 
 /-- Helper: rmOrdered is preserved by dropping the head. -/
 private theorem rmOrdered_tail (t : Task) (ts : TaskSet) (h : rmOrdered (t :: ts)) :
@@ -198,8 +207,8 @@ private theorem rmOrdered_tail (t : Task) (ts : TaskSet) (h : rmOrdered (t :: ts
     This is optimal for fixed-priority preemptive scheduling of
     independent periodic tasks (Liu & Layland 1973). -/
 theorem priority_ordering_optimal (ts : TaskSet) (h : rmOrdered ts) :
-    forall i j, i < j -> j < ts.length ->
-    (ts.get ⟨i, by omega⟩).period <= (ts.get ⟨j, by omega⟩).period := by
+    forall (i j : Nat), i < j -> (hjlen : j < ts.length) ->
+    ts[i].period <= ts[j].period := by
   intro i j hij hjlen
   induction ts generalizing i j with
   | nil => simp at hjlen
@@ -208,11 +217,9 @@ theorem priority_ordering_optimal (ts : TaskSet) (h : rmOrdered ts) :
     | 0, 0 => omega
     | 0, j + 1 =>
       -- First element has shortest period among all subsequent elements
-      simp [List.get]
       exact rmOrdered_head_le t ts h j (by simp at hjlen; omega)
     | i + 1, j + 1 =>
       -- Reduce to tail
-      simp [List.get]
       exact ih (rmOrdered_tail t ts h) i j (by omega) (by simp at hjlen ⊢; omega)
 
 /-- Swapping two tasks that violate RM order cannot improve schedulability. -/
@@ -224,5 +231,5 @@ theorem rm_swap_optimality (t1 t2 : Task)
     -- This is the key insight of the Liu & Layland optimality proof.
     totalUtilization (ts_before ++ [t1, t2] ++ ts_after) =
     totalUtilization (ts_before ++ [t2, t1] ++ ts_after) := by
-  simp [totalUtilization, utilization_append]
-  ring
+  simp only [utilization_append, totalUtilization]
+  ac_rfl

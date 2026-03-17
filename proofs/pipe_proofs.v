@@ -3,10 +3,16 @@
     Proves properties about the state machine and byte count model.
     Complements Verus SMT proofs in src/pipe.rs.
 
-    Invariant: size > 0, 0 <= used <= size,
-    flags in {0, FLAG_OPEN, FLAG_OPEN|FLAG_RESET, FLAG_RESET}. *)
+    Invariant: sz > 0, 0 <= used <= sz,
+    flags in {0, FLAG_OPEN, FLAG_OPEN|FLAG_RESET, FLAG_RESET}.
+
+    The rocq-of-rust translation wraps all values in Value.t.
+    These proofs operate at the abstract Z level. *)
 
 Require Import RocqOfRust.RocqOfRust.
+
+(* Close type_scope to prevent parsing conflicts with abstract proofs. *)
+Close Scope type_scope.
 
 (* ========================================================================= *)
 (** * Definitions *)
@@ -23,21 +29,21 @@ Definition FLAG_OPEN  : Z := 1.
 Definition FLAG_RESET : Z := 2.
 
 (** The pipe invariant *)
-Definition pipe_inv (used size flags : Z) : Prop :=
-  size > 0 /\
+Definition pipe_inv (used sz fl : Z) : Prop :=
+  sz > 0 /\
   0 <= used /\
-  used <= size /\
-  0 <= flags /\
-  flags <= 3.
+  used <= sz /\
+  0 <= fl /\
+  fl <= 3.
 
 (* ========================================================================= *)
 (** * Init Proofs *)
 (* ========================================================================= *)
 
 Theorem init_establishes_invariant :
-  forall size : Z,
-    size > 0 ->
-    pipe_inv 0 size FLAG_OPEN.
+  forall sz : Z,
+    sz > 0 ->
+    pipe_inv 0 sz FLAG_OPEN.
 Proof.
   intros sz Hsz. unfold pipe_inv, FLAG_OPEN. lia.
 Qed.
@@ -54,11 +60,11 @@ Qed.
 
 (** Write n bytes: used increases, invariant preserved *)
 Theorem write_preserves_invariant :
-  forall used size flags n : Z,
-    pipe_inv used size flags ->
+  forall used sz fl n : Z,
+    pipe_inv used sz fl ->
     n > 0 ->
-    n <= size - used ->
-    pipe_inv (used + n) size flags.
+    n <= sz - used ->
+    pipe_inv (used + n) sz fl.
 Proof.
   intros u s f n [Hs [Hu1 [Hu2 [Hf1 Hf2]]]] Hn1 Hn2.
   unfold pipe_inv. lia.
@@ -66,10 +72,10 @@ Qed.
 
 (** Write to full pipe: no change *)
 Theorem write_full_no_change :
-  forall used size flags : Z,
-    pipe_inv used size flags ->
-    used = size ->
-    pipe_inv used size flags.
+  forall used sz fl : Z,
+    pipe_inv used sz fl ->
+    used = sz ->
+    pipe_inv used sz fl.
 Proof.
   intros. assumption.
 Qed.
@@ -80,11 +86,11 @@ Qed.
 
 (** Read n bytes: used decreases, invariant preserved *)
 Theorem read_preserves_invariant :
-  forall used size flags n : Z,
-    pipe_inv used size flags ->
+  forall used sz fl n : Z,
+    pipe_inv used sz fl ->
     n > 0 ->
     n <= used ->
-    pipe_inv (used - n) size flags.
+    pipe_inv (used - n) sz fl.
 Proof.
   intros u s f n [Hs [Hu1 [Hu2 [Hf1 Hf2]]]] Hn1 Hn2.
   unfold pipe_inv. lia.
@@ -92,8 +98,8 @@ Qed.
 
 (** Read no underflow *)
 Theorem read_no_underflow :
-  forall used size flags n : Z,
-    pipe_inv used size flags ->
+  forall used sz fl n : Z,
+    pipe_inv used sz fl ->
     n > 0 ->
     n <= used ->
     used - n >= 0.
@@ -109,20 +115,20 @@ Qed.
     We model the flag update abstractly: any valid flags ored with
     FLAG_RESET stays in [0,3]. *)
 Theorem reset_empties :
-  forall used size flags new_flags : Z,
-    pipe_inv used size flags ->
-    0 <= new_flags ->
-    new_flags <= 3 ->
-    pipe_inv 0 size new_flags.
+  forall used sz fl new_fl : Z,
+    pipe_inv used sz fl ->
+    0 <= new_fl ->
+    new_fl <= 3 ->
+    pipe_inv 0 sz new_fl.
 Proof.
   intros u s f nf [Hs [Hu1 [Hu2 [Hf1 Hf2]]]] Hnf1 Hnf2.
   unfold pipe_inv. lia.
 Qed.
 
 Theorem close_clears_flags :
-  forall used size flags : Z,
-    pipe_inv used size flags ->
-    pipe_inv used size 0.
+  forall used sz fl : Z,
+    pipe_inv used sz fl ->
+    pipe_inv used sz 0.
 Proof.
   intros u s f [Hs [Hu1 [Hu2 _]]].
   unfold pipe_inv. lia.
@@ -133,19 +139,19 @@ Qed.
 (* ========================================================================= *)
 
 Theorem write_read_roundtrip :
-  forall used size flags n : Z,
-    pipe_inv used size flags ->
+  forall used sz fl n : Z,
+    pipe_inv used sz fl ->
     n > 0 ->
-    n <= size - used ->
+    n <= sz - used ->
     (used + n) - n = used.
 Proof.
   intros. lia.
 Qed.
 
 Theorem conservation :
-  forall used size flags : Z,
-    pipe_inv used size flags ->
-    (size - used) + used = size.
+  forall used sz fl : Z,
+    pipe_inv used sz fl ->
+    (sz - used) + used = sz.
 Proof.
   intros. lia.
 Qed.

@@ -3,9 +3,15 @@
     Proves properties about the bounded counter model.
     Complements Verus SMT proofs in src/stack.rs.
 
-    Invariant: capacity > 0, 0 <= count <= capacity. *)
+    Invariant: cap > 0, 0 <= cnt <= cap.
+
+    The rocq-of-rust translation wraps all values in Value.t.
+    These proofs operate at the abstract Z level. *)
 
 Require Import RocqOfRust.RocqOfRust.
+
+(* Close type_scope to prevent parsing conflicts with abstract proofs. *)
+Close Scope type_scope.
 
 (* ========================================================================= *)
 (** * Definitions *)
@@ -17,17 +23,17 @@ Definition EBUSY  : Z := -16.
 Definition OK     : Z := 0.
 
 (** The stack invariant *)
-Definition stack_inv (count capacity : Z) : Prop :=
-  capacity > 0 /\ 0 <= count /\ count <= capacity.
+Definition stack_inv (cnt cap : Z) : Prop :=
+  cap > 0 /\ 0 <= cnt /\ cnt <= cap.
 
 (* ========================================================================= *)
 (** * Init Proofs *)
 (* ========================================================================= *)
 
 Theorem init_establishes_invariant :
-  forall capacity : Z,
-    capacity > 0 ->
-    stack_inv 0 capacity.
+  forall cap : Z,
+    cap > 0 ->
+    stack_inv 0 cap.
 Proof.
   intros cap Hcap. unfold stack_inv. lia.
 Qed.
@@ -43,19 +49,19 @@ Qed.
 (* ========================================================================= *)
 
 Theorem push_preserves_invariant :
-  forall count capacity : Z,
-    stack_inv count capacity ->
-    count < capacity ->
-    stack_inv (count + 1) capacity.
+  forall cnt cap : Z,
+    stack_inv cnt cap ->
+    cnt < cap ->
+    stack_inv (cnt + 1) cap.
 Proof.
   intros c cap [Hcap [Hge Hle]] Hlt. unfold stack_inv. lia.
 Qed.
 
 Theorem push_full_rejected :
-  forall count capacity : Z,
-    stack_inv count capacity ->
-    count = capacity ->
-    stack_inv count capacity.
+  forall cnt cap : Z,
+    stack_inv cnt cap ->
+    cnt = cap ->
+    stack_inv cnt cap.
 Proof.
   intros. assumption.
 Qed.
@@ -65,28 +71,28 @@ Qed.
 (* ========================================================================= *)
 
 Theorem pop_preserves_invariant :
-  forall count capacity : Z,
-    stack_inv count capacity ->
-    count > 0 ->
-    stack_inv (count - 1) capacity.
+  forall cnt cap : Z,
+    stack_inv cnt cap ->
+    cnt > 0 ->
+    stack_inv (cnt - 1) cap.
 Proof.
   intros c cap [Hcap [Hge Hle]] Hgt. unfold stack_inv. lia.
 Qed.
 
 Theorem pop_empty_rejected :
-  forall count capacity : Z,
-    stack_inv count capacity ->
-    count = 0 ->
-    stack_inv count capacity.
+  forall cnt cap : Z,
+    stack_inv cnt cap ->
+    cnt = 0 ->
+    stack_inv cnt cap.
 Proof.
   intros. assumption.
 Qed.
 
 Theorem pop_no_underflow :
-  forall count capacity : Z,
-    stack_inv count capacity ->
-    count > 0 ->
-    count - 1 >= 0.
+  forall cnt cap : Z,
+    stack_inv cnt cap ->
+    cnt > 0 ->
+    cnt - 1 >= 0.
 Proof.
   intros c cap [_ [Hge _]] Hgt. lia.
 Qed.
@@ -96,27 +102,27 @@ Qed.
 (* ========================================================================= *)
 
 Theorem push_pop_roundtrip :
-  forall count capacity : Z,
-    stack_inv count capacity ->
-    count < capacity ->
-    (count + 1) - 1 = count.
+  forall cnt cap : Z,
+    stack_inv cnt cap ->
+    cnt < cap ->
+    (cnt + 1) - 1 = cnt.
 Proof.
   intros. lia.
 Qed.
 
 Theorem capacity_conservation :
-  forall count capacity : Z,
-    stack_inv count capacity ->
-    (capacity - count) + count = capacity.
+  forall cnt cap : Z,
+    stack_inv cnt cap ->
+    (cap - cnt) + cnt = cap.
 Proof.
   intros. lia.
 Qed.
 
 Theorem invariant_sufficiency :
-  forall count capacity : Z,
-    stack_inv count capacity ->
-    (count < capacity -> stack_inv (count + 1) capacity) /\
-    (count > 0 -> stack_inv (count - 1) capacity).
+  forall cnt cap : Z,
+    stack_inv cnt cap ->
+    (cnt < cap -> stack_inv (cnt + 1) cap) /\
+    (cnt > 0 -> stack_inv (cnt - 1) cap).
 Proof.
   intros c cap Hinv. split; intros.
   - apply push_preserves_invariant; assumption.

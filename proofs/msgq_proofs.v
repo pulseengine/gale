@@ -4,9 +4,15 @@
     Complements Verus SMT proofs in src/msgq.rs.
 
     Invariant: max_msgs > 0, msg_size > 0, 0 <= used_msgs <= max_msgs,
-    read_idx < max_msgs, write_idx < max_msgs. *)
+    read_idx < max_msgs, write_idx < max_msgs.
+
+    The rocq-of-rust translation wraps all values in Value.t.
+    These proofs operate at the abstract Z level. *)
 
 Require Import RocqOfRust.RocqOfRust.
+
+(* Close type_scope to prevent parsing conflicts with abstract proofs. *)
+Close Scope type_scope.
 
 (* ========================================================================= *)
 (** * Definitions *)
@@ -17,39 +23,39 @@ Definition ENOMSG : Z := -42.
 Definition OK     : Z := 0.
 
 (** The message queue invariant *)
-Definition msgq_inv (msg_size max_msgs used_msgs read_idx write_idx : Z) : Prop :=
-  msg_size > 0 /\
-  max_msgs > 0 /\
-  0 <= used_msgs /\
-  used_msgs <= max_msgs /\
-  0 <= read_idx /\
-  read_idx < max_msgs /\
-  0 <= write_idx /\
-  write_idx < max_msgs.
+Definition msgq_inv (msz mmx used ri wi : Z) : Prop :=
+  msz > 0 /\
+  mmx > 0 /\
+  0 <= used /\
+  used <= mmx /\
+  0 <= ri /\
+  ri < mmx /\
+  0 <= wi /\
+  wi < mmx.
 
 (* ========================================================================= *)
 (** * Init Proofs *)
 (* ========================================================================= *)
 
 Theorem init_establishes_invariant :
-  forall msg_size max_msgs : Z,
-    msg_size > 0 ->
-    max_msgs > 0 ->
-    msgq_inv msg_size max_msgs 0 0 0.
+  forall msz mmx : Z,
+    msz > 0 ->
+    mmx > 0 ->
+    msgq_inv msz mmx 0 0 0.
 Proof.
   intros ms mm Hms Hmm. unfold msgq_inv. lia.
 Qed.
 
 Theorem init_rejects_zero_msg_size :
-  forall max_msgs : Z,
-    ~ msgq_inv 0 max_msgs 0 0 0.
+  forall mmx : Z,
+    ~ msgq_inv 0 mmx 0 0 0.
 Proof.
   intros mm [H _]. lia.
 Qed.
 
 Theorem init_rejects_zero_max_msgs :
-  forall msg_size : Z,
-    ~ msgq_inv msg_size 0 0 0 0.
+  forall msz : Z,
+    ~ msgq_inv msz 0 0 0 0.
 Proof.
   intros ms [_ [H _]]. lia.
 Qed.
@@ -60,11 +66,11 @@ Qed.
 
 (** put when not full: increments used, advances write_idx *)
 Theorem put_preserves_invariant :
-  forall msg_size max_msgs used_msgs read_idx write_idx : Z,
-    msgq_inv msg_size max_msgs used_msgs read_idx write_idx ->
-    used_msgs < max_msgs ->
-    msgq_inv msg_size max_msgs (used_msgs + 1) read_idx
-      ((write_idx + 1) mod max_msgs).
+  forall msz mmx used ri wi : Z,
+    msgq_inv msz mmx used ri wi ->
+    used < mmx ->
+    msgq_inv msz mmx (used + 1) ri
+      ((wi + 1) mod mmx).
 Proof.
   intros ms mm um ri wi [Hms [Hmm [Hu1 [Hu2 [Hr1 [Hr2 [Hw1 Hw2]]]]]]] Hlt.
   unfold msgq_inv. repeat split; try lia.
@@ -74,10 +80,10 @@ Qed.
 
 (** put when full: rejected *)
 Theorem put_full_rejected :
-  forall msg_size max_msgs used_msgs read_idx write_idx : Z,
-    msgq_inv msg_size max_msgs used_msgs read_idx write_idx ->
-    used_msgs = max_msgs ->
-    msgq_inv msg_size max_msgs used_msgs read_idx write_idx.
+  forall msz mmx used ri wi : Z,
+    msgq_inv msz mmx used ri wi ->
+    used = mmx ->
+    msgq_inv msz mmx used ri wi.
 Proof.
   intros. assumption.
 Qed.
@@ -88,11 +94,11 @@ Qed.
 
 (** get when not empty: decrements used, advances read_idx *)
 Theorem get_preserves_invariant :
-  forall msg_size max_msgs used_msgs read_idx write_idx : Z,
-    msgq_inv msg_size max_msgs used_msgs read_idx write_idx ->
-    used_msgs > 0 ->
-    msgq_inv msg_size max_msgs (used_msgs - 1)
-      ((read_idx + 1) mod max_msgs) write_idx.
+  forall msz mmx used ri wi : Z,
+    msgq_inv msz mmx used ri wi ->
+    used > 0 ->
+    msgq_inv msz mmx (used - 1)
+      ((ri + 1) mod mmx) wi.
 Proof.
   intros ms mm um ri wi [Hms [Hmm [Hu1 [Hu2 [Hr1 [Hr2 [Hw1 Hw2]]]]]]] Hgt.
   unfold msgq_inv. repeat split; try lia.
@@ -105,9 +111,9 @@ Qed.
 (* ========================================================================= *)
 
 Theorem purge_establishes_empty :
-  forall msg_size max_msgs used_msgs read_idx write_idx : Z,
-    msgq_inv msg_size max_msgs used_msgs read_idx write_idx ->
-    msgq_inv msg_size max_msgs 0 write_idx write_idx.
+  forall msz mmx used ri wi : Z,
+    msgq_inv msz mmx used ri wi ->
+    msgq_inv msz mmx 0 wi wi.
 Proof.
   intros ms mm um ri wi [Hms [Hmm [Hu1 [Hu2 [Hr1 [Hr2 [Hw1 Hw2]]]]]]].
   unfold msgq_inv. lia.
@@ -119,19 +125,19 @@ Qed.
 
 (** put-get roundtrip preserves used count *)
 Theorem put_get_roundtrip :
-  forall msg_size max_msgs used_msgs read_idx write_idx : Z,
-    msgq_inv msg_size max_msgs used_msgs read_idx write_idx ->
-    used_msgs < max_msgs ->
-    (used_msgs + 1) - 1 = used_msgs.
+  forall msz mmx used ri wi : Z,
+    msgq_inv msz mmx used ri wi ->
+    used < mmx ->
+    (used + 1) - 1 = used.
 Proof.
   intros. lia.
 Qed.
 
 (** Conservation: num_free + num_used = max_msgs *)
 Theorem conservation :
-  forall msg_size max_msgs used_msgs read_idx write_idx : Z,
-    msgq_inv msg_size max_msgs used_msgs read_idx write_idx ->
-    (max_msgs - used_msgs) + used_msgs = max_msgs.
+  forall msz mmx used ri wi : Z,
+    msgq_inv msz mmx used ri wi ->
+    (mmx - used) + used = mmx.
 Proof.
   intros. lia.
 Qed.

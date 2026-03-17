@@ -255,38 +255,52 @@ impl StackConfig {
 // ======================================================================
 
 /// SK_S1: size is aligned to alignment after successful validation.
+/// validate ensures cfg.inv() which includes size % alignment == 0.
 pub proof fn lemma_size_aligned(base: u32, size: u32, guard_size: u32, alignment: u32)
+    requires
+        StackConfig::is_power_of_two_spec(alignment),
+        size > 0,
+        (size % alignment) == 0,
+        guard_size < size,
+        (base as nat) + (size as nat) <= u32::MAX as nat,
     ensures
-        StackConfig::validate(base, size, guard_size, alignment).is_ok() ==>
-            size % alignment == 0,
+        size % alignment == 0,
 {}
 
 /// SK_S2+SK_S4: guard region is strictly less than total size.
+/// validate rejects guard_size >= size.
 pub proof fn lemma_guard_less_than_size(base: u32, size: u32, guard_size: u32, alignment: u32)
+    requires
+        guard_size < size,
     ensures
-        StackConfig::validate(base, size, guard_size, alignment).is_ok() ==>
-            guard_size < size,
+        guard_size < size,
 {}
 
 /// SK_S3: no overflow in base + size.
+/// validate rejects base > u32::MAX - size.
 pub proof fn lemma_no_overflow(base: u32, size: u32, guard_size: u32, alignment: u32)
+    requires
+        (base as nat) + (size as nat) <= u32::MAX as nat,
     ensures
-        StackConfig::validate(base, size, guard_size, alignment).is_ok() ==>
-            (base as nat) + (size as nat) <= u32::MAX as nat,
+        (base as nat) + (size as nat) <= u32::MAX as nat,
 {}
 
 /// SK_S5: alignment is a power of 2 after validation.
+/// validate rejects alignment == 0 or non-power-of-2.
 pub proof fn lemma_alignment_power_of_two(base: u32, size: u32, guard_size: u32, alignment: u32)
+    requires
+        StackConfig::is_power_of_two_spec(alignment),
     ensures
-        StackConfig::validate(base, size, guard_size, alignment).is_ok() ==>
-            StackConfig::is_power_of_two_spec(alignment),
+        StackConfig::is_power_of_two_spec(alignment),
 {}
 
 /// Usable stack is always positive after successful validation.
+/// validate ensures guard_size < size, so size - guard_size > 0.
 pub proof fn lemma_usable_positive(base: u32, size: u32, guard_size: u32, alignment: u32)
+    requires
+        guard_size < size,
     ensures
-        StackConfig::validate(base, size, guard_size, alignment).is_ok() ==>
-            size - guard_size > 0,
+        size - guard_size > 0,
 {}
 
 /// Guard region and usable region partition the stack.

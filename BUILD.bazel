@@ -16,11 +16,12 @@ load("//bzl:defs.bzl",
 # Source file groups
 # =========================================================================
 
-# Verus-verified sources: only modules whose proof lemmas compile cleanly.
-# The remaining 28 modules have Verus annotations but their proof fns
-# call exec-mode functions, which Verus doesn't allow. These modules
-# still benefit from Verus's type checking during cargo test (via the
-# stripped plain/ output) — the formal verification gap is documented.
+# Verus-verified sources: modules that ACTUALLY pass `verus` SMT verification.
+# The remaining 28 modules have Verus annotations but their proof lemmas
+# call exec-mode functions, which Verus doesn't allow. To fix: rewrite
+# proof lemmas to use spec-level struct constructors.
+# poll.rs: uses mutable array indexing (Verus limitation)
+# sched.rs: uses function pointer types (Verus limitation)
 VERUS_SRCS = [
     "src/lib.rs",
     "src/error.rs",

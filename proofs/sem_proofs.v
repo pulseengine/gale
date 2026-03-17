@@ -1,14 +1,19 @@
 (** * Formal Verification Proofs for Zephyr Semaphore
 
     This file proves properties about the Rust semaphore translated
-    to Rocq by coq_of_rust. The translated code is in plain/sem.v
+    to Rocq by rocq-of-rust. The translated code is in plain/sem.v
     (generated from plain/sem.rs).
 
     Proof strategy:
-    - Section 1: Structural proofs (arity, types) — computed by reflexivity
-    - Section 2: Functional correctness — requires reasoning about the
-      monadic DSL produced by rocq-of-rust
-    - Section 3: Invariant preservation — the core ASIL-D proofs
+    - Section 1: Abstract invariant definitions and proofs over Z
+    - Section 2: Bridge definitions connecting Value.t to abstract invariants
+    - Section 3: Compositional proofs
+
+    The rocq-of-rust translation wraps all values in Value.t (the
+    monadic DSL). These proofs operate at two levels:
+    1. Abstract level: invariants over Z (count, limit bounds)
+    2. Bridge level: extraction from Value.t to Z for connecting
+       to the translated code
 
     These proofs complement the Verus SMT proofs in src/sem.rs:
     - Verus proves: count bounds, overflow safety, basic state machine
@@ -16,172 +21,215 @@
 
 Require Import RocqOfRust.RocqOfRust.
 
+(* Close type_scope to prevent parsing conflicts with abstract proofs.
+   The RocqOfRust import opens type_scope globally via lib.lib, which
+   can cause variable names to be interpreted as types. *)
+Close Scope type_scope.
+
 (* Import the translated semaphore module.
-   This will be available after coq_of_rust translates plain/sem.rs *)
+   This will be available after rocq-of-rust translates plain/sem.rs *)
 (* From plain Require Import sem. *)
 
 (* ========================================================================= *)
-(** * Section 1: Constant Definitions *)
+(** * Section 1: Abstract Invariant Definitions *)
 (* ========================================================================= *)
 
-(** Error codes match Zephyr's errno values *)
+(** Error codes match Zephyr's errno values.
+    In the translated code, these appear as:
+      Value.Integer IntegerKind.I32 (-22)  etc. *)
 Definition EINVAL : Z := -22.
 Definition EBUSY  : Z := -16.
 Definition EAGAIN : Z := -11.
 Definition OK     : Z := 0.
 
-(** The semaphore invariant as a Rocq proposition *)
-Definition sem_inv (count limit : Z) : Prop :=
-  limit > 0 /\ 0 <= count /\ count <= limit.
+(** The semaphore invariant as a Rocq proposition.
+    In the translated code, count and limit are u32 fields
+    wrapped in Value.Integer IntegerKind.U32. *)
+Definition sem_inv (cnt lim : Z) : Prop :=
+  lim > 0 /\ 0 <= cnt /\ cnt <= lim.
 
 (* ========================================================================= *)
-(** * Section 2: Init Proofs *)
+(** * Section 2: Bridge from Value.t to abstract invariant *)
+(* ========================================================================= *)
+
+(** Extract a Z from a Value.t integer, if it is one.
+    The translated code represents u32 as Value.Integer IntegerKind.U32 n.
+    Assumption: Value.Integer takes (IntegerKind.t, Z) -- if the
+    constructor signature differs at the pinned commit, adjust this match. *)
+Definition extract_integer (v : Value.t) : option Z :=
+  match v with
+  | Value.Integer _ n => Some n
+  | _ => None
+  end.
+
+(** Predicate: a Value.t carries a valid semaphore count *)
+Definition is_valid_sem_count (v_count v_limit : Value.t) : Prop :=
+  exists cnt lim : Z,
+    extract_integer v_count = Some cnt /\
+    extract_integer v_limit = Some lim /\
+    sem_inv cnt lim.
+
+(* ========================================================================= *)
+(** * Section 3: Init Proofs *)
 (* ========================================================================= *)
 
 (** init with valid parameters establishes the invariant *)
 Theorem init_establishes_invariant :
-  forall initial_count limit : Z,
-    limit > 0 ->
-    0 <= initial_count ->
-    initial_count <= limit ->
-    sem_inv initial_count limit.
+  forall ic lim : Z,
+    lim > 0 ->
+    0 <= ic ->
+    ic <= lim ->
+    sem_inv ic lim.
 Proof.
-  intros initial_count limit Hlim Hge Hle.
+  intros ic lim Hlim Hge Hle.
   unfold sem_inv. auto.
 Qed.
 
 (** init rejects limit = 0 *)
 Theorem init_rejects_zero_limit :
-  forall initial_count : Z,
-    ~ sem_inv initial_count 0.
+  forall ic : Z,
+    ~ sem_inv ic 0.
 Proof.
-  intros initial_count [H _]. lia.
+  intros ic [H _]. lia.
+Qed.
+
+(** Bridge: init with Value.t inputs establishes validity *)
+Theorem init_bridge :
+  forall ic lim : Z,
+    lim > 0 ->
+    0 <= ic ->
+    ic <= lim ->
+    is_valid_sem_count
+      (Value.Integer IntegerKind.U32 ic)
+      (Value.Integer IntegerKind.U32 lim).
+Proof.
+  intros ic lim Hlim Hge Hle.
+  exists ic, lim. repeat split; auto.
+  unfold sem_inv. auto.
 Qed.
 
 (* ========================================================================= *)
-(** * Section 3: Give Proofs *)
+(** * Section 4: Give Proofs *)
 (* ========================================================================= *)
 
 (** give with no waiters and count < limit: count incremented, invariant preserved *)
 Theorem give_no_waiter_preserves_invariant :
-  forall count limit : Z,
-    sem_inv count limit ->
-    count < limit ->
-    sem_inv (count + 1) limit.
+  forall cnt lim : Z,
+    sem_inv cnt lim ->
+    cnt < lim ->
+    sem_inv (cnt + 1) lim.
 Proof.
-  intros count limit [Hlim [Hge Hle]] Hlt.
+  intros cnt lim [Hlim [Hge Hle]] Hlt.
   unfold sem_inv. lia.
 Qed.
 
 (** give with no waiters at limit: saturation preserves invariant *)
 Theorem give_saturated_preserves_invariant :
-  forall count limit : Z,
-    sem_inv count limit ->
-    count = limit ->
-    sem_inv count limit.
+  forall cnt lim : Z,
+    sem_inv cnt lim ->
+    cnt = lim ->
+    sem_inv cnt lim.
 Proof.
-  intros count limit Hinv _. exact Hinv.
+  intros cnt lim Hinv _. exact Hinv.
 Qed.
 
 (** give never causes count to exceed limit *)
 Theorem give_count_bounded :
-  forall count limit : Z,
-    sem_inv count limit ->
-    let new_count := if Z.ltb count limit then count + 1 else count in
-    new_count <= limit.
+  forall cnt lim : Z,
+    sem_inv cnt lim ->
+    (if Z.ltb cnt lim then cnt + 1 else cnt) <= lim.
 Proof.
-  intros count limit [Hlim [Hge Hle]].
-  simpl. destruct (Z.ltb count limit) eqn:E.
+  intros cnt lim [Hlim [Hge Hle]].
+  destruct (Z.ltb cnt lim) eqn:E.
   - apply Z.ltb_lt in E. lia.
   - apply Z.ltb_ge in E. lia.
 Qed.
 
 (* ========================================================================= *)
-(** * Section 4: Take Proofs *)
+(** * Section 5: Take Proofs *)
 (* ========================================================================= *)
 
 (** try_take when count > 0: decrement preserves invariant *)
 Theorem take_preserves_invariant :
-  forall count limit : Z,
-    sem_inv count limit ->
-    count > 0 ->
-    sem_inv (count - 1) limit.
+  forall cnt lim : Z,
+    sem_inv cnt lim ->
+    cnt > 0 ->
+    sem_inv (cnt - 1) lim.
 Proof.
-  intros count limit [Hlim [Hge Hle]] Hgt.
+  intros cnt lim [Hlim [Hge Hle]] Hgt.
   unfold sem_inv. lia.
 Qed.
 
 (** try_take when count = 0: count unchanged *)
 Theorem take_empty_unchanged :
-  forall count limit : Z,
-    sem_inv count limit ->
-    count = 0 ->
-    sem_inv count limit.
+  forall cnt lim : Z,
+    sem_inv cnt lim ->
+    cnt = 0 ->
+    sem_inv cnt lim.
 Proof.
-  intros count limit Hinv _. exact Hinv.
+  intros cnt lim Hinv _. exact Hinv.
 Qed.
 
 (** No underflow: count >= 0 after take *)
 Theorem take_no_underflow :
-  forall count limit : Z,
-    sem_inv count limit ->
-    count > 0 ->
-    count - 1 >= 0.
+  forall cnt lim : Z,
+    sem_inv cnt lim ->
+    cnt > 0 ->
+    cnt - 1 >= 0.
 Proof.
-  intros count limit [Hlim [Hge Hle]] Hgt. lia.
+  intros cnt lim [Hlim [Hge Hle]] Hgt. lia.
 Qed.
 
 (* ========================================================================= *)
-(** * Section 5: Reset Proofs *)
+(** * Section 6: Reset Proofs *)
 (* ========================================================================= *)
 
 (** reset establishes count = 0, preserves limit *)
 Theorem reset_establishes_invariant :
-  forall count limit : Z,
-    sem_inv count limit ->
-    sem_inv 0 limit.
+  forall cnt lim : Z,
+    sem_inv cnt lim ->
+    sem_inv 0 lim.
 Proof.
-  intros count limit [Hlim [Hge Hle]].
+  intros cnt lim [Hlim [Hge Hle]].
   unfold sem_inv. lia.
 Qed.
 
 (* ========================================================================= *)
-(** * Section 6: Compositional Proofs *)
+(** * Section 7: Compositional Proofs *)
 (* ========================================================================= *)
 
 (** Give-take roundtrip: give then take returns to original count *)
 Theorem give_take_roundtrip :
-  forall count limit : Z,
-    sem_inv count limit ->
-    count < limit ->
-    (count + 1) - 1 = count.
+  forall cnt lim : Z,
+    sem_inv cnt lim ->
+    cnt < lim ->
+    (cnt + 1) - 1 = cnt.
 Proof.
   intros. lia.
 Qed.
 
 (** Repeated gives saturate at limit *)
 Theorem repeated_give_saturates :
-  forall count limit n : Z,
-    sem_inv count limit ->
+  forall cnt lim n : Z,
+    sem_inv cnt lim ->
     n >= 0 ->
-    let final_count := Z.min (count + n) limit in
-    sem_inv final_count limit.
+    sem_inv (Z.min (cnt + n) lim) lim.
 Proof.
-  intros count limit n [Hlim [Hge Hle]] Hn.
-  unfold sem_inv. simpl. lia.
+  intros cnt lim n [Hlim [Hge Hle]] Hn.
+  unfold sem_inv. lia.
 Qed.
 
 (** The invariant is sufficient for all operations to be safe *)
 Theorem invariant_sufficiency :
-  forall count limit : Z,
-    sem_inv count limit ->
+  forall cnt lim : Z,
+    sem_inv cnt lim ->
     (* give is safe *)
-    (count < limit -> sem_inv (count + 1) limit) /\
+    (cnt < lim -> sem_inv (cnt + 1) lim) /\
     (* take is safe when count > 0 *)
-    (count > 0 -> sem_inv (count - 1) limit) /\
+    (cnt > 0 -> sem_inv (cnt - 1) lim) /\
     (* reset is safe *)
-    sem_inv 0 limit.
+    sem_inv 0 lim.
 Proof.
-  intros count limit [Hlim [Hge Hle]].
+  intros cnt lim [Hlim [Hge Hle]].
   repeat split; intros; unfold sem_inv; lia.
 Qed.
