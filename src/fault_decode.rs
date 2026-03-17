@@ -137,7 +137,7 @@ pub enum FaultCategory {
 /// Captures the four fault-related SCB registers at the time of a
 /// fault exception. These are read by the fault handler and used to
 /// classify and report the fault.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CortexMFault {
     /// Configurable Fault Status Register (SCB->CFSR).
     /// Contains MMFSR (bits 0-7), BFSR (bits 8-15), UFSR (bits 16-31).

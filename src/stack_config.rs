@@ -41,7 +41,7 @@ verus! {
 /// stack_buf_start, stack_buf_size, and stack_ptr from the stack
 /// object and requested size. This model captures the validation
 /// constraints.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StackConfig {
     /// Base address of the stack buffer (lowest address).
     pub base: u32,

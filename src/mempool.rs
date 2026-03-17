@@ -35,7 +35,7 @@ verus! {
 ///
 /// Models a pool of equal-sized blocks. Each block is either
 /// allocated or free. We track the count, not individual blocks.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MemPool {
     /// Total number of blocks in the pool (immutable after init).
     pub capacity: u32,

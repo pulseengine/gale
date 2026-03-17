@@ -39,7 +39,7 @@ use crate::error::*;
 ///
 /// We model a single CPU's time-slice state. The C code manages
 /// the per-CPU array indexing and timeout scheduling.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TimeSlice {
     /// Remaining ticks in the current time slice.
     pub slice_ticks: u32,

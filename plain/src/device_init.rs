@@ -86,7 +86,7 @@ pub type DeviceId = u32;
 /// Corresponds to struct device + struct init_entry. Each device has
 /// a level, a priority within that level, a set of dependency device IDs,
 /// and an initialization state.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeviceEntry {
     /// Unique device identifier.
     pub id: DeviceId,
@@ -110,7 +110,7 @@ impl DeviceEntry {}
 /// Models the global device init state. Tracks which devices have
 /// been initialized and at what level. The actual init_entry table
 /// and linker section iteration remain in C.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeviceInitState {
     /// Current init level being processed.
     pub current_level: u8,

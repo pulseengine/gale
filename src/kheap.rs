@@ -49,7 +49,7 @@ verus! {
 /// We model the byte-level accounting: allocated_bytes tracks total
 /// bytes currently allocated. The C sys_heap manages the actual
 /// free-list, coalescing, and alignment.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KHeap {
     /// Maximum heap size in bytes (immutable after init).
     pub capacity: u32,

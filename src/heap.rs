@@ -84,7 +84,7 @@ pub enum ChunkState {
 /// We model the aggregate chunk accounting and per-slot state.
 /// The C code manages actual memory layout, free-list pointers,
 /// and bucket indices.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Heap {
     /// Total heap capacity in bytes (immutable after init).
     /// Corresponds to end_chunk * CHUNK_UNIT in the C code.

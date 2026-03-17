@@ -47,7 +47,7 @@ use crate::error::*;
 ///
 /// We model the number of elements in data_q as `count`.
 /// The C shim manages the actual linked-list nodes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Queue {
     /// Current number of elements in the queue.
     pub count: u32,

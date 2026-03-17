@@ -49,7 +49,7 @@ pub const MAX_THREADS: u32 = 256;
 ///
 /// We track start (as an opaque id), size, and the high-water-mark
 /// usage for runtime stack safety monitoring.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StackInfo {
     /// Usable stack base address (opaque identifier).
     pub base: u32,
@@ -104,7 +104,7 @@ impl StackInfo {
 /// with the stack info tracking. This is separate from the existing
 /// Thread struct (which models synchronization state transitions) and
 /// from SchedThreadState (which models scheduler FSM transitions).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThreadInfo {
     /// Thread identifier.
     pub id: u32,
@@ -173,7 +173,7 @@ impl ThreadInfo {
 ///
 /// In Zephyr, thread objects are statically or dynamically allocated,
 /// and failure to join/abort leaked threads can exhaust system resources.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThreadTracker {
     /// Number of currently active threads.
     pub count: u32,

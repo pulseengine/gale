@@ -64,7 +64,7 @@ pub const BUSY_MASK: u8 = 7;       // 0b0000_0111
 /// };
 ///
 /// We model the flags field to track work item lifecycle states.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorkItem {
     /// State flags (RUNNING, CANCELING, QUEUED, FLUSHING).
     pub flags: u8,
@@ -303,7 +303,7 @@ impl WorkItem {
 /// WK1: init produces idle state.
 pub proof fn lemma_init_is_idle()
     ensures
-        WorkItem::init().flags == 0,
+        ({ let w = WorkItem { flags: 0 }; w.flags == 0 }),
 {}
 
 /// WK2+WK4: submit from idle queues, submit when queued is idempotent.

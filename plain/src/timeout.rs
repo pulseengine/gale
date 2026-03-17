@@ -52,7 +52,7 @@ pub const K_NO_WAIT_TICKS: u64 = 0;
 ///
 /// We model the absolute deadline (not delta ticks) and a monotonic
 /// system tick counter. The C shim converts between delta and absolute.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Timeout {
     /// Absolute deadline in system ticks.
     /// K_FOREVER_TICKS (u64::MAX) means "never expires".

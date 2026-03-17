@@ -43,7 +43,7 @@ use crate::error::*;
 /// where k_queue contains a sys_sflist_t data_q (linked list).
 /// We model the number of elements currently in data_q as `count`.
 /// The C shim converts: count = sys_sflist_len(&queue->data_q).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fifo {
     /// Current number of items in the queue.
     pub count: u32,

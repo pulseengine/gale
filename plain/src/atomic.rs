@@ -42,7 +42,7 @@ use crate::error::*;
 ///
 /// Each operation returns the old value and mutates the stored value,
 /// mirroring the C pattern: `ret = *target; *target = f(ret, arg); return ret;`
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AtomicVal {
     /// The stored atomic value.
     pub val: u32,

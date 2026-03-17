@@ -31,7 +31,7 @@ use crate::error::*;
 /// Tracks the number of active (allocated) thread stacks from the
 /// CONFIG_DYNAMIC_THREAD_POOL_SIZE pool. The bitarray that tracks
 /// individual slot usage remains in C (sys_bitarray).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DynamicPool {
     /// Maximum threads in the pool (CONFIG_DYNAMIC_THREAD_POOL_SIZE).
     pub max_threads: u32,

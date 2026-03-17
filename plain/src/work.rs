@@ -56,7 +56,7 @@ pub const BUSY_MASK: u8 = 7;
 /// };
 ///
 /// We model the flags field to track work item lifecycle states.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorkItem {
     /// State flags (RUNNING, CANCELING, QUEUED, FLUSHING).
     pub flags: u8,

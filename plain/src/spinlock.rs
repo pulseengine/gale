@@ -35,7 +35,7 @@ pub const MAX_NEST_DEPTH: u32 = 255;
 ///
 /// We model thread_cpu as `owner: Option<u32>` (thread ID or None if unlocked)
 /// and add an explicit `nest_count` for recursive lock tracking.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpinlockState {
     /// Current lock owner (None = unlocked, Some(tid) = owned by thread tid).
     pub owner: Option<u32>,

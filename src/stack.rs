@@ -45,7 +45,7 @@ verus! {
 ///
 /// We model next-base as `count` and top-base as `capacity`.
 /// The C shim converts: count = (next - base), capacity = (top - base).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Stack {
     /// Maximum number of entries (immutable after init).
     pub capacity: u32,

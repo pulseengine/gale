@@ -47,7 +47,7 @@ use crate::error::*;
 /// We model the put/get index pairs as head (consumer read position)
 /// and tail (producer write position), with an explicit size counter
 /// to avoid the ambiguity between full and empty states.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RingBuf {
     /// Total buffer capacity in bytes (immutable after init).
     pub capacity: u32,

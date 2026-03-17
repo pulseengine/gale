@@ -41,7 +41,7 @@ use crate::error::*;
 ///
 /// We model the counter: num_used tracks allocated blocks.
 /// The C shim manages the actual free-list pointers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MemSlab {
     /// Total number of blocks (immutable after init).
     pub num_blocks: u32,

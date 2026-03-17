@@ -44,7 +44,7 @@ use crate::error::*;
 ///
 /// We model the running state explicitly; in Zephyr it is implicit
 /// (timeout node linked into the timeout queue).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Timer {
     /// Expiry counter: incremented on each expiry, reset on get/start/stop.
     pub status: u32,

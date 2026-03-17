@@ -73,7 +73,7 @@ pub enum RecoveryAction {
 ///
 /// Encapsulates a fatal error event with its reason, context, and
 /// whether we are in test mode.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FatalError {
     /// The error reason code.
     pub reason: FatalReason,

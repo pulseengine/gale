@@ -146,7 +146,7 @@ pub enum InitCheck {
 ///
 /// We model perms as a u64 bitmask — bit N set means thread N has access.
 /// CONFIG_MAX_THREAD_BYTES = 8 -> 64 threads max.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KernelObject {
     /// Object type (which kernel primitive this is).
     pub obj_type: ObjType,

@@ -46,7 +46,7 @@ use crate::error::*;
 ///
 /// Unlike k_stack, k_lifo has no fixed capacity — the linked list
 /// grows dynamically. We guard against u32 overflow (LI6).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Lifo {
     /// Current number of items in the LIFO queue.
     pub count: u32,

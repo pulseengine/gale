@@ -41,7 +41,7 @@ pub const MAX_CPUS: u32 = 16;
 ///
 /// Models the global SMP state: how many CPUs are active and
 /// the global lock reference count.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SmpState {
     /// Maximum number of CPUs in the system.
     pub max_cpus: u32,

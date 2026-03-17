@@ -45,7 +45,7 @@ verus! {
 /// };
 ///
 /// We model only the `events` bitmask. Wait queue management stays in C.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Event {
     /// Current 32-bit event bitmask.
     pub events: u32,

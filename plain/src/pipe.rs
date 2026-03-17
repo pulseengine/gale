@@ -47,7 +47,7 @@ pub const FLAG_RESET: u8 = 2;
 ///
 /// The ring buffer internals (head/tail/base indices) stay in C.
 /// We model only the byte-level state: total size and bytes used.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Pipe {
     /// Total buffer capacity in bytes (immutable after init).
     pub size: u32,
