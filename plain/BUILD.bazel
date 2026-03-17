@@ -5,6 +5,8 @@
 load("@rules_rocq_rust//coq_of_rust:defs.bzl", "coq_of_rust_library", "rocq_rust_verified_library")
 load("@rules_rocq_rust//rocq:defs.bzl", "rocq_library", "rocq_proof_test")
 
+package(default_visibility = ["//visibility:public"])
+
 # Expose plain Rust sources to root package (cargo_test, clippy, etc.)
 filegroup(
     name = "srcs",
@@ -101,6 +103,21 @@ rocq_library(
     extra_flags = ["-impredicative-set"],
 )
 
+# ── Fifo ────────────────────────────────────────────────────────────────
+
+coq_of_rust_library(
+    name = "fifo_translated",
+    rust_sources = ["fifo.rs"],
+    edition = "2021",
+)
+
+rocq_library(
+    name = "fifo_compiled",
+    srcs = [":fifo_translated"],
+    deps = [":rocq_of_rust_lib"],
+    extra_flags = ["-impredicative-set"],
+)
+
 # ── Pipe ─────────────────────────────────────────────────────────────────
 
 coq_of_rust_library(
@@ -157,6 +174,21 @@ coq_of_rust_library(
 rocq_library(
     name = "mem_slab_compiled",
     srcs = [":mem_slab_translated"],
+    deps = [":rocq_of_rust_lib"],
+    extra_flags = ["-impredicative-set"],
+)
+
+# ── Queue ──────────────────────────────────────────────────────────────
+
+coq_of_rust_library(
+    name = "queue_translated",
+    rust_sources = ["queue.rs"],
+    edition = "2021",
+)
+
+rocq_library(
+    name = "queue_compiled",
+    srcs = [":queue_translated"],
     deps = [":rocq_of_rust_lib"],
     extra_flags = ["-impredicative-set"],
 )
