@@ -179,6 +179,7 @@ kani_test(
     manifest = "Cargo.toml",
     srcs = ALL_CARGO_SRCS,
     data = CARGO_DATA,
+    size = "large",
 )
 
 kani_test(
@@ -186,6 +187,7 @@ kani_test(
     manifest = "ffi/Cargo.toml",
     srcs = FFI_SRCS + PLAIN_SRCS,
     data = CARGO_DATA + ["ffi/Cargo.toml"],
+    size = "large",
 )
 
 # =========================================================================

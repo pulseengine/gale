@@ -6,7 +6,7 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 
 ## Modules
 
-39 Rust modules covering the full Zephyr kernel surface. 35 pass Verus SMT verification:
+39 Rust modules covering the full Zephyr kernel surface. 37 pass Verus SMT verification:
 
 **Synchronization**
 
@@ -51,7 +51,7 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 | heap | lib/os/heap | HP01-HP08 | Verified |
 | kheap | kernel/kheap | KH01-KH06 | Verified |
 | mempool | kernel/mempool | MP01-MP06 | Verified |
-| mem_domain | kernel/mem_domain.c | MD01-MD06 | Annotated (Verus: spec/exec type boundary) |
+| mem_domain | kernel/mem_domain.c | MD01-MD06 | Verified |
 | stack_config | arch/stack | SKS01-SKS05 | Verified |
 
 **Scheduling**
@@ -74,14 +74,14 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 | fault_decode | arch/fault | FD/FH01-FH03 | Verified |
 | device_init | drivers/init | DI01-DI05 | Verified |
 | dynamic | kernel/dynamic.c | DY01-DY04 | Verified |
-| userspace | kernel/userspace.c | US01-US08 | Annotated (Verus: derived PartialEq visibility) |
+| userspace | kernel/userspace.c | US01-US08 | Verified |
 
 ## Architecture
 
 ```
 src/*.rs          Verus-annotated Rust (39 modules, single source of truth)
     |
-    +---> Verus verification (35/39 modules, SMT/Z3)
+    +---> Verus verification (37/39 modules, SMT/Z3)
     |
     +---> verus-strip ---> plain/src/*.rs (auto-generated plain Rust)
     |       |                |
@@ -100,7 +100,7 @@ src/*.rs          Verus-annotated Rust (39 modules, single source of truth)
 
 Triple-track formal verification:
 
-- **Verus (SMT/Z3):** 35/39 modules verified via requires/ensures contracts (4 excluded due to Verus limitations)
+- **Verus (SMT/Z3):** 37/39 modules verified via requires/ensures contracts (2 excluded due to Verus limitations)
 - **Rocq (theorem proving):** 9/9 proof files pass across kernel primitives (sem, mutex, condvar, event, mem_slab, msgq, pipe, stack, timer)
 - **Lean 4:** 3/3 proof files pass — scheduler correctness (RMA bound), priority ceiling protocol, priority queue ordering
 - **Kani BMC:** 87/87 bounded model checking harnesses pass across 9 modules
