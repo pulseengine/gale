@@ -116,8 +116,8 @@ Triple-track formal verification:
 | Workflow | Scope | Status |
 |----------|-------|--------|
 | Rust CI | cargo test, clippy, verus-strip gate | 995 tests |
-| Zephyr Kernel Tests | 13 upstream test suites on qemu_cortex_m3 | 13/13 pass |
-| Multi-Arch Build | M3, M4F, M33 cross-compilation | 3 boards |
+| Zephyr Kernel Tests | 20 upstream test suites on qemu_cortex_m3 | 20/20 pass |
+| Renode Emulation Tests | Cortex-M4F (STM32F4) + Cortex-M33 (STM32L552) | 2 boards |
 
 ## Traceability
 
