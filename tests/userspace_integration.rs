@@ -8,10 +8,17 @@
 )]
 
 use gale::error::*;
-use gale::userspace::{
-    FLAG_ALLOC, FLAG_DRIVER, FLAG_INITIALIZED, FLAG_PUBLIC, InitCheck, KernelObject, MAX_THREADS,
-    ObjType,
-};
+use gale::userspace::{InitCheck, KernelObject, MAX_THREADS, ObjType};
+
+/// Helper: check all permissions are false.
+fn all_perms_clear(ko: &KernelObject) -> bool {
+    ko.thread_perms.iter().all(|&p| !p)
+}
+
+/// Helper: check all permissions are true.
+fn all_perms_set(ko: &KernelObject) -> bool {
+    ko.thread_perms.iter().all(|&p| p)
+}
 
 // ==================================================================
 // Constructor tests (US6)
@@ -21,8 +28,11 @@ use gale::userspace::{
 fn new_creates_uninitialized_no_perms() {
     let ko = KernelObject::new(ObjType::Sem);
     assert_eq!(ko.obj_type, ObjType::Sem);
-    assert_eq!(ko.flags, 0);
-    assert_eq!(ko.thread_perms, 0);
+    assert!(!ko.flag_initialized);
+    assert!(!ko.flag_public);
+    assert!(!ko.flag_alloc);
+    assert!(!ko.flag_driver);
+    assert!(all_perms_clear(&ko));
     assert!(!ko.is_initialized());
     assert!(!ko.is_public());
 }
@@ -50,7 +60,7 @@ fn new_each_type() {
     for t in types {
         let ko = KernelObject::new(t);
         assert_eq!(ko.obj_type_get(), t);
-        assert_eq!(ko.thread_perms, 0);
+        assert!(all_perms_clear(&ko));
     }
 }
 
@@ -63,7 +73,7 @@ fn us2_grant_sets_permission_bit() {
     let mut ko = KernelObject::new(ObjType::Sem);
     assert_eq!(ko.grant_access(0), OK);
     assert!(ko.has_perm(0));
-    assert_eq!(ko.thread_perms, 1);
+    assert!(ko.thread_perms[0]);
 }
 
 #[test]
@@ -93,7 +103,7 @@ fn us8_grant_invalid_tid_returns_einval() {
     let mut ko = KernelObject::new(ObjType::Sem);
     assert_eq!(ko.grant_access(MAX_THREADS), EINVAL);
     assert_eq!(ko.grant_access(MAX_THREADS + 100), EINVAL);
-    assert_eq!(ko.thread_perms, 0);
+    assert!(all_perms_clear(&ko));
 }
 
 // ==================================================================
@@ -163,7 +173,7 @@ fn clear_all_perms_resets_bitmask() {
     ko.grant_access(31);
     ko.grant_access(63);
     ko.clear_all_perms();
-    assert_eq!(ko.thread_perms, 0);
+    assert!(all_perms_clear(&ko));
 }
 
 #[test]
@@ -411,18 +421,6 @@ fn public_preserves_perms() {
 }
 
 // ==================================================================
-// Flag constants
-// ==================================================================
-
-#[test]
-fn flag_constants_match_zephyr() {
-    assert_eq!(FLAG_INITIALIZED, 1); // BIT(0)
-    assert_eq!(FLAG_PUBLIC, 2); // BIT(1)
-    assert_eq!(FLAG_ALLOC, 4); // BIT(2)
-    assert_eq!(FLAG_DRIVER, 8); // BIT(3)
-}
-
-// ==================================================================
 // Edge cases
 // ==================================================================
 
@@ -432,7 +430,7 @@ fn all_threads_granted() {
     for i in 0..MAX_THREADS {
         ko.grant_access(i);
     }
-    assert_eq!(ko.thread_perms, u64::MAX);
+    assert!(all_perms_set(&ko));
     for i in 0..MAX_THREADS {
         assert!(ko.has_perm(i));
     }
@@ -471,7 +469,7 @@ fn thread_zero_permission() {
     let mut ko = KernelObject::new(ObjType::Sem);
     ko.grant_access(0);
     assert!(ko.has_perm(0));
-    assert_eq!(ko.thread_perms, 1);
+    assert!(ko.thread_perms[0]);
 }
 
 #[test]
@@ -479,5 +477,5 @@ fn thread_63_permission() {
     let mut ko = KernelObject::new(ObjType::Sem);
     ko.grant_access(63);
     assert!(ko.has_perm(63));
-    assert_eq!(ko.thread_perms, 1u64 << 63);
+    assert!(ko.thread_perms[63]);
 }

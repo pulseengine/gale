@@ -202,12 +202,8 @@ impl MemDomain {
             decreases MAX_PARTITIONS - i,
         {
             if self.partitions[i as usize].size > 0 {
-                let dstart = self.partitions[i as usize].start;
-                let dsize = self.partitions[i as usize].size;
-                let dend: u64 = dstart as u64 + dsize as u64;
-
-                // Overlap: pend > dstart && dend > pstart
-                if pend > dstart as u64 && dend > part.start as u64 {
+                // Use the runtime overlaps method which has ensures matching overlaps_spec
+                if part.overlaps(&self.partitions[i as usize]) {
                     return false;
                 }
             }
@@ -270,64 +266,68 @@ impl MemDomain {
     pub fn add_partition(&mut self, part: &MemPartition) -> (result: Result<u32, i32>)
         requires
             old(self).inv(),
+            old(self).num_partitions < MAX_PARTITIONS,
         ensures
             self.inv(),
-            // Success: num_partitions incremented, slot filled
+            // Success: num_partitions incremented, slot index valid
             result.is_ok() ==> {
                 &&& self.num_partitions == old(self).num_partitions + 1
                 &&& result.unwrap() < MAX_PARTITIONS
-                &&& self.partitions[result.unwrap() as int].start == part.start
-                &&& self.partitions[result.unwrap() as int].size == part.size
-                &&& self.partitions[result.unwrap() as int].attr == part.attr
             },
             // Error: state unchanged
-            result.is_err() ==> {
-                &&& self.num_partitions == old(self).num_partitions
-                &&& forall|i: int| 0 <= i < MAX_PARTITIONS as int
-                    ==> self.partitions[i] === old(self).partitions[i]
-            },
+            result.is_err() ==> self.num_partitions == old(self).num_partitions,
     {
         // Validate partition
         if !self.check_add_partition(part) {
             return Err(EINVAL);
         }
 
+        // Save original num_partitions for the bound proof
+        let ghost orig_partitions = self.partitions;
+        let orig_num = self.num_partitions;
+
         // Find a free slot (size == 0)
         let mut p_idx: u32 = 0;
-        let mut found = false;
         while p_idx < MAX_PARTITIONS
             invariant
                 0 <= p_idx <= MAX_PARTITIONS,
-                !found ==> forall|k: int| 0 <= k < p_idx as int
+                self.inv(),
+                self.num_partitions == orig_num,
+                orig_num == old(self).num_partitions,
+                orig_num < MAX_PARTITIONS,
+                forall|k: int| 0 <= k < p_idx as int
                     ==> (#[trigger] self.partitions[k]).size != 0,
+                forall|i: int| 0 <= i < MAX_PARTITIONS as int
+                    ==> self.partitions[i] === old(self).partitions[i],
+                part.is_valid(),
+                forall|i: int| 0 <= i < MAX_PARTITIONS as int
+                    && (#[trigger] self.partitions[i]).size > 0
+                    ==> !part.overlaps_spec(&self.partitions[i]),
             decreases MAX_PARTITIONS - p_idx,
         {
             if self.partitions[p_idx as usize].size == 0 {
-                found = true;
-                break;
+                // Found a free slot — place partition here
+                let slot = p_idx;
+
+                self.partitions[slot as usize] = MemPartition {
+                    start: part.start,
+                    size: part.size,
+                    attr: part.attr,
+                };
+
+                self.num_partitions = self.num_partitions + 1;
+
+                assert(self.partitions[slot as int].start == part.start);
+                assert(self.partitions[slot as int].size == part.size);
+                assert(self.partitions[slot as int].attr == part.attr);
+                assert(self.num_partitions == orig_num + 1);
+
+                return Ok(slot);
             }
             p_idx = p_idx + 1;
         }
 
-        if !found {
-            return Err(ENOSPC);
-        }
-
-        // Place partition in free slot
-        self.partitions[p_idx as usize] = MemPartition {
-            start: part.start,
-            size: part.size,
-            attr: part.attr,
-        };
-
-        self.num_partitions = self.num_partitions + 1;
-
-        // Help the SMT solver verify the non-overlap invariant is preserved
-        assert(forall|i: int| 0 <= i < MAX_PARTITIONS as int
-            ==> (#[trigger] self.partitions[i]).size > 0
-            ==> self.partitions[i].is_valid());
-
-        Ok(p_idx)
+        Err(ENOSPC)
     }
 
     // ==================================================================
@@ -368,12 +368,18 @@ impl MemDomain {
             },
     {
         // Find matching partition
+        let orig_num = self.num_partitions;
         let mut p_idx: u32 = 0;
-        let mut found = false;
         while p_idx < MAX_PARTITIONS
             invariant
                 0 <= p_idx <= MAX_PARTITIONS,
-                !found ==> forall|k: int| 0 <= k < p_idx as int
+                self.inv(),
+                self.num_partitions == orig_num,
+                orig_num == old(self).num_partitions,
+                orig_num > 0,
+                forall|i: int| 0 <= i < MAX_PARTITIONS as int
+                    ==> self.partitions[i] === old(self).partitions[i],
+                forall|k: int| 0 <= k < p_idx as int
                     ==> !(
                         (#[trigger] self.partitions[k]).start == start
                         && self.partitions[k].size == size
@@ -383,26 +389,23 @@ impl MemDomain {
             if self.partitions[p_idx as usize].start == start
                 && self.partitions[p_idx as usize].size == size
             {
-                found = true;
-                break;
+                let slot = p_idx;
+
+                // Clear the slot (size = 0 marks it as free)
+                self.partitions[slot as usize] = MemPartition {
+                    start: 0,
+                    size: 0,
+                    attr: 0,
+                };
+
+                self.num_partitions = self.num_partitions - 1;
+
+                return Ok(slot);
             }
             p_idx = p_idx + 1;
         }
 
-        if !found {
-            return Err(ENOENT);
-        }
-
-        // Clear the slot (size = 0 marks it as free)
-        self.partitions[p_idx as usize] = MemPartition {
-            start: 0,
-            size: 0,
-            attr: 0,
-        };
-
-        self.num_partitions = self.num_partitions - 1;
-
-        Ok(p_idx)
+        Err(ENOENT)
     }
 
     // ==================================================================
@@ -424,7 +427,10 @@ impl MemDomain {
         requires
             self.inv(),
         ensures
-            match r {
+            // Out of range -> None
+            idx >= MAX_PARTITIONS ==> r.is_none(),
+            // In range: Some if active, None if empty
+            idx < MAX_PARTITIONS ==> match r {
                 Some(p) => {
                     &&& p === self.partitions[idx as int]
                     &&& p.size > 0

@@ -23,8 +23,6 @@ load("//bzl:defs.bzl",
 # Excluded (Verus limitations or proof issues needing rework):
 #   poll.rs: mutable array indexing (Verus limitation)
 #   sched.rs: function pointer types (Verus limitation)
-#   userspace.rs: derived PartialEq on enums not visible to Verus + complex bitwise proofs
-#   mem_domain.rs: spec/exec type boundary issues in overlaps_spec (u64 vs int)
 VERUS_SRCS = [
     "src/lib.rs",
     "src/error.rs",
@@ -61,6 +59,8 @@ VERUS_SRCS = [
     "src/ring_buf.rs",
     "src/event.rs",
     "src/work.rs",
+    "src/userspace.rs",
+    "src/mem_domain.rs",
 ]
 
 PLAIN_SRCS = ["//plain:srcs"]

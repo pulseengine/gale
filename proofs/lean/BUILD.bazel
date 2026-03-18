@@ -15,12 +15,13 @@ load("@rules_lean//lean:defs.bzl", "lean_library", "lean_proof_test")
 lean_library(
     name = "scheduling",
     srcs = ["Scheduling.lean"],
+    deps = ["@mathlib//:Mathlib"],
 )
 
 lean_proof_test(
     name = "scheduling_test",
     srcs = ["Scheduling.lean"],
-    deps = [":scheduling"],
+    deps = [":scheduling", "@mathlib//:Mathlib"],
 )
 
 # ── Priority Ceiling Protocol ──────────────────────────────────────────
@@ -28,12 +29,13 @@ lean_proof_test(
 lean_library(
     name = "priority_ceiling",
     srcs = ["PriorityCeiling.lean"],
+    deps = ["@mathlib//:Mathlib"],
 )
 
 lean_proof_test(
     name = "priority_ceiling_test",
     srcs = ["PriorityCeiling.lean"],
-    deps = [":priority_ceiling"],
+    deps = [":priority_ceiling", "@mathlib//:Mathlib"],
 )
 
 # ── Priority Queue Invariants ──────────────────────────────────────────
@@ -41,10 +43,11 @@ lean_proof_test(
 lean_library(
     name = "priority_queue",
     srcs = ["PriorityQueue.lean"],
+    deps = ["@mathlib//:Mathlib"],
 )
 
 lean_proof_test(
     name = "priority_queue_test",
     srcs = ["PriorityQueue.lean"],
-    deps = [":priority_queue"],
+    deps = [":priority_queue", "@mathlib//:Mathlib"],
 )

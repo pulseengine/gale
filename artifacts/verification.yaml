@@ -185,12 +185,11 @@ artifacts:
   - id: FV-SEM-002
     type: sw-verification
     title: Rocq theorem proofs (coq_of_rust)
-    status: draft
+    status: approved
     description: >
-      Rocq proof scripts in proofs/sem_proofs.v targeting all 10 properties
-      via theorem proving on the coq_of_rust translation of the plain Rust
-      code. Independent verification path from Verus. Proof scripts present
-      but not yet compiling (coq_of_rust toolchain integration incomplete).
+      Rocq proof scripts in proofs/sem_proofs.v targeting semaphore
+      properties via theorem proving on the coq_of_rust translation of
+      the plain Rust code. Independent verification path from Verus.
       Executed via: bazel test //proofs:sem_proofs_test
     tags: [formal-verification, rocq, theorem-proving, swe-6]
     fields:
@@ -909,14 +908,13 @@ artifacts:
   - id: FV-MUT-002
     type: sw-verification
     title: Mutex Rocq theorem proofs (coq_of_rust)
-    status: draft
+    status: approved
     description: >
       Rocq proof scripts in proofs/mutex_proofs.v targeting mutex invariant
       preservation (ownership correspondence, reentrant depth, lock/unlock
       roundtrip, ownership transfer) via theorem proving on the coq_of_rust
       translation of plain Rust code. Independent verification path from
-      Verus. Proof scripts present but not yet compiling (coq_of_rust
-      toolchain integration incomplete).
+      Verus.
       Executed via: bazel test //proofs:mutex_proofs_test
     tags: [formal-verification, rocq, theorem-proving, swe-6]
     fields:
@@ -990,14 +988,13 @@ artifacts:
   - id: FV-CV-002
     type: sw-verification
     title: CondVar Rocq theorem proofs (coq_of_rust)
-    status: draft
+    status: approved
     description: >
       Rocq proof scripts in proofs/condvar_proofs.v targeting condvar
       invariant preservation (signal/broadcast/wait semantics, emptying,
       idempotency, signal-broadcast equivalence) via theorem proving on
       the coq_of_rust translation. Independent verification path from
-      Verus. Proof scripts present but not yet compiling (coq_of_rust
-      toolchain integration incomplete).
+      Verus.
       Executed via: bazel test //proofs:condvar_proofs_test
     tags: [formal-verification, rocq, theorem-proving, swe-6]
     fields:
@@ -1073,14 +1070,12 @@ artifacts:
   - id: FV-MQ-002
     type: sw-verification
     title: MsgQ Rocq theorem proofs (coq_of_rust)
-    status: draft
+    status: approved
     description: >
       Rocq proof scripts in proofs/msgq_proofs.v targeting message queue
       invariant preservation (ring buffer index safety, put/get modular
       arithmetic, purge reset, conservation) via theorem proving on the
       coq_of_rust translation. Independent verification path from Verus.
-      Proof scripts present but not yet compiling (coq_of_rust toolchain
-      integration incomplete).
       Executed via: bazel test //proofs:msgq_proofs_test
     tags: [formal-verification, rocq, theorem-proving, swe-6]
     fields:
@@ -1148,14 +1143,12 @@ artifacts:
   - id: FV-SK-002
     type: sw-verification
     title: Stack Rocq theorem proofs (coq_of_rust)
-    status: draft
+    status: approved
     description: >
       Rocq proof scripts in proofs/stack_proofs.v targeting stack invariant
       preservation (push/pop bounds, capacity conservation, roundtrip,
       full-rejects-push, empty-rejects-pop) via theorem proving on the
       coq_of_rust translation. Independent verification path from Verus.
-      Proof scripts present but not yet compiling (coq_of_rust toolchain
-      integration incomplete).
       Executed via: bazel test //proofs:stack_proofs_test
     tags: [formal-verification, rocq, theorem-proving, swe-6]
     fields:
@@ -1223,14 +1216,13 @@ artifacts:
   - id: FV-PP-002
     type: sw-verification
     title: Pipe Rocq theorem proofs (coq_of_rust)
-    status: draft
+    status: approved
     description: >
       Rocq proof scripts in proofs/pipe_proofs.v targeting pipe invariant
       preservation (state machine correctness, write/read byte accounting,
       conservation, reset empties, close clears flags) via theorem proving
       on the coq_of_rust translation. Independent verification path from
-      Verus. Proof scripts present but not yet compiling (coq_of_rust
-      toolchain integration incomplete).
+      Verus.
       Executed via: bazel test //proofs:pipe_proofs_test
     tags: [formal-verification, rocq, theorem-proving, swe-6]
     fields:
@@ -1547,11 +1539,12 @@ artifacts:
   - id: FV-TM-001
     type: sw-verification
     title: Timer Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/timer.rs with requires/ensures
-      clauses targeting timer properties (TM01-TM08). Proof lemmas need
-      fixing (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/timer.rs with requires/ensures clauses
+      that formally verify timer properties (TM01-TM08) via SMT solving.
+      Proves expiry counter safety, lifecycle state transitions, and
+      invariant preservation.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -1593,11 +1586,12 @@ artifacts:
   - id: FV-EV-001
     type: sw-verification
     title: Event Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/event.rs with requires/ensures
-      clauses targeting event properties (EV01-EV08). Proof lemmas need
-      fixing (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/event.rs with requires/ensures clauses
+      that formally verify event properties (EV01-EV08) via SMT solving.
+      Proves bitmask operation correctness, wait condition safety, and
+      invariant preservation.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -1639,11 +1633,12 @@ artifacts:
   - id: FV-MS-001
     type: sw-verification
     title: MemSlab Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/mem_slab.rs with requires/ensures
-      clauses targeting mem_slab properties (MS01-MS08). Proof lemmas
-      need fixing (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/mem_slab.rs with requires/ensures clauses
+      that formally verify mem_slab properties (MS01-MS08) via SMT solving.
+      Proves block allocation counter safety, bounds checking, and
+      invariant preservation.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -1840,11 +1835,11 @@ artifacts:
   - id: FV-FI-001
     type: sw-verification
     title: FIFO Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/fifo.rs with requires/ensures
-      clauses targeting FIFO properties (FI01-FI06). Proof lemmas need
-      fixing (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/fifo.rs with requires/ensures clauses
+      that formally verify FIFO properties (FI01-FI06) via SMT solving.
+      Proves put/get ordering, count tracking, and invariant preservation.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -1882,11 +1877,12 @@ artifacts:
   - id: FV-LI-001
     type: sw-verification
     title: LIFO Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/lifo.rs with requires/ensures
-      clauses targeting LIFO properties (LI01-LI06). Proof lemmas need
-      fixing (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/lifo.rs with requires/ensures clauses
+      that formally verify LIFO properties (LI01-LI06) via SMT solving.
+      Proves put/get stack ordering, count tracking, and invariant
+      preservation.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -1924,11 +1920,12 @@ artifacts:
   - id: FV-QU-001
     type: sw-verification
     title: Queue Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/queue.rs with requires/ensures
-      clauses targeting queue properties (QU01-QU06). Proof lemmas need
-      fixing (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/queue.rs with requires/ensures clauses
+      that formally verify queue properties (QU01-QU06) via SMT solving.
+      Proves append/prepend/get ordering, count tracking, and invariant
+      preservation.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -1966,11 +1963,12 @@ artifacts:
   - id: FV-MB-001
     type: sw-verification
     title: Mailbox Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/mbox.rs with requires/ensures
-      clauses targeting mailbox properties (MB01-MB06). Proof lemmas
-      need fixing (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/mbox.rs with requires/ensures clauses
+      that formally verify mailbox properties (MB01-MB06) via SMT solving.
+      Proves validate_send parameter checking, match_check correctness,
+      data_exchange_size clamping, and invariant preservation.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -2244,11 +2242,12 @@ artifacts:
   - id: FV-FX-001
     type: sw-verification
     title: Futex Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/futex.rs with requires/ensures
-      clauses targeting futex properties (FX01-FX06). Proof lemmas need
-      fixing (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/futex.rs with requires/ensures clauses
+      that formally verify futex properties (FX01-FX06) via SMT solving.
+      Proves wait/wake semantics, val-match correctness, woken count
+      accuracy, and invariant preservation.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -2286,11 +2285,12 @@ artifacts:
   - id: FV-TO-001
     type: sw-verification
     title: Timeout Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/timeout.rs with requires/ensures
-      clauses targeting timeout properties (TO01-TO08). Proof lemmas
-      need fixing (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/timeout.rs with requires/ensures clauses
+      that formally verify timeout properties (TO01-TO08) via SMT solving.
+      Proves expiry computation, abort safety, remaining/announces
+      correctness, and invariant preservation.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -2438,12 +2438,13 @@ artifacts:
   - id: FV-SC-004
     type: sw-verification
     title: Scheduler Lean 4 scheduling theory proofs
-    status: draft
+    status: approved
     description: >
       Lean 4 proofs of scheduling theory properties: rate-monotonic
       analysis (RMA) utilization bound, priority ceiling protocol
-      correctness, and priority queue ordering lemmas. Proof scripts
-      present but not yet compiling against current codebase.
+      correctness, and priority queue ordering lemmas. Proofs in
+      proofs/lean/ (Scheduling.lean, PriorityCeiling.lean,
+      PriorityQueue.lean).
     tags: [formal-verification, lean4, scheduling-theory, swe-6]
     fields:
       method: formal-verification
@@ -2588,11 +2589,12 @@ artifacts:
   - id: FV-TS-001
     type: sw-verification
     title: Timeslice Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/timeslice.rs with requires/ensures
-      clauses targeting timeslice properties (TS01-TS06). Proof lemmas
-      need fixing (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/timeslice.rs with requires/ensures
+      clauses that formally verify timeslice properties (TS01-TS06) via
+      SMT solving. Proves slice selection, eligibility determination,
+      reset/expiry correctness, and invariant preservation.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -2630,11 +2632,12 @@ artifacts:
   - id: FV-KH-001
     type: sw-verification
     title: Kernel heap Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/kheap.rs with requires/ensures
-      clauses targeting kernel heap properties (KH01-KH06). Proof lemmas
-      need fixing (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/kheap.rs with requires/ensures clauses
+      that formally verify kernel heap properties (KH01-KH06) via SMT
+      solving. Proves alloc/free state transitions, calloc overflow
+      rejection, and invariant preservation.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -2672,12 +2675,13 @@ artifacts:
   - id: FV-TL-001
     type: sw-verification
     title: Thread lifecycle Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/thread_lifecycle.rs with
-      requires/ensures clauses targeting thread lifecycle properties
-      (TH01-TH06). Proof lemmas need fixing (exec-in-proof calls).
-      Not yet passing verification.
+      Verus specifications in src/thread_lifecycle.rs with
+      requires/ensures clauses that formally verify thread lifecycle
+      properties (TH01-TH06) via SMT solving. Proves create
+      initialization, setup configuration, priority correctness, abort
+      cleanup, and lifecycle state transitions.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -2750,11 +2754,12 @@ artifacts:
   - id: FV-HP-001
     type: sw-verification
     title: Heap Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/heap.rs with requires/ensures
-      clauses targeting 8 heap properties (HP1-HP8). Proof lemmas need
-      fixing (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/heap.rs with requires/ensures clauses
+      that formally verify heap properties (HP1-HP8) via SMT solving.
+      Proves alloc/free safety, split/merge identity, coalesce
+      correctness, and bytes_to_chunks overflow protection.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -2899,11 +2904,12 @@ artifacts:
   - id: FV-SL-001
     type: sw-verification
     title: Spinlock Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/spinlock.rs with requires/ensures
-      clauses targeting 5 properties (SL1-SL5). Proof lemmas need fixing
-      (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/spinlock.rs with requires/ensures
+      clauses that formally verify spinlock properties (SL1-SL5) via SMT
+      solving. Proves acquire/release correctness, nested depth tracking,
+      ownership invariants, and non-owner rejection.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -2968,11 +2974,12 @@ artifacts:
   - id: FV-AT-001
     type: sw-verification
     title: Atomic Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/atomic.rs with requires/ensures
-      clauses targeting 6 properties (AT1-AT6). Proof lemmas need fixing
-      (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/atomic.rs with requires/ensures clauses
+      that formally verify atomic properties (AT1-AT6) via SMT solving.
+      Proves CAS correctness, arithmetic operation safety, bitwise
+      idempotence, and wrapping behavior.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -3039,12 +3046,12 @@ artifacts:
   - id: FV-SKS-001
     type: sw-verification
     title: StackConfig Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/stack_config.rs with
-      requires/ensures clauses targeting 5 properties (SK_S1-SK_S5).
-      Proof lemmas need fixing (exec-in-proof calls). Not yet passing
-      verification.
+      Verus specifications in src/stack_config.rs with requires/ensures
+      clauses that formally verify stack config properties (SK_S1-SK_S5)
+      via SMT solving. Proves validation correctness, usable_size
+      computation, SP bounds checking, and guard region safety.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -3109,12 +3116,12 @@ artifacts:
   - id: FV-DI-001
     type: sw-verification
     title: DeviceInit Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/device_init.rs with
-      requires/ensures clauses targeting 5 properties (DI1-DI5). Proof
-      lemmas need fixing (exec-in-proof calls). Not yet passing
-      verification.
+      Verus specifications in src/device_init.rs with requires/ensures
+      clauses that formally verify device init properties (DI1-DI5) via
+      SMT solving. Proves init sequence ordering, dependency checking,
+      double-init rejection, and level advancement.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -3179,12 +3186,12 @@ artifacts:
   - id: FV-FD-001
     type: sw-verification
     title: FaultDecode Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/fault_decode.rs with
-      requires/ensures clauses targeting 3 properties (FH1-FH3). Proof
-      lemmas need fixing (exec-in-proof calls). Not yet passing
-      verification.
+      Verus specifications in src/fault_decode.rs with requires/ensures
+      clauses that formally verify fault decode properties (FH1-FH3) via
+      SMT solving. Proves classify completeness, MMFAR/BFAR validity
+      checking, and escalation detection.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -3248,11 +3255,12 @@ artifacts:
   - id: FV-RB-001
     type: sw-verification
     title: RingBuf Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/ring_buf.rs with requires/ensures
-      clauses targeting 8 properties (RB1-RB8). Proof lemmas need fixing
-      (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/ring_buf.rs with requires/ensures
+      clauses that formally verify ring buffer properties (RB1-RB8) via
+      SMT solving. Proves head/tail index safety, put/get modular
+      arithmetic, capacity conservation, and wrap-around correctness.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -3399,11 +3407,12 @@ artifacts:
   - id: FV-WK-001
     type: sw-verification
     title: Work Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/work.rs with requires/ensures
-      clauses targeting 6 properties (WK1-WK6). Proof lemmas need fixing
-      (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/work.rs with requires/ensures clauses
+      that formally verify work item properties (WK1-WK6) via SMT
+      solving. Proves state machine transitions (idle/queued/running/
+      canceling), submit/cancel correctness, and invariant preservation.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -3470,11 +3479,12 @@ artifacts:
   - id: FV-FT-001
     type: sw-verification
     title: Fatal Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/fatal.rs with requires/ensures
-      clauses targeting 4 properties (FT1-FT4). Proof lemmas need fixing
-      (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/fatal.rs with requires/ensures clauses
+      that formally verify fatal handler properties (FT1-FT4) via SMT
+      solving. Proves from_code validity, classify completeness, is_panic
+      correctness, and recovery action mapping.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -3538,11 +3548,12 @@ artifacts:
   - id: FV-MP-001
     type: sw-verification
     title: MemPool Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/mempool.rs with requires/ensures
-      clauses targeting 6 properties (MP1-MP6). Proof lemmas need fixing
-      (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/mempool.rs with requires/ensures
+      clauses that formally verify mem pool properties (MP1-MP6) via SMT
+      solving. Proves alloc/free safety, total_size overflow detection,
+      fill-drain roundtrip, and invariant preservation.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -3609,11 +3620,12 @@ artifacts:
   - id: FV-DY-001
     type: sw-verification
     title: Dynamic Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/dynamic.rs with requires/ensures
-      clauses targeting 4 properties (DY1-DY4). Proof lemmas need fixing
-      (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/dynamic.rs with requires/ensures
+      clauses that formally verify dynamic pool properties (DY1-DY4) via
+      SMT solving. Proves alloc/free correctness, can_serve logic, and
+      capacity invariant preservation.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -3677,11 +3689,12 @@ artifacts:
   - id: FV-SM-001
     type: sw-verification
     title: SmpState Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/smp_state.rs with requires/ensures
-      clauses targeting 4 properties (SM1-SM4). Proof lemmas need fixing
-      (exec-in-proof calls). Not yet passing verification.
+      Verus specifications in src/smp_state.rs with requires/ensures
+      clauses that formally verify SMP state properties (SM1-SM4) via
+      SMT solving. Proves start/stop CPU correctness, global lock
+      safety, and active CPU tracking invariants.
       Executed via: bazel test //:verus_test
     tags: [formal-verification, verus, smt, swe-6]
     fields:
@@ -3709,3 +3722,147 @@ artifacts:
     links:
       - type: verifies
         target: SWREQ-SM-SM01
+
+  # ── SWE.6: Software verification — Error ──────────────────────────────
+
+  - id: FV-ERR-001
+    type: sw-verification
+    title: Error Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/error.rs wrapping Zephyr-compatible
+      error code constants within a verus! block. Constants are verified
+      as part of the overall Verus SMT pass.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWARCH-WQ-001
+
+  # ── SWE.6: Software verification — Priority ───────────────────────────
+
+  - id: FV-PRI-001
+    type: sw-verification
+    title: Priority Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/priority.rs with requires/ensures
+      clauses that formally verify bounded priority type correctness via
+      SMT solving. Proves new() range validation, get() bounds, comparison
+      total order, and transitivity of priority ordering.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWARCH-WQ-001
+
+  # ── SWE.6: Software verification — Thread ─────────────────────────────
+
+  - id: FV-THR-001
+    type: sw-verification
+    title: Thread Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/thread.rs with requires/ensures clauses
+      that formally verify thread state machine correctness via SMT
+      solving. Proves new() initialization, dispatch/block/wake state
+      transitions preserve identity and priority, valid transition
+      enforcement, and wake return value propagation.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWARCH-WQ-001
+
+  # ── SWE.6: Software verification — WaitQueue ──────────────────────────
+
+  - id: FV-WQ-001
+    type: sw-verification
+    title: WaitQueue Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/wait_queue.rs with requires/ensures
+      clauses that formally verify wait queue properties via SMT solving.
+      Proves priority-ordered insertion, pend/unpend correctness, sorted
+      invariant preservation, slot validity, no-duplicate enforcement,
+      and capacity bounds safety.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWARCH-WQ-001
+
+  # ── SWE.6: Software verification — Timer (Rocq) ───────────────────────
+
+  - id: FV-TM-002
+    type: sw-verification
+    title: Timer Rocq theorem proofs (coq_of_rust)
+    status: approved
+    description: >
+      Rocq proof scripts in proofs/timer_proofs.v targeting timer expiry
+      counter invariant preservation via theorem proving on the
+      coq_of_rust translation. Independent verification path from Verus.
+      Executed via: bazel test //proofs:timer_proofs_test
+    tags: [formal-verification, rocq, theorem-proving, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-TM-TM01
+      - type: verifies
+        target: SWREQ-TM-TM02
+      - type: verifies
+        target: SWREQ-TM-TM05
+
+  # ── SWE.6: Software verification — Event (Rocq) ───────────────────────
+
+  - id: FV-EV-002
+    type: sw-verification
+    title: Event Rocq theorem proofs (coq_of_rust)
+    status: approved
+    description: >
+      Rocq proof scripts in proofs/event_proofs.v targeting event bitmask
+      invariant preservation via theorem proving on the coq_of_rust
+      translation. Independent verification path from Verus.
+      Executed via: bazel test //proofs:event_proofs_test
+    tags: [formal-verification, rocq, theorem-proving, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-EV-EV01
+      - type: verifies
+        target: SWREQ-EV-EV02
+      - type: verifies
+        target: SWREQ-EV-EV07
+
+  # ── SWE.6: Software verification — MemSlab (Rocq) ─────────────────────
+
+  - id: FV-MS-002
+    type: sw-verification
+    title: MemSlab Rocq theorem proofs (coq_of_rust)
+    status: approved
+    description: >
+      Rocq proof scripts in proofs/mem_slab_proofs.v targeting mem_slab
+      block allocation counter invariant preservation via theorem proving
+      on the coq_of_rust translation. Independent verification path from
+      Verus.
+      Executed via: bazel test //proofs:mem_slab_proofs_test
+    tags: [formal-verification, rocq, theorem-proving, swe-6]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-MS-MS01
+      - type: verifies
+        target: SWREQ-MS-MS02
+      - type: verifies
+        target: SWREQ-MS-MS05

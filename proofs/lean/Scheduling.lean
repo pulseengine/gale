@@ -1,3 +1,7 @@
+import Mathlib.Tactic.Ring
+import Mathlib.Tactic.Linarith
+import Mathlib.Tactic.NormNum
+
 /-!
 # Rate Monotonic Scheduling Analysis
 
@@ -20,6 +24,7 @@ vol. 20, no. 1, pp. 46-61, January 1973.
 
 -- We use rationals for exact arithmetic (no floating-point rounding issues)
 -- and natural numbers for task counts/indices.
+-- Mathlib provides ring, linarith, norm_num for automated reasoning.
 
 /-! ## Task Model -/
 
@@ -76,10 +81,10 @@ theorem utilization_append (ts1 ts2 : TaskSet) :
   induction ts1 with
   | nil =>
     simp only [List.nil_append, totalUtilization]
-    exact (Rat.zero_add _).symm
+    ring
   | cons t ts1 ih =>
     simp only [List.cons_append, totalUtilization, ih]
-    exact (Rat.add_assoc _ _ _).symm
+    ring
 
 /-- Total utilization is nonneg. -/
 theorem utilization_nonneg (ts : TaskSet) :
@@ -122,25 +127,25 @@ theorem rma_bound_monotone :
     rmaBound 2 ≥ rmaBound 3 ∧
     rmaBound 3 ≥ rmaBound 4 := by
   simp only [rmaBound]
-  native_decide
+  norm_num
 
 /-- The RMA bound is always positive for n ≥ 1. -/
 theorem rma_bound_pos (n : Nat) (h : n ≥ 1) :
     rmaBound n > 0 := by
   match n, h with
-  | 1, _ => simp [rmaBound]; native_decide
-  | 2, _ => simp [rmaBound]; native_decide
-  | 3, _ => simp [rmaBound]; native_decide
-  | n + 4, _ => simp [rmaBound]; native_decide
+  | 1, _ => norm_num [rmaBound]
+  | 2, _ => norm_num [rmaBound]
+  | 3, _ => norm_num [rmaBound]
+  | n + 4, _ => simp only [rmaBound]; norm_num
 
 /-- The asymptotic bound ln(2) ~ 0.693 lower-bounds the RMA bound. -/
 theorem rma_bound_lower_bound (n : Nat) (h : n ≥ 1) :
     rmaBound n ≥ (693 : Rat) / 1000 := by
   match n, h with
-  | 1, _ => simp [rmaBound]; native_decide
-  | 2, _ => simp [rmaBound]; native_decide
-  | 3, _ => simp [rmaBound]; native_decide
-  | n + 4, _ => simp [rmaBound]; native_decide
+  | 1, _ => norm_num [rmaBound]
+  | 2, _ => norm_num [rmaBound]
+  | 3, _ => norm_num [rmaBound]
+  | n + 4, _ => simp only [rmaBound]; norm_num
 
 /-! ## Priority Ordering -/
 
@@ -207,10 +212,4 @@ theorem rm_swap_optimality (t1 t2 : SchedTask)
     totalUtilization (ts_before ++ [t1, t2] ++ ts_after) =
     totalUtilization (ts_before ++ [t2, t1] ++ ts_after) := by
   simp only [utilization_append, totalUtilization]
-  -- Both sides simplify to:
-  -- totalUtilization ts_before + (u1 + (u2 + 0)) + totalUtilization ts_after
-  -- vs totalUtilization ts_before + (u2 + (u1 + 0)) + totalUtilization ts_after
-  -- We need commutativity of Rat addition
-  have hc : t1.utilization + (t2.utilization + 0) = t2.utilization + (t1.utilization + 0) := by
-    rw [Rat.add_zero, Rat.add_zero, Rat.add_comm]
-  rw [hc]
+  ring

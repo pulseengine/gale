@@ -254,7 +254,7 @@
     },
     "@@rules_lean+//lean:extensions.bzl%lean": {
       "general": {
-        "bzlTransitiveDigest": "3vW1GuhAN4GuHbWz0C9Ww6nguk/2Za181vgEi0JbDDE=",
+        "bzlTransitiveDigest": "TiD+a3YYv7vr+CAHA/qxxRW2DLQwKzPhwjJedYw/3FU=",
         "usagesDigest": "GtR3UEk2n6H5Wdr/fw2Dvc4+TVFjgNgPrWVq/CDi+3U=",
         "recordedInputs": [],
         "generatedRepoSpecs": {
