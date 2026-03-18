@@ -85,17 +85,12 @@ jobs:
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf"
 
-      - name: Install Renode portable
+      - name: Install Robot Framework
         run: |
+          # The Zephyr CI Docker image (ci:v0.29.0) includes Renode pre-installed
+          # at /opt/renode (already in PATH). Just install Robot Framework.
           pip3 install robotframework
-          # Download Renode 1.15.0 portable (includes .NET runtime — no mono needed)
-          wget -qO /tmp/renode.tar.gz \
-            "https://github.com/renode/renode/releases/download/v1.15.0/renode-1.15.0.linux-portable-dotnet.tar.gz"
-          cd /opt && tar -xzf /tmp/renode.tar.gz
-          # The tarball extracts to renode_<version>_portable/
-          RENODE_DIR=$(ls -d /opt/renode_*_portable 2>/dev/null | head -1)
-          echo "Renode dir: ${RENODE_DIR}"
-          echo "${RENODE_DIR}" >> "${GITHUB_PATH}"
+          renode-test --version || true
 
       - name: Run Renode test
         env:
