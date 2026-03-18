@@ -7,3 +7,4 @@ upstream-reqif/_cache/
 
 # Bazel
 bazel-*
+*.rlib
