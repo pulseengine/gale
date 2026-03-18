@@ -75,3 +75,52 @@ fn plain_matches_stripped_src() {
         );
     }
 }
+
+/// Gate for standalone Rocq files (plain/*.rs) — generated with --standalone mode.
+/// These are used directly by rocq_of_rust for theorem proving.
+const STANDALONE_FILES: &[&str] = &[
+    "sem", "mutex", "condvar", "msgq", "stack", "pipe", "timer", "event", "mem_slab",
+];
+
+#[test]
+fn plain_standalone_matches_stripped_standalone() {
+    let root = find_gale_root();
+    let mut failures = Vec::new();
+
+    for name in STANDALONE_FILES {
+        let src_path = root.join(format!("src/{name}.rs"));
+        let plain_path = root.join(format!("plain/{name}.rs"));
+
+        let src_content = fs::read_to_string(&src_path)
+            .unwrap_or_else(|e| panic!("Cannot read {}: {e}", src_path.display()));
+        let plain_content = fs::read_to_string(&plain_path)
+            .unwrap_or_else(|e| panic!("Cannot read {}: {e}", plain_path.display()));
+
+        let stripped = verus_strip::strip_file(&src_content);
+        let standalone = verus_strip::make_standalone(&stripped.output);
+
+        if standalone != plain_content {
+            let s_lines: Vec<&str> = standalone.lines().collect();
+            let p_lines: Vec<&str> = plain_content.lines().collect();
+            let first_diff = s_lines.iter().zip(p_lines.iter())
+                .enumerate()
+                .find(|(_, (a, b))| a != b)
+                .map(|(i, (a, b))| format!("  line {}: stripped={:?} vs plain={:?}", i + 1, a, b))
+                .unwrap_or_else(|| {
+                    format!("  length: stripped={} vs plain={} lines",
+                        s_lines.len(), p_lines.len())
+                });
+            failures.push(format!("{name}.rs:\n{first_diff}"));
+        }
+    }
+
+    if !failures.is_empty() {
+        panic!(
+            "plain/ standalone files are out of sync. Regenerate with:\n\
+             for f in {}; do verus-strip --standalone src/$f.rs -o plain/$f.rs; done\n\n\
+             Divergences:\n{}",
+            STANDALONE_FILES.join(" "),
+            failures.join("\n"),
+        );
+    }
+}
