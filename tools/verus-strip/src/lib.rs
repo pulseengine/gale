@@ -189,11 +189,6 @@ fn strip_body(body: &str) -> String {
 
         // Check for verus clause keywords: requires, ensures, invariant, decreases
         if is_verus_clause_at(&trees, i) {
-            let keyword = if let TokenTree::Ident(id) = &trees[i] {
-                id.to_string()
-            } else {
-                String::new()
-            };
             let skip_to = skip_clause(&trees, i);
             trim_trailing_whitespace(&mut out);
             i = skip_to;
@@ -354,38 +349,6 @@ fn collect_idents(trees: &[TokenTree], pos: usize) -> Vec<String> {
 }
 
 /// Check if the Brace group at `pos` is an impl or mod body
-/// (as opposed to a function body, match arm, loop body, etc.).
-/// We check by looking backwards for `impl` or `mod` keywords.
-fn is_impl_or_mod_body(trees: &[TokenTree], pos: usize) -> bool {
-    // Walk backwards to find the nearest ident before this brace group.
-    // Skip over type parameters, where clauses, etc.
-    let mut j = pos;
-    while j > 0 {
-        j -= 1;
-        match &trees[j] {
-            TokenTree::Ident(id) => {
-                let s = id.to_string();
-                if s == "impl" || s == "mod" {
-                    return true;
-                }
-                // If we hit fn, struct, enum, etc. — not an impl body
-                if is_item_keyword(&s) {
-                    return false;
-                }
-                // Other idents (type names, where clause) — keep looking
-            }
-            TokenTree::Group(_) => {
-                // Skip over generic params, where clauses
-            }
-            TokenTree::Punct(_) => {
-                // Skip punctuation
-            }
-            _ => {}
-        }
-    }
-    false
-}
-
 fn is_item_keyword(s: &str) -> bool {
     matches!(s, "pub" | "fn" | "struct" | "enum" | "impl" | "use" | "const"
         | "type" | "trait" | "mod" | "static" | "unsafe" | "extern")
@@ -420,20 +383,6 @@ fn is_verus_clause_at(trees: &[TokenTree], pos: usize) -> bool {
     }
 }
 
-/// Skip a loop invariant/decreases clause. Returns the index of the
-/// loop body brace group. Takes the FIRST Brace group after the keyword.
-fn skip_clause_simple(trees: &[TokenTree], pos: usize) -> usize {
-    let mut j = pos + 1;
-    while j < trees.len() {
-        if let TokenTree::Group(g) = &trees[j] {
-            if g.delimiter() == Delimiter::Brace {
-                return j;
-            }
-        }
-        j += 1;
-    }
-    j
-}
 
 /// Skip a requires/ensures/invariant/decreases clause. Returns the index
 /// of the body brace group (function body or loop body) which should be emitted.
