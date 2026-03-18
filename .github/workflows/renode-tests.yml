@@ -85,11 +85,17 @@ jobs:
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf"
 
-      - name: Install Renode (via renode-run)
+      - name: Install Renode portable
         run: |
-          # renode-run downloads and manages the Renode portable binary;
-          # provides renode-test command for Robot Framework integration.
-          pip3 install renode-run
+          pip3 install robotframework
+          # Download Renode 1.15.0 portable (includes .NET runtime — no mono needed)
+          wget -qO /tmp/renode.tar.gz \
+            "https://github.com/renode/renode/releases/download/v1.15.0/renode-1.15.0.linux-portable-dotnet.tar.gz"
+          cd /opt && tar -xzf /tmp/renode.tar.gz
+          # The tarball extracts to renode_<version>_portable/
+          RENODE_DIR=$(ls -d /opt/renode_*_portable 2>/dev/null | head -1)
+          echo "Renode dir: ${RENODE_DIR}"
+          echo "${RENODE_DIR}" >> "${GITHUB_PATH}"
 
       - name: Run Renode test
         env:
@@ -98,7 +104,7 @@ jobs:
           ELF="${GITHUB_WORKSPACE}/zephyr-workspace/build/zephyr/zephyr.elf"
           GALE_ROOT="${GITHUB_WORKSPACE}/gale"
           cd "${GALE_ROOT}/renode"
-          renode-run test \
+          renode-test \
             --variable "ELF:${ELF}" \
             --outputdir "${GITHUB_WORKSPACE}/renode-results" \
             "${ROBOT_FILE}"
