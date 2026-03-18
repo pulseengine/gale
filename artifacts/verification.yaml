@@ -2830,13 +2830,13 @@ artifacts:
   - id: FV-MD-001
     type: sw-verification
     title: MemDomain Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/mem_domain.rs with
-      requires/ensures clauses targeting 6 properties (MD1-MD6). Proof
-      lemmas need fixing (exec-in-proof calls). Not yet passing
-      verification.
-      Executed via: bazel test //:verus_test
+      Verus-verified src/mem_domain.rs with requires/ensures contracts
+      covering partition non-overlap invariant, alignment constraints,
+      slot arithmetic and u32 address overflow bounds (MD1-MD6). Loop
+      restructured to inline returns; preconditions added for safe
+      arithmetic. Passing via bazel test //:verus_test.
     tags: [formal-verification, verus, smt, swe-6]
     fields:
       method: formal-verification
@@ -3332,12 +3332,13 @@ artifacts:
   - id: FV-US-001
     type: sw-verification
     title: Userspace Verus formal verification (SMT/Z3)
-    status: draft
+    status: approved
     description: >
-      Verus annotations present in src/userspace.rs with requires/ensures
-      clauses targeting 8 properties (US1-US8). Proof lemmas need fixing
-      (exec-in-proof calls). Not yet passing verification.
-      Executed via: bazel test //:verus_test
+      Verus-verified src/userspace.rs with requires/ensures contracts
+      covering permission bit grants, revocations, type validation,
+      supervisor bypass, initialization checks (US1-US8). Flags modeled
+      as individual bools; thread permissions as [bool;64] array to
+      avoid Z3 bitwise limitations. Passing via bazel test //:verus_test.
     tags: [formal-verification, verus, smt, swe-6]
     fields:
       method: formal-verification
