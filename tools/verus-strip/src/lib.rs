@@ -446,6 +446,37 @@ fn is_verus_assert_at(trees: &[TokenTree], pos: usize) -> bool {
 fn skip_verus_assert(trees: &[TokenTree], pos: usize) -> usize {
     // Skip assert + (...)
     let mut j = pos + 2; // skip ident + paren group
+
+    // Skip optional `by(...)` clause (e.g., `by(bit_vector)`)
+    if let Some(TokenTree::Ident(id)) = trees.get(j) {
+        if id.to_string() == "by" {
+            j += 1; // skip `by`
+            if let Some(TokenTree::Group(g)) = trees.get(j) {
+                if g.delimiter() == Delimiter::Parenthesis {
+                    j += 1; // skip `(...)`
+                }
+            }
+        }
+    }
+
+    // Skip optional `requires ...;` clause after `by(...)`
+    if let Some(TokenTree::Ident(id)) = trees.get(j) {
+        if id.to_string() == "requires" {
+            j += 1; // skip `requires`
+            // Skip tokens until we hit a semicolon
+            while j < trees.len() {
+                if let TokenTree::Punct(p) = &trees[j] {
+                    if p.as_char() == ';' {
+                        j += 1;
+                        break;
+                    }
+                }
+                j += 1;
+            }
+            return j;
+        }
+    }
+
     // Skip trailing semicolon if present
     if let Some(TokenTree::Punct(p)) = trees.get(j) {
         if p.as_char() == ';' {
@@ -653,6 +684,27 @@ pub const ENOSPC: i32 = -28;
 pub const ENOENT: i32 = -2;
 pub const EADDRINUSE: i32 = -98;
 
+// Priority (from crate::priority)
+pub const MAX_PRIORITY: u32 = 32;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Priority {
+    pub value: u32,
+}
+
+impl Priority {
+    pub fn new(value: u32) -> Option<Self> {
+        if value < MAX_PRIORITY {
+            Some(Priority { value })
+        } else {
+            None
+        }
+    }
+    pub fn get(&self) -> u32 {
+        self.value
+    }
+}
+
 // Thread types (from crate::thread)
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ThreadId {
@@ -675,24 +727,27 @@ pub struct Thread {
     pub return_value: i32,
 }
 
-// Priority (from crate::priority)
-pub const MAX_PRIORITY: u32 = 32;
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Priority {
-    pub value: u32,
-}
-
-impl Priority {
-    pub fn new(value: u32) -> Option<Self> {
-        if value < MAX_PRIORITY {
-            Some(Priority { value })
-        } else {
-            None
+impl Thread {
+    pub fn new(id: u32, priority: Priority) -> Self {
+        Thread {
+            id: ThreadId { id },
+            priority,
+            state: ThreadState::Ready,
+            return_value: 0,
         }
     }
-    pub fn get(&self) -> u32 {
-        self.value
+    pub fn dispatch(&mut self) {
+        self.state = ThreadState::Running;
+    }
+    pub fn block(&mut self) {
+        self.state = ThreadState::Blocked;
+    }
+    pub fn wake(&mut self, return_value: i32) {
+        self.return_value = return_value;
+        self.state = ThreadState::Ready;
+    }
+    pub fn is_blocked(&self) -> bool {
+        matches!(self.state, ThreadState::Blocked)
     }
 }
 
@@ -727,6 +782,61 @@ impl WaitQueue {
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
+    pub fn unpend_first(&mut self, return_value: i32) -> Option<Thread> {
+        if self.len == 0 {
+            return None;
+        }
+        let thread = self.entries[0];
+        let mut i: u32 = 0;
+        while i < self.len - 1 {
+            self.entries[i as usize] = self.entries[(i + 1) as usize];
+            i = i + 1;
+        }
+        self.entries[(self.len - 1) as usize] = None;
+        self.len = self.len - 1;
+        match thread {
+            Some(mut t) => {
+                t.state = ThreadState::Ready;
+                t.return_value = return_value;
+                Some(t)
+            }
+            None => None,
+        }
+    }
+    pub fn pend(&mut self, thread: Thread) -> bool {
+        if self.len >= MAX_WAITERS {
+            return false;
+        }
+        let mut insert_pos: u32 = self.len;
+        let mut i: u32 = 0;
+        while i < self.len {
+            let entry_pri = self.entries[i as usize].unwrap().priority.get();
+            let thr_pri = thread.priority.get();
+            if thr_pri < entry_pri {
+                insert_pos = i;
+                break;
+            }
+            i = i + 1;
+        }
+        let mut j: u32 = self.len;
+        while j > insert_pos {
+            self.entries[j as usize] = self.entries[(j - 1) as usize];
+            j = j - 1;
+        }
+        self.entries[insert_pos as usize] = Some(thread);
+        self.len = self.len + 1;
+        true
+    }
+    pub fn unpend_all(&mut self, _return_value: i32) -> u32 {
+        let count = self.len;
+        let mut i: u32 = 0;
+        while i < count {
+            self.entries[i as usize] = None;
+            i = i + 1;
+        }
+        self.len = 0;
+        count
+    }
 }
 
 // === End stubs ===
@@ -735,13 +845,24 @@ impl WaitQueue {
 /// Post-process stripped output for standalone mode:
 /// 1. Remove `use crate::*` imports
 /// 2. Remove `#[cfg(not(verus_keep_ghost))]` lines
-/// 3. Prepend stub definitions
+/// 3. Convert `//!` inner doc comments to `//` (invalid after stubs prepended)
+/// 4. Prepend stub definitions
 pub fn make_standalone(stripped: &str) -> String {
-    let filtered: Vec<&str> = stripped
+    let filtered: Vec<String> = stripped
         .lines()
         .filter(|line| {
             let trimmed = line.trim();
             !trimmed.starts_with("use crate::") && trimmed != "#[cfg(not(verus_keep_ghost))]"
+        })
+        .map(|line| {
+            // Convert //! inner doc comments to // regular comments.
+            // Inner doc comments are only valid at the start of a file/module;
+            // after the standalone stubs are prepended they become invalid syntax.
+            if line.trim_start().starts_with("//!") {
+                line.replacen("//!", "//", 1)
+            } else {
+                line.to_string()
+            }
         })
         .collect();
     let body = filtered.join("\n");

@@ -98,13 +98,8 @@ impl MemDomain {
         }
         let mut i: u32 = 0;
         while i < MAX_PARTITIONS {
-            if self.partitions[i as usize].size > 0 {
-                let dstart = self.partitions[i as usize].start;
-                let dsize = self.partitions[i as usize].size;
-                let dend: u64 = dstart as u64 + dsize as u64;
-                if pend > dstart as u64 && dend > part.start as u64 {
-                    return false;
-                }
+            if self.partitions[i as usize].size > 0 && part.overlaps(&self.partitions[i as usize]) {
+                return false;
             }
             i = i + 1;
         }
@@ -153,25 +148,22 @@ impl MemDomain {
         if !self.check_add_partition(part) {
             return Err(EINVAL);
         }
+        let orig_num = self.num_partitions;
         let mut p_idx: u32 = 0;
-        let mut found = false;
         while p_idx < MAX_PARTITIONS {
             if self.partitions[p_idx as usize].size == 0 {
-                found = true;
-                break;
+                let slot = p_idx;
+                self.partitions[slot as usize] = MemPartition {
+                    start: part.start,
+                    size: part.size,
+                    attr: part.attr,
+                };
+                self.num_partitions = self.num_partitions + 1;
+                return Ok(slot);
             }
             p_idx = p_idx + 1;
         }
-        if !found {
-            return Err(ENOSPC);
-        }
-        self.partitions[p_idx as usize] = MemPartition {
-            start: part.start,
-            size: part.size,
-            attr: part.attr,
-        };
-        self.num_partitions = self.num_partitions + 1;
-        Ok(p_idx)
+        Err(ENOSPC)
     }
     /// Remove a partition from the domain by matching start and size.
     ///
@@ -188,27 +180,24 @@ impl MemDomain {
     ///   - Invariant preserved after removal
     ///   - num_partitions decremented by 1 on success
     pub fn remove_partition(&mut self, start: u32, size: u32) -> Result<u32, i32> {
+        let orig_num = self.num_partitions;
         let mut p_idx: u32 = 0;
-        let mut found = false;
         while p_idx < MAX_PARTITIONS {
             if self.partitions[p_idx as usize].start == start
                 && self.partitions[p_idx as usize].size == size
             {
-                found = true;
-                break;
+                let slot = p_idx;
+                self.partitions[slot as usize] = MemPartition {
+                    start: 0,
+                    size: 0,
+                    attr: 0,
+                };
+                self.num_partitions = self.num_partitions - 1;
+                return Ok(slot);
             }
             p_idx = p_idx + 1;
         }
-        if !found {
-            return Err(ENOENT);
-        }
-        self.partitions[p_idx as usize] = MemPartition {
-            start: 0,
-            size: 0,
-            attr: 0,
-        };
-        self.num_partitions = self.num_partitions - 1;
-        Ok(p_idx)
+        Err(ENOENT)
     }
     /// Get the number of active partitions.
     pub fn num_partitions_get(&self) -> u32 {

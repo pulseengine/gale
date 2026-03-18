@@ -43,6 +43,13 @@
 //!   US6: no permission bits set for uninitialized objects (after new())
 //!   US7: K_OBJ_FLAG_INITIALIZED required for access (when init_check == MustBeInit)
 //!   US8: thread ID must be valid (< MAX_THREADS)
+//!
+//! ## Verus modeling note
+//!
+//! Bitwise operations (`&`, `|`, `~`, `>>`, `<<`) are poorly supported by
+//! Z3 in Verus.  This module therefore models flags as individual `bool`
+//! fields and the permission bitmask as `[bool; 64]` at exec level,
+//! avoiding all bitwise arithmetic.
 use crate::error::*;
 /// Maximum number of threads whose permissions can be tracked.
 /// Corresponds to CONFIG_MAX_THREAD_BYTES * 8 in Zephyr.
@@ -88,14 +95,6 @@ pub enum ObjType {
     /// Mailbox (K_OBJ_MBOX).
     Mbox,
 }
-/// K_OBJ_FLAG_INITIALIZED — object has been initialized (BIT(0)).
-pub const FLAG_INITIALIZED: u32 = 1;
-/// K_OBJ_FLAG_PUBLIC — object is accessible to all threads (BIT(1)).
-pub const FLAG_PUBLIC: u32 = 2;
-/// K_OBJ_FLAG_ALLOC — object was dynamically allocated (BIT(2)).
-pub const FLAG_ALLOC: u32 = 4;
-/// K_OBJ_FLAG_DRIVER — object is a device driver (BIT(3)).
-pub const FLAG_DRIVER: u32 = 8;
 /// Corresponds to Zephyr's enum _obj_init_check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InitCheck {
@@ -106,26 +105,29 @@ pub enum InitCheck {
     /// Don't care about initialization state (_OBJ_INIT_ANY = 1).
     DontCare,
 }
-/// A kernel object with type, flags, and per-thread permission bitmask.
+/// A kernel object with type, flags, and per-thread permission array.
 ///
-/// Corresponds to Zephyr's struct k_object {
-///     void *name;
-///     uint8_t perms[CONFIG_MAX_THREAD_BYTES];
-///     uint8_t type;
-///     uint8_t flags;
-///     union k_object_data data;
-/// };
+/// Corresponds to Zephyr's struct k_object.
 ///
-/// We model perms as a u64 bitmask — bit N set means thread N has access.
-/// CONFIG_MAX_THREAD_BYTES = 8 -> 64 threads max.
+/// We model perms as `[bool; 64]` — entry N true means thread N has
+/// access.  This avoids bitwise arithmetic that Z3 cannot handle.
+///
+/// Flags are modeled as individual `bool` fields to avoid bitwise masking.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KernelObject {
     /// Object type (which kernel primitive this is).
     pub obj_type: ObjType,
-    /// Object flags (initialized, public, alloc, driver).
-    pub flags: u32,
-    /// Per-thread permission bitmask (bit N = thread N has access).
-    pub thread_perms: u64,
+    /// K_OBJ_FLAG_INITIALIZED — object has been initialized.
+    pub flag_initialized: bool,
+    /// K_OBJ_FLAG_PUBLIC — object is accessible to all threads.
+    pub flag_public: bool,
+    /// K_OBJ_FLAG_ALLOC — object was dynamically allocated.
+    pub flag_alloc: bool,
+    /// K_OBJ_FLAG_DRIVER — object is a device driver.
+    pub flag_driver: bool,
+    /// Per-thread permission array (index N = thread N has access).
+    pub thread_perms: [bool; 64],
 }
 impl KernelObject {
     /// Create a new uninitialized kernel object with no permissions.
@@ -137,8 +139,11 @@ impl KernelObject {
     pub fn new(obj_type: ObjType) -> KernelObject {
         KernelObject {
             obj_type,
-            flags: 0,
-            thread_perms: 0,
+            flag_initialized: false,
+            flag_public: false,
+            flag_alloc: false,
+            flag_driver: false,
+            thread_perms: [false; 64],
         }
     }
     /// Grant a thread access to this object.
@@ -152,8 +157,7 @@ impl KernelObject {
         if tid >= MAX_THREADS {
             return EINVAL;
         }
-        let mask: u64 = 1u64 << tid as u64;
-        self.thread_perms = self.thread_perms | mask;
+        self.thread_perms[tid as usize] = true;
         OK
     }
     /// Revoke a thread's access to this object.
@@ -167,8 +171,7 @@ impl KernelObject {
         if tid >= MAX_THREADS {
             return EINVAL;
         }
-        let mask: u64 = !(1u64 << tid as u64);
-        self.thread_perms = self.thread_perms & mask;
+        self.thread_perms[tid as usize] = false;
         OK
     }
     /// Clear all permission bits for a specific thread across this object.
@@ -184,7 +187,7 @@ impl KernelObject {
     /// Models memset(ko->perms, 0, sizeof(ko->perms)) used in
     /// k_object_recycle() (userspace.c:817).
     pub fn clear_all_perms(&mut self) {
-        self.thread_perms = 0;
+        self.thread_perms = [false; 64];
     }
     /// Check if a thread has access to this object.
     ///
@@ -200,14 +203,13 @@ impl KernelObject {
         if is_supervisor {
             return true;
         }
-        if (self.flags & FLAG_PUBLIC) != 0 {
+        if self.flag_public {
             return true;
         }
         if tid >= MAX_THREADS {
             return false;
         }
-        let mask: u64 = 1u64 << tid as u64;
-        (self.thread_perms & mask) != 0
+        self.thread_perms[tid as usize]
     }
     /// Validate a kernel object for a syscall.
     ///
@@ -232,25 +234,39 @@ impl KernelObject {
         is_supervisor: bool,
         init_check: InitCheck,
     ) -> Result<(), i32> {
-        match expected_type {
-            ObjType::Any => {}
-            _ => {
-                if self.obj_type != expected_type {
-                    return Err(EBADF);
-                }
-            }
+        // US4: type validation — use match to avoid PartialEq on enums
+        let type_ok = match expected_type {
+            ObjType::Any => true,
+            ObjType::Thread => matches!(self.obj_type, ObjType::Thread),
+            ObjType::Sem => matches!(self.obj_type, ObjType::Sem),
+            ObjType::Mutex => matches!(self.obj_type, ObjType::Mutex),
+            ObjType::CondVar => matches!(self.obj_type, ObjType::CondVar),
+            ObjType::MsgQ => matches!(self.obj_type, ObjType::MsgQ),
+            ObjType::Stack => matches!(self.obj_type, ObjType::Stack),
+            ObjType::Pipe => matches!(self.obj_type, ObjType::Pipe),
+            ObjType::Timer => matches!(self.obj_type, ObjType::Timer),
+            ObjType::Event => matches!(self.obj_type, ObjType::Event),
+            ObjType::MemSlab => matches!(self.obj_type, ObjType::MemSlab),
+            ObjType::Fifo => matches!(self.obj_type, ObjType::Fifo),
+            ObjType::Lifo => matches!(self.obj_type, ObjType::Lifo),
+            ObjType::SysMutex => matches!(self.obj_type, ObjType::SysMutex),
+            ObjType::Futex => matches!(self.obj_type, ObjType::Futex),
+            ObjType::Mbox => matches!(self.obj_type, ObjType::Mbox),
+        };
+        if !type_ok {
+            return Err(EBADF);
         }
         if !self.check_access(tid, is_supervisor) {
             return Err(EPERM);
         }
         match init_check {
             InitCheck::MustBeInit => {
-                if (self.flags & FLAG_INITIALIZED) == 0 {
+                if !self.flag_initialized {
                     return Err(EINVAL);
                 }
             }
             InitCheck::MustNotBeInit => {
-                if (self.flags & FLAG_INITIALIZED) != 0 {
+                if self.flag_initialized {
                     return Err(EADDRINUSE);
                 }
             }
@@ -263,14 +279,14 @@ impl KernelObject {
     /// Models k_object_init() (userspace.c:787-810):
     ///   ko->flags |= K_OBJ_FLAG_INITIALIZED;
     pub fn init_object(&mut self) {
-        self.flags = self.flags | FLAG_INITIALIZED;
+        self.flag_initialized = true;
     }
     /// Mark the object as uninitialized.
     ///
     /// Models k_object_uninit() (userspace.c:823-834):
     ///   ko->flags &= ~K_OBJ_FLAG_INITIALIZED;
     pub fn uninit_object(&mut self) {
-        self.flags = self.flags & !FLAG_INITIALIZED;
+        self.flag_initialized = false;
     }
     /// Recycle the object: clear all permissions, grant to current thread,
     /// and mark as initialized.
@@ -280,10 +296,9 @@ impl KernelObject {
     ///   k_thread_perms_set(ko, _current);
     ///   ko->flags |= K_OBJ_FLAG_INITIALIZED;
     pub fn recycle(&mut self, current_tid: u32) -> i32 {
-        self.thread_perms = 0;
-        let mask: u64 = 1u64 << current_tid as u64;
-        self.thread_perms = self.thread_perms | mask;
-        self.flags = self.flags | FLAG_INITIALIZED;
+        self.thread_perms = [false; 64];
+        self.thread_perms[current_tid as usize] = true;
+        self.flag_initialized = true;
         OK
     }
     /// Make the object accessible to all threads (public).
@@ -291,27 +306,22 @@ impl KernelObject {
     /// Models k_object_access_all_grant() (userspace.c:745-752):
     ///   ko->flags |= K_OBJ_FLAG_PUBLIC;
     pub fn make_public(&mut self) {
-        self.flags = self.flags | FLAG_PUBLIC;
+        self.flag_public = true;
     }
     /// Check if the object is initialized.
     pub fn is_initialized(&self) -> bool {
-        (self.flags & FLAG_INITIALIZED) != 0
+        self.flag_initialized
     }
     /// Check if the object is public.
     pub fn is_public(&self) -> bool {
-        (self.flags & FLAG_PUBLIC) != 0
+        self.flag_public
     }
     /// Check if a specific thread has permission.
     pub fn has_perm(&self, tid: u32) -> bool {
-        let mask: u64 = 1u64 << tid as u64;
-        (self.thread_perms & mask) != 0
+        self.thread_perms[tid as usize]
     }
     /// Get the object type.
     pub fn obj_type_get(&self) -> ObjType {
         self.obj_type
-    }
-    /// Get the flags.
-    pub fn flags_get(&self) -> u32 {
-        self.flags
     }
 }

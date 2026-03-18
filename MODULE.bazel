@@ -60,12 +60,14 @@ git_override(
     module_name = "rules_lean",
     remote = "https://github.com/pulseengine/rules_lean.git",
     commit = "2fe64f13f8df31678a27483286868a67636d7217",
+    patches = ["//patches:rules_lean_mathlib_timeout.patch"],
+    patch_strip = 1,
 )
 
-# Lean 4 toolchain (Mathlib available via lean.mathlib() but not currently used)
+# Lean 4 toolchain + Mathlib (mathlib declared by rules_lean, just use_repo it)
 lean = use_extension("@rules_lean//lean:extensions.bzl", "lean")
 lean.toolchain(version = "4.27.0")
-use_repo(lean, "lean_toolchains")
+use_repo(lean, "lean_toolchains", "mathlib")
 register_toolchains("@lean_toolchains//:all")
 
 # Nix integration for Rocq toolchain

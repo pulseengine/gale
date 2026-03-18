@@ -1,3 +1,6 @@
+import Mathlib.Tactic.Linarith
+import Mathlib.Tactic.NormNum
+
 /-!
 # Priority Queue Invariants
 

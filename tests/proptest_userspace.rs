@@ -5,7 +5,8 @@
     clippy::expect_used,
     clippy::panic,
     clippy::arithmetic_side_effects,
-    clippy::unreachable
+    clippy::unreachable,
+    clippy::indexing_slicing
 )]
 
 use gale::error::*;
@@ -64,12 +65,31 @@ fn init_check_strategy() -> impl Strategy<Value = InitCheck> {
     ]
 }
 
+/// Helper: check all permissions are false.
+fn all_perms_clear(ko: &KernelObject) -> bool {
+    ko.thread_perms.iter().all(|&p| !p)
+}
+
+/// Helper: check only tid has permission set.
+fn only_perm_set(ko: &KernelObject, tid: u32) -> bool {
+    for i in 0..MAX_THREADS {
+        if i == tid {
+            if !ko.thread_perms[i as usize] {
+                return false;
+            }
+        } else if ko.thread_perms[i as usize] {
+            return false;
+        }
+    }
+    true
+}
+
 proptest! {
     /// US6: new() always creates object with no permissions.
     #[test]
     fn new_always_no_perms(otype in obj_type_strategy()) {
         let ko = KernelObject::new(otype);
-        prop_assert_eq!(ko.thread_perms, 0u64);
+        prop_assert!(all_perms_clear(&ko));
         prop_assert!(!ko.is_initialized());
         prop_assert!(!ko.is_public());
         prop_assert_eq!(ko.obj_type_get(), otype);
@@ -81,7 +101,7 @@ proptest! {
         let mut ko = KernelObject::new(ObjType::Sem);
         ko.grant_access(tid);
         prop_assert!(ko.has_perm(tid));
-        prop_assert_eq!(ko.thread_perms, 1u64 << tid);
+        prop_assert!(only_perm_set(&ko, tid));
     }
 
     /// US3: revoke_access clears exactly one bit.
@@ -91,7 +111,7 @@ proptest! {
         ko.grant_access(tid);
         ko.revoke_access(tid);
         prop_assert!(!ko.has_perm(tid));
-        prop_assert_eq!(ko.thread_perms, 0u64);
+        prop_assert!(all_perms_clear(&ko));
     }
 
     /// US2+US3: grant then revoke is a no-op on the target bit.
@@ -130,7 +150,7 @@ proptest! {
     fn grant_invalid_tid(tid in MAX_THREADS..=u32::MAX) {
         let mut ko = KernelObject::new(ObjType::Sem);
         prop_assert_eq!(ko.grant_access(tid), EINVAL);
-        prop_assert_eq!(ko.thread_perms, 0u64);
+        prop_assert!(all_perms_clear(&ko));
     }
 
     /// US8: revoke with invalid tid returns EINVAL.
@@ -273,9 +293,9 @@ proptest! {
         }
     }
 
-    /// Invariant: flags stay in [0..15] across all operations.
+    /// Invariant: boolean flags stay consistent across all operations.
     #[test]
-    fn flags_bounded(
+    fn flags_consistent(
         tid in 0u32..MAX_THREADS,
         ops in proptest::collection::vec(
             prop_oneof![
@@ -302,8 +322,10 @@ proptest! {
                 6 => { ko.clear_all_perms(); }
                 _ => unreachable!(),
             }
-            prop_assert!(ko.flags & 0xFFFF_FFF0 == 0,
-                "flags out of bounds: {:#x}", ko.flags);
+            // Boolean flags are always valid (no out-of-bounds possible)
+            // Just verify the struct is still accessible
+            let _ = ko.is_initialized();
+            let _ = ko.is_public();
         }
     }
 

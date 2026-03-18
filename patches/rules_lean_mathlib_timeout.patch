@@ -1,0 +1,11 @@
+--- a/lean/private/repo.bzl
++++ b/lean/private/repo.bzl
+@@ -162,7 +162,7 @@
+     result = rctx.execute(
+         [str(lake), "update"],
+         environment = env,
+-        timeout = 600,
++        timeout = 1800,
+         quiet = False,
+     )
+     if result.return_code != 0:
