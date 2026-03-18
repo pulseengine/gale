@@ -14,9 +14,11 @@ fn main() {
 
     if args.len() < 2 {
         eprintln!("Usage:");
-        eprintln!("  verus-strip <input.rs>              # strip to stdout");
-        eprintln!("  verus-strip <input.rs> -o <out.rs>  # strip to file");
-        eprintln!("  verus-strip --check <src/> <plain/> # verify convergence");
+        eprintln!("  verus-strip <input.rs>                  # strip to stdout");
+        eprintln!("  verus-strip --standalone <input.rs>      # strip + inline stubs");
+        eprintln!("  verus-strip <input.rs> -o <out.rs>      # strip to file");
+        eprintln!("  verus-strip --standalone <in> -o <out>  # standalone to file");
+        eprintln!("  verus-strip --check <src/> <plain/>     # verify convergence");
         process::exit(1);
     }
 
@@ -29,17 +31,38 @@ fn main() {
         let plain_dir = Path::new(&args[3]);
         check_convergence(src_dir, plain_dir);
     } else {
-        let input_path = Path::new(&args[1]);
+        // Parse flags: --standalone may appear before the input path
+        let standalone = args.iter().any(|a| a == "--standalone");
+        let positional: Vec<&String> = args[1..]
+            .iter()
+            .filter(|a| *a != "--standalone")
+            .collect();
+
+        if positional.is_empty() {
+            eprintln!("Error: no input file specified");
+            process::exit(1);
+        }
+
+        let input_path = Path::new(positional[0]);
         let input = fs::read_to_string(input_path).unwrap_or_else(|e| {
             eprintln!("Error reading {}: {}", input_path.display(), e);
             process::exit(1);
         });
 
         let result = verus_strip::strip_file(&input);
-        let output = result.output;
+        let output = if standalone {
+            verus_strip::make_standalone(&result.output)
+        } else {
+            result.output
+        };
 
-        if args.len() >= 4 && args[2] == "-o" {
-            let out_path = Path::new(&args[3]);
+        // Check for -o <path> in remaining positional args
+        let out_path = positional
+            .windows(2)
+            .find(|w| *w[0] == "-o")
+            .map(|w| Path::new(w[1].as_str()));
+
+        if let Some(out_path) = out_path {
             fs::write(out_path, &output).unwrap_or_else(|e| {
                 eprintln!("Error writing {}: {}", out_path.display(), e);
                 process::exit(1);

@@ -90,7 +90,7 @@ Theorem wait_adds_waiter :
     condvar_inv nw ->
     condvar_inv (nw + 1).
 Proof.
-  intros nw Hinv. unfold condvar_inv. lia.
+  intros nw Hinv. unfold condvar_inv in *. lia.
 Qed.
 
 (* ========================================================================= *)

@@ -35,6 +35,9 @@
     clippy::checked_conversions
 )]
 
+#[cfg(kani)]
+extern crate kani;
+
 pub mod error;
 pub mod priority;
 pub mod thread;
@@ -48,7 +51,7 @@ pub mod stack;
 pub mod fifo;
 pub mod lifo;
 pub mod timer;
-#[cfg(not(verus_keep_ghost))] pub mod event;
+pub mod event;
 pub mod mem_slab;
 pub mod queue;
 pub mod futex;
@@ -59,17 +62,17 @@ pub mod timeout;
 pub mod thread_lifecycle;
 pub mod timeslice;
 pub mod heap;
-#[cfg(not(verus_keep_ghost))] pub mod kheap;
-#[cfg(not(verus_keep_ghost))] pub mod work;
+pub mod kheap;
+pub mod work;
 pub mod fatal;
-#[cfg(not(verus_keep_ghost))] pub mod fault_decode;
+pub mod fault_decode;
 pub mod mempool;
 pub mod dynamic;
 pub mod smp_state;
 pub mod stack_config;
-#[cfg(not(verus_keep_ghost))] pub mod device_init;
+pub mod device_init;
 #[cfg(not(verus_keep_ghost))] pub mod mem_domain;
 pub mod spinlock;
 pub mod atomic;
 #[cfg(not(verus_keep_ghost))] pub mod userspace;
-#[cfg(not(verus_keep_ghost))] pub mod ring_buf;
+pub mod ring_buf;

@@ -19,22 +19,22 @@ structure PQEntry (α : Type) where
   deriving Repr
 
 /-- A priority queue is a list of entries sorted by priority (ascending). -/
-def Sorted : List (PQEntry α) -> Prop
+def Sorted : List (PQEntry α) → Prop
   | [] => True
   | [_] => True
-  | e1 :: e2 :: es => e1.priority <= e2.priority /\ Sorted (e2 :: es)
+  | e1 :: e2 :: es => e1.priority ≤ e2.priority ∧ Sorted (e2 :: es)
 
 /-- Insert an entry into its correct position in a sorted list. -/
-def sortedInsert (e : PQEntry α) : List (PQEntry α) -> List (PQEntry α)
+def sortedInsert (e : PQEntry α) : List (PQEntry α) → List (PQEntry α)
   | [] => [e]
   | hd :: tl =>
-    if e.priority <= hd.priority then
+    if e.priority ≤ hd.priority then
       e :: hd :: tl
     else
       hd :: sortedInsert e tl
 
 /-- Remove the first (minimum-priority) element. -/
-def removeMin : List (PQEntry α) -> Option (PQEntry α) × List (PQEntry α)
+def removeMin : List (PQEntry α) → Option (PQEntry α) × List (PQEntry α)
   | [] => (none, [])
   | hd :: tl => (some hd, tl)
 
@@ -61,32 +61,20 @@ theorem sorted_insert_preserves_order (e : PQEntry α) (q : List (PQEntry α))
     simp [sortedInsert]
     split
     case isTrue hle =>
-      -- e.priority <= hd.priority, so e goes first
       unfold Sorted
       exact ⟨hle, h⟩
     case isFalse hnle =>
-      -- e.priority > hd.priority, recurse into tail
       have hgt : hd.priority < e.priority := by omega
-      -- Need to show Sorted (hd :: sortedInsert e tl)
-      have ih_sorted : Sorted (sortedInsert e tl) := by
-        cases tl with
-        | nil => exact ih (by simp [Sorted])
-        | cons hd2 tl2 =>
-          have htl_sorted : Sorted (hd2 :: tl2) := by
-            unfold Sorted at h
-            exact h.2
-          exact ih htl_sorted
-      -- Now show hd fits before sortedInsert e tl
       cases tl with
       | nil =>
         simp [sortedInsert] at *
         unfold Sorted
         exact ⟨by omega, by simp [Sorted]⟩
       | cons hd2 tl2 =>
-        simp [sortedInsert] at *
+        simp [sortedInsert]
         split
         case isTrue hle2 =>
-          -- e goes before hd2: hd <= e <= hd2
+          -- e goes before hd2: hd ≤ e and e ≤ hd2
           unfold Sorted
           constructor
           case left => omega
@@ -94,11 +82,16 @@ theorem sorted_insert_preserves_order (e : PQEntry α) (q : List (PQEntry α))
             unfold Sorted
             exact ⟨hle2, h.2⟩
         case isFalse hnle2 =>
-          -- e goes after hd2: need hd <= hd2 and sorted rest
+          -- e goes after hd2: need hd ≤ hd2 and sorted rest
           unfold Sorted
           constructor
           case left => exact h.1
-          case right => exact ih_sorted
+          case right =>
+            -- ih : Sorted (hd2 :: tl2) → Sorted (sortedInsert e (hd2 :: tl2))
+            -- Since hnle2, sortedInsert e (hd2 :: tl2) = hd2 :: sortedInsert e tl2
+            have ih_sorted := ih h.2
+            simp [sortedInsert, hnle2] at ih_sorted
+            exact ih_sorted
 
 /-- The element returned by sortedInsert is findable. -/
 theorem sortedInsert_mem (e : PQEntry α) (q : List (PQEntry α)) :
@@ -116,24 +109,23 @@ theorem sortedInsert_mem (e : PQEntry α) (q : List (PQEntry α)) :
 /-- The first element of a sorted list has the minimum priority. -/
 theorem min_element_is_first (e : PQEntry α) (q : List (PQEntry α))
     (h : Sorted (e :: q)) :
-    forall x, x ∈ q -> e.priority <= x.priority := by
+    ∀ x, x ∈ q → e.priority ≤ x.priority := by
   intro x hx
-  induction q with
+  induction q generalizing e with
   | nil => simp at hx
   | cons hd tl ih =>
     cases hx with
     | head => exact h.1
     | tail _ htl =>
-      have htl_sorted : Sorted (hd :: tl) := h.2
-      have hhd : e.priority <= hd.priority := h.1
-      have hx_ge_hd : hd.priority <= x.priority := by
-        exact ih htl_sorted htl
+      have hhd : e.priority ≤ hd.priority := h.1
+      have hx_ge_hd : hd.priority ≤ x.priority :=
+        ih hd h.2 htl
       omega
 
 /-- removeMin returns the minimum element. -/
 theorem removeMin_is_min (q : List (PQEntry α)) (h : Sorted q) (hne : q ≠ []) :
     match removeMin q with
-    | (some e, rest) => forall x, x ∈ rest -> e.priority <= x.priority
+    | (some e, rest) => ∀ x, x ∈ rest → e.priority ≤ x.priority
     | (none, _) => False := by
   cases q with
   | nil => contradiction
@@ -152,11 +144,17 @@ theorem remove_min_preserves_order (e : PQEntry α) (q : List (PQEntry α))
   | cons hd tl => exact h.2
 
 /-- Removing an arbitrary element preserves sortedness. -/
-def removeById [BEq β] (id : β) : List (PQEntry β) -> List (PQEntry β)
+def removeById [BEq β] (id : β) : List (PQEntry β) → List (PQEntry β)
   | [] => []
   | hd :: tl =>
     if hd.payload == id then tl
     else hd :: removeById id tl
+
+/-- Helper: removeById unfolds when the head doesn't match. -/
+private theorem removeById_cons_false [BEq β] (id : β) (hd : PQEntry β) (tl : List (PQEntry β))
+    (h_ne : (hd.payload == id) = false) :
+    removeById id (hd :: tl) = hd :: removeById id tl := by
+  simp [removeById, h_ne]
 
 theorem removeById_preserves_order [BEq β] (id : β) (q : List (PQEntry β))
     (h : Sorted q) : Sorted (removeById id q) := by
@@ -169,12 +167,11 @@ theorem removeById_preserves_order [BEq β] (id : β) (q : List (PQEntry β))
       cases tl with
       | nil => simp [Sorted]
       | cons hd2 tl2 => exact h.2
-    case isFalse _ =>
+    case isFalse hne =>
       have htl_sorted : Sorted tl := by
         cases tl with
         | nil => simp [Sorted]
         | cons hd2 tl2 => exact h.2
-      have ih_result := ih htl_sorted
       -- Need Sorted (hd :: removeById id tl)
       cases tl with
       | nil => simp [removeById, Sorted]
@@ -182,17 +179,23 @@ theorem removeById_preserves_order [BEq β] (id : β) (q : List (PQEntry β))
         simp [removeById]
         split
         case isTrue _ =>
-          -- hd2 is removed, need hd <= head of tl2
+          -- hd2 is removed, need hd ≤ head of tl2
           cases tl2 with
           | nil => simp [Sorted]
           | cons hd3 tl3 =>
             unfold Sorted
-            have : hd.priority <= hd2.priority := h.1
-            have : hd2.priority <= hd3.priority := h.2.1
+            have : hd.priority ≤ hd2.priority := h.1
+            have : hd2.priority ≤ hd3.priority := h.2.1
             exact ⟨by omega, h.2.2⟩
-        case isFalse _ =>
+        case isFalse hne2 =>
           unfold Sorted
-          exact ⟨h.1, ih_result⟩
+          constructor
+          · exact h.1
+          · -- ih gives Sorted (removeById id (hd2 :: tl2))
+            -- which unfolds to Sorted (hd2 :: removeById id tl2) since hne2
+            have ih_result := ih htl_sorted
+            simp [removeById, hne2] at ih_result
+            exact ih_result
 
 /-! ## Queue Size Invariants -/
 
@@ -215,50 +218,20 @@ theorem empty_no_min : (removeMin (α := α) []).1 = none := by
 /-! ## Merge Operation -/
 
 /-- Merge two sorted lists into a sorted result. -/
-def merge : List (PQEntry α) -> List (PQEntry α) -> List (PQEntry α)
+def merge : List (PQEntry α) → List (PQEntry α) → List (PQEntry α)
   | [], q2 => q2
   | q1, [] => q1
   | e1 :: t1, e2 :: t2 =>
-    if e1.priority <= e2.priority then
+    if e1.priority ≤ e2.priority then
       e1 :: merge t1 (e2 :: t2)
     else
       e2 :: merge (e1 :: t1) t2
 termination_by q1 q2 => q1.length + q2.length
 
-/-- Helper: head priority of merge result is min of input heads. -/
-private theorem merge_head_priority (e1 : PQEntry α) (t1 : List (PQEntry α))
-    (e2 : PQEntry α) (t2 : List (PQEntry α)) :
-    match (merge (e1 :: t1) (e2 :: t2)).head? with
-    | some e => e.priority = min e1.priority e2.priority
-    | none => False := by
-  simp [merge]
-  split
-  case isTrue hle =>
-    simp [List.head?]
-    omega
-  case isFalse hnle =>
-    simp [List.head?]
-    omega
-
-/-- Helper: the head priority of a merge is <= both input heads' priorities. -/
-private theorem merge_head_le_left (e1 : PQEntry α) (t1 : List (PQEntry α))
-    (e2 : PQEntry α) (t2 : List (PQEntry α)) :
-    ∀ e, (merge (e1 :: t1) (e2 :: t2)).head? = some e →
-    e.priority <= e1.priority := by
-  simp [merge]
-  split <;> simp [List.head?] <;> intro e he <;> subst he <;> omega
-
-private theorem merge_head_le_right (e1 : PQEntry α) (t1 : List (PQEntry α))
-    (e2 : PQEntry α) (t2 : List (PQEntry α)) :
-    ∀ e, (merge (e1 :: t1) (e2 :: t2)).head? = some e →
-    e.priority <= e2.priority := by
-  simp [merge]
-  split <;> simp [List.head?] <;> intro e he <;> subst he <;> omega
-
 /-- Helper: Sorted for cons when we know the head relationship with the tail. -/
 private theorem sorted_cons_of_head_le (e : PQEntry α) (rest : List (PQEntry α))
     (h_sorted : Sorted rest)
-    (h_le : ∀ x, rest.head? = some x → e.priority <= x.priority) :
+    (h_le : ∀ x, rest.head? = some x → e.priority ≤ x.priority) :
     Sorted (e :: rest) := by
   cases rest with
   | nil => simp [Sorted]
@@ -267,6 +240,26 @@ private theorem sorted_cons_of_head_le (e : PQEntry α) (rest : List (PQEntry α
     constructor
     · exact h_le hd (by simp [List.head?])
     · exact h_sorted
+
+/-- The head of a merge result when both inputs are nonempty. -/
+private theorem merge_head (e1 : PQEntry α) (t1 : List (PQEntry α))
+    (e2 : PQEntry α) (t2 : List (PQEntry α)) :
+    (merge (e1 :: t1) (e2 :: t2)).head? =
+    if e1.priority ≤ e2.priority then some e1 else some e2 := by
+  simp [merge]
+  split <;> simp [List.head?]
+
+/-- If p ≤ e1.priority and p ≤ e2.priority, then p ≤ head of merge. -/
+private theorem le_merge_head (e1 : PQEntry α) (t1 : List (PQEntry α))
+    (e2 : PQEntry α) (t2 : List (PQEntry α))
+    (p : Nat) (h1 : p ≤ e1.priority) (h2 : p ≤ e2.priority) :
+    ∀ x, (merge (e1 :: t1) (e2 :: t2)).head? = some x →
+    p ≤ x.priority := by
+  intro x hx
+  rw [merge_head] at hx
+  split at hx
+  · simp at hx; subst hx; exact h1
+  · simp at hx; subst hx; exact h2
 
 /-- Merge preserves sortedness. -/
 theorem merge_sorted (q1 q2 : List (PQEntry α))
@@ -287,14 +280,12 @@ theorem merge_sorted (q1 q2 : List (PQEntry α))
     intro x hx
     cases t1 with
     | nil =>
-      simp [merge] at hx
-      simp [List.head?] at hx
+      -- merge [] (e2 :: t2) = e2 :: t2, so head? = some e2
+      simp [merge, List.head?] at hx
       subst hx; exact hle
     | cons hd1 tl1 =>
-      have h_e1_hd1 : e1.priority <= hd1.priority := h1.1
-      have := merge_head_le_left hd1 tl1 e2 t2 x hx
-      have := merge_head_le_right hd1 tl1 e2 t2 x hx
-      omega
+      have h_e1_hd1 : e1.priority ≤ hd1.priority := h1.1
+      exact le_merge_head hd1 tl1 e2 t2 e1.priority h_e1_hd1 hle x hx
   | case4 e1 t1 e2 t2 hnle ih =>
     -- e1.priority > e2.priority, result = e2 :: merge (e1 :: t1) t2
     simp [merge, hnle]
@@ -307,14 +298,15 @@ theorem merge_sorted (q1 q2 : List (PQEntry α))
     intro x hx
     cases t2 with
     | nil =>
-      simp [merge] at hx
-      simp [List.head?] at hx
-      subst hx; omega
+      -- merge (e1 :: t1) [] = e1 :: t1, so head? = some e1
+      simp [merge, List.head?] at hx
+      subst hx
+      exact Nat.le_of_lt (Nat.gt_of_not_le hnle)
     | cons hd2 tl2 =>
-      have h_e2_hd2 : e2.priority <= hd2.priority := h2.1
-      have := merge_head_le_left e1 t1 hd2 tl2 x hx
-      have := merge_head_le_right e1 t1 hd2 tl2 x hx
-      omega
+      have h_e2_hd2 : e2.priority ≤ hd2.priority := h2.1
+      have h_e2_e1 : e2.priority ≤ e1.priority :=
+        Nat.le_of_lt (Nat.gt_of_not_le hnle)
+      exact le_merge_head e1 t1 hd2 tl2 e2.priority h_e2_e1 h_e2_hd2 x hx
 
 /-- Merge preserves total length. -/
 theorem merge_length (q1 q2 : List (PQEntry α)) :

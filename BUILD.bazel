@@ -23,16 +23,8 @@ load("//bzl:defs.bzl",
 # Excluded (Verus limitations or proof issues needing rework):
 #   poll.rs: mutable array indexing (Verus limitation)
 #   sched.rs: function pointer types (Verus limitation)
-#   userspace.rs: complex bitwise permission proofs (needs rework)
-#   work.rs: deep postcondition issues (needs rework)
-#   event.rs: struct field access unsupported in bit_vector mode
-#   kheap.rs: arithmetic overflow proofs need restructuring
-#   futex.rs: wait queue length postcondition
-#   mempool.rs: multiplication overflow proof
-#   mem_domain.rs: loop invariant + array indexing proofs
-#   fault_decode.rs: classify postconditions
-#   ring_buf.rs: modular arithmetic proofs
-#   device_init.rs: dependency loop precondition
+#   userspace.rs: derived PartialEq on enums not visible to Verus + complex bitwise proofs
+#   mem_domain.rs: spec/exec type boundary issues in overlaps_spec (u64 vs int)
 VERUS_SRCS = [
     "src/lib.rs",
     "src/error.rs",
@@ -63,6 +55,12 @@ VERUS_SRCS = [
     "src/atomic.rs",
     "src/futex.rs",
     "src/mempool.rs",
+    "src/kheap.rs",
+    "src/fault_decode.rs",
+    "src/device_init.rs",
+    "src/ring_buf.rs",
+    "src/event.rs",
+    "src/work.rs",
 ]
 
 PLAIN_SRCS = ["//plain:srcs"]

@@ -12,18 +12,10 @@ def _verus_strip_impl(ctx):
     src = ctx.file.src
     out = ctx.actions.declare_file(ctx.attr.module + ".rs")
 
-    ctx.actions.run_shell(
-        command = """
-            {strip} "{src}" | \
-            sed '/^use crate::/d' | \
-            sed '/^#\\[cfg(not(verus_keep_ghost))\\]/d' > "{out}"
-        """.format(
-            strip = ctx.executable._verus_strip.path,
-            src = src.path,
-            out = out.path,
-        ),
+    ctx.actions.run(
+        executable = ctx.executable._verus_strip,
+        arguments = ["--standalone", src.path, "-o", out.path],
         inputs = [src],
-        tools = [ctx.executable._verus_strip],
         outputs = [out],
         mnemonic = "VerusStrip",
         progress_message = "Stripping Verus annotations from %s" % src.short_path,

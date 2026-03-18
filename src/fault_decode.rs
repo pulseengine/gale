@@ -355,13 +355,25 @@ impl CortexMFault {
 
         // Check HardFault first (highest priority)
         if (hfsr & HFSR_FORCED) != 0 || (hfsr & HFSR_VECTTBL) != 0 {
+            proof {
+                // If either bit is set, the OR-mask is nonzero
+                if (hfsr & HFSR_FORCED) != 0 {
+                    assert(hfsr & ((1u32 << 30u32) | (1u32 << 1u32)) != 0u32) by (bit_vector)
+                        requires hfsr & (1u32 << 30u32) != 0u32;
+                } else {
+                    assert(hfsr & ((1u32 << 30u32) | (1u32 << 1u32)) != 0u32) by (bit_vector)
+                        requires hfsr & (1u32 << 1u32) != 0u32;
+                }
+            }
             FaultCategory::HardFault
         }
         // Check MemManage (CFSR bits 0-7)
         else if (cfsr & 0x0000_00FFu32) != 0 {
-            // Hint: individual bit tests being false implies OR-mask is zero
             proof {
                 lemma_hfsr_split(hfsr);
+                // cfsr & 0xFF != 0 implies cfsr != 0
+                assert(cfsr != 0u32) by (bit_vector)
+                    requires cfsr & 0x0000_00FFu32 != 0u32;
             }
             FaultCategory::MemManage
         }
@@ -369,6 +381,8 @@ impl CortexMFault {
         else if (cfsr & 0x0000_FF00u32) != 0 {
             proof {
                 lemma_hfsr_split(hfsr);
+                assert(cfsr != 0u32) by (bit_vector)
+                    requires cfsr & 0x0000_FF00u32 != 0u32;
             }
             FaultCategory::BusFault
         }
@@ -376,6 +390,8 @@ impl CortexMFault {
         else if (cfsr & 0xFFFF_0000u32) != 0 {
             proof {
                 lemma_hfsr_split(hfsr);
+                assert(cfsr != 0u32) by (bit_vector)
+                    requires cfsr & 0xFFFF_0000u32 != 0u32;
             }
             FaultCategory::UsageFault
         }

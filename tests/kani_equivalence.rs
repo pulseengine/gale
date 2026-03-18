@@ -68,6 +68,7 @@ mod equivalence {
     }
 
     #[kani::proof]
+    #[kani::unwind(17)]
     fn stack_push_equivalence() {
         let cap: u32 = kani::any();
         kani::assume(cap > 0 && cap <= 16);
@@ -84,6 +85,7 @@ mod equivalence {
     }
 
     #[kani::proof]
+    #[kani::unwind(17)]
     fn stack_pop_equivalence() {
         let cap: u32 = kani::any();
         kani::assume(cap > 0 && cap <= 16);
@@ -331,11 +333,7 @@ mod equivalence {
         if used == max_msgs {
             (ENOMSG, write_idx, used)
         } else {
-            (
-                (write_idx + 1) % max_msgs,
-                (write_idx + 1) % max_msgs,
-                used + 1,
-            )
+            (OK, (write_idx + 1) % max_msgs, used + 1)
         }
     }
 
@@ -377,7 +375,7 @@ mod equivalence {
 
         // Put
         let used_before = q.num_used_get();
-        let w_idx = q.write_idx_get();
+        let _w_idx = q.write_idx_get();
         let rust_put = q.put();
         if used_before < max_msgs {
             assert!(rust_put.is_ok());
@@ -389,7 +387,7 @@ mod equivalence {
 
         // Get
         let used_before2 = q.num_used_get();
-        let r_idx = q.read_idx_get();
+        let _r_idx = q.read_idx_get();
         let rust_get = q.get();
         if used_before2 > 0 {
             assert!(rust_get.is_ok());
@@ -401,6 +399,7 @@ mod equivalence {
     }
 
     #[kani::proof]
+    #[kani::unwind(9)]
     fn msgq_purge_equivalence() {
         let max_msgs: u32 = kani::any();
         kani::assume(max_msgs > 0 && max_msgs <= 8);
@@ -451,7 +450,7 @@ mod equivalence {
     }
 
     /// C model: gale_pipe_read_check (pipe.c:222-289 state + byte count).
-    fn c_pipe_read_check(used: u32, size: u32, flags: u8, request_len: u32) -> (i32, u32) {
+    fn c_pipe_read_check(used: u32, _size: u32, flags: u8, request_len: u32) -> (i32, u32) {
         if (flags & FLAG_RESET) != 0 {
             return (ECANCELED, used);
         }
@@ -586,6 +585,7 @@ mod equivalence {
     }
 
     #[kani::proof]
+    #[kani::unwind(17)]
     fn timer_expire_equivalence() {
         let period: u32 = kani::any();
         kani::assume(period <= 100);
@@ -617,6 +617,7 @@ mod equivalence {
     }
 
     #[kani::proof]
+    #[kani::unwind(17)]
     fn timer_status_get_equivalence() {
         let period: u32 = kani::any();
         kani::assume(period <= 100);
@@ -746,6 +747,7 @@ mod equivalence {
     }
 
     #[kani::proof]
+    #[kani::unwind(17)]
     fn mem_slab_alloc_equivalence() {
         let num_blocks: u32 = kani::any();
         kani::assume(num_blocks > 0 && num_blocks <= 16);
@@ -763,6 +765,7 @@ mod equivalence {
     }
 
     #[kani::proof]
+    #[kani::unwind(17)]
     fn mem_slab_free_equivalence() {
         let num_blocks: u32 = kani::any();
         kani::assume(num_blocks > 0 && num_blocks <= 16);

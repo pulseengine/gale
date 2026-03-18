@@ -118,5 +118,5 @@ Theorem post_idempotent :
     Z.lor (Z.lor ev nev) nev = Z.lor ev nev.
 Proof.
   intros e ne _ _.
-  rewrite Z.lor_assoc. rewrite Z.lor_diag. reflexivity.
+  rewrite <- Z.lor_assoc. rewrite Z.lor_diag. reflexivity.
 Qed.

@@ -92,9 +92,11 @@ impl Event {
             // EV8: post is monotonic — old bits are preserved
             old(self).events & self.events == old(self).events,
     {
+        let old_events = self.events;
         self.events = self.events | new_events;
-        assert(old(self).events & self.events == old(self).events) by (bit_vector)
-            requires self.events == (old(self).events | new_events);
+        let new_val = self.events;
+        assert(old_events & new_val == old_events) by (bit_vector)
+            requires new_val == (old_events | new_events);
         self.events
     }
 

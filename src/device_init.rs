@@ -324,6 +324,7 @@ impl DeviceInitState {
         while i < dev.num_deps
             invariant
                 i <= dev.num_deps,
+                dev.num_deps <= MAX_DEPS,
                 dev.num_deps as int <= devices.len(),
             decreases dev.num_deps - i,
         {

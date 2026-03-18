@@ -116,7 +116,11 @@ impl WorkItem {
             result.inv(),
             result.flags == 0,
     {
-        WorkItem { flags: 0 }
+        let w = WorkItem { flags: 0 };
+        proof {
+            assert((0u8 & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8) by (bit_vector);
+        }
+        w
     }
 
     /// Get the busy status flags.
@@ -201,9 +205,14 @@ impl WorkItem {
         }
         // Not queued — queue it
         let was_running = (self.flags & FLAG_RUNNING) != 0;
+        let old_flags = self.flags;
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.flags = self.flags | FLAG_QUEUED;
+        }
+        proof {
+            assert(((old_flags | 4u8) & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8) by (bit_vector)
+                requires (old_flags & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8;
         }
         if was_running { 2 } else { 1 }
     }
@@ -221,9 +230,19 @@ impl WorkItem {
             (self.flags & FLAG_RUNNING) != 0,
             (self.flags & FLAG_QUEUED) == 0,
     {
+        let old_flags = self.flags;
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.flags = (self.flags & !FLAG_QUEUED) | FLAG_RUNNING;
+        }
+        proof {
+            // Prove invariant: only defined bits set in result
+            assert((((old_flags & !4u8) | 1u8) & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8) by (bit_vector)
+                requires (old_flags & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8;
+            // Prove RUNNING is set
+            assert((((old_flags & !4u8) | 1u8) & 1u8) != 0u8) by (bit_vector);
+            // Prove QUEUED is clear
+            assert((((old_flags & !4u8) | 1u8) & 4u8) == 0u8) by (bit_vector);
         }
     }
 
@@ -239,9 +258,15 @@ impl WorkItem {
             self.inv(),
             (self.flags & FLAG_RUNNING) == 0,
     {
+        let old_flags = self.flags;
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.flags = self.flags & !FLAG_RUNNING;
+        }
+        proof {
+            assert(((old_flags & !1u8) & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8) by (bit_vector)
+                requires (old_flags & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8;
+            assert(((old_flags & !1u8) & 1u8) == 0u8) by (bit_vector);
         }
     }
 
@@ -261,17 +286,29 @@ impl WorkItem {
             (self.flags & FLAG_QUEUED) == 0,
             result == (self.flags & BUSY_MASK),
     {
+        let old_flags = self.flags;
         // Clear QUEUED
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.flags = self.flags & !FLAG_QUEUED;
         }
+        proof {
+            assert(((old_flags & !4u8) & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8) by (bit_vector)
+                requires (old_flags & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8;
+            assert(((old_flags & !4u8) & 4u8) == 0u8) by (bit_vector);
+        }
         // If still busy (RUNNING), mark as CANCELING
         let busy = self.flags & BUSY_MASK;
         if busy != 0 {
+            let mid_flags = self.flags;
             #[allow(clippy::arithmetic_side_effects)]
             {
                 self.flags = self.flags | FLAG_CANCELING;
+            }
+            proof {
+                assert(((mid_flags | 2u8) & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8) by (bit_vector)
+                    requires (mid_flags & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8;
+                assert(((mid_flags | 2u8) & 4u8) == (mid_flags & 4u8)) by (bit_vector);
             }
         }
         self.flags & BUSY_MASK
@@ -289,9 +326,15 @@ impl WorkItem {
             self.inv(),
             (self.flags & FLAG_CANCELING) == 0,
     {
+        let old_flags = self.flags;
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.flags = self.flags & !FLAG_CANCELING;
+        }
+        proof {
+            assert(((old_flags & !2u8) & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8) by (bit_vector)
+                requires (old_flags & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8;
+            assert(((old_flags & !2u8) & 2u8) == 0u8) by (bit_vector);
         }
     }
 }
