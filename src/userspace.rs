@@ -193,6 +193,13 @@ impl KernelObject {
         self.thread_perms != 0u64
     }
 
+    /// Spec-level access check (mirrors check_access logic).
+    pub open spec fn check_access_spec(&self, tid: u32, is_supervisor: bool) -> bool {
+        is_supervisor
+        || self.is_public_spec()
+        || (tid < MAX_THREADS && self.has_perm_spec(tid))
+    }
+
     // ==================================================================
     // Constructor
     // ==================================================================
@@ -425,7 +432,7 @@ impl KernelObject {
                 // US4: type must match or be Any
                 &&& (expected_type == ObjType::Any || self.obj_type == expected_type)
                 // US1/US5: must have access
-                &&& self.check_access(tid, is_supervisor)
+                &&& self.check_access_spec(tid, is_supervisor)
                 // US7: initialization state matches
                 &&& (init_check == InitCheck::MustBeInit ==> self.is_initialized_spec())
                 &&& (init_check == InitCheck::MustNotBeInit ==> !self.is_initialized_spec())

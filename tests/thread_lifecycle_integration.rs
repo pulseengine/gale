@@ -135,7 +135,7 @@ fn thread_info_priority_set_rejects_invalid() {
 fn thread_info_priority_set_preserves_stack() {
     let mut ti = ThreadInfo::new(1, 10, 0x2000, 8192).unwrap();
     ti.stack.record_usage(1024);
-    let stack_before = ti.stack.clone();
+    let stack_before = ti.stack;
 
     ti.priority_set(3);
     assert_eq!(ti.stack, stack_before);

@@ -153,7 +153,7 @@ fn free_when_empty_returns_einval() {
 #[test]
 fn alloc_free_roundtrip() {
     let mut h = Heap::init(512, 32).unwrap();
-    let original = h.clone();
+    let original = h;
     let slot = h.alloc(100).unwrap();
     assert_eq!(slot, 1);
     assert_eq!(h.free(100), OK);
@@ -222,7 +222,7 @@ fn merge_decreases_chunks() {
 #[test]
 fn split_merge_roundtrip() {
     let mut h = Heap::init(1024, 64).unwrap();
-    let original = h.clone();
+    let original = h;
     h.split(32, 64);
     h.merge();
     assert_eq!(h.total_chunks_get(), original.total_chunks_get());
@@ -306,7 +306,7 @@ fn aligned_alloc_overflow_rejected() {
     // align = 2^31 = 2147483648, padding = 2147483648 - 8 = 2147483640
     // bytes = u32::MAX - 100 = 4294967195
     // padded = 4294967195 + 2147483640 > u32::MAX
-    assert!(h.aligned_alloc(u32::MAX - 100, 2147483648).is_err());
+    assert!(h.aligned_alloc(u32::MAX - 100, 2_147_483_648).is_err());
 }
 
 // =====================================================================
@@ -378,7 +378,7 @@ fn bytes_to_chunks_large() {
     let r = Heap::bytes_to_chunks(u32::MAX);
     assert!(r > 0);
     // Verify no panic/overflow
-    assert_eq!(r, 536870912);
+    assert_eq!(r, 536_870_912);
 }
 
 // =====================================================================
@@ -456,10 +456,10 @@ fn stress_alloc_split_free_merge() {
 #[test]
 fn clone_and_eq() {
     let h1 = Heap::init(512, 32).unwrap();
-    let h2 = h1.clone();
+    let h2 = h1;
     assert_eq!(h1, h2);
 
-    let mut h3 = h1.clone();
+    let mut h3 = h1;
     h3.alloc(1).unwrap();
     assert_ne!(h1, h3);
 }

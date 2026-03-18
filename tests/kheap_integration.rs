@@ -221,10 +221,10 @@ fn stress_alloc_free_cycles() {
 #[test]
 fn clone_and_eq() {
     let h1 = KHeap::init(512).unwrap();
-    let h2 = h1.clone();
+    let h2 = h1;
     assert_eq!(h1, h2);
 
-    let mut h3 = h1.clone();
+    let mut h3 = h1;
     h3.alloc(1);
     assert_ne!(h1, h3);
 }

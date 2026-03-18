@@ -137,7 +137,7 @@ proptest! {
         stack_size in 1u32..=10_000
     ) {
         let mut ti = ThreadInfo::new(id, initial, 0x2000, stack_size).unwrap();
-        let stack_before = ti.stack.clone();
+        let stack_before = ti.stack;
         ti.priority_set(new_prio);
         prop_assert_eq!(ti.id, id);
         prop_assert_eq!(ti.stack, stack_before);

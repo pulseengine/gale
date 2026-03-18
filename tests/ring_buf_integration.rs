@@ -312,9 +312,10 @@ fn rb7_ring_consistency_across_operations() {
     let mut rb = RingBuf::init(4).unwrap();
 
     let check_ring = |rb: &RingBuf| {
-        let expected = (rb.head_get() as u64 + rb.size_get() as u64) % rb.capacity_get() as u64;
+        let expected =
+            (u64::from(rb.head_get()) + u64::from(rb.size_get())) % u64::from(rb.capacity_get());
         assert_eq!(
-            rb.tail_get() as u64,
+            u64::from(rb.tail_get()),
             expected,
             "ring inconsistency: h={} s={} t={} cap={}",
             rb.head_get(),
@@ -390,8 +391,9 @@ fn rb_stress_interleaved_put_get() {
         let _ = rb.get();
         // Invariants
         assert!(rb.size_get() <= rb.capacity_get());
-        let expected = (rb.head_get() as u64 + rb.size_get() as u64) % rb.capacity_get() as u64;
-        assert_eq!(rb.tail_get() as u64, expected);
+        let expected =
+            (u64::from(rb.head_get()) + u64::from(rb.size_get())) % u64::from(rb.capacity_get());
+        assert_eq!(u64::from(rb.tail_get()), expected);
     }
 }
 

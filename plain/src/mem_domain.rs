@@ -60,7 +60,7 @@ pub struct MemPartition {
 /// };
 ///
 /// Slots with size == 0 are considered free (matches Zephyr convention).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct MemDomain {
     /// Partition slots. A slot with size == 0 is free.
     pub partitions: [MemPartition; 16],

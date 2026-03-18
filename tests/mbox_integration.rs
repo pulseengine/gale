@@ -282,8 +282,8 @@ fn mbox_data_exchange_monotonicity() {
     for tx_size in [0u32, 1, 50, 100, 255, 1000, u32::MAX] {
         for rx_size in [0u32, 1, 50, 100, 255, 1000, u32::MAX] {
             let result = Mbox::validate_data_exchange(tx_size, rx_size);
-            assert!(result <= tx_size, "result {} > tx {}", result, tx_size);
-            assert!(result <= rx_size, "result {} > rx {}", result, rx_size);
+            assert!(result <= tx_size, "result {result} > tx {tx_size}");
+            assert!(result <= rx_size, "result {result} > rx {rx_size}");
         }
     }
 }

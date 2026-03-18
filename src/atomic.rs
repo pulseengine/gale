@@ -116,7 +116,7 @@ impl AtomicVal {
             self.inv(),
             ret == old(self).val,
             // AT1 + AT6: wrapping add
-            self.val == add_u32_wrapping(old(self).val, value),
+            self.val == spec_add_u32_wrapping(old(self).val, value),
     {
         let old_val = self.val;
         self.val = add_u32_wrapping(self.val, value);
@@ -136,7 +136,7 @@ impl AtomicVal {
             self.inv(),
             ret == old(self).val,
             // AT2 + AT6: wrapping sub
-            self.val == sub_u32_wrapping(old(self).val, value),
+            self.val == spec_sub_u32_wrapping(old(self).val, value),
     {
         let old_val = self.val;
         self.val = sub_u32_wrapping(self.val, value);
@@ -273,7 +273,7 @@ impl AtomicVal {
         ensures
             self.inv(),
             ret == old(self).val,
-            self.val == add_u32_wrapping(old(self).val, 1u32),
+            self.val == spec_add_u32_wrapping(old(self).val, 1u32),
     {
         self.add(1)
     }
@@ -284,7 +284,7 @@ impl AtomicVal {
         ensures
             self.inv(),
             ret == old(self).val,
-            self.val == sub_u32_wrapping(old(self).val, 1u32),
+            self.val == spec_sub_u32_wrapping(old(self).val, 1u32),
     {
         self.sub(1)
     }
@@ -294,11 +294,21 @@ impl AtomicVal {
 // Wrapping arithmetic helpers
 // ======================================================================
 
+/// Spec-level wrapping u32 addition (for use in ensures/requires).
+pub open spec fn spec_add_u32_wrapping(a: u32, b: u32) -> u32 {
+    ((a as u64 + b as u64) % (0x1_0000_0000u64 as int)) as u32
+}
+
+/// Spec-level wrapping u32 subtraction (for use in ensures/requires).
+pub open spec fn spec_sub_u32_wrapping(a: u32, b: u32) -> u32 {
+    ((a as u64 + 0x1_0000_0000u64 - b as u64) % (0x1_0000_0000u64 as int)) as u32
+}
+
 /// Wrapping u32 addition (models hardware behavior).
 /// Result = (a + b) mod 2^32.
 pub fn add_u32_wrapping(a: u32, b: u32) -> (result: u32)
     ensures
-        result == ((a as u64 + b as u64) % (0x1_0000_0000u64 as int)) as u32,
+        result == spec_add_u32_wrapping(a, b),
 {
     #[allow(clippy::arithmetic_side_effects)]
     let result = a.wrapping_add(b);
@@ -309,7 +319,7 @@ pub fn add_u32_wrapping(a: u32, b: u32) -> (result: u32)
 /// Result = (a - b) mod 2^32.
 pub fn sub_u32_wrapping(a: u32, b: u32) -> (result: u32)
     ensures
-        result == ((a as u64 + 0x1_0000_0000u64 - b as u64) % (0x1_0000_0000u64 as int)) as u32,
+        result == spec_sub_u32_wrapping(a, b),
 {
     #[allow(clippy::arithmetic_side_effects)]
     let result = a.wrapping_sub(b);
@@ -354,6 +364,7 @@ pub proof fn lemma_or_idempotent(a: u32, b: u32)
     ensures
         (a | b) | b == (a | b),
 {
+    assert((a | b) | b == (a | b)) by (bit_vector);
 }
 
 /// Idempotence: AND with same value is idempotent.
@@ -361,6 +372,7 @@ pub proof fn lemma_and_idempotent(a: u32, b: u32)
     ensures
         (a & b) & b == (a & b),
 {
+    assert((a & b) & b == (a & b)) by (bit_vector);
 }
 
 /// XOR self-inverse: x ^ y ^ y == x.
@@ -368,6 +380,7 @@ pub proof fn lemma_xor_self_inverse(a: u32, b: u32)
     ensures
         (a ^ b) ^ b == a,
 {
+    assert((a ^ b) ^ b == a) by (bit_vector);
 }
 
 /// Clear after set: set then clear = 0.

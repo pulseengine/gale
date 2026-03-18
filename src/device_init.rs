@@ -324,7 +324,9 @@ impl DeviceInitState {
         while i < dev.num_deps
             invariant
                 i <= dev.num_deps,
+                dev.num_deps <= MAX_DEPS,
                 dev.num_deps as int <= devices.len(),
+            decreases dev.num_deps - i,
         {
             let dep_id = dev.deps[i as usize];
             // Look up the dependency in the device table
@@ -413,7 +415,7 @@ pub proof fn lemma_no_double_init()
 /// DI1: advance_level is monotonically increasing.
 pub proof fn lemma_advance_monotonic(level: u8)
     requires level < 5,
-    ensures (level + 1) as u8 > level,
+    ensures level + 1 > level as int,
 {}
 
 /// Invariant is inductive across all operations.

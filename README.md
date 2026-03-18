@@ -6,7 +6,7 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 
 ## Modules
 
-38 Verus-annotated Rust modules covering the full Zephyr kernel surface:
+39 Rust modules covering the full Zephyr kernel surface. 35 pass Verus SMT verification:
 
 **Synchronization**
 
@@ -31,7 +31,7 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 | lifo | kernel/lifo | LI01-LI06 | Verified |
 | queue | kernel/queue.c | QU01-QU06 | Verified |
 | ring_buf | sys/ring_buffer | RB01-RB08 | Verified |
-| poll | kernel/poll.c | PL01-PL08 | Verified |
+| poll | kernel/poll.c | PL01-PL08 | Annotated (Verus: mutable array indexing) |
 
 **Timing**
 
@@ -51,14 +51,14 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 | heap | lib/os/heap | HP01-HP08 | Verified |
 | kheap | kernel/kheap | KH01-KH06 | Verified |
 | mempool | kernel/mempool | MP01-MP06 | Verified |
-| mem_domain | kernel/mem_domain.c | MD01-MD06 | Verified |
+| mem_domain | kernel/mem_domain.c | MD01-MD06 | Annotated (Verus: spec/exec type boundary) |
 | stack_config | arch/stack | SKS01-SKS05 | Verified |
 
 **Scheduling**
 
 | Module | Zephyr Source | Properties | Status |
 |--------|---------------|------------|--------|
-| sched | kernel/sched.c | SC01-SC16 | Verified + Lean proofs |
+| sched | kernel/sched.c | SC01-SC16 | Annotated (Verus: fn pointer types) + Lean proofs |
 | thread | kernel/thread.c | TH01-TH06 | Verified |
 | thread_lifecycle | kernel/thread.c | TL01-TL06 | Verified |
 | priority | kernel/priority | - | Verified + Lean proofs |
@@ -74,22 +74,24 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 | fault_decode | arch/fault | FD/FH01-FH03 | Verified |
 | device_init | drivers/init | DI01-DI05 | Verified |
 | dynamic | kernel/dynamic.c | DY01-DY04 | Verified |
-| userspace | kernel/userspace.c | US01-US08 | Verified |
+| userspace | kernel/userspace.c | US01-US08 | Annotated (Verus: derived PartialEq visibility) |
 
 ## Architecture
 
 ```
-src/*.rs          Verus-annotated Rust (38 modules, single source of truth)
+src/*.rs          Verus-annotated Rust (39 modules, single source of truth)
     |
-    +---> Verus verification (SMT/Z3)
+    +---> Verus verification (35/39 modules, SMT/Z3)
     |
     +---> verus-strip ---> plain/src/*.rs (auto-generated plain Rust)
-    |                        |
-    |                        +---> cargo test (995 tests: unit + integration + proptest)
-    |                        +---> Kani BMC (bounded model checking)
-    |                        +---> Rocq proofs (79 theorems, 9 modules)
-    |                        +---> Lean proofs (46 theorems, scheduler + priority)
-    |                        +---> clippy ASIL-D lint profile
+    |       |                |
+    |       |                +---> cargo test (unit + integration + proptest)
+    |       |                +---> Kani BMC (87 harnesses)
+    |       |                +---> clippy ASIL-D lint profile
+    |       |
+    |       +--standalone--> plain/*.rs ---> Rocq proofs (9 modules)
+    |
+    +---> proofs/lean/*.lean ---> Lean 4 proofs (3 files, scheduler + priority)
     |
     +---> ffi/ ---> C shim ---> Zephyr kernel (qemu_cortex_m3/m4f/m33)
 ```
@@ -98,10 +100,10 @@ src/*.rs          Verus-annotated Rust (38 modules, single source of truth)
 
 Triple-track formal verification:
 
-- **Verus (SMT/Z3):** All 38 modules verified via requires/ensures contracts
-- **Rocq (theorem proving):** 79 theorems across 9 kernel primitives (sem, mutex, condvar, event, mem_slab, msgq, pipe, stack, timer)
-- **Lean 4:** 46 theorems for scheduler correctness, priority ceiling protocol, and priority queue ordering (with SMP model)
-- **Kani BMC:** Bounded model checking for C-to-Rust semantic equivalence
+- **Verus (SMT/Z3):** 35/39 modules verified via requires/ensures contracts (4 excluded due to Verus limitations)
+- **Rocq (theorem proving):** 9/9 proof files pass across kernel primitives (sem, mutex, condvar, event, mem_slab, msgq, pipe, stack, timer)
+- **Lean 4:** 3/3 proof files pass — scheduler correctness (RMA bound), priority ceiling protocol, priority queue ordering
+- **Kani BMC:** 87/87 bounded model checking harnesses pass across 9 modules
 - **Differential testing:** POSIX/FreeRTOS reference models validate spec independence
 - **Property-based testing:** Proptest with random operation sequences
 - **Fuzz testing:** Coverage-guided mutation via cargo-fuzz

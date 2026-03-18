@@ -168,7 +168,9 @@ impl Futex {
 
         // z_pend_curr: transition thread to Blocked, insert into wait_q
         thread.block();
-        self.wait_q.pend(thread);
+        let inserted = self.wait_q.pend(thread);
+        // pend succeeds because precondition guarantees len < MAX_WAITERS
+        assert(inserted);
         WaitResult::Blocked
     }
 

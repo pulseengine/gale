@@ -184,10 +184,10 @@ fn busy_get_reflects_flags() {
 #[test]
 fn clone_and_eq() {
     let w1 = WorkItem::init();
-    let w2 = w1.clone();
+    let w2 = w1;
     assert_eq!(w1, w2);
 
-    let mut w3 = w1.clone();
+    let mut w3 = w1;
     w3.submit();
     assert_ne!(w1, w3);
 }

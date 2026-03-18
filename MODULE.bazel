@@ -62,6 +62,12 @@ git_override(
     commit = "2fe64f13f8df31678a27483286868a67636d7217",
 )
 
+# Lean 4 toolchain (Mathlib available via lean.mathlib() but not currently used)
+lean = use_extension("@rules_lean//lean:extensions.bzl", "lean")
+lean.toolchain(version = "4.27.0")
+use_repo(lean, "lean_toolchains")
+register_toolchains("@lean_toolchains//:all")
+
 # Nix integration for Rocq toolchain
 bazel_dep(name = "rules_nixpkgs_core", version = "0.13.0")
 

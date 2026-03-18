@@ -29,7 +29,12 @@
 //!   SK7: num_free + num_used == capacity (conservation)
 //!   SK8: no arithmetic overflow in any operation
 //!   SK9: push-pop roundtrip preserves state
-use crate::error::*;
+const OK: i32 = 0;
+const EINVAL: i32 = -22;
+const ENOMSG: i32 = -42;
+const EAGAIN: i32 = -11;
+const ENOMEM: i32 = -12;
+const EBUSY: i32 = -16;
 /// LIFO stack — count/capacity model.
 ///
 /// Corresponds to Zephyr's struct k_stack {

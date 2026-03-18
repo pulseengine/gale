@@ -45,7 +45,7 @@ proptest! {
         for _ in 0..fill {
             prop_assert_eq!(s.alloc(), OK);
         }
-        let original = s.clone();
+        let original = s;
 
         // Alloc one more (not full since fill < num_blocks)
         prop_assert_eq!(s.alloc(), OK);

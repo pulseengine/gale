@@ -67,7 +67,7 @@ pub struct MemPartition {
 /// };
 ///
 /// Slots with size == 0 are considered free (matches Zephyr convention).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct MemDomain {
     /// Partition slots. A slot with size == 0 is free.
     pub partitions: [MemPartition; 16],
@@ -199,6 +199,7 @@ impl MemDomain {
                 forall|k: int| 0 <= k < i as int
                     && (#[trigger] self.partitions[k]).size > 0
                     ==> !part.overlaps_spec(&self.partitions[k]),
+            decreases MAX_PARTITIONS - i,
         {
             if self.partitions[i as usize].size > 0 {
                 let dstart = self.partitions[i as usize].start;
@@ -299,6 +300,7 @@ impl MemDomain {
                 0 <= p_idx <= MAX_PARTITIONS,
                 !found ==> forall|k: int| 0 <= k < p_idx as int
                     ==> (#[trigger] self.partitions[k]).size != 0,
+            decreases MAX_PARTITIONS - p_idx,
         {
             if self.partitions[p_idx as usize].size == 0 {
                 found = true;
@@ -376,6 +378,7 @@ impl MemDomain {
                         (#[trigger] self.partitions[k]).start == start
                         && self.partitions[k].size == size
                     ),
+            decreases MAX_PARTITIONS - p_idx,
         {
             if self.partitions[p_idx as usize].start == start
                 && self.partitions[p_idx as usize].size == size
@@ -448,6 +451,7 @@ impl MemDomain {
         while i < MAX_PARTITIONS
             invariant
                 0 <= i <= MAX_PARTITIONS,
+            decreases MAX_PARTITIONS - i,
         {
             if self.partitions[i as usize].size == 0 {
                 return true;
@@ -465,6 +469,7 @@ impl MemDomain {
         while i < MAX_PARTITIONS
             invariant
                 0 <= i <= MAX_PARTITIONS,
+            decreases MAX_PARTITIONS - i,
         {
             let p = &self.partitions[i as usize];
             if p.size > 0 {

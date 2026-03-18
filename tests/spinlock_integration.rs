@@ -171,7 +171,7 @@ fn max_nesting_depth() {
 #[test]
 fn acquire_release_roundtrip() {
     let mut s = SpinlockState::init();
-    let original = s.clone();
+    let original = s;
 
     s.acquire(99);
     s.release(99);
@@ -183,7 +183,7 @@ fn acquire_release_roundtrip() {
 fn nested_roundtrip() {
     let mut s = SpinlockState::init();
     s.acquire_nested(1);
-    let after_first = s.clone();
+    let after_first = s;
 
     s.acquire_nested(1);
     s.release(1);

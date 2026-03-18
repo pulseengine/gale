@@ -27,7 +27,7 @@ proptest! {
         for _ in 0..n {
             prop_assert_eq!(q.append(), OK);
         }
-        let original = q.clone();
+        let original = q;
 
         // Append one more
         prop_assert_eq!(q.append(), OK);
@@ -45,7 +45,7 @@ proptest! {
         for _ in 0..n {
             prop_assert_eq!(q.append(), OK);
         }
-        let original = q.clone();
+        let original = q;
 
         // Prepend one more
         prop_assert_eq!(q.prepend(), OK);
@@ -134,15 +134,13 @@ proptest! {
         ops in proptest::collection::vec(proptest::bool::ANY, 1..100)
     ) {
         let mut q = Queue::init();
-        let mut count: u32 = 0;
-        for use_append in &ops {
+        for (count, use_append) in (0_u32..).zip(ops.iter()) {
             if *use_append {
                 prop_assert_eq!(q.append(), OK);
             } else {
                 prop_assert_eq!(q.prepend(), OK);
             }
-            count += 1;
-            prop_assert_eq!(q.count_get(), count);
+            prop_assert_eq!(q.count_get(), count + 1);
         }
     }
 }

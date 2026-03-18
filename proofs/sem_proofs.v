@@ -25,6 +25,8 @@ Require Import RocqOfRust.RocqOfRust.
    The RocqOfRust import opens type_scope globally via lib.lib, which
    can cause variable names to be interpreted as types. *)
 Close Scope type_scope.
+Require Import Stdlib.Init.Logic.
+Open Scope Z_scope.
 
 (* Import the translated semaphore module.
    This will be available after rocq-of-rust translates plain/sem.rs *)
@@ -105,7 +107,6 @@ Theorem init_bridge :
 Proof.
   intros ic lim Hlim Hge Hle.
   exists ic, lim. repeat split; auto.
-  unfold sem_inv. auto.
 Qed.
 
 (* ========================================================================= *)

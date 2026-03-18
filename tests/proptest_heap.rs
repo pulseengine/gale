@@ -152,8 +152,8 @@ proptest! {
         // Must not panic
         let chunks = Heap::bytes_to_chunks(bytes);
         // Result should be ceiling division
-        let expected = ((bytes as u64) + (CHUNK_UNIT as u64) - 1) / (CHUNK_UNIT as u64);
-        prop_assert_eq!(chunks as u64, expected);
+        let expected = u64::from(bytes).div_ceil(u64::from(CHUNK_UNIT));
+        prop_assert_eq!(u64::from(chunks), expected);
     }
 
     /// HP8: split then merge is identity on chunk counts.

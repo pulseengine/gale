@@ -126,8 +126,8 @@ proptest! {
     #[test]
     fn valid_partition_no_overflow(p in valid_partition_strategy()) {
         if p.is_valid_rt() {
-            let end = p.start as u64 + p.size as u64;
-            prop_assert!(end <= u32::MAX as u64);
+            let end = u64::from(p.start) + u64::from(p.size);
+            prop_assert!(end <= u64::from(u32::MAX));
         }
     }
 

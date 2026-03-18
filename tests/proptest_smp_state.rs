@@ -40,7 +40,7 @@ proptest! {
     #[test]
     fn start_stop_roundtrip(max_cpus in 2u32..=MAX_CPUS) {
         let mut s = SmpState::init(max_cpus).unwrap();
-        let original = s.clone();
+        let original = s;
         prop_assert_eq!(s.start_cpu(), OK);
         prop_assert_eq!(s.active_get(), 2);
         prop_assert_eq!(s.stop_cpu(), OK);

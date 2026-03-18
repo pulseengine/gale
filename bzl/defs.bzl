@@ -19,6 +19,13 @@ load("//bzl/private:precommit.bzl",
     _pre_commit_install = "pre_commit_install",
 )
 
+load("//bzl/private:verus_to_rocq.bzl",
+    _verus_strip = "verus_strip",
+    _rocq_module = "rocq_module",
+)
+
+verus_strip = _verus_strip
+rocq_module = _rocq_module
 cargo_test = _cargo_test
 rustfmt_test = _rustfmt_test
 clippy_test = _clippy_test

@@ -28,7 +28,7 @@ proptest! {
         for _ in 0..fill {
             prop_assert_eq!(f.put(), OK);
         }
-        let original = f.clone();
+        let original = f;
 
         // Put one more
         prop_assert_eq!(f.put(), OK);

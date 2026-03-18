@@ -241,12 +241,7 @@ impl Heap {
     /// `bytes` = size of chunk being freed.
     /// `merge_left` = whether left neighbor is free.
     /// `merge_right` = whether right neighbor is free.
-    pub fn coalesce_free(
-        &mut self,
-        bytes: u32,
-        merge_left: bool,
-        merge_right: bool,
-    ) -> i32 {
+    pub fn coalesce_free(&mut self, bytes: u32, merge_left: bool, merge_right: bool) -> i32 {
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.allocated_bytes = self.allocated_bytes - bytes;

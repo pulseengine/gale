@@ -25,24 +25,26 @@
 //!   MP4: free when allocated > 0: allocated -= 1
 //!   MP5: conservation: free_blocks + allocated == capacity
 //!   MP6: no arithmetic overflow in any operation
+
 use crate::error::*;
-/// Fixed-block memory pool model.
-///
-/// Models a pool of equal-sized blocks. Each block is either
-/// allocated or free. We track the count, not individual blocks.
+
+#[doc = " Fixed-block memory pool model."]
+#[doc = ""]
+#[doc = " Models a pool of equal-sized blocks. Each block is either"]
+#[doc = " allocated or free. We track the count, not individual blocks."]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MemPool {
-    /// Total number of blocks in the pool (immutable after init).
+    #[doc = " Total number of blocks in the pool (immutable after init)."]
     pub capacity: u32,
-    /// Number of blocks currently allocated.
+    #[doc = " Number of blocks currently allocated."]
     pub allocated: u32,
-    /// Size of each block in bytes (immutable after init).
+    #[doc = " Size of each block in bytes (immutable after init)."]
     pub block_size: u32,
 }
 impl MemPool {
-    /// Initialize a memory pool.
-    ///
-    /// Returns EINVAL if capacity or block_size is 0.
+    #[doc = " Initialize a memory pool."]
+    #[doc = ""]
+    #[doc = " Returns EINVAL if capacity or block_size is 0."]
     pub fn init(capacity: u32, block_size: u32) -> Result<MemPool, i32> {
         if capacity == 0 || block_size == 0 {
             Err(EINVAL)
@@ -54,11 +56,11 @@ impl MemPool {
             })
         }
     }
-    /// Allocate one block from the pool.
-    ///
-    /// MP2: success when allocated < capacity.
-    /// MP3: returns ENOMEM when full.
-    /// MP6: no overflow.
+    #[doc = " Allocate one block from the pool."]
+    #[doc = ""]
+    #[doc = " MP2: success when allocated < capacity."]
+    #[doc = " MP3: returns ENOMEM when full."]
+    #[doc = " MP6: no overflow."]
     pub fn alloc(&mut self) -> i32 {
         if self.allocated < self.capacity {
             #[allow(clippy::arithmetic_side_effects)]
@@ -70,10 +72,10 @@ impl MemPool {
             ENOMEM
         }
     }
-    /// Allocate `count` blocks from the pool.
-    ///
-    /// Returns OK if enough blocks are available, ENOMEM otherwise.
-    /// MP6: no overflow — checked addition.
+    #[doc = " Allocate `count` blocks from the pool."]
+    #[doc = ""]
+    #[doc = " Returns OK if enough blocks are available, ENOMEM otherwise."]
+    #[doc = " MP6: no overflow — checked addition."]
     pub fn alloc_many(&mut self, count: u32) -> i32 {
         if count <= self.capacity - self.allocated {
             #[allow(clippy::arithmetic_side_effects)]
@@ -85,9 +87,9 @@ impl MemPool {
             ENOMEM
         }
     }
-    /// Free one block back to the pool.
-    ///
-    /// MP4: success when allocated > 0.
+    #[doc = " Free one block back to the pool."]
+    #[doc = ""]
+    #[doc = " MP4: success when allocated > 0."]
     pub fn free(&mut self) -> i32 {
         if self.allocated > 0 {
             #[allow(clippy::arithmetic_side_effects)]
@@ -99,7 +101,7 @@ impl MemPool {
             EINVAL
         }
     }
-    /// Free `count` blocks back to the pool.
+    #[doc = " Free `count` blocks back to the pool."]
     pub fn free_many(&mut self, count: u32) -> i32 {
         if count <= self.allocated {
             #[allow(clippy::arithmetic_side_effects)]
@@ -111,37 +113,43 @@ impl MemPool {
             EINVAL
         }
     }
-    /// Number of blocks currently allocated.
+    #[doc = " Number of blocks currently allocated."]
     pub fn allocated_get(&self) -> u32 {
         self.allocated
     }
-    /// Number of free (available) blocks.
-    /// MP5: free_blocks + allocated == capacity.
+    #[doc = " Number of free (available) blocks."]
+    #[doc = " MP5: free_blocks + allocated == capacity."]
     pub fn free_get(&self) -> u32 {
         #[allow(clippy::arithmetic_side_effects)]
         let r = self.capacity - self.allocated;
         r
     }
-    /// Total pool capacity in blocks.
+    #[doc = " Total pool capacity in blocks."]
     pub fn capacity_get(&self) -> u32 {
         self.capacity
     }
-    /// Block size in bytes.
+    #[doc = " Block size in bytes."]
     pub fn block_size_get(&self) -> u32 {
         self.block_size
     }
-    /// Total pool size in bytes (capacity * block_size).
-    /// MP6: overflow check.
+    #[doc = " Total pool size in bytes (capacity * block_size)."]
+    #[doc = " MP6: overflow check."]
     pub fn total_size(&self) -> Option<u32> {
+        let cap64: u64 = self.capacity as u64;
+        let bs64: u64 = self.block_size as u64;
         #[allow(clippy::arithmetic_side_effects)]
-        let total: u64 = self.capacity as u64 * self.block_size as u64;
-        if total > u32::MAX as u64 { None } else { Some(total as u32) }
+        let total: u64 = cap64 * bs64;
+        if total > u32::MAX as u64 {
+            None
+        } else {
+            Some(total as u32)
+        }
     }
-    /// Check if the pool is full.
+    #[doc = " Check if the pool is full."]
     pub fn is_full(&self) -> bool {
         self.allocated == self.capacity
     }
-    /// Check if the pool is empty (no blocks allocated).
+    #[doc = " Check if the pool is empty (no blocks allocated)."]
     pub fn is_empty(&self) -> bool {
         self.allocated == 0
     }

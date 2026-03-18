@@ -33,7 +33,17 @@
 //!   PP8: close clears open flag
 //!   PP9: conservation: used + free == size
 //!   PP10: no arithmetic overflow in any operation
-use crate::error::*;
+// Inlined error constants (standalone file for rocq_of_rust)
+const OK: i32 = 0;
+const EINVAL: i32 = -22;
+const EAGAIN: i32 = -11;
+const EBUSY: i32 = -16;
+const EPERM: i32 = -1;
+const ENOMEM: i32 = -12;
+const ENOMSG: i32 = -42;
+const EPIPE: i32 = -32;
+const ECANCELED: i32 = -125;
+const EBADF: i32 = -9;
 /// Pipe flags — matches pipe.c PIPE_FLAG_*.
 pub const FLAG_OPEN: u8 = 1;
 pub const FLAG_RESET: u8 = 2;
@@ -83,7 +93,7 @@ impl Pipe {
     ///   Err(ENOMSG) — zero-length write request
     pub fn write_check(&mut self, request_len: u32) -> Result<u32, i32> {
         if (self.flags & FLAG_RESET) != 0 {
-            let _ = self.flags; // cleared by verus-strip
+            self.flags = self.flags;
             return Err(ECANCELED);
         }
         if (self.flags & FLAG_OPEN) == 0 {
@@ -97,11 +107,7 @@ impl Pipe {
         if free == 0 {
             return Err(EAGAIN);
         }
-        let n = if request_len <= free {
-            request_len
-        } else {
-            free
-        };
+        let n = if request_len <= free { request_len } else { free };
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.used = self.used + n;
@@ -131,11 +137,7 @@ impl Pipe {
             }
             return Err(EAGAIN);
         }
-        let n = if request_len <= self.used {
-            request_len
-        } else {
-            self.used
-        };
+        let n = if request_len <= self.used { request_len } else { self.used };
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.used = self.used - n;

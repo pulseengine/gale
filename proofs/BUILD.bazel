@@ -30,7 +30,6 @@ rocq_library(
     name = "mutex_proofs",
     srcs = ["mutex_proofs.v"],
     deps = [
-        "//plain:mutex_compiled",
         "//plain:rocq_of_rust_lib",
     ],
     extra_flags = ["-impredicative-set"],
@@ -48,7 +47,6 @@ rocq_library(
     name = "condvar_proofs",
     srcs = ["condvar_proofs.v"],
     deps = [
-        "//plain:condvar_compiled",
         "//plain:rocq_of_rust_lib",
     ],
     extra_flags = ["-impredicative-set"],

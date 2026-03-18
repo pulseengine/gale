@@ -94,7 +94,7 @@ fn stop_cpu0_fails() {
 #[test]
 fn start_stop_roundtrip() {
     let mut s = SmpState::init(4).unwrap();
-    let original = s.clone();
+    let original = s;
     assert_eq!(s.start_cpu(), OK);
     assert_eq!(s.stop_cpu(), OK);
     assert_eq!(s, original);
@@ -143,10 +143,10 @@ fn global_unlock_empty_returns_einval() {
 #[test]
 fn clone_and_eq() {
     let s1 = SmpState::init(4).unwrap();
-    let s2 = s1.clone();
+    let s2 = s1;
     assert_eq!(s1, s2);
 
-    let mut s3 = s1.clone();
+    let mut s3 = s1;
     s3.start_cpu();
     assert_ne!(s1, s3);
 }

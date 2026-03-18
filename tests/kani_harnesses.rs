@@ -17,9 +17,7 @@
 #[cfg(kani)]
 mod kani_proofs {
     use gale::error::*;
-    use gale::priority::Priority;
     use gale::sem::{Semaphore, TakeResult};
-    use gale::thread::Thread;
 
     /// Exhaustively verify init rejects invalid parameters.
     #[kani::proof]
@@ -181,6 +179,7 @@ mod kani_mutex_proofs {
 
     /// M4: reentrant lock increments count.
     #[kani::proof]
+    #[kani::unwind(6)]
     fn mutex_lock_reentrant() {
         let thread_id: u32 = kani::any();
         let mut m = Mutex::init();
@@ -402,7 +401,7 @@ mod kani_condvar_proofs {
         assert_eq!(cv.num_waiters() as u32, n);
 
         let woken = cv.broadcast();
-        assert_eq!(woken, n as usize);
+        assert_eq!(woken, n);
         assert_eq!(cv.num_waiters(), 0);
     }
 
@@ -482,6 +481,7 @@ mod kani_msgq_proofs {
 
     /// MQ5/MQ6: put preserves invariant.
     #[kani::proof]
+    #[kani::unwind(9)]
     fn msgq_put_preserves_invariant() {
         let max_msgs: u32 = kani::any();
         kani::assume(max_msgs > 0 && max_msgs <= 8);
@@ -512,6 +512,7 @@ mod kani_msgq_proofs {
 
     /// MQ8/MQ9: get preserves invariant.
     #[kani::proof]
+    #[kani::unwind(9)]
     fn msgq_get_preserves_invariant() {
         let max_msgs: u32 = kani::any();
         kani::assume(max_msgs > 0 && max_msgs <= 8);
@@ -539,6 +540,7 @@ mod kani_msgq_proofs {
 
     /// MQ7: put_front retreats read_idx correctly.
     #[kani::proof]
+    #[kani::unwind(9)]
     fn msgq_put_front_preserves_invariant() {
         let max_msgs: u32 = kani::any();
         kani::assume(max_msgs > 0 && max_msgs <= 8);
@@ -562,6 +564,7 @@ mod kani_msgq_proofs {
 
     /// MQ10: peek_at returns valid slot.
     #[kani::proof]
+    #[kani::unwind(9)]
     fn msgq_peek_at_valid_slot() {
         let max_msgs: u32 = kani::any();
         kani::assume(max_msgs > 0 && max_msgs <= 8);
@@ -585,6 +588,7 @@ mod kani_msgq_proofs {
 
     /// MQ11: purge resets queue.
     #[kani::proof]
+    #[kani::unwind(9)]
     fn msgq_purge_resets() {
         let max_msgs: u32 = kani::any();
         kani::assume(max_msgs > 0 && max_msgs <= 8);
@@ -695,6 +699,7 @@ mod kani_stack_proofs {
 
     /// SK3/SK4: push preserves invariant.
     #[kani::proof]
+    #[kani::unwind(17)]
     fn stack_push_preserves_invariant() {
         let capacity: u32 = kani::any();
         kani::assume(capacity > 0 && capacity <= 16);
@@ -722,6 +727,7 @@ mod kani_stack_proofs {
 
     /// SK5/SK6: pop preserves invariant.
     #[kani::proof]
+    #[kani::unwind(17)]
     fn stack_pop_preserves_invariant() {
         let capacity: u32 = kani::any();
         kani::assume(capacity > 0 && capacity <= 16);
@@ -769,6 +775,7 @@ mod kani_stack_proofs {
 
     /// SK9: push-pop roundtrip preserves state.
     #[kani::proof]
+    #[kani::unwind(17)]
     fn stack_push_pop_roundtrip() {
         let capacity: u32 = kani::any();
         kani::assume(capacity > 0 && capacity <= 16);
@@ -782,7 +789,7 @@ mod kani_stack_proofs {
             s.push();
             i += 1;
         }
-        let original = s.clone();
+        let original = s;
 
         assert_eq!(s.push(), OK);
         assert_eq!(s.pop(), OK);
@@ -925,14 +932,14 @@ mod kani_pipe_proofs {
         let mut p = Pipe::init(size).unwrap();
 
         // Closed pipe
-        let mut closed = p.clone();
+        let mut closed = p;
         closed.close();
         assert_eq!(closed.write_check(1), Err(EPIPE));
         assert_eq!(closed.read_check(1), Err(EPIPE));
 
         // Resetting pipe
         p.write_check(1).unwrap();
-        let mut resetting = p.clone();
+        let mut resetting = p;
         resetting.reset();
         assert_eq!(resetting.write_check(1), Err(ECANCELED));
         assert_eq!(resetting.read_check(1), Err(ECANCELED));
@@ -958,7 +965,8 @@ mod kani_pipe_proofs {
 
         let p = Pipe::init(size).unwrap();
         assert!(p.is_empty());
-        assert_eq!(p.clone().read_check(1), Err(EAGAIN));
+        let mut p2 = p;
+        assert_eq!(p2.read_check(1), Err(EAGAIN));
     }
 
     /// PP10: conservation after arbitrary operations.
@@ -1015,6 +1023,7 @@ mod kani_timer_proofs {
 
     /// TM3: start sets status = 0 and running = true.
     #[kani::proof]
+    #[kani::unwind(11)]
     fn timer_start() {
         let period: u32 = kani::any();
         kani::assume(period <= 1000);
@@ -1056,6 +1065,7 @@ mod kani_timer_proofs {
 
     /// TM2: status_get returns old value and resets to 0.
     #[kani::proof]
+    #[kani::unwind(11)]
     fn timer_status_get() {
         let period: u32 = kani::any();
         kani::assume(period <= 1000);
@@ -1200,6 +1210,7 @@ mod kani_mem_slab_proofs {
 
     /// MS4: alloc when not full increments num_used.
     #[kani::proof]
+    #[kani::unwind(17)]
     fn mem_slab_alloc() {
         let num_blocks: u32 = kani::any();
         kani::assume(num_blocks > 0 && num_blocks <= 16);
@@ -1227,6 +1238,7 @@ mod kani_mem_slab_proofs {
 
     /// MS6: free when num_used > 0 decrements num_used.
     #[kani::proof]
+    #[kani::unwind(17)]
     fn mem_slab_free() {
         let num_blocks: u32 = kani::any();
         kani::assume(num_blocks > 0 && num_blocks <= 16);
@@ -1274,6 +1286,7 @@ mod kani_mem_slab_proofs {
 
     /// MS4+MS6: alloc-free roundtrip preserves state.
     #[kani::proof]
+    #[kani::unwind(17)]
     fn mem_slab_roundtrip() {
         let num_blocks: u32 = kani::any();
         kani::assume(num_blocks > 0 && num_blocks <= 16);
@@ -1287,7 +1300,7 @@ mod kani_mem_slab_proofs {
             s.alloc();
             i += 1;
         }
-        let original = s.clone();
+        let original = s;
 
         assert_eq!(s.alloc(), OK);
         assert_eq!(s.free(), OK);

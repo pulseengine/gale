@@ -195,7 +195,7 @@ fn clone_and_equality() {
     let mut ev = Event::init();
     ev.post(0x42);
 
-    let ev2 = ev.clone();
+    let ev2 = ev;
     assert_eq!(ev, ev2);
 
     ev.post(0x01);

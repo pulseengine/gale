@@ -13,6 +13,8 @@ Require Import RocqOfRust.RocqOfRust.
 
 (* Close type_scope to prevent parsing conflicts with abstract proofs. *)
 Close Scope type_scope.
+Require Import Stdlib.Init.Logic.
+Open Scope Z_scope.
 
 (* ========================================================================= *)
 (** * Definitions *)
@@ -73,9 +75,8 @@ Theorem put_preserves_invariant :
       ((wi + 1) mod mmx).
 Proof.
   intros ms mm um ri wi [Hms [Hmm [Hu1 [Hu2 [Hr1 [Hr2 [Hw1 Hw2]]]]]]] Hlt.
-  unfold msgq_inv. repeat split; try lia.
-  - apply Z.mod_pos_bound. lia.
-  - apply Z.mod_pos_bound. lia.
+  unfold msgq_inv. repeat split; try lia;
+  try (apply Z.mod_pos_bound; lia).
 Qed.
 
 (** put when full: rejected *)
@@ -101,9 +102,8 @@ Theorem get_preserves_invariant :
       ((ri + 1) mod mmx) wi.
 Proof.
   intros ms mm um ri wi [Hms [Hmm [Hu1 [Hu2 [Hr1 [Hr2 [Hw1 Hw2]]]]]]] Hgt.
-  unfold msgq_inv. repeat split; try lia.
-  - apply Z.mod_pos_bound. lia.
-  - apply Z.mod_pos_bound. lia.
+  unfold msgq_inv. repeat split; try lia;
+  try (apply Z.mod_pos_bound; lia).
 Qed.
 
 (* ========================================================================= *)

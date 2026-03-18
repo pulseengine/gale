@@ -1,4 +1,7 @@
 load("@rules_verus//verus:defs.bzl", "verus_library", "verus_test")
+
+# Export src/*.rs for cross-package use (verus_strip in //plain)
+exports_files(glob(["src/*.rs"]), visibility = ["//visibility:public"])
 load("//bzl:defs.bzl",
     "cargo_bench_test",
     "cargo_fuzz_test",
@@ -16,12 +19,12 @@ load("//bzl:defs.bzl",
 # Source file groups
 # =========================================================================
 
-# Verus-verified sources: modules that ACTUALLY pass `verus` SMT verification.
-# The remaining 28 modules have Verus annotations but their proof lemmas
-# call exec-mode functions, which Verus doesn't allow. To fix: rewrite
-# proof lemmas to use spec-level struct constructors.
-# poll.rs: uses mutable array indexing (Verus limitation)
-# sched.rs: uses function pointer types (Verus limitation)
+# Verus-verified sources: modules that pass `verus` SMT verification.
+# Excluded (Verus limitations or proof issues needing rework):
+#   poll.rs: mutable array indexing (Verus limitation)
+#   sched.rs: function pointer types (Verus limitation)
+#   userspace.rs: derived PartialEq on enums not visible to Verus + complex bitwise proofs
+#   mem_domain.rs: spec/exec type boundary issues in overlaps_spec (u64 vs int)
 VERUS_SRCS = [
     "src/lib.rs",
     "src/error.rs",
@@ -34,6 +37,30 @@ VERUS_SRCS = [
     "src/msgq.rs",
     "src/pipe.rs",
     "src/stack.rs",
+    "src/fifo.rs",
+    "src/lifo.rs",
+    "src/timer.rs",
+    "src/mem_slab.rs",
+    "src/queue.rs",
+    "src/mbox.rs",
+    "src/timeout.rs",
+    "src/thread_lifecycle.rs",
+    "src/timeslice.rs",
+    "src/heap.rs",
+    "src/fatal.rs",
+    "src/dynamic.rs",
+    "src/smp_state.rs",
+    "src/stack_config.rs",
+    "src/spinlock.rs",
+    "src/atomic.rs",
+    "src/futex.rs",
+    "src/mempool.rs",
+    "src/kheap.rs",
+    "src/fault_decode.rs",
+    "src/device_init.rs",
+    "src/ring_buf.rs",
+    "src/event.rs",
+    "src/work.rs",
 ]
 
 PLAIN_SRCS = ["//plain:srcs"]

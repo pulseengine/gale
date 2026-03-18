@@ -320,10 +320,10 @@ fn multiple_announce_steps() {
 #[test]
 fn clone_and_eq() {
     let t1 = Timeout::init(42);
-    let t2 = t1.clone();
+    let t2 = t1;
     assert_eq!(t1, t2);
 
-    let mut t3 = t1.clone();
+    let mut t3 = t1;
     t3.add(10).unwrap();
     assert_ne!(t1, t3);
 }

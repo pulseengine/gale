@@ -13,6 +13,8 @@ Require Import RocqOfRust.RocqOfRust.
 
 (* Close type_scope to prevent parsing conflicts with abstract proofs. *)
 Close Scope type_scope.
+Require Import Stdlib.Init.Logic.
+Open Scope Z_scope.
 
 (* ========================================================================= *)
 (** * Definitions *)
@@ -88,7 +90,7 @@ Theorem wait_adds_waiter :
     condvar_inv nw ->
     condvar_inv (nw + 1).
 Proof.
-  intros nw Hinv. unfold condvar_inv. lia.
+  intros nw Hinv. unfold condvar_inv in *. lia.
 Qed.
 
 (* ========================================================================= *)

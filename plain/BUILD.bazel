@@ -1,13 +1,18 @@
 # Rocq-of-Rust translation and compilation (Track 2: Theorem Proving)
 #
-# Translates plain Rust to Rocq, then compiles for formal verification.
+# Hand-written standalone .rs files (no crate:: imports) are translated
+# to Rocq by coq_of_rust, then compiled for formal verification.
+#
+# The standalone files mirror the logic in src/*.rs but are self-contained
+# so coq_of_rust can translate them without resolving cross-module deps.
+# plain/src/*.rs is the verus-stripped crate version for cargo/clippy.
 
-load("@rules_rocq_rust//coq_of_rust:defs.bzl", "coq_of_rust_library", "rocq_rust_verified_library")
-load("@rules_rocq_rust//rocq:defs.bzl", "rocq_library", "rocq_proof_test")
+load("@rules_rocq_rust//coq_of_rust:defs.bzl", "coq_of_rust_library")
+load("@rules_rocq_rust//rocq:defs.bzl", "rocq_library")
 
 package(default_visibility = ["//visibility:public"])
 
-# Expose plain Rust sources to root package (cargo_test, clippy, etc.)
+# Expose plain Rust crate sources to root package (cargo_test, clippy, etc.)
 filegroup(
     name = "srcs",
     srcs = glob(["src/**/*.rs"]),
@@ -20,175 +25,33 @@ alias(
     actual = "@rocq_of_rust_source//:rocq_of_rust_main",
 )
 
-# Step 1: Translate sem.rs to Rocq
-coq_of_rust_library(
-    name = "sem_translated",
-    rust_sources = ["sem.rs"],
-    edition = "2021",
-)
+# ── Modules: translate standalone .rs → .v → .vo ──────────────────────
 
-# Step 2: Compile the translated Rocq code
-rocq_library(
-    name = "sem_compiled",
-    srcs = [":sem_translated"],
-    deps = [":rocq_of_rust_lib"],
-    extra_flags = ["-impredicative-set"],
-)
-
-# Convenience: one-step translate + compile
-rocq_rust_verified_library(
-    name = "sem_verified",
-    rust_sources = ["sem.rs"],
-    edition = "2021",
-    extra_flags = ["-impredicative-set"],
-)
-
-# ── Mutex ────────────────────────────────────────────────────────────────
-
-coq_of_rust_library(
-    name = "mutex_translated",
-    rust_sources = ["mutex.rs"],
-    edition = "2021",
-)
-
-rocq_library(
-    name = "mutex_compiled",
-    srcs = [":mutex_translated"],
-    deps = [":rocq_of_rust_lib"],
-    extra_flags = ["-impredicative-set"],
-)
-
-# ── CondVar ──────────────────────────────────────────────────────────────
-
-coq_of_rust_library(
-    name = "condvar_translated",
-    rust_sources = ["condvar.rs"],
-    edition = "2021",
-)
-
-rocq_library(
-    name = "condvar_compiled",
-    srcs = [":condvar_translated"],
-    deps = [":rocq_of_rust_lib"],
-    extra_flags = ["-impredicative-set"],
-)
-
-# ── MsgQ ─────────────────────────────────────────────────────────────────
-
-coq_of_rust_library(
-    name = "msgq_translated",
-    rust_sources = ["msgq.rs"],
-    edition = "2021",
-)
-
-rocq_library(
-    name = "msgq_compiled",
-    srcs = [":msgq_translated"],
-    deps = [":rocq_of_rust_lib"],
-    extra_flags = ["-impredicative-set"],
-)
-
-# ── Stack ────────────────────────────────────────────────────────────────
-
-coq_of_rust_library(
-    name = "stack_translated",
-    rust_sources = ["stack.rs"],
-    edition = "2021",
-)
-
-rocq_library(
-    name = "stack_compiled",
-    srcs = [":stack_translated"],
-    deps = [":rocq_of_rust_lib"],
-    extra_flags = ["-impredicative-set"],
-)
-
-# ── Fifo ────────────────────────────────────────────────────────────────
-
-coq_of_rust_library(
-    name = "fifo_translated",
-    rust_sources = ["fifo.rs"],
-    edition = "2021",
-)
-
-rocq_library(
-    name = "fifo_compiled",
-    srcs = [":fifo_translated"],
-    deps = [":rocq_of_rust_lib"],
-    extra_flags = ["-impredicative-set"],
-)
-
-# ── Pipe ─────────────────────────────────────────────────────────────────
-
-coq_of_rust_library(
-    name = "pipe_translated",
-    rust_sources = ["pipe.rs"],
-    edition = "2021",
-)
-
-rocq_library(
-    name = "pipe_compiled",
-    srcs = [":pipe_translated"],
-    deps = [":rocq_of_rust_lib"],
-    extra_flags = ["-impredicative-set"],
-)
-
-# ── Timer ───────────────────────────────────────────────────────────────
-
-coq_of_rust_library(
-    name = "timer_translated",
-    rust_sources = ["timer.rs"],
-    edition = "2021",
-)
-
-rocq_library(
-    name = "timer_compiled",
-    srcs = [":timer_translated"],
-    deps = [":rocq_of_rust_lib"],
-    extra_flags = ["-impredicative-set"],
-)
-
-# ── Event ───────────────────────────────────────────────────────────────
-
-coq_of_rust_library(
-    name = "event_translated",
-    rust_sources = ["event.rs"],
-    edition = "2021",
-)
-
-rocq_library(
-    name = "event_compiled",
-    srcs = [":event_translated"],
-    deps = [":rocq_of_rust_lib"],
-    extra_flags = ["-impredicative-set"],
-)
-
-# ── MemSlab ─────────────────────────────────────────────────────────────
-
-coq_of_rust_library(
-    name = "mem_slab_translated",
-    rust_sources = ["mem_slab.rs"],
-    edition = "2021",
-)
-
-rocq_library(
-    name = "mem_slab_compiled",
-    srcs = [":mem_slab_translated"],
-    deps = [":rocq_of_rust_lib"],
-    extra_flags = ["-impredicative-set"],
-)
-
-# ── Queue ──────────────────────────────────────────────────────────────
-
-coq_of_rust_library(
-    name = "queue_translated",
-    rust_sources = ["queue.rs"],
-    edition = "2021",
-)
-
-rocq_library(
-    name = "queue_compiled",
-    srcs = [":queue_translated"],
-    deps = [":rocq_of_rust_lib"],
-    extra_flags = ["-impredicative-set"],
-)
+[
+    (
+        coq_of_rust_library(
+            name = mod + "_translated",
+            rust_sources = [mod + ".rs"],
+            edition = "2021",
+        ),
+        rocq_library(
+            name = mod + "_compiled",
+            srcs = [":" + mod + "_translated"],
+            deps = [":rocq_of_rust_lib"],
+            extra_flags = ["-impredicative-set"],
+        ),
+    )
+    for mod in [
+        "sem",
+        "mutex",
+        "condvar",
+        "msgq",
+        "stack",
+        "pipe",
+        "timer",
+        "event",
+        "mem_slab",
+        "queue",
+        "fifo",
+    ]
+]

@@ -46,7 +46,7 @@ proptest! {
         for _ in 0..fill {
             p.alloc();
         }
-        let original = p.clone();
+        let original = p;
 
         if fill < max_threads {
             prop_assert_eq!(p.alloc(), OK);

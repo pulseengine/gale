@@ -19,7 +19,7 @@ proptest! {
         for _ in 0..n {
             prop_assert_eq!(q.put(), OK);
         }
-        let original = q.clone();
+        let original = q;
 
         // Put one more
         prop_assert_eq!(q.put(), OK);

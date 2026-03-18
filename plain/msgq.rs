@@ -39,7 +39,10 @@
 //!   MQ11: purge resets to empty (used_msgs=0, read_idx=write_idx)
 //!   MQ12: no arithmetic overflow in any operation
 //!   MQ13: ring buffer consistency: write_idx tracks read_idx + used_msgs
-use crate::error::*;
+const OK: i32 = 0;
+const EINVAL: i32 = -22;
+const ENOMSG: i32 = -42;
+const EAGAIN: i32 = -11;
 /// Result of a put/get operation.
 pub enum MsgQResult {
     /// Operation succeeded — indices updated.
