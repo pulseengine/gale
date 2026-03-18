@@ -1163,4 +1163,46 @@ impl Foo {
         assert!(!result.contains("#[cfg(not(verus_keep_ghost))]"), "cfg not removed");
         assert!(result.contains("pub fn foo"), "missing foo fn");
     }
+
+    #[test]
+    fn test_strip_inline_proof_block() {
+        let body = r#"
+pub fn classify(hfsr: u32, cfsr: u32) -> u32 {
+    if hfsr != 0 {
+        proof {
+            assert(hfsr > 0u32) by (bit_vector) requires hfsr != 0u32;
+        }
+        1u32
+    } else {
+        proof {
+            assert(cfsr == 0u32) by (bit_vector);
+        }
+        0u32
+    }
+}
+"#;
+        let result = strip_body(body);
+        assert!(!result.contains("proof {"), "proof block not stripped: {result}");
+        assert!(!result.contains("assert("), "assert not stripped: {result}");
+        assert!(result.contains("fn classify"), "missing classify fn: {result}");
+        assert!(result.contains("1u32"), "missing 1u32: {result}");
+        assert!(result.contains("0u32"), "missing 0u32: {result}");
+    }
+
+    #[test]
+    fn test_strip_let_ghost() {
+        let body = r#"
+pub fn add_partition(&mut self, part: u32) -> i32 {
+    let ghost orig = self.count;
+    let real_orig = self.count;
+    self.count = self.count + part;
+    0i32
+}
+"#;
+        let result = strip_body(body);
+        assert!(!result.contains("let ghost"), "let ghost not stripped: {result}");
+        assert!(!result.contains("ghost orig"), "ghost var not stripped: {result}");
+        assert!(result.contains("real_orig"), "real var wrongly stripped: {result}");
+        assert!(result.contains("fn add_partition"), "missing fn: {result}");
+    }
 }
