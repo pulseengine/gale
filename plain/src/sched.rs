@@ -32,8 +32,8 @@
 //!   SC10: current stays if higher priority than candidate (SMP)
 //!   SC11: ties only switch if swap_ok / yield (SMP)
 //!   SC12: current re-queued only if active + not queued + not idle + not MetaIRQ preempted
-use crate::error::*;
 use crate::thread::{Thread, ThreadId, ThreadState};
+use crate::error::*;
 /// Maximum threads in the run queue.
 pub const MAX_RUNQ_SIZE: u32 = 64;
 /// Priority-ordered run queue for the scheduler.
@@ -54,11 +54,70 @@ impl RunQueue {
     pub fn new() -> Self {
         RunQueue {
             entries: [
-                None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                None, None, None, None, None, None, None, None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
             ],
             len: 0,
         }
@@ -271,11 +330,8 @@ pub fn next_up_smp(
         Some(mirqp) => current.id == mirqp.id,
         None => false,
     };
-    let requeue_current = is_switching
-        && current_is_active
-        && !current_is_queued
-        && !is_current_idle
-        && !is_current_mirq_preempted;
+    let requeue_current = is_switching && current_is_active && !current_is_queued
+        && !is_current_idle && !is_current_mirq_preempted;
     if is_switching {
         update_metairq_preempt(
             &chosen,
@@ -440,7 +496,10 @@ pub fn sched_resume(state: SchedThreadState) -> Result<SchedThreadState, i32> {
 /// SC16: abort always succeeds from any non-Dead/non-Aborting state.
 ///
 /// The `smp_remote` flag indicates the thread is running on another CPU.
-pub fn sched_abort(state: SchedThreadState, smp_remote: bool) -> Result<SchedThreadState, i32> {
+pub fn sched_abort(
+    state: SchedThreadState,
+    smp_remote: bool,
+) -> Result<SchedThreadState, i32> {
     match state {
         SchedThreadState::Dead => Err(EINVAL),
         SchedThreadState::Aborting => Err(EINVAL),

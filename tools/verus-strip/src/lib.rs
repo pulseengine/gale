@@ -214,6 +214,47 @@ fn strip_body(body: &str) -> String {
             continue;
         }
 
+        // Check for inline `proof { ... }` blocks inside exec function bodies.
+        // These appear as `Ident("proof")` followed directly by a brace group.
+        // Distinct from `proof fn` (which is handled by try_skip_verus_item).
+        if let TokenTree::Ident(id) = &trees[i] {
+            if id.to_string() == "proof" {
+                if let Some(TokenTree::Group(g)) = trees.get(i + 1) {
+                    if g.delimiter() == Delimiter::Brace {
+                        // Inline proof block — drop both the keyword and the body
+                        trim_trailing_whitespace(&mut out);
+                        i += 2;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Check for `let ghost x = ...;` — ghost variable declarations.
+        // Strip the entire statement (up to and including the semicolon).
+        if let TokenTree::Ident(id) = &trees[i] {
+            if id.to_string() == "let" {
+                if let Some(TokenTree::Ident(next)) = trees.get(i + 1) {
+                    if next.to_string() == "ghost" {
+                        // Skip: let ghost ... ;
+                        let mut j = i + 2;
+                        while j < trees.len() {
+                            if let TokenTree::Punct(p) = &trees[j] {
+                                if p.as_char() == ';' {
+                                    j += 1;
+                                    break;
+                                }
+                            }
+                            j += 1;
+                        }
+                        trim_trailing_whitespace(&mut out);
+                        i = j;
+                        continue;
+                    }
+                }
+            }
+        }
+
         // Check for named return type: -> (name: Type)
         if is_arrow_at(&trees, i) {
             if let Some((replacement, skip_to)) = try_strip_named_return(&trees, i) {

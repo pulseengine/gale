@@ -54,11 +54,7 @@ impl Stack {
     ///   stack->base = buffer; stack->next = buffer;
     ///   stack->top = buffer + num_entries;
     pub fn init(capacity: u32) -> Result<Stack, i32> {
-        if capacity == 0 {
-            Err(EINVAL)
-        } else {
-            Ok(Stack { capacity, count: 0 })
-        }
+        if capacity == 0 { Err(EINVAL) } else { Ok(Stack { capacity, count: 0 }) }
     }
     /// Push an entry onto the stack.
     ///

@@ -98,8 +98,10 @@ impl MemDomain {
         }
         let mut i: u32 = 0;
         while i < MAX_PARTITIONS {
-            if self.partitions[i as usize].size > 0 && part.overlaps(&self.partitions[i as usize]) {
-                return false;
+            if self.partitions[i as usize].size > 0 {
+                if part.overlaps(&self.partitions[i as usize]) {
+                    return false;
+                }
             }
             i = i + 1;
         }

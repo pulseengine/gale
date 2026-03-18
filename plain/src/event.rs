@@ -58,7 +58,9 @@ impl Event {
     ///
     /// Returns the resulting event bitmask.
     pub fn post(&mut self, new_events: u32) -> u32 {
+        let old_events = self.events;
         self.events = self.events | new_events;
+        let new_val = self.events;
         self.events
     }
     /// Set the event bitmask to an exact value, replacing all bits.

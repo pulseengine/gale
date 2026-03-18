@@ -67,7 +67,8 @@ impl WorkItem {
     /// Corresponds to k_work_init() (work.c:153-161).
     /// WK1: produces IDLE state.
     pub fn init() -> WorkItem {
-        WorkItem { flags: 0 }
+        let w = WorkItem { flags: 0 };
+        w
     }
     /// Get the busy status flags.
     ///
@@ -115,6 +116,7 @@ impl WorkItem {
             return 0;
         }
         let was_running = (self.flags & FLAG_RUNNING) != 0;
+        let old_flags = self.flags;
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.flags = self.flags | FLAG_QUEUED;
@@ -126,6 +128,7 @@ impl WorkItem {
     /// Dequeues the item and marks it as running.
     /// Precondition: item must be queued.
     pub fn start_running(&mut self) {
+        let old_flags = self.flags;
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.flags = (self.flags & !FLAG_QUEUED) | FLAG_RUNNING;
@@ -136,6 +139,7 @@ impl WorkItem {
     /// Clears the RUNNING flag.
     /// Precondition: item must be running.
     pub fn finish_running(&mut self) {
+        let old_flags = self.flags;
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.flags = self.flags & !FLAG_RUNNING;
@@ -150,12 +154,14 @@ impl WorkItem {
     ///
     /// Returns the busy flags after cancellation attempt.
     pub fn cancel(&mut self) -> u8 {
+        let old_flags = self.flags;
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.flags = self.flags & !FLAG_QUEUED;
         }
         let busy = self.flags & BUSY_MASK;
         if busy != 0 {
+            let mid_flags = self.flags;
             #[allow(clippy::arithmetic_side_effects)]
             {
                 self.flags = self.flags | FLAG_CANCELING;
@@ -168,6 +174,7 @@ impl WorkItem {
     /// Models finalize_cancel_locked() (work.c:128-151).
     /// Clears the CANCELING flag. Called when the running handler completes.
     pub fn finish_cancel(&mut self) {
+        let old_flags = self.flags;
         #[allow(clippy::arithmetic_side_effects)]
         {
             self.flags = self.flags & !FLAG_CANCELING;
