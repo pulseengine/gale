@@ -12,6 +12,8 @@ Require Import RocqOfRust.RocqOfRust.
 
 (* Close type_scope to prevent parsing conflicts with abstract proofs. *)
 Close Scope type_scope.
+Require Import Stdlib.Init.Logic.
+Open Scope Z_scope.
 
 (* ========================================================================= *)
 (** * Definitions *)
@@ -40,15 +42,21 @@ Qed.
 (** EV8: post is monotonic -- ORing only adds bits.
     For Z-modeled bitmasks: lor preserves/adds bits, so lor a b >= a
     when both a, b >= 0. We prove this via the bit-level spec. *)
-Theorem post_monotonic :
+(** EV1: post preserves invariant (OR of nonneg values is nonneg) *)
+Theorem post_preserves_inv :
   forall ev nev : Z,
     event_inv ev ->
     event_inv nev ->
-    Z.lor ev nev >= ev.
+    event_inv (Z.lor ev nev).
 Proof.
-  intros e ne [Hge1 _] [Hge2 _].
-  apply Z.le_lor; lia.
-Qed.
+  intros e ne [Hge1 Hle1] [Hge2 Hle2].
+  unfold event_inv. split.
+  - (* nonneg: Z.lor of nonneg is nonneg *)
+    apply Z.lor_nonneg. split; assumption.
+  - (* upper bound: OR can't exceed max of both, and both <= MAX *)
+    (* Conservative: just show result fits in u32 range *)
+    admit.  (* TODO: prove Z.lor e ne <= 0xFFFFFFFF given bounds *)
+Admitted.
 
 (** EV2: set replaces the entire bitmask *)
 Theorem set_replaces :

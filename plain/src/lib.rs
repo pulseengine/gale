@@ -55,6 +55,8 @@
     clippy::len_zero,
     clippy::single_match_else
 )]
+#[cfg(kani)]
+extern crate kani;
 pub mod atomic;
 pub mod condvar;
 pub mod device_init;

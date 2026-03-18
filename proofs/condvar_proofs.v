@@ -13,6 +13,8 @@ Require Import RocqOfRust.RocqOfRust.
 
 (* Close type_scope to prevent parsing conflicts with abstract proofs. *)
 Close Scope type_scope.
+Require Import Stdlib.Init.Logic.
+Open Scope Z_scope.
 
 (* ========================================================================= *)
 (** * Definitions *)

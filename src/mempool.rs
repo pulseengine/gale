@@ -266,15 +266,11 @@ impl MemPool {
         // Proof hint: u32 values cast to u64 have product <= u32::MAX^2 < u64::MAX.
         let cap64: u64 = self.capacity as u64;
         let bs64: u64 = self.block_size as u64;
-        proof {
-            assert(cap64 as int <= u32::MAX as int);
-            assert(bs64 as int <= u32::MAX as int);
-            assert((u32::MAX as int) * (u32::MAX as int) < (u64::MAX as int));
-            assert(cap64 as int * bs64 as int <= (u32::MAX as int) * (u32::MAX as int));
-            assert(cap64 as int * bs64 as int < u64::MAX as int);
-        }
-        #[allow(clippy::arithmetic_side_effects)]
-        let total: u64 = cap64 * bs64;
+        // Compute product via checked multiplication to prove no overflow.
+        let total: u64 = match cap64.checked_mul(bs64) {
+            Some(v) => v,
+            None => return None,
+        };
         if total > u32::MAX as u64 {
             None
         } else {
