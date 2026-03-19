@@ -3690,3 +3690,29 @@ artifacts:
         target: SYSREQ-SEM-001
       - type: enables
         target: SWREQ-KILN-003
+
+  - id: SWARCH-TGT-004
+    type: sw-arch-component
+    title: Renode emulation target — ZynqMP RPU (Cortex-R5)
+    status: approved
+    description: >
+      Hardware-accurate Renode emulation target for Cortex-R5 (ARMv7-R
+      real-time profile) validation.  Uses the qemu_cortex_r5 Zephyr board
+      with Renode's zynqmp_zephyr.resc script which loads the ZynqMP
+      platform, halts A53 APU cores, and enables RPU core 0.
+      Confirms Gale functions on the real-time profile architecture
+      used in safety-critical automotive (Xilinx ZynqMP) deployments.
+    tags: [test-target, renode, cortex-r5, zynqmp]
+    fields:
+      platform: qemu_cortex_r5
+      emulator: Renode 1.16.0 (renode-test via Robot Framework)
+      renode-platform: scripts/single-node/zynqmp_zephyr.resc
+      architecture: ARMv7-R (Cortex-R5, with FPU)
+      rust-target: armv7r-none-eabihf
+      ci-workflow: .github/workflows/renode-tests.yml
+      uart: sysbus.uart0
+    links:
+      - type: allocated-from
+        target: SYSREQ-SEM-001
+      - type: enables
+        target: SWREQ-KILN-003

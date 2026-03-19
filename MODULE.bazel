@@ -79,9 +79,9 @@ git_override(
 )
 
 renode = use_extension("@rules_renode//renode:extensions.bzl", "renode")
-renode.download_portable(name = "renode_portable")
-use_repo(renode, "renode_portable")
-register_toolchains("@renode_portable//:toolchain")
+renode.download_portable(name = "renode_default_toolchain")
+use_repo(renode, "renode_default_toolchain")
+register_toolchains("@renode_default_toolchain//:toolchain_impl")
 
 # Nix integration for Rocq toolchain
 bazel_dep(name = "rules_nixpkgs_core", version = "0.13.0")
