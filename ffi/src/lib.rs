@@ -279,6 +279,96 @@ pub extern "C" fn gale_sem_count_take(count: *mut u32) -> i32 {
     }
 }
 
+// ---- Phase 2: Full Decision API ----
+
+/// Decision struct for k_sem_give — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleSemGiveDecision {
+    /// Action: 0=INCREMENT_COUNT, 1=WAKE_THREAD
+    pub action: u8,
+    /// New count value (only meaningful when action=INCREMENT_COUNT)
+    pub new_count: u32,
+}
+
+pub const GALE_SEM_ACTION_INCREMENT: u8 = 0;
+pub const GALE_SEM_ACTION_WAKE: u8 = 1;
+
+/// Full decision for k_sem_give: decides whether to increment count or wake a thread.
+///
+/// The C shim calls z_unpend_first_thread first (side effect), then passes
+/// whether a waiter was found. Rust decides the action.
+///
+/// Verified: P3 (count capped at limit), P9 (no overflow).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_sem_give_decide(
+    count: u32,
+    limit: u32,
+    has_waiter: u32,
+) -> GaleSemGiveDecision {
+    if has_waiter != 0 {
+        GaleSemGiveDecision {
+            action: GALE_SEM_ACTION_WAKE,
+            new_count: count,
+        }
+    } else {
+        let new_count = if count < limit {
+            #[allow(clippy::arithmetic_side_effects)]
+            { count + 1 }
+        } else {
+            count
+        };
+        GaleSemGiveDecision {
+            action: GALE_SEM_ACTION_INCREMENT,
+            new_count,
+        }
+    }
+}
+
+/// Decision struct for k_sem_take.
+#[repr(C)]
+pub struct GaleSemTakeDecision {
+    /// Return code: 0 (acquired), -EBUSY (would block)
+    pub ret: i32,
+    /// New count value (decremented if acquired)
+    pub new_count: u32,
+    /// Action: 0=RETURN_IMMEDIATELY, 1=PEND_CURRENT
+    pub action: u8,
+}
+
+pub const GALE_SEM_ACTION_RETURN: u8 = 0;
+pub const GALE_SEM_ACTION_PEND: u8 = 1;
+
+/// Full decision for k_sem_take: decides whether to acquire, return busy, or pend.
+///
+/// Verified: P5 (decrement), P6 (-EBUSY), P9 (no underflow).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_sem_take_decide(
+    count: u32,
+    is_no_wait: u32,
+) -> GaleSemTakeDecision {
+    if count > 0 {
+        #[allow(clippy::arithmetic_side_effects)]
+        let new_count = count - 1;
+        GaleSemTakeDecision {
+            ret: OK,
+            new_count,
+            action: GALE_SEM_ACTION_RETURN,
+        }
+    } else if is_no_wait != 0 {
+        GaleSemTakeDecision {
+            ret: EBUSY,
+            new_count: 0,
+            action: GALE_SEM_ACTION_RETURN,
+        }
+    } else {
+        GaleSemTakeDecision {
+            ret: 0,
+            new_count: 0,
+            action: GALE_SEM_ACTION_PEND,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Mutex FFI exports — state machine validation
 // ---------------------------------------------------------------------------
