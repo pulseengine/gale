@@ -147,6 +147,10 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-KILN-002
+      - type: verified-on
+        target: SWARCH-TGT-002
+      - type: verified-on
+        target: SWARCH-TGT-003
 
   - id: SWREQ-KILN-004
     type: sw-req
