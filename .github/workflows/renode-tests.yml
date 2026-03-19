@@ -90,19 +90,16 @@ jobs:
           # The Zephyr CI Docker image (ci:v0.29.0) includes Renode pre-installed
           # at /opt/renode (already in PATH). Just install Robot Framework.
           pip3 install robotframework
-          renode-test --version || true
 
       - name: Run Renode test
         env:
           ROBOT_FILE: ${{ matrix.robot_file }}
+          ELF: ${{ github.workspace }}/zephyr-workspace/build/zephyr/zephyr.elf
         run: |
-          ELF="${GITHUB_WORKSPACE}/zephyr-workspace/build/zephyr/zephyr.elf"
           GALE_ROOT="${GITHUB_WORKSPACE}/gale"
-          cd "${GALE_ROOT}/renode"
-          renode-test \
-            --variable "ELF:${ELF}" \
-            --outputdir "${GITHUB_WORKSPACE}/renode-results" \
-            "${ROBOT_FILE}"
+          mkdir -p "${GITHUB_WORKSPACE}/renode-results"
+          cd "${GITHUB_WORKSPACE}/renode-results"
+          renode-test "${GALE_ROOT}/renode/${ROBOT_FILE}"
 
       - name: Upload Renode results
         if: always()

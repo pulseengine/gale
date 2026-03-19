@@ -6,7 +6,7 @@ ${UART}                       sysbus.lpuart1
 Create Machine
     Execute Command           mach create
     Execute Command           machine LoadPlatformDescription @platforms/cpus/stm32l552.repl
-    Execute Command           sysbus LoadELF ${ELF}
+    Execute Command           sysbus LoadELF %{ELF}
 
 *** Test Cases ***
 Should Pass Gale Semaphore Tests On Cortex-M33
