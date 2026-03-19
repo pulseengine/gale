@@ -4,16 +4,16 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Gale semaphore — phase 1: verified count arithmetic.
+ * Gale semaphore — phase 2: Extract→Decide→Apply pattern.
  *
- * This is kernel/sem.c with the count operations replaced by calls
- * to the formally verified Rust implementation.  Wait queue,
- * scheduling, tracing, and poll handling remain native Zephyr.
+ * This is kernel/sem.c with give/take rewritten to use Rust decision
+ * structs.  C extracts kernel state (spinlock, wait queue side effects),
+ * Rust decides the action, C applies it.
  *
  * Verified operations (Verus + Rocq proofs):
- *   gale_sem_count_give  — P3 (increment capped at limit), P9 (no overflow)
- *   gale_sem_count_take  — P5 (decrement by 1), P6 (-EBUSY), P9 (no underflow)
- *   gale_sem_count_init  — P1 (0 <= count <= limit), P2 (limit > 0)
+ *   gale_k_sem_give_decide — P3 (increment capped at limit), P9 (no overflow)
+ *   gale_k_sem_take_decide — P5 (decrement by 1), P6 (-EBUSY), P9 (no underflow)
+ *   gale_sem_count_init    — P1 (0 <= count <= limit), P2 (limit > 0)
  */
 
 #include <zephyr/kernel.h>
@@ -88,23 +88,24 @@ int z_vrfy_k_sem_init(struct k_sem *sem, unsigned int initial_count,
 void z_impl_k_sem_give(struct k_sem *sem)
 {
 	k_spinlock_key_t key = k_spin_lock(&lock);
-	struct k_thread *thread;
-	bool resched;
+	bool resched = false;
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_sem, give, sem);
 
-	thread = z_unpend_first_thread(&sem->wait_q);
+	/* Extract: try to unpend first waiter (side effect: removes from queue) */
+	struct k_thread *thread = z_unpend_first_thread(&sem->wait_q);
 
-	if (unlikely(thread != NULL)) {
+	/* Decide: Rust determines action based on whether a waiter was found */
+	struct gale_sem_give_decision d = gale_k_sem_give_decide(
+		sem->count, sem->limit, thread != NULL ? 1U : 0U);
+
+	/* Apply: execute Rust's decision */
+	if (d.action == GALE_SEM_ACTION_WAKE) {
 		arch_thread_return_value_set(thread, 0);
 		z_ready_thread(thread);
 		resched = true;
 	} else {
-		/*
-		 * Verified by Gale: P3 (increment capped at limit),
-		 * P9 (no arithmetic overflow).
-		 */
-		sem->count = gale_sem_count_give(sem->count, sem->limit);
+		sem->count = d.new_count;
 		resched = handle_poll_events(sem);
 	}
 
@@ -128,7 +129,7 @@ static inline void z_vrfy_k_sem_give(struct k_sem *sem)
 
 int z_impl_k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 {
-	int ret;
+	int ret = 0;
 
 	__ASSERT(((arch_is_in_isr() == false) ||
 		  K_TIMEOUT_EQ(timeout, K_NO_WAIT)), "");
@@ -137,30 +138,21 @@ int z_impl_k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_sem, take, sem, timeout);
 
-	/*
-	 * Verified by Gale: P5 (decrement by 1 when count > 0),
-	 * P6 (-EBUSY when count == 0), P9 (no underflow).
-	 */
-	ret = gale_sem_count_take(&sem->count);
+	/* Decide: Rust determines acquire/busy/pend */
+	struct gale_sem_take_decision d = gale_k_sem_take_decide(
+		sem->count, K_TIMEOUT_EQ(timeout, K_NO_WAIT) ? 1U : 0U);
 
-	if (ret == 0) {
+	/* Apply */
+	if (d.action == GALE_SEM_ACTION_RETURN) {
+		sem->count = d.new_count;
+		ret = d.ret;
 		k_spin_unlock(&lock, key);
-		goto out;
+	} else {
+		/* PEND_CURRENT: block on wait queue with timeout */
+		ret = z_pend_curr(&lock, key, &sem->wait_q, timeout);
 	}
 
-	if (K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
-		k_spin_unlock(&lock, key);
-		ret = -EBUSY;
-		goto out;
-	}
-
-	SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_sem, take, sem, timeout);
-
-	ret = z_pend_curr(&lock, key, &sem->wait_q, timeout);
-
-out:
 	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_sem, take, sem, timeout, ret);
-
 	return ret;
 }
 
