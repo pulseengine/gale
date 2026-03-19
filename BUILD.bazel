@@ -22,7 +22,6 @@ load("//bzl:defs.bzl",
 # Verus-verified sources: modules that pass `verus` SMT verification.
 # Excluded (Verus limitations or proof issues needing rework):
 #   poll.rs: mutable array indexing (Verus limitation)
-#   sched.rs: function pointer types (Verus limitation)
 VERUS_SRCS = [
     "src/lib.rs",
     "src/error.rs",
@@ -61,6 +60,7 @@ VERUS_SRCS = [
     "src/work.rs",
     "src/userspace.rs",
     "src/mem_domain.rs",
+    "src/sched.rs",
 ]
 
 PLAIN_SRCS = ["//plain:srcs"]

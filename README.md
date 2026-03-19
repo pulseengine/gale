@@ -6,7 +6,7 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 
 ## Modules
 
-39 Rust modules covering the full Zephyr kernel surface. 37 pass Verus SMT verification:
+39 Rust modules covering the full Zephyr kernel surface. 38 pass Verus SMT verification:
 
 **Synchronization**
 
@@ -58,7 +58,7 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 
 | Module | Zephyr Source | Properties | Status |
 |--------|---------------|------------|--------|
-| sched | kernel/sched.c | SC01-SC16 | Annotated (Verus: fn pointer types) + Lean proofs |
+| sched | kernel/sched.c | SC01-SC16 | Verified + Lean proofs |
 | thread | kernel/thread.c | TH01-TH06 | Verified |
 | thread_lifecycle | kernel/thread.c | TL01-TL06 | Verified |
 | priority | kernel/priority | - | Verified + Lean proofs |
@@ -81,7 +81,7 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 ```
 src/*.rs          Verus-annotated Rust (39 modules, single source of truth)
     |
-    +---> Verus verification (37/39 modules, SMT/Z3)
+    +---> Verus verification (38/39 modules, SMT/Z3)
     |
     +---> verus-strip ---> plain/src/*.rs (auto-generated plain Rust)
     |       |                |
@@ -100,7 +100,7 @@ src/*.rs          Verus-annotated Rust (39 modules, single source of truth)
 
 Triple-track formal verification:
 
-- **Verus (SMT/Z3):** 37/39 modules verified via requires/ensures contracts (2 excluded due to Verus limitations)
+- **Verus (SMT/Z3):** 38/39 modules verified via requires/ensures contracts (1 excluded: poll.rs — mutable array indexing)
 - **Rocq (theorem proving):** 9/9 proof files pass across kernel primitives (sem, mutex, condvar, event, mem_slab, msgq, pipe, stack, timer)
 - **Lean 4:** 3/3 proof files pass — scheduler correctness (RMA bound), priority ceiling protocol, priority queue ordering
 - **Kani BMC:** 87/87 bounded model checking harnesses pass across 9 modules

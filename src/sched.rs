@@ -360,7 +360,6 @@ pub fn next_up_smp(
     current_is_active: bool,
     current_is_queued: bool,
     current_is_cooperative: bool,
-    candidate_is_metairq_fn: fn(&Thread) -> bool,
 ) -> (result: SmpSchedOutcome)
 {
     // --- Step 1: MetaIRQ preemption recovery (sched.c:202-210) ---
@@ -368,7 +367,7 @@ pub fn next_up_smp(
 
     if let Some(mirqp) = cpu_state.metairq_preempted {
         let best_is_metairq = match thread {
-            Some(ref t) => candidate_is_metairq_fn(t),
+            Some(ref t) => t.is_metairq,
             None => false,
         };
         if !best_is_metairq {
@@ -399,7 +398,7 @@ pub fn next_up_smp(
 
         if !should_preempt(
             current_is_cooperative,
-            candidate_is_metairq_fn(&chosen),
+            chosen.is_metairq,
             cpu_state.swap_ok,
         ) {
             chosen = current;
@@ -427,7 +426,6 @@ pub fn next_up_smp(
             &chosen,
             &current,
             current_is_cooperative,
-            candidate_is_metairq_fn,
             cpu_state,
         );
     }
@@ -448,12 +446,11 @@ fn update_metairq_preempt(
     new_thread: &Thread,
     current: &Thread,
     current_is_cooperative: bool,
-    is_metairq: fn(&Thread) -> bool,
     cpu_state: &mut CpuSchedState,
 ) {
-    if is_metairq(new_thread) && !is_metairq(current) && current_is_cooperative {
+    if new_thread.is_metairq && !current.is_metairq && current_is_cooperative {
         cpu_state.metairq_preempted = Some(*current);
-    } else if !is_metairq(new_thread) {
+    } else if !new_thread.is_metairq {
         cpu_state.metairq_preempted = None;
     }
 }

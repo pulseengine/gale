@@ -46,6 +46,10 @@ pub struct Thread {
     /// Return value set by kernel when unblocking this thread.
     /// Corresponds to arch_thread_return_value_set() in Zephyr.
     pub return_value: i32,
+    /// Whether this thread has MetaIRQ priority.
+    /// In Zephyr, MetaIRQ threads have priority < CONFIG_NUM_METAIRQ_PRIORITIES.
+    /// Used by scheduler to decide preemption policy (SC6, SC9).
+    pub is_metairq: bool,
 }
 impl Thread {
     /// Create a new thread in the Ready state.
@@ -55,6 +59,7 @@ impl Thread {
             priority,
             state: ThreadState::Ready,
             return_value: 0,
+            is_metairq: false,
         }
     }
     /// Transition: Ready -> Running (scheduler dispatches this thread).

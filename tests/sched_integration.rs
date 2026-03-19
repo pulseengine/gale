@@ -836,15 +836,11 @@ fn all_valid_transitions_are_consistent_with_operations() {
 
 use gale::sched::{CpuSchedState, next_up_smp};
 
-/// Helper: predicate for identifying MetaIRQ threads.
-/// Convention: priority 0 is MetaIRQ in our test model.
-fn is_metairq(t: &Thread) -> bool {
-    t.priority.get() == 0
-}
-
-/// Helper: predicate that says no thread is MetaIRQ.
-fn never_metairq(_t: &Thread) -> bool {
-    false
+/// Helper: make a thread with is_metairq set.
+fn make_metairq_thread(id: u32, prio: u32) -> Thread {
+    let mut t = make_ready_thread(id, prio);
+    t.is_metairq = true;
+    t
 }
 
 /// SC9: When a cooperative thread was preempted by a MetaIRQ and is still
@@ -863,7 +859,7 @@ fn test_metairq_preemption_preference() {
     let runq_best = make_ready_thread(20, 3);
 
     // Current is the MetaIRQ thread (prio 0), now finishing
-    let current_metairq = make_ready_thread(99, 0);
+    let current_metairq = make_metairq_thread(99, 0);
 
     let _outcome = next_up_smp(
         Some(runq_best),
@@ -872,7 +868,6 @@ fn test_metairq_preemption_preference() {
         true,  // current_is_active
         false, // current_is_queued
         false, // current_is_cooperative (MetaIRQ is preemptive)
-        is_metairq,
     );
 
     // SC9: The preempted cooperative thread (id=10) should be chosen
@@ -891,7 +886,6 @@ fn test_metairq_preemption_preference() {
         false, // current NOT active (e.g., it's blocking)
         false,
         false,
-        is_metairq,
     );
 
     // With inactive current, the MetaIRQ-preempted coop thread wins
@@ -923,7 +917,6 @@ fn test_smp_current_stays_if_higher_prio() {
         true,  // active
         false, // not queued
         false, // preemptive
-        never_metairq,
     );
 
     match outcome.choice {
@@ -957,7 +950,6 @@ fn test_smp_ties_only_switch_on_yield() {
         true,
         false,
         false,
-        never_metairq,
     );
 
     match outcome_no_yield.choice {
@@ -978,7 +970,6 @@ fn test_smp_ties_only_switch_on_yield() {
         true,
         false,
         false,
-        never_metairq,
     );
 
     match outcome_yield.choice {
@@ -1011,7 +1002,6 @@ fn test_smp_current_requeued_when_preempted() {
         true,  // active
         false, // NOT queued
         false, // preemptive
-        never_metairq,
     );
 
     match outcome1.choice {
@@ -1032,7 +1022,6 @@ fn test_smp_current_requeued_when_preempted() {
         true, // active
         true, // ALREADY queued
         false,
-        never_metairq,
     );
     assert!(
         !outcome2.requeue_current,
@@ -1048,7 +1037,6 @@ fn test_smp_current_requeued_when_preempted() {
         true,
         false,
         false,
-        never_metairq,
     );
     assert!(!outcome3.requeue_current, "SC12: idle thread -> no requeue");
 
@@ -1061,7 +1049,6 @@ fn test_smp_current_requeued_when_preempted() {
         false, // NOT active
         false,
         false,
-        never_metairq,
     );
     assert!(!outcome4.requeue_current, "SC12: not active -> no requeue");
 
@@ -1075,7 +1062,6 @@ fn test_smp_current_requeued_when_preempted() {
         true,
         false,
         false,
-        never_metairq,
     );
     assert!(
         !outcome5.requeue_current,
