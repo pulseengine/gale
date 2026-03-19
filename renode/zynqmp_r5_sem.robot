@@ -9,7 +9,7 @@ Create Machine
     #   - Halts all A53 cores
     #   - Enables RPU core 0
     #   - Loads the ELF onto rpu0
-    Execute Command           set bin %{ELF}
+    Execute Command           set bin @%{ELF}
     Execute Command           include @scripts/single-node/zynqmp_zephyr.resc
     Execute Command           machine SetSerialExecution True
 

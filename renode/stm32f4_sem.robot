@@ -6,7 +6,7 @@ ${UART}                       sysbus.usart2
 Create Machine
     Execute Command           mach create
     Execute Command           machine LoadPlatformDescription @platforms/boards/stm32f4_discovery.repl
-    Execute Command           sysbus LoadELF %{ELF}
+    Execute Command           sysbus LoadELF @%{ELF}
 
 *** Test Cases ***
 Should Pass Gale Semaphore Tests On Cortex-M4F
