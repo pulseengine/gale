@@ -54,9 +54,30 @@ Proof.
   - (* nonneg: Z.lor of nonneg is nonneg *)
     apply Z.lor_nonneg. split; assumption.
   - (* upper bound: OR can't exceed max of both, and both <= MAX *)
-    (* Conservative: just show result fits in u32 range *)
-    admit.  (* TODO: prove Z.lor e ne <= 0xFFFFFFFF given bounds *)
-Admitted.
+    unfold U32_MAX in *.
+    (* Case split: is the result zero or positive? *)
+    destruct (Z.eq_dec (Z.lor e ne) 0) as [Hzero | Hnonzero].
+    + (* Z.lor e ne = 0 — trivially <= U32_MAX *)
+      rewrite Hzero. lia.
+    + (* Z.lor e ne > 0 — use bit-level reasoning *)
+      assert (Hpos : 0 < Z.lor e ne).
+      { assert (Hnn : 0 <= Z.lor e ne) by (apply Z.lor_nonneg; lia). lia. }
+      (* Sufficient to show Z.lor e ne < 2^32 *)
+      enough (Z.lor e ne < 2 ^ 32) by lia.
+      apply Z.log2_lt_pow2; [exact Hpos |].
+      (* Z.log2 (Z.lor e ne) = Z.max (Z.log2 e) (Z.log2 ne) *)
+      rewrite Z.log2_lor by lia.
+      (* Need: Z.max (Z.log2 e) (Z.log2 ne) < 32 *)
+      apply Z.max_lub_lt.
+      * (* Z.log2 e < 32 *)
+        destruct (Z.eq_dec e 0) as [->|Hne0].
+        -- simpl. lia.
+        -- apply Z.log2_lt_pow2; lia.
+      * (* Z.log2 ne < 32 *)
+        destruct (Z.eq_dec ne 0) as [->|Hne0].
+        -- simpl. lia.
+        -- apply Z.log2_lt_pow2; lia.
+Qed.
 
 (** EV2: set replaces the entire bitmask *)
 Theorem set_replaces :
