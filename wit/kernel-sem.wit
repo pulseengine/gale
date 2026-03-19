@@ -1,0 +1,77 @@
+/// Counting semaphore interface for Gale kernel.
+///
+/// Provides a formally verified counting semaphore with give/take
+/// semantics matching Zephyr's k_sem API.  Thread blocking is managed
+/// internally by the Kiln runtime -- the WASM component sees only
+/// non-blocking try-take or runtime-managed blocking take.
+///
+/// Verified properties (ASIL-D):
+///   P1: 0 <= count <= limit (always)
+///   P2: limit > 0 (always)
+///   P3: give increments count or wakes a waiter
+///   P5: take decrements count when available
+///   P8: reset sets count to 0, wakes all waiters
+///   P9: no arithmetic overflow
+///
+/// Requirement: SWREQ-KILN-001
+
+interface kernel-sem {
+    use kernel-error.{kernel-error};
+
+    /// Result of a give operation.
+    enum give-result {
+        /// Count was incremented (no waiter was present).
+        incremented,
+        /// A waiting thread was woken (count unchanged).
+        woke-thread,
+        /// Count was already at limit -- saturated (no-op).
+        saturated,
+    }
+
+    /// Result of a take operation.
+    enum take-result {
+        /// Semaphore was available; count decremented.
+        acquired,
+        /// Semaphore unavailable, caller chose not to wait.
+        would-block,
+    }
+
+    /// A counting semaphore.
+    ///
+    /// Opaque handle to a kernel semaphore object managed by the Kiln
+    /// runtime.  The underlying Gale `Semaphore` struct and its wait
+    /// queue are not exposed to WASM components.
+    resource semaphore {
+        /// Create a new semaphore.
+        ///
+        /// Returns `invalid-argument` if `limit` is 0 or
+        /// `initial-count` exceeds `limit`.
+        constructor(initial-count: u32, limit: u32);
+
+        /// Give (signal) the semaphore.
+        ///
+        /// If threads are waiting, the highest-priority waiter is woken
+        /// and count is unchanged.  Otherwise count is incremented,
+        /// saturating at limit.
+        give: func() -> result<give-result, kernel-error>;
+
+        /// Try to take (acquire) the semaphore without blocking.
+        ///
+        /// Returns `acquired` if count > 0 (count decremented), or
+        /// `would-block` if count == 0.
+        try-take: func() -> result<take-result, kernel-error>;
+
+        /// Reset the semaphore.
+        ///
+        /// Sets count to 0 and wakes all waiting threads with an
+        /// `again` error.  Returns the number of threads that were
+        /// woken.
+        reset: func() -> result<u32, kernel-error>;
+
+        /// Get the current semaphore count.
+        count-get: func() -> u32;
+
+        /// Get the semaphore limit (maximum count).
+        limit-get: func() -> u32;
+    }
+}

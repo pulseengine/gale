@@ -1,0 +1,38 @@
+/// Gale kernel primitives -- WASM Component Model world definition.
+///
+/// This world defines the contract between WASM application components
+/// and the Kiln runtime for accessing formally verified kernel
+/// primitives.  All six Gale kernel objects are exposed as importable
+/// interfaces with resource-based handles.
+///
+/// The Kiln runtime implements these interfaces as host functions that
+/// delegate directly to Gale's verified Rust code.  Thread management,
+/// scheduling, and blocking are handled transparently by the runtime.
+///
+/// Requirement: SWREQ-KILN-001
+/// Derives from: SYSREQ-KILN-001 (Gale as Kiln host module)
+
+package gale:kernel@0.1.0;
+
+world kernel {
+    /// Shared error type used by all kernel interfaces.
+    import kernel-error;
+
+    /// Counting semaphore (P/V synchronization primitive).
+    import kernel-sem;
+
+    /// Reentrant mutex with ownership tracking.
+    import kernel-mutex;
+
+    /// Condition variable (wait/signal/broadcast).
+    import kernel-condvar;
+
+    /// Fixed-size message queue (ring buffer).
+    import kernel-msgq;
+
+    /// LIFO stack of word-sized entries.
+    import kernel-stack;
+
+    /// Byte stream pipe with open/closed/reset state machine.
+    import kernel-pipe;
+}

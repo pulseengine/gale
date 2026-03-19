@@ -1,0 +1,91 @@
+/// Message queue interface for Gale kernel.
+///
+/// Provides a formally verified fixed-size message queue (ring buffer)
+/// matching Zephyr's k_msgq API.  Messages are fixed-size byte arrays;
+/// the queue manages FIFO ordering with optional put-to-front.
+///
+/// Data transfer (memcpy of message payloads) is handled by the Kiln
+/// runtime using the canonical ABI.  Gale verifies the ring buffer
+/// index arithmetic and capacity invariants.
+///
+/// Verified properties (ASIL-D):
+///   MQ1: 0 <= used_msgs <= max_msgs (capacity invariant)
+///   MQ2-MQ3: read_idx, write_idx always in bounds
+///   MQ5: put on non-full queue succeeds
+///   MQ6: put on full queue returns error
+///   MQ8: get on non-empty queue succeeds
+///   MQ9: get on empty queue returns error
+///   MQ10: peek computes correct slot index
+///   MQ11: purge resets to empty
+///   MQ12: no arithmetic overflow
+///   MQ13: ring buffer consistency (write tracks read + used)
+///
+/// Requirement: SWREQ-KILN-001
+
+interface kernel-msgq {
+    use kernel-error.{kernel-error};
+
+    /// A fixed-size message queue (ring buffer).
+    ///
+    /// Opaque handle to a kernel message queue object managed by the
+    /// Kiln runtime.  Messages are fixed-size byte arrays; the size
+    /// is set at construction and cannot change.
+    resource message-queue {
+        /// Create a new message queue.
+        ///
+        /// `msg-size` is the size of each message in bytes (must be > 0).
+        /// `max-msgs` is the maximum number of messages (must be > 0).
+        ///
+        /// Returns `invalid-argument` if either is 0 or if
+        /// `msg-size * max-msgs` would overflow u32.
+        constructor(msg-size: u32, max-msgs: u32);
+
+        /// Put a message at the back of the queue.
+        ///
+        /// `data` must be exactly `msg-size` bytes.
+        /// Returns `no-message` if the queue is full.
+        put: func(data: list<u8>) -> result<_, kernel-error>;
+
+        /// Put a message at the front of the queue (priority insert).
+        ///
+        /// `data` must be exactly `msg-size` bytes.
+        /// Returns `no-message` if the queue is full.
+        put-front: func(data: list<u8>) -> result<_, kernel-error>;
+
+        /// Get (dequeue) the oldest message from the queue.
+        ///
+        /// Returns the message data (exactly `msg-size` bytes),
+        /// or `no-message` if the queue is empty.
+        get: func() -> result<list<u8>, kernel-error>;
+
+        /// Peek at a message by index without removing it.
+        ///
+        /// Index 0 is the oldest (next to be dequeued).
+        /// Returns the message data or `no-message` if `idx` is
+        /// out of range.
+        peek: func(idx: u32) -> result<list<u8>, kernel-error>;
+
+        /// Purge all messages from the queue.
+        ///
+        /// Returns the number of messages that were discarded.
+        purge: func() -> u32;
+
+        /// Get the number of messages currently in the queue.
+        num-used: func() -> u32;
+
+        /// Get the number of free slots in the queue.
+        num-free: func() -> u32;
+
+        /// Get the configured message size in bytes.
+        msg-size-get: func() -> u32;
+
+        /// Get the maximum message count (capacity).
+        max-msgs-get: func() -> u32;
+
+        /// Check if the queue is full.
+        is-full: func() -> bool;
+
+        /// Check if the queue is empty.
+        is-empty: func() -> bool;
+    }
+}

@@ -1,0 +1,45 @@
+/// Shared error types for Gale kernel primitives.
+///
+/// Maps Zephyr errno.h codes to a WIT enum usable across all kernel
+/// interfaces.  The Kiln runtime translates between Gale's i32 error
+/// codes and this enum at the host function boundary.
+///
+/// Requirement: SWREQ-KILN-001
+
+interface kernel-error {
+    /// Kernel operation error codes.
+    ///
+    /// Each variant corresponds to a Zephyr errno value used by Gale's
+    /// verified kernel primitives.
+    enum kernel-error {
+        /// Invalid argument (EINVAL, -22).
+        /// Returned when parameters fail validation (e.g., limit=0 for semaphore).
+        invalid-argument,
+        /// Resource busy (EBUSY, -16).
+        /// Returned when a non-blocking take finds the semaphore unavailable,
+        /// or a pop finds the stack empty.
+        busy,
+        /// Try again (EAGAIN, -11).
+        /// Returned when an operation would block but no wait was requested,
+        /// or when waiters are woken due to a reset.
+        again,
+        /// Operation not permitted (EPERM, -1).
+        /// Returned when a thread tries to unlock a mutex it does not own.
+        not-permitted,
+        /// Out of memory (ENOMEM, -12).
+        /// Returned when a stack push fails because the stack is full.
+        out-of-memory,
+        /// Broken pipe (EPIPE, -32).
+        /// Returned when writing to or reading from a closed pipe.
+        broken-pipe,
+        /// No message available (ENOMSG, -42).
+        /// Returned when a message queue get/peek finds no messages,
+        /// or a zero-length pipe I/O is attempted.
+        no-message,
+        /// Operation timed out (ETIMEDOUT, -110).
+        timed-out,
+        /// Operation canceled (ECANCELED, -125).
+        /// Returned when a pipe is in the resetting state.
+        canceled,
+    }
+}
