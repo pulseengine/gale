@@ -177,11 +177,7 @@ impl RingBuf {
         }
         let sum: u64 = self.head as u64 + idx as u64;
         let cap: u64 = self.capacity as u64;
-        if sum < cap {
-            Ok(sum as u32)
-        } else {
-            Ok((sum - cap) as u32)
-        }
+        if sum < cap { Ok(sum as u32) } else { Ok((sum - cap) as u32) }
     }
     /// Reset the ring buffer (discard all data).
     ///

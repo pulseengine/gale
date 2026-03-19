@@ -3604,3 +3604,89 @@ artifacts:
         target: SWREQ-SM-SM02
       - type: function-maps-to
         target: PROV-SM-001
+
+  # ── Integration test targets (SWE.5 / SWE.6) ─────────────────────────
+  #
+  # These architecture decisions capture the hardware/emulation platforms
+  # used for Zephyr integration and Renode emulation testing.
+  # Kiln and Synth can reference these IDs to declare compatibility or
+  # to specify which targets their code generation must pass on.
+
+  - id: SWARCH-TGT-001
+    type: sw-arch-component
+    title: Integration test target — QEMU Cortex-M3 (qemu_cortex_m3)
+    status: approved
+    description: >
+      Primary Zephyr integration test target for Gale kernel primitives.
+      20 upstream Zephyr test suites (semaphore, mutex, condvar, msgq,
+      stack, pipe, timer, event, sched, thread, and more) run on the
+      qemu_cortex_m3 board under west + QEMU.  All 20/20 suites pass
+      with Gale replacing the corresponding C kernel modules.
+      Chosen for QEMU Cortex-M3 availability in Zephyr CI Docker image
+      without hardware setup — the canonical CI board for Zephyr kernel tests.
+    tags: [test-target, qemu, cortex-m3, integration]
+    fields:
+      platform: qemu_cortex_m3
+      emulator: QEMU (via west build -t run)
+      architecture: ARMv7-M (Cortex-M3, no FPU)
+      rust-target: thumbv7m-none-eabi
+      ci-workflow: .github/workflows/zephyr-tests.yml
+      test-suites: 20
+    links:
+      - type: allocated-from
+        target: SYSREQ-SEM-001
+
+  - id: SWARCH-TGT-002
+    type: sw-arch-component
+    title: Renode emulation target — STM32F4 Discovery (Cortex-M4F)
+    status: approved
+    description: >
+      Hardware-accurate Renode emulation target for Cortex-M4F (ARMv7E-M
+      with FPU) validation.  The stm32f4_disco board with stm32f4_discovery.repl
+      platform runs Gale semaphore tests under Renode 1.16.0 (pre-installed
+      in Zephyr CI Docker image).  Confirms Gale functions correctly on
+      hardware with hardware floating-point and higher clock rates than M3.
+      Chosen because stm32f4_discovery.repl is fully emulated in Renode 1.16.0
+      with working USART2 for Zephyr console output.
+    tags: [test-target, renode, cortex-m4f, stm32f4]
+    fields:
+      platform: stm32f4_disco
+      emulator: Renode 1.16.0 (renode-test via Robot Framework)
+      renode-platform: platforms/boards/stm32f4_discovery.repl
+      architecture: ARMv7E-M (Cortex-M4F, with FPU)
+      rust-target: thumbv7em-none-eabihf
+      ci-workflow: .github/workflows/renode-tests.yml
+      uart: sysbus.usart2
+    links:
+      - type: allocated-from
+        target: SYSREQ-SEM-001
+      - type: enables
+        target: SWREQ-KILN-003
+
+  - id: SWARCH-TGT-003
+    type: sw-arch-component
+    title: Renode emulation target — STM32L552 Nucleo (Cortex-M33)
+    status: approved
+    description: >
+      Hardware-accurate Renode emulation target for Cortex-M33 (ARMv8-M
+      Mainline with TrustZone) validation.  The nucleo_l552ze_q board with
+      the Renode nucleo_l552ze_q_ns platform runs Gale semaphore tests
+      under Renode 1.16.0.  Confirms Gale functions on ARMv8-M which
+      introduces security extension changes to the exception model.
+      Chosen because Renode 1.16.0 ships a dedicated test platform
+      (tests/platforms/nucleo_l552ze_q/nucleo_l552ze_q_ns.repl) with
+      complete STM32L552 peripheral support including LPUART1.
+    tags: [test-target, renode, cortex-m33, stm32l552]
+    fields:
+      platform: nucleo_l552ze_q
+      emulator: Renode 1.16.0 (renode-test via Robot Framework)
+      renode-platform: tests/platforms/nucleo_l552ze_q/nucleo_l552ze_q_ns.repl
+      architecture: ARMv8-M Mainline (Cortex-M33, with FPU + TrustZone)
+      rust-target: thumbv8m.main-none-eabihf
+      ci-workflow: .github/workflows/renode-tests.yml
+      uart: sysbus.lpuart1
+    links:
+      - type: allocated-from
+        target: SYSREQ-SEM-001
+      - type: enables
+        target: SWREQ-KILN-003

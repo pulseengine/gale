@@ -46,7 +46,7 @@ overflow-checks = true
 # Core safety lints
 unsafe_code = "deny"
 # TODO: enable missing_docs = "warn" once all items are documented
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(verus_keep_ghost)'] }
 
 [lints.clippy]
 # === DENY: Correctness & safety-critical ===

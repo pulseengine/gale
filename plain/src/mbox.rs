@@ -119,11 +119,15 @@ impl Mbox {
     /// - MB4: thread ID filtering — K_ANY matches any, else exact match
     /// - MB5: data exchange size = min(tx_size, rx_buf_size)
     /// - MB6: no overflow in size min computation
-    pub fn message_match(&self, tx_msg: &MboxMsg, rx_msg: &MboxMsg) -> Result<(u32, u32), i32> {
-        let tx_target_ok =
-            tx_msg.tx_target_thread == K_ANY || tx_msg.tx_target_thread == rx_msg.tx_target_thread;
-        let rx_source_ok =
-            rx_msg.rx_source_thread == K_ANY || rx_msg.rx_source_thread == tx_msg.rx_source_thread;
+    pub fn message_match(
+        &self,
+        tx_msg: &MboxMsg,
+        rx_msg: &MboxMsg,
+    ) -> Result<(u32, u32), i32> {
+        let tx_target_ok = tx_msg.tx_target_thread == K_ANY
+            || tx_msg.tx_target_thread == rx_msg.tx_target_thread;
+        let rx_source_ok = rx_msg.rx_source_thread == K_ANY
+            || rx_msg.rx_source_thread == tx_msg.rx_source_thread;
         if tx_target_ok && rx_source_ok {
             let actual_size = if rx_msg.size > tx_msg.size {
                 tx_msg.size
@@ -160,11 +164,7 @@ impl Mbox {
     /// - MB5: actual size = min(tx_data_size, rx_buffer_size)
     /// - MB6: no overflow — result <= both inputs
     pub fn validate_data_exchange(tx_data_size: u32, rx_buffer_size: u32) -> u32 {
-        if rx_buffer_size > tx_data_size {
-            tx_data_size
-        } else {
-            rx_buffer_size
-        }
+        if rx_buffer_size > tx_data_size { tx_data_size } else { rx_buffer_size }
     }
     /// Check if a send/receive pair's thread IDs are compatible.
     ///

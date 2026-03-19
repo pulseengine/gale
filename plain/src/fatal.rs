@@ -76,7 +76,11 @@ pub struct FatalError {
 }
 impl FatalError {
     /// Create a fatal error event.
-    pub fn new(reason: FatalReason, context: FatalContext, test_mode: bool) -> FatalError {
+    pub fn new(
+        reason: FatalReason,
+        context: FatalContext,
+        test_mode: bool,
+    ) -> FatalError {
         FatalError {
             reason,
             context,
@@ -93,29 +97,37 @@ impl FatalError {
         if !self.test_mode {
             match self.reason {
                 FatalReason::KernelPanic => RecoveryAction::Halt,
-                FatalReason::CpuException => match self.context {
-                    FatalContext::Isr => RecoveryAction::Halt,
-                    FatalContext::Thread => RecoveryAction::AbortThread,
-                },
-                FatalReason::SpuriousIrq => match self.context {
-                    FatalContext::Isr => RecoveryAction::Halt,
-                    FatalContext::Thread => RecoveryAction::AbortThread,
-                },
+                FatalReason::CpuException => {
+                    match self.context {
+                        FatalContext::Isr => RecoveryAction::Halt,
+                        FatalContext::Thread => RecoveryAction::AbortThread,
+                    }
+                }
+                FatalReason::SpuriousIrq => {
+                    match self.context {
+                        FatalContext::Isr => RecoveryAction::Halt,
+                        FatalContext::Thread => RecoveryAction::AbortThread,
+                    }
+                }
                 FatalReason::StackCheckFail => RecoveryAction::AbortThread,
-                FatalReason::KernelOops => match self.context {
-                    FatalContext::Isr => RecoveryAction::Halt,
-                    FatalContext::Thread => RecoveryAction::AbortThread,
-                },
+                FatalReason::KernelOops => {
+                    match self.context {
+                        FatalContext::Isr => RecoveryAction::Halt,
+                        FatalContext::Thread => RecoveryAction::AbortThread,
+                    }
+                }
             }
         } else {
             match self.context {
-                FatalContext::Isr => match self.reason {
-                    FatalReason::SpuriousIrq => RecoveryAction::Ignore,
-                    FatalReason::StackCheckFail => RecoveryAction::AbortThread,
-                    FatalReason::CpuException => RecoveryAction::Ignore,
-                    FatalReason::KernelOops => RecoveryAction::Ignore,
-                    FatalReason::KernelPanic => RecoveryAction::Ignore,
-                },
+                FatalContext::Isr => {
+                    match self.reason {
+                        FatalReason::SpuriousIrq => RecoveryAction::Ignore,
+                        FatalReason::StackCheckFail => RecoveryAction::AbortThread,
+                        FatalReason::CpuException => RecoveryAction::Ignore,
+                        FatalReason::KernelOops => RecoveryAction::Ignore,
+                        FatalReason::KernelPanic => RecoveryAction::Ignore,
+                    }
+                }
                 FatalContext::Thread => RecoveryAction::AbortThread,
             }
         }

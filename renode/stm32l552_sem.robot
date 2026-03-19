@@ -5,8 +5,8 @@ ${UART}                       sysbus.lpuart1
 *** Keywords ***
 Create Machine
     Execute Command           mach create
-    Execute Command           machine LoadPlatformDescription @platforms/cpus/stm32l552.repl
-    Execute Command           sysbus LoadELF ${ELF}
+    Execute Command           machine LoadPlatformDescription @tests/platforms/nucleo_l552ze_q/nucleo_l552ze_q_ns.repl
+    Execute Command           sysbus LoadELF @%{ELF}
 
 *** Test Cases ***
 Should Pass Gale Semaphore Tests On Cortex-M33

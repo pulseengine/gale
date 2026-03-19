@@ -1,10 +1,13 @@
-# Multi-architecture build verification
+# Renode emulation tests for Gale on M4F and M33 architectures
 #
-# Builds Zephyr+Gale semaphore test for M4F, M33, and R5 targets.
-# Proves the Rust FFI cross-compiles correctly for each architecture.
-# Renode emulation tests will be added once renode-bazel-rules is wired in.
+# Builds Zephyr+Gale semaphore test for each board with west, then runs
+# the Renode Robot Framework tests to verify correct execution on the
+# emulated hardware.  Complements zephyr-tests.yml (which uses QEMU M3)
+# by covering hardware-accurate M4F (STM32F4) and M33 (STM32L552/nucleo_l552ze_q) emulation.
+#
+# Renode portable handles its own .NET runtime — no system deps needed.
 
-name: Multi-Arch Build
+name: Renode Emulation Tests
 
 on:
   push:
@@ -17,9 +20,10 @@ env:
   DOCKER_CONFIG: /tmp/.docker
 
 jobs:
-  build:
+  renode-test:
     name: "${{ matrix.arch }} (${{ matrix.board }})"
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     container:
       image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
       options: --user root
@@ -27,18 +31,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - board: mps2/an385
-            arch: cortex-m3
-            rust_target: thumbv7m-none-eabi
-            test_path: tests/kernel/semaphore/semaphore
-          - board: mps2/an386
-            arch: cortex-m4
+          - board: stm32f4_disco
+            arch: cortex-m4f
             rust_target: thumbv7em-none-eabihf
             test_path: tests/kernel/semaphore/semaphore
-          - board: mps2/an521/cpu0
+            robot_file: stm32f4_sem.robot
+
+          - board: nucleo_l552ze_q
             arch: cortex-m33
             rust_target: thumbv8m.main-none-eabihf
             test_path: tests/kernel/semaphore/semaphore
+            robot_file: stm32l552_sem.robot
 
     steps:
       - name: Checkout Gale
@@ -54,7 +57,7 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           . /root/.cargo/env
           rustup target add "${RUST_TARGET}"
-          # Also install non-hf variant in case FPU is disabled
+          # Install non-hf variant in case the board uses soft-float ABI
           NON_HF=$(echo "${RUST_TARGET}" | sed 's/eabihf$/eabi/')
           if [ "${NON_HF}" != "${RUST_TARGET}" ]; then
             rustup target add "${NON_HF}" || true
@@ -68,7 +71,7 @@ jobs:
           west update --narrow -o=--depth=1
           west sdk install
 
-      - name: Build semaphore test
+      - name: Build Zephyr+Gale ELF
         env:
           BOARD: ${{ matrix.board }}
           TEST_PATH: ${{ matrix.test_path }}
@@ -82,6 +85,30 @@ jobs:
             -- \
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf"
+
+      - name: Install Robot Framework
+        run: |
+          # The Zephyr CI Docker image (ci:v0.29.0) includes Renode pre-installed
+          # at /opt/renode (already in PATH). Just install Robot Framework.
+          pip3 install robotframework
+
+      - name: Run Renode test
+        env:
+          ROBOT_FILE: ${{ matrix.robot_file }}
+          ELF: ${{ github.workspace }}/zephyr-workspace/build/zephyr/zephyr.elf
+        run: |
+          GALE_ROOT="${GITHUB_WORKSPACE}/gale"
+          mkdir -p "${GITHUB_WORKSPACE}/renode-results"
+          cd "${GITHUB_WORKSPACE}/renode-results"
+          renode-test "${GALE_ROOT}/renode/${ROBOT_FILE}"
+
+      - name: Upload Renode results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: "renode-results-${{ matrix.arch }}"
+          path: renode-results/
+          retention-days: 7
 
       - name: Upload ELF
         if: success()

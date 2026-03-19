@@ -189,11 +189,6 @@ fn strip_body(body: &str) -> String {
 
         // Check for verus clause keywords: requires, ensures, invariant, decreases
         if is_verus_clause_at(&trees, i) {
-            let keyword = if let TokenTree::Ident(id) = &trees[i] {
-                id.to_string()
-            } else {
-                String::new()
-            };
             let skip_to = skip_clause(&trees, i);
             trim_trailing_whitespace(&mut out);
             i = skip_to;
@@ -212,6 +207,47 @@ fn strip_body(body: &str) -> String {
         if is_verifier_attr_at(&trees, i) {
             i += 2; // skip # + [group]
             continue;
+        }
+
+        // Check for inline `proof { ... }` blocks inside exec function bodies.
+        // These appear as `Ident("proof")` followed directly by a brace group.
+        // Distinct from `proof fn` (which is handled by try_skip_verus_item).
+        if let TokenTree::Ident(id) = &trees[i] {
+            if id.to_string() == "proof" {
+                if let Some(TokenTree::Group(g)) = trees.get(i + 1) {
+                    if g.delimiter() == Delimiter::Brace {
+                        // Inline proof block — drop both the keyword and the body
+                        trim_trailing_whitespace(&mut out);
+                        i += 2;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Check for `let ghost x = ...;` — ghost variable declarations.
+        // Strip the entire statement (up to and including the semicolon).
+        if let TokenTree::Ident(id) = &trees[i] {
+            if id.to_string() == "let" {
+                if let Some(TokenTree::Ident(next)) = trees.get(i + 1) {
+                    if next.to_string() == "ghost" {
+                        // Skip: let ghost ... ;
+                        let mut j = i + 2;
+                        while j < trees.len() {
+                            if let TokenTree::Punct(p) = &trees[j] {
+                                if p.as_char() == ';' {
+                                    j += 1;
+                                    break;
+                                }
+                            }
+                            j += 1;
+                        }
+                        trim_trailing_whitespace(&mut out);
+                        i = j;
+                        continue;
+                    }
+                }
+            }
         }
 
         // Check for named return type: -> (name: Type)
@@ -313,38 +349,6 @@ fn collect_idents(trees: &[TokenTree], pos: usize) -> Vec<String> {
 }
 
 /// Check if the Brace group at `pos` is an impl or mod body
-/// (as opposed to a function body, match arm, loop body, etc.).
-/// We check by looking backwards for `impl` or `mod` keywords.
-fn is_impl_or_mod_body(trees: &[TokenTree], pos: usize) -> bool {
-    // Walk backwards to find the nearest ident before this brace group.
-    // Skip over type parameters, where clauses, etc.
-    let mut j = pos;
-    while j > 0 {
-        j -= 1;
-        match &trees[j] {
-            TokenTree::Ident(id) => {
-                let s = id.to_string();
-                if s == "impl" || s == "mod" {
-                    return true;
-                }
-                // If we hit fn, struct, enum, etc. — not an impl body
-                if is_item_keyword(&s) {
-                    return false;
-                }
-                // Other idents (type names, where clause) — keep looking
-            }
-            TokenTree::Group(_) => {
-                // Skip over generic params, where clauses
-            }
-            TokenTree::Punct(_) => {
-                // Skip punctuation
-            }
-            _ => {}
-        }
-    }
-    false
-}
-
 fn is_item_keyword(s: &str) -> bool {
     matches!(s, "pub" | "fn" | "struct" | "enum" | "impl" | "use" | "const"
         | "type" | "trait" | "mod" | "static" | "unsafe" | "extern")
@@ -379,20 +383,6 @@ fn is_verus_clause_at(trees: &[TokenTree], pos: usize) -> bool {
     }
 }
 
-/// Skip a loop invariant/decreases clause. Returns the index of the
-/// loop body brace group. Takes the FIRST Brace group after the keyword.
-fn skip_clause_simple(trees: &[TokenTree], pos: usize) -> usize {
-    let mut j = pos + 1;
-    while j < trees.len() {
-        if let TokenTree::Group(g) = &trees[j] {
-            if g.delimiter() == Delimiter::Brace {
-                return j;
-            }
-        }
-        j += 1;
-    }
-    j
-}
 
 /// Skip a requires/ensures/invariant/decreases clause. Returns the index
 /// of the body brace group (function body or loop body) which should be emitted.
@@ -1121,5 +1111,47 @@ impl Foo {
         let result = make_standalone(input);
         assert!(!result.contains("#[cfg(not(verus_keep_ghost))]"), "cfg not removed");
         assert!(result.contains("pub fn foo"), "missing foo fn");
+    }
+
+    #[test]
+    fn test_strip_inline_proof_block() {
+        let body = r#"
+pub fn classify(hfsr: u32, cfsr: u32) -> u32 {
+    if hfsr != 0 {
+        proof {
+            assert(hfsr > 0u32) by (bit_vector) requires hfsr != 0u32;
+        }
+        1u32
+    } else {
+        proof {
+            assert(cfsr == 0u32) by (bit_vector);
+        }
+        0u32
+    }
+}
+"#;
+        let result = strip_body(body);
+        assert!(!result.contains("proof {"), "proof block not stripped: {result}");
+        assert!(!result.contains("assert("), "assert not stripped: {result}");
+        assert!(result.contains("fn classify"), "missing classify fn: {result}");
+        assert!(result.contains("1u32"), "missing 1u32: {result}");
+        assert!(result.contains("0u32"), "missing 0u32: {result}");
+    }
+
+    #[test]
+    fn test_strip_let_ghost() {
+        let body = r#"
+pub fn add_partition(&mut self, part: u32) -> i32 {
+    let ghost orig = self.count;
+    let real_orig = self.count;
+    self.count = self.count + part;
+    0i32
+}
+"#;
+        let result = strip_body(body);
+        assert!(!result.contains("let ghost"), "let ghost not stripped: {result}");
+        assert!(!result.contains("ghost orig"), "ghost var not stripped: {result}");
+        assert!(result.contains("real_orig"), "real var wrongly stripped: {result}");
+        assert!(result.contains("fn add_partition"), "missing fn: {result}");
     }
 }

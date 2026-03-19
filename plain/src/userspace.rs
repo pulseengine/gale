@@ -234,7 +234,6 @@ impl KernelObject {
         is_supervisor: bool,
         init_check: InitCheck,
     ) -> Result<(), i32> {
-        // US4: type validation — use match to avoid PartialEq on enums
         let type_ok = match expected_type {
             ObjType::Any => true,
             ObjType::Thread => matches!(self.obj_type, ObjType::Thread),
