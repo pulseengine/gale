@@ -117,7 +117,7 @@ Triple-track formal verification:
 |----------|-------|--------|
 | Rust CI | cargo test, clippy, verus-strip gate | 995 tests |
 | Zephyr Kernel Tests | 20 upstream test suites on qemu_cortex_m3 | 20/20 pass |
-| Renode Emulation Tests | Cortex-M4F (STM32F4) + Cortex-M33 (MPS2/AN521) | 2 boards |
+| Renode Emulation Tests | Cortex-M4F (STM32F4) + Cortex-M33 (STM32L552) | 2 boards |
 
 ## Traceability
 
