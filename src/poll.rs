@@ -539,6 +539,11 @@ impl PollEvents {
     {
         let mut i: u32 = 0;
         while i < self.num_events
+            invariant
+                0 <= i <= self.num_events,
+                self.num_events == old(self).num_events,
+                self.num_events <= MAX_POLL_EVENTS,
+            decreases self.num_events - i,
         {
             self.events[i as usize].state = STATE_NOT_READY;
             i = i + 1;
@@ -554,6 +559,10 @@ impl PollEvents {
         let mut i: u32 = 0;
         let mut found: bool = false;
         while i < self.num_events
+            invariant
+                0 <= i <= self.num_events,
+                self.num_events <= MAX_POLL_EVENTS,
+            decreases self.num_events - i,
         {
             if self.events[i as usize].state != STATE_NOT_READY {
                 found = true;
@@ -570,6 +579,11 @@ impl PollEvents {
         let mut i: u32 = 0;
         let mut count: u32 = 0;
         while i < self.num_events
+            invariant
+                0 <= i <= self.num_events,
+                self.num_events <= MAX_POLL_EVENTS,
+                count <= i,
+            decreases self.num_events - i,
         {
             if self.events[i as usize].state != STATE_NOT_READY {
                 count = count + 1;
