@@ -221,6 +221,14 @@ int z_impl_k_pipe_read(struct k_pipe *pipe, uint8_t *data, size_t len, k_timeout
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_pipe, read, pipe, data, len, timeout);
 
 	for (;;) {
+		/* After waking from direct copy, buf.used may already
+		 * satisfy the request — check before asking Rust.
+		 */
+		if (buf.used >= len) {
+			rc = buf.used;
+			break;
+		}
+
 		/* Extract: gather kernel state */
 		uint32_t used = ring_buf_size_get(&pipe->buf);
 		uint32_t capacity = ring_buf_capacity_get(&pipe->buf);
