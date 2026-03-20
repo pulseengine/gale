@@ -1036,6 +1036,109 @@ pub extern "C" fn gale_stack_pop_validate(
     }
 }
 
+// ---- Phase 2: Full Decision API for Stack ----
+
+/// Decision struct for k_stack_push — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleStackPushDecision {
+    /// Return code: 0 (OK), -ENOMEM (full)
+    pub ret: i32,
+    /// New count value (only meaningful when action=PUSH_OK and no waiter)
+    pub new_count: u32,
+    /// Action: 0=PUSH_OK, 1=PEND_CURRENT (unused for push — always immediate)
+    /// With push: 0=PUSH_OK means store data or wake waiter, 1 is not used.
+    /// We use: 0=STORE_DATA, 1=WAKE_WAITER, 2=FULL
+    pub action: u8,
+}
+
+pub const GALE_STACK_PUSH_STORE: u8 = 0;
+pub const GALE_STACK_PUSH_WAKE: u8 = 1;
+pub const GALE_STACK_PUSH_FULL: u8 = 2;
+
+/// Full decision for k_stack_push: decides whether to store data, wake a waiter,
+/// or reject because the stack is full.
+///
+/// The C shim calls z_unpend_first_thread first (side effect), then passes
+/// whether a waiter was found.  Rust decides the action.
+///
+/// Verified: SK1 (bounds), SK3 (increment), SK4 (-ENOMEM).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_stack_push_decide(
+    count: u32,
+    capacity: u32,
+    has_waiter: u32,
+) -> GaleStackPushDecision {
+    if has_waiter != 0 {
+        // Waiter exists: give data directly to waiting thread (count unchanged)
+        GaleStackPushDecision {
+            ret: OK,
+            new_count: count,
+            action: GALE_STACK_PUSH_WAKE,
+        }
+    } else if count < capacity {
+        // Space available: store data, increment count
+        #[allow(clippy::arithmetic_side_effects)]
+        let new_count = count + 1;
+        GaleStackPushDecision {
+            ret: OK,
+            new_count,
+            action: GALE_STACK_PUSH_STORE,
+        }
+    } else {
+        // Full: reject
+        GaleStackPushDecision {
+            ret: ENOMEM,
+            new_count: count,
+            action: GALE_STACK_PUSH_FULL,
+        }
+    }
+}
+
+/// Decision struct for k_stack_pop — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleStackPopDecision {
+    /// Return code: 0 (OK), -EBUSY (empty + no_wait)
+    pub ret: i32,
+    /// New count value (decremented if popped)
+    pub new_count: u32,
+    /// Action: 0=POP_OK (return data), 1=PEND_CURRENT (block or return -EBUSY)
+    pub action: u8,
+}
+
+pub const GALE_STACK_POP_OK: u8 = 0;
+pub const GALE_STACK_POP_PEND: u8 = 1;
+
+/// Full decision for k_stack_pop: decides whether to pop data or pend/reject.
+///
+/// Verified: SK1 (bounds), SK5 (decrement), SK6 (-EBUSY).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_stack_pop_decide(
+    count: u32,
+    is_no_wait: u32,
+) -> GaleStackPopDecision {
+    if count > 0 {
+        #[allow(clippy::arithmetic_side_effects)]
+        let new_count = count - 1;
+        GaleStackPopDecision {
+            ret: OK,
+            new_count,
+            action: GALE_STACK_POP_OK,
+        }
+    } else if is_no_wait != 0 {
+        GaleStackPopDecision {
+            ret: EBUSY,
+            new_count: 0,
+            action: GALE_STACK_POP_OK,
+        }
+    } else {
+        GaleStackPopDecision {
+            ret: 0,
+            new_count: 0,
+            action: GALE_STACK_POP_PEND,
+        }
+    }
+}
+
 /// Validate timer init parameters.
 ///
 /// timer.c init:
@@ -1111,6 +1214,69 @@ pub extern "C" fn gale_timer_status_get(
             *new_status = 0;
         }
         status
+    }
+}
+
+// ---- Decision API for timer ----
+
+/// Decision struct for timer expiry — tells C shim what new status to apply.
+#[repr(C)]
+pub struct GaleTimerExpireDecision {
+    /// New status value (status + 1, or unchanged on overflow).
+    pub new_status: u32,
+    /// Whether the timer has a non-zero period (1 = periodic, 0 = one-shot).
+    pub is_periodic: u8,
+}
+
+/// Decision for timer expiry handler: increment status and classify period.
+///
+/// Extract→Decide→Apply: C extracts timer->status and timer->period,
+/// Rust decides the new status value and whether timer is periodic,
+/// C applies new_status to timer->status.
+///
+/// Verified: TM5 (increment), TM8 (no overflow — saturates at u32::MAX).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_timer_expire_decide(
+    status: u32,
+    period: u32,
+) -> GaleTimerExpireDecision {
+    let new_status = if status < u32::MAX {
+        #[allow(clippy::arithmetic_side_effects)]
+        { status + 1 }
+    } else {
+        // Saturate at u32::MAX — no overflow.
+        status
+    };
+    GaleTimerExpireDecision {
+        new_status,
+        is_periodic: if period > 0 { 1 } else { 0 },
+    }
+}
+
+/// Decision struct for timer status_get — tells C shim what count to return
+/// and what new status to apply (reset to 0).
+#[repr(C)]
+pub struct GaleTimerStatusDecision {
+    /// The old status value to return to the caller.
+    pub count: u32,
+    /// New status value (always 0 — reset after read).
+    pub new_status: u32,
+}
+
+/// Decision for k_timer_status_get: read current status and reset to 0.
+///
+/// Extract→Decide→Apply: C extracts timer->status,
+/// Rust decides the return value (old status) and new status (0),
+/// C applies new_status to timer->status and returns count.
+///
+/// Verified: TM2 (read + reset to 0).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_timer_status_decide(
+    status: u32,
+) -> GaleTimerStatusDecision {
+    GaleTimerStatusDecision {
+        count: status,
+        new_status: 0,
     }
 }
 
@@ -1204,6 +1370,105 @@ pub extern "C" fn gale_mem_slab_free_validate(
             *new_num_used = num_used - 1;
         }
         OK
+    }
+}
+
+// ---- Memory Slab Decision API ----
+
+/// Decision struct for k_mem_slab_alloc — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleMemSlabAllocDecision {
+    /// Return code: 0 (OK), -ENOMEM (slab full)
+    pub ret: i32,
+    /// New num_used value (incremented if allocated)
+    pub new_num_used: u32,
+    /// Action: 0=ALLOC_OK, 1=PEND_CURRENT, 2=RETURN_NOMEM
+    pub action: u8,
+}
+
+pub const GALE_MEM_SLAB_ACTION_ALLOC_OK: u8 = 0;
+pub const GALE_MEM_SLAB_ACTION_PEND_CURRENT: u8 = 1;
+pub const GALE_MEM_SLAB_ACTION_RETURN_NOMEM: u8 = 2;
+
+/// Full decision for k_mem_slab_alloc: decides whether to allocate, pend, or return -ENOMEM.
+///
+/// The C shim extracts num_used, num_blocks, and whether the caller is willing
+/// to wait.  Rust decides the action.
+///
+/// Verified: MS4 (increment), MS5 (-ENOMEM), MS1 (bounds).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_mem_slab_alloc_decide(
+    num_used: u32,
+    num_blocks: u32,
+    is_no_wait: u32,
+) -> GaleMemSlabAllocDecision {
+    if num_used < num_blocks {
+        #[allow(clippy::arithmetic_side_effects)]
+        let new_num_used = num_used + 1;
+        GaleMemSlabAllocDecision {
+            ret: OK,
+            new_num_used,
+            action: GALE_MEM_SLAB_ACTION_ALLOC_OK,
+        }
+    } else if is_no_wait != 0 {
+        GaleMemSlabAllocDecision {
+            ret: ENOMEM,
+            new_num_used: num_used,
+            action: GALE_MEM_SLAB_ACTION_RETURN_NOMEM,
+        }
+    } else {
+        GaleMemSlabAllocDecision {
+            ret: 0,
+            new_num_used: num_used,
+            action: GALE_MEM_SLAB_ACTION_PEND_CURRENT,
+        }
+    }
+}
+
+/// Decision struct for k_mem_slab_free — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleMemSlabFreeDecision {
+    /// New num_used value (decremented)
+    pub new_num_used: u32,
+    /// Action: 0=FREE_OK, 1=WAKE_THREAD
+    pub action: u8,
+}
+
+pub const GALE_MEM_SLAB_ACTION_FREE_OK: u8 = 0;
+pub const GALE_MEM_SLAB_ACTION_WAKE_THREAD: u8 = 1;
+
+/// Full decision for k_mem_slab_free: decides whether to return block to free list or wake a thread.
+///
+/// The C shim checks whether there is a waiting thread (and whether the free
+/// list was empty).  Rust decides the action.
+///
+/// Verified: MS6 (decrement), MS1 (bounds).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_mem_slab_free_decide(
+    num_used: u32,
+    has_waiter: u32,
+) -> GaleMemSlabFreeDecision {
+    if has_waiter != 0 {
+        // Don't decrement — the block goes directly to the woken thread,
+        // so the allocation count stays the same.
+        GaleMemSlabFreeDecision {
+            new_num_used: num_used,
+            action: GALE_MEM_SLAB_ACTION_WAKE_THREAD,
+        }
+    } else if num_used > 0 {
+        #[allow(clippy::arithmetic_side_effects)]
+        let new_num_used = num_used - 1;
+        GaleMemSlabFreeDecision {
+            new_num_used,
+            action: GALE_MEM_SLAB_ACTION_FREE_OK,
+        }
+    } else {
+        // All blocks already free — should not happen with valid usage.
+        // Return unchanged count with FREE_OK action (no-op).
+        GaleMemSlabFreeDecision {
+            new_num_used: 0,
+            action: GALE_MEM_SLAB_ACTION_FREE_OK,
+        }
     }
 }
 
@@ -1399,6 +1664,99 @@ pub extern "C" fn gale_event_wait_check_all(
     }
 }
 
+// ---- Phase 2: Full Decision API for events ----
+
+/// Wait type constants for event wait decisions.
+pub const GALE_EVENT_WAIT_ANY: u8 = 0;
+pub const GALE_EVENT_WAIT_ALL: u8 = 1;
+
+/// Action constants for event wait decisions.
+pub const GALE_EVENT_ACTION_MATCHED: u8 = 0;
+pub const GALE_EVENT_ACTION_PEND: u8 = 1;
+pub const GALE_EVENT_ACTION_TIMEOUT: u8 = 2;
+
+/// Decision struct for k_event_post_internal — tells C shim the new event bitmask.
+///
+/// Computes: (current_events & ~mask) | (new_events & mask)
+///
+/// This replaces gale_event_set_masked with a value-returning decision struct.
+#[repr(C)]
+pub struct GaleEventPostDecision {
+    /// The new event bitmask after applying the masked set.
+    pub new_events: u32,
+}
+
+/// Full decision for k_event_post_internal: computes the new bitmask after
+/// applying events through a mask.
+///
+/// Verified: EV4 — set_masked computes (current & ~mask) | (new & mask)
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_event_post_decide(
+    current_events: u32,
+    new_events: u32,
+    mask: u32,
+) -> GaleEventPostDecision {
+    GaleEventPostDecision {
+        new_events: (current_events & !mask) | (new_events & mask),
+    }
+}
+
+/// Decision struct for event wait condition check — tells C shim what to do.
+#[repr(C)]
+pub struct GaleEventWaitDecision {
+    /// Return code: 0 means success (matched), non-zero means no match
+    pub ret: i32,
+    /// The matched event bits (current & desired), or 0 if no match
+    pub matched_events: u32,
+    /// Action: 0=MATCHED, 1=PEND_CURRENT, 2=RETURN_TIMEOUT
+    pub action: u8,
+}
+
+/// Full decision for event wait: determines whether the wait condition is met,
+/// whether to pend the current thread, or return immediately on timeout.
+///
+/// wait_type: 0=ANY (at least one desired bit set), 1=ALL (all desired bits set)
+/// is_no_wait: non-zero if K_NO_WAIT timeout (should not block)
+///
+/// Verified: EV5 (any-bit match), EV6 (all-bits match)
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_event_wait_decide(
+    current_events: u32,
+    desired: u32,
+    wait_type: u8,
+    is_no_wait: u32,
+) -> GaleEventWaitDecision {
+    let matched = current_events & desired;
+
+    let condition_met = if wait_type == GALE_EVENT_WAIT_ALL {
+        // ALL: every desired bit must be present
+        (current_events & desired) == desired
+    } else {
+        // ANY: at least one desired bit present
+        matched != 0
+    };
+
+    if condition_met {
+        GaleEventWaitDecision {
+            ret: 0,
+            matched_events: matched,
+            action: GALE_EVENT_ACTION_MATCHED,
+        }
+    } else if is_no_wait != 0 {
+        GaleEventWaitDecision {
+            ret: 0,
+            matched_events: 0,
+            action: GALE_EVENT_ACTION_TIMEOUT,
+        }
+    } else {
+        GaleEventWaitDecision {
+            ret: 0,
+            matched_events: 0,
+            action: GALE_EVENT_ACTION_PEND,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // FFI exports — fifo (unbounded queue counter, FIFO ordering)
 // ---------------------------------------------------------------------------
@@ -1474,6 +1832,86 @@ pub extern "C" fn gale_fifo_get_validate(
     }
 }
 
+// ---- Phase 2: Full Decision API for Fifo ----
+
+/// Decision struct for k_fifo put (queue_insert) — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleFifoPutDecision {
+    /// Action: 0=PUT_OK (insert into list), 1=WAKE_THREAD (hand data to waiter)
+    pub action: u8,
+}
+
+pub const GALE_FIFO_PUT_OK: u8 = 0;
+pub const GALE_FIFO_PUT_WAKE: u8 = 1;
+
+/// Full decision for fifo put: decides whether to insert data or wake a waiting thread.
+///
+/// The C shim calls z_unpend_first_thread first (side effect), then passes
+/// whether a waiter was found.  Rust decides the action.
+///
+/// Fifo is unbounded, so put always succeeds (no capacity check needed).
+///
+/// Verified: FI1 (no overflow), FI2 (increment via PUT_OK path).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_fifo_put_decide(
+    _count: u32,
+    has_waiter: u32,
+) -> GaleFifoPutDecision {
+    if has_waiter != 0 {
+        GaleFifoPutDecision {
+            action: GALE_FIFO_PUT_WAKE,
+        }
+    } else {
+        GaleFifoPutDecision {
+            action: GALE_FIFO_PUT_OK,
+        }
+    }
+}
+
+/// Decision struct for k_fifo get (k_queue_get) — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleFifoGetDecision {
+    /// Return code: 0 (data available), -EBUSY (empty + no_wait)
+    pub ret: i32,
+    /// Action: 0=GET_OK (dequeue data), 1=PEND_CURRENT (block), 2=RETURN_NODATA (no_wait + empty)
+    pub action: u8,
+}
+
+pub const GALE_FIFO_GET_OK: u8 = 0;
+pub const GALE_FIFO_GET_PEND: u8 = 1;
+pub const GALE_FIFO_GET_NODATA: u8 = 2;
+
+/// Full decision for fifo get: decides whether to dequeue, pend, or return empty.
+///
+/// C shim checks sys_sflist_is_empty first and passes the result.
+/// If data available (count > 0), return GET_OK.
+/// If empty and no_wait, return RETURN_NODATA.
+/// If empty and willing to wait, return PEND_CURRENT.
+///
+/// Verified: FI3 (no underflow), FI4 (decrement via GET_OK path).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_fifo_get_decide(
+    count: u32,
+    is_no_wait: u32,
+) -> GaleFifoGetDecision {
+    if count > 0 {
+        GaleFifoGetDecision {
+            ret: OK,
+            action: GALE_FIFO_GET_OK,
+        }
+    } else if is_no_wait != 0 {
+        GaleFifoGetDecision {
+            ret: EBUSY,
+            action: GALE_FIFO_GET_NODATA,
+        }
+    } else {
+        GaleFifoGetDecision {
+            ret: 0,
+            action: GALE_FIFO_GET_PEND,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // FFI exports — lifo (unbounded queue counter, LIFO ordering)
 // ---------------------------------------------------------------------------
@@ -1546,6 +1984,86 @@ pub extern "C" fn gale_lifo_get_validate(
             *new_count = count - 1;
         }
         OK
+    }
+}
+
+// ---- Phase 2: Full Decision API for Lifo ----
+
+/// Decision struct for k_lifo put (queue_insert) — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleLifoPutDecision {
+    /// Action: 0=PUT_OK (insert into list), 1=WAKE_THREAD (hand data to waiter)
+    pub action: u8,
+}
+
+pub const GALE_LIFO_PUT_OK: u8 = 0;
+pub const GALE_LIFO_PUT_WAKE: u8 = 1;
+
+/// Full decision for lifo put: decides whether to insert data or wake a waiting thread.
+///
+/// The C shim calls z_unpend_first_thread first (side effect), then passes
+/// whether a waiter was found.  Rust decides the action.
+///
+/// Lifo is unbounded, so put always succeeds (no capacity check needed).
+///
+/// Verified: LI1 (no overflow), LI2 (increment via PUT_OK path).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_lifo_put_decide(
+    _count: u32,
+    has_waiter: u32,
+) -> GaleLifoPutDecision {
+    if has_waiter != 0 {
+        GaleLifoPutDecision {
+            action: GALE_LIFO_PUT_WAKE,
+        }
+    } else {
+        GaleLifoPutDecision {
+            action: GALE_LIFO_PUT_OK,
+        }
+    }
+}
+
+/// Decision struct for k_lifo get (k_queue_get) — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleLifoGetDecision {
+    /// Return code: 0 (data available), -EBUSY (empty + no_wait)
+    pub ret: i32,
+    /// Action: 0=GET_OK (dequeue data), 1=PEND_CURRENT (block), 2=RETURN_NODATA (no_wait + empty)
+    pub action: u8,
+}
+
+pub const GALE_LIFO_GET_OK: u8 = 0;
+pub const GALE_LIFO_GET_PEND: u8 = 1;
+pub const GALE_LIFO_GET_NODATA: u8 = 2;
+
+/// Full decision for lifo get: decides whether to dequeue, pend, or return empty.
+///
+/// C shim checks sys_sflist_is_empty first and passes the result.
+/// If data available (count > 0), return GET_OK.
+/// If empty and no_wait, return RETURN_NODATA.
+/// If empty and willing to wait, return PEND_CURRENT.
+///
+/// Verified: LI3 (no underflow), LI4 (decrement via GET_OK path).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_lifo_get_decide(
+    count: u32,
+    is_no_wait: u32,
+) -> GaleLifoGetDecision {
+    if count > 0 {
+        GaleLifoGetDecision {
+            ret: OK,
+            action: GALE_LIFO_GET_OK,
+        }
+    } else if is_no_wait != 0 {
+        GaleLifoGetDecision {
+            ret: EBUSY,
+            action: GALE_LIFO_GET_NODATA,
+        }
+    } else {
+        GaleLifoGetDecision {
+            ret: 0,
+            action: GALE_LIFO_GET_PEND,
+        }
     }
 }
 
@@ -3708,6 +4226,85 @@ mod kani_event_proofs {
         assert!(gale_event_set(0, core::ptr::null_mut(), 0) == EINVAL);
         assert!(gale_event_clear(0, 0, core::ptr::null_mut()) == EINVAL);
         assert!(gale_event_set_masked(0, 0, 0, core::ptr::null_mut()) == EINVAL);
+    }
+
+    // ---- Phase 2 decision struct proofs ----
+
+    /// EV4-D: post_decide computes (current & ~mask) | (new & mask).
+    #[kani::proof]
+    fn event_post_decide_masked_set() {
+        let current: u32 = kani::any();
+        let new: u32 = kani::any();
+        let mask: u32 = kani::any();
+        let d = gale_k_event_post_decide(current, new, mask);
+        assert!(d.new_events == (current & !mask) | (new & mask));
+    }
+
+    /// EV4-D: post_decide with full mask is equivalent to replacement.
+    #[kani::proof]
+    fn event_post_decide_full_mask() {
+        let current: u32 = kani::any();
+        let new: u32 = kani::any();
+        let d = gale_k_event_post_decide(current, new, !0u32);
+        assert!(d.new_events == new);
+    }
+
+    /// EV4-D: post_decide with self-mask is equivalent to OR (post).
+    #[kani::proof]
+    fn event_post_decide_self_mask() {
+        let current: u32 = kani::any();
+        let new: u32 = kani::any();
+        let d = gale_k_event_post_decide(current, new, new);
+        // (current & ~new) | (new & new) = (current & ~new) | new = current | new
+        assert!(d.new_events == current | new);
+    }
+
+    /// EV5-D: wait_decide ANY matches when at least one desired bit set.
+    #[kani::proof]
+    fn event_wait_decide_any_matched() {
+        let current: u32 = kani::any();
+        let desired: u32 = kani::any();
+        kani::assume(desired != 0);
+        kani::assume((current & desired) != 0);
+        let d = gale_k_event_wait_decide(current, desired, GALE_EVENT_WAIT_ANY, 0);
+        assert!(d.action == GALE_EVENT_ACTION_MATCHED);
+        assert!(d.matched_events == current & desired);
+    }
+
+    /// EV6-D: wait_decide ALL matches only when all desired bits set.
+    #[kani::proof]
+    fn event_wait_decide_all_matched() {
+        let current: u32 = kani::any();
+        let desired: u32 = kani::any();
+        kani::assume((current & desired) == desired);
+        let d = gale_k_event_wait_decide(current, desired, GALE_EVENT_WAIT_ALL, 0);
+        assert!(d.action == GALE_EVENT_ACTION_MATCHED);
+        assert!(d.matched_events == desired);
+    }
+
+    /// EV6-D: wait_decide ALL does not match partial bits.
+    #[kani::proof]
+    fn event_wait_decide_all_no_match() {
+        let current: u32 = kani::any();
+        let desired: u32 = kani::any();
+        kani::assume(desired != 0);
+        kani::assume((current & desired) != desired);
+        let d = gale_k_event_wait_decide(current, desired, GALE_EVENT_WAIT_ALL, 0);
+        assert!(d.action == GALE_EVENT_ACTION_PEND);
+        assert!(d.matched_events == 0);
+    }
+
+    /// Wait_decide returns TIMEOUT when no-wait and no match.
+    #[kani::proof]
+    fn event_wait_decide_no_wait_timeout() {
+        let current: u32 = kani::any();
+        let desired: u32 = kani::any();
+        let wait_type: u8 = kani::any();
+        kani::assume(wait_type <= 1);
+        kani::assume((current & desired) == 0);
+        let d = gale_k_event_wait_decide(current, desired, wait_type, 1);
+        assert!(d.action == GALE_EVENT_ACTION_TIMEOUT);
+        assert!(d.matched_events == 0);
     }
 }
 

@@ -61,6 +61,32 @@ int32_t gale_mem_slab_alloc_validate(uint32_t num_used,
 int32_t gale_mem_slab_free_validate(uint32_t num_used,
                                      uint32_t *new_num_used);
 
+/* ---- Phase 2: Full Decision API ---- */
+
+struct gale_mem_slab_alloc_decision {
+    int32_t  ret;          /* 0=OK, -ENOMEM=slab full */
+    uint32_t new_num_used;
+    uint8_t  action;       /* 0=ALLOC_OK, 1=PEND_CURRENT, 2=RETURN_NOMEM */
+};
+
+#define GALE_MEM_SLAB_ACTION_ALLOC_OK     0
+#define GALE_MEM_SLAB_ACTION_PEND_CURRENT 1
+#define GALE_MEM_SLAB_ACTION_RETURN_NOMEM 2
+
+struct gale_mem_slab_alloc_decision gale_k_mem_slab_alloc_decide(
+    uint32_t num_used, uint32_t num_blocks, uint32_t is_no_wait);
+
+struct gale_mem_slab_free_decision {
+    uint32_t new_num_used;
+    uint8_t  action;       /* 0=FREE_OK, 1=WAKE_THREAD */
+};
+
+#define GALE_MEM_SLAB_ACTION_FREE_OK      0
+#define GALE_MEM_SLAB_ACTION_WAKE_THREAD  1
+
+struct gale_mem_slab_free_decision gale_k_mem_slab_free_decide(
+    uint32_t num_used, uint32_t has_waiter);
+
 #ifdef __cplusplus
 }
 #endif

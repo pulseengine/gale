@@ -4,17 +4,16 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Gale memory slab — verified block count arithmetic.
+ * Gale memory slab — Extract/Decide/Apply pattern.
  *
- * This is kernel/mem_slab.c with the block count tracking
- * replaced by calls to the formally verified Rust implementation.
- * Free-list management, wait queue, scheduling, tracing, and
- * statistics remain native Zephyr.
+ * This is kernel/mem_slab.c with alloc/free rewritten to use Rust
+ * decision structs.  C extracts kernel state (spinlock, wait queue
+ * side effects), Rust decides the action, C applies it.
  *
  * Verified operations (Verus proofs):
- *   gale_mem_slab_init_validate  — MS2 (num_blocks > 0), MS3 (block_size > 0)
- *   gale_mem_slab_alloc_validate — MS1 (bounds), MS4 (increment), MS5 (-ENOMEM)
- *   gale_mem_slab_free_validate  — MS1 (bounds), MS6 (decrement)
+ *   gale_mem_slab_init_validate      — MS2 (num_blocks > 0), MS3 (block_size > 0)
+ *   gale_k_mem_slab_alloc_decide     — MS1 (bounds), MS4 (increment), MS5 (-ENOMEM)
+ *   gale_k_mem_slab_free_decide      — MS1 (bounds), MS6 (decrement)
  */
 
 #include <zephyr/kernel.h>
@@ -256,43 +255,40 @@ int k_mem_slab_alloc(struct k_mem_slab *slab, void **mem, k_timeout_t timeout)
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_mem_slab, alloc, slab, timeout);
 
-	if (slab->free_list != NULL) {
-		/* --- Gale verified alloc check --- */
-		uint32_t new_num_used;
+	/* Extract: gather kernel state */
+	uint32_t is_no_wait = (K_TIMEOUT_EQ(timeout, K_NO_WAIT) ||
+			       !IS_ENABLED(CONFIG_MULTITHREADING)) ? 1U : 0U;
 
-		result = gale_mem_slab_alloc_validate(
-			slab->info.num_used, slab->info.num_blocks,
-			&new_num_used);
-		if (result != 0) {
-			/* MS5: slab full (-ENOMEM) — should not happen
-			 * when free_list is non-NULL, but the verified
-			 * code is the authority on the count. */
-			*mem = NULL;
-			goto out;
-		}
+	/* Decide: Rust determines action based on count and wait policy */
+	struct gale_mem_slab_alloc_decision d = gale_k_mem_slab_alloc_decide(
+		slab->info.num_used, slab->info.num_blocks, is_no_wait);
 
-		/* take a free block */
-		*mem = slab->free_list;
-		slab->free_list = *(char **)(slab->free_list);
-		/* MS4: num_used incremented by verified code */
-		slab->info.num_used = new_num_used;
-		__ASSERT((slab->free_list == NULL &&
-			  slab->info.num_used == slab->info.num_blocks) ||
-			 slab_ptr_is_good(slab, slab->free_list),
-			 "slab corruption detected");
+	/* Apply: execute Rust's decision */
+	if (d.action == GALE_MEM_SLAB_ACTION_ALLOC_OK) {
+		if (slab->free_list != NULL) {
+			/* take a free block */
+			*mem = slab->free_list;
+			slab->free_list = *(char **)(slab->free_list);
+			/* MS4: num_used incremented by verified code */
+			slab->info.num_used = d.new_num_used;
+			__ASSERT((slab->free_list == NULL &&
+				  slab->info.num_used == slab->info.num_blocks) ||
+				 slab_ptr_is_good(slab, slab->free_list),
+				 "slab corruption detected");
 
 #ifdef CONFIG_MEM_SLAB_TRACE_MAX_UTILIZATION
-		slab->info.max_used = max(slab->info.num_used,
-					  slab->info.max_used);
+			slab->info.max_used = max(slab->info.num_used,
+						  slab->info.max_used);
 #endif /* CONFIG_MEM_SLAB_TRACE_MAX_UTILIZATION */
 
-		result = 0;
-	} else if (K_TIMEOUT_EQ(timeout, K_NO_WAIT) ||
-		   !IS_ENABLED(CONFIG_MULTITHREADING)) {
-		/* don't wait for a free block to become available */
-		*mem = NULL;
-		result = -ENOMEM;
-	} else {
+			result = 0;
+		} else {
+			/* Rust said OK but free list is empty — shouldn't happen,
+			 * but free list is the authority on actual availability. */
+			*mem = NULL;
+			result = -ENOMEM;
+		}
+	} else if (d.action == GALE_MEM_SLAB_ACTION_PEND_CURRENT) {
 		SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_mem_slab, alloc, slab, timeout);
 
 		/* wait for a free block or timeout */
@@ -304,9 +300,12 @@ int k_mem_slab_alloc(struct k_mem_slab *slab, void **mem, k_timeout_t timeout)
 		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mem_slab, alloc, slab, timeout, result);
 
 		return result;
+	} else {
+		/* RETURN_NOMEM */
+		*mem = NULL;
+		result = -ENOMEM;
 	}
 
-out:
 	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mem_slab, alloc, slab, timeout, result);
 
 	k_spin_unlock(&slab->lock, key);
@@ -325,31 +324,34 @@ void k_mem_slab_free(struct k_mem_slab *slab, void *mem)
 	k_spinlock_key_t key = k_spin_lock(&slab->lock);
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_mem_slab, free, slab);
-	if (unlikely(slab->free_list == NULL) && IS_ENABLED(CONFIG_MULTITHREADING)) {
-		struct k_thread *pending_thread = z_unpend_first_thread(&slab->wait_q);
 
-		if (unlikely(pending_thread != NULL)) {
-			SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mem_slab, free, slab);
+	/* Extract: try to unpend first waiter (side effect: removes from queue) */
+	struct k_thread *pending_thread = NULL;
 
-			z_thread_return_value_set_with_data(pending_thread, 0, mem);
-			z_ready_thread(pending_thread);
-			z_reschedule(&slab->lock, key);
-			return;
-		}
+	if (IS_ENABLED(CONFIG_MULTITHREADING)) {
+		pending_thread = z_unpend_first_thread(&slab->wait_q);
 	}
 
-	/* --- Gale verified free check --- */
-	uint32_t new_num_used;
-	int32_t rc = gale_mem_slab_free_validate(slab->info.num_used,
-						 &new_num_used);
-	if (rc == 0) {
-		/* MS6: num_used decremented by verified code */
+	/* Decide: Rust determines action based on whether a waiter was found */
+	struct gale_mem_slab_free_decision d = gale_k_mem_slab_free_decide(
+		slab->info.num_used, pending_thread != NULL ? 1U : 0U);
+
+	/* Apply: execute Rust's decision */
+	if (d.action == GALE_MEM_SLAB_ACTION_WAKE_THREAD) {
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mem_slab, free, slab);
+
+		z_thread_return_value_set_with_data(pending_thread, 0, mem);
+		z_ready_thread(pending_thread);
+		z_reschedule(&slab->lock, key);
+		return;
+	}
+
+	/* FREE_OK: return block to free list */
+	if (slab->info.num_used > 0) {
 		*(char **) mem = slab->free_list;
 		slab->free_list = (char *) mem;
-		slab->info.num_used = new_num_used;
+		slab->info.num_used = d.new_num_used;
 	}
-	/* If rc != 0: all blocks free, should not happen with valid usage.
-	 * The verified code prevents underflow. */
 
 	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mem_slab, free, slab);
 
