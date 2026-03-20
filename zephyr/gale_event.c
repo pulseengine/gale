@@ -4,19 +4,16 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Gale event — verified bitmask operations.
+ * Gale event — phase 2: Extract→Decide→Apply pattern.
  *
  * This is kernel/events.c with the safety-critical bitmask operations
- * (post/set/clear/set_masked, are_wait_conditions_met) replaced by calls
- * to the formally verified Rust implementation.
+ * (post/set/clear/set_masked, wait condition checks) replaced by calls
+ * to Rust decision structs.  C extracts kernel state (spinlock, wait
+ * queue), Rust decides the bitmask result, C applies it.
  *
  * Verified operations (Verus proofs):
- *   gale_event_post           — EV1, EV8 (OR bits, monotonic)
- *   gale_event_set            — EV2 (replace all)
- *   gale_event_clear          — EV3 (AND complement)
- *   gale_event_set_masked     — EV4 (selective set)
- *   gale_event_wait_check_any — EV5 (any-bit match)
- *   gale_event_wait_check_all — EV6 (all-bits match)
+ *   gale_k_event_post_decide — EV4 (masked set: (cur & ~mask) | (new & mask))
+ *   gale_k_event_wait_decide — EV5 (any-bit match), EV6 (all-bits match)
  *
  * Wait queues, scheduling, tracing, poll, userspace, and OBJ_CORE
  * remain native Zephyr.
@@ -55,28 +52,6 @@ struct event_walk_data {
 #ifdef CONFIG_OBJ_CORE_EVENT
 static struct k_obj_type obj_type_event;
 #endif /* CONFIG_OBJ_CORE_EVENT */
-
-/**
- * @brief determine the set of events that have been satisfied
- *
- * This routine determines if the current set of events satisfies the desired
- * set of events. Uses Gale-verified wait_check_any / wait_check_all.
- */
-static uint32_t are_wait_conditions_met(uint32_t desired, uint32_t current,
-					unsigned int wait_condition)
-{
-	uint32_t match = current & desired;
-
-	if (wait_condition == K_EVENT_WAIT_ALL) {
-		/* Gale-verified: EV6 — all-bits match */
-		if (gale_event_wait_check_all(current, desired) == 0) {
-			return 0;
-		}
-	}
-
-	/* return the matched events for any wait condition */
-	return match;
-}
 
 void z_impl_k_event_init(struct k_event *event)
 {
@@ -130,18 +105,19 @@ static void event_post_walk_op(int status, void *data)
 
 static int event_walk_op(struct k_thread *thread, void *data)
 {
-	uint32_t match;
-	unsigned int wait_condition;
 	struct event_walk_data *event_data = data;
+	unsigned int wait_condition = thread->event_options & K_EVENT_WAIT_MASK;
 
-	wait_condition = thread->event_options & K_EVENT_WAIT_MASK;
+	/* Decide: Rust checks the wait condition for this thread */
+	struct gale_event_wait_decision wd = gale_k_event_wait_decide(
+		event_data->events, thread->events,
+		(uint8_t)wait_condition, /*is_no_wait=*/0U);
 
-	match = are_wait_conditions_met(thread->events, event_data->events,
-					wait_condition);
-	if (match != 0) {
-		thread->events = match;
+	/* Apply: if matched, wake the thread */
+	if (wd.action == GALE_EVENT_ACTION_MATCHED) {
+		thread->events = wd.matched_events;
 		if (thread->event_options & K_EVENT_OPTION_CLEAR) {
-			event_data->clear_events |= match;
+			event_data->clear_events |= wd.matched_events;
 		}
 		z_abort_thread_timeout(thread);
 
@@ -169,13 +145,13 @@ static uint32_t k_event_post_internal(struct k_event *event, uint32_t events,
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_event, post, event, events,
 					events_mask);
 
+	/* Extract: capture previous events under the mask */
 	previous_events = event->events & events_mask;
 
-	/* Gale-verified: EV4 — set_masked computes
-	 * (events & ~mask) | (new & mask) */
-	uint32_t new_events;
-	gale_event_set_masked(event->events, events, events_mask, &new_events);
-	events = new_events;
+	/* Decide: Rust computes (cur & ~mask) | (new & mask) */
+	struct gale_event_post_decision pd = gale_k_event_post_decide(
+		event->events, events, events_mask);
+	events = pd.new_events;
 
 #ifdef CONFIG_WAITQ_SCALABLE
 	data.head = NULL;
@@ -184,7 +160,7 @@ static uint32_t k_event_post_internal(struct k_event *event, uint32_t events,
 	data.clear_events = 0;
 	z_sched_waitq_walk(&event->wait_q, event_walk_op, EVENT_POST_WALK_OP_FN, &data);
 
-	/* stash any events not consumed */
+	/* Apply: stash any events not consumed */
 	event->events = data.events & ~data.clear_events;
 
 	z_reschedule(&event->lock, key);
@@ -276,30 +252,36 @@ static uint32_t k_event_wait_internal(struct k_event *event, uint32_t events,
 
 	k_spinlock_key_t  key = k_spin_lock(&event->lock);
 
+	/* Extract: optionally reset events */
 	if (options & K_EVENT_OPTION_RESET) {
 		event->events = 0;
 	}
 
-	/* Gale-verified: EV5/EV6 — wait condition check */
-	rv = are_wait_conditions_met(events, event->events, wait_condition);
-	if (rv != 0) {
-		/* clear the events that are matched */
+	/* Decide: Rust checks wait condition and determines action */
+	struct gale_event_wait_decision wd = gale_k_event_wait_decide(
+		event->events, events, (uint8_t)wait_condition,
+		K_TIMEOUT_EQ(timeout, K_NO_WAIT) ? 1U : 0U);
+
+	/* Apply */
+	if (wd.action == GALE_EVENT_ACTION_MATCHED) {
+		rv = wd.matched_events;
+
+		/* Clear the matched events if requested */
 		if (options & K_EVENT_OPTION_CLEAR) {
-			/* Gale-verified: EV3 — clear matched bits */
-			uint32_t cleared;
-			gale_event_clear(event->events, rv, &cleared);
-			event->events = cleared;
+			event->events = event->events & ~rv;
 		}
 
 		k_spin_unlock(&event->lock, key);
 		goto out;
 	}
 
-	if (K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
+	if (wd.action == GALE_EVENT_ACTION_TIMEOUT) {
+		/* K_NO_WAIT and condition not met */
 		k_spin_unlock(&event->lock, key);
 		goto out;
 	}
 
+	/* PEND_CURRENT: block on wait queue with timeout */
 	thread->events = events;
 	thread->event_options = options;
 

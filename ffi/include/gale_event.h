@@ -100,6 +100,32 @@ int32_t gale_event_wait_check_any(uint32_t events,
 int32_t gale_event_wait_check_all(uint32_t events,
                                   uint32_t desired);
 
+/* ---- Phase 2: Full Decision API ---- */
+
+struct gale_event_post_decision {
+    uint32_t new_events;
+};
+
+struct gale_event_post_decision gale_k_event_post_decide(
+    uint32_t current_events, uint32_t new_events, uint32_t mask);
+
+struct gale_event_wait_decision {
+    int32_t ret;
+    uint32_t matched_events;
+    uint8_t action;     /* 0=MATCHED, 1=PEND_CURRENT, 2=RETURN_TIMEOUT */
+};
+
+#define GALE_EVENT_WAIT_ANY       0
+#define GALE_EVENT_WAIT_ALL       1
+
+#define GALE_EVENT_ACTION_MATCHED  0
+#define GALE_EVENT_ACTION_PEND     1
+#define GALE_EVENT_ACTION_TIMEOUT  2
+
+struct gale_event_wait_decision gale_k_event_wait_decide(
+    uint32_t current_events, uint32_t desired,
+    uint8_t wait_type, uint32_t is_no_wait);
+
 #ifdef __cplusplus
 }
 #endif
