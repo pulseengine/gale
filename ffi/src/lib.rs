@@ -2855,19 +2855,145 @@ pub extern "C" fn gale_k_mbox_get_decide(
 
 const K_FOREVER_TICKS: u64 = u64::MAX;
 
-/// Schedule a timeout: compute absolute deadline from current tick + duration.
+// ---- Phase 2: Timeout Decision API ----
+
+/// Decision struct for z_add_timeout — tells C shim the computed deadline.
+#[repr(C)]
+pub struct GaleTimeoutAddDecision {
+    /// Return code: 0 (OK), -EINVAL (overflow)
+    pub ret: i32,
+    /// Computed absolute deadline (only meaningful when ret == 0)
+    pub deadline: u64,
+}
+
+/// Compute absolute deadline from current tick + duration.
 ///
 /// timeout.c z_add_timeout:
-///   deadline = curr_tick + duration
+///   C extracts current_tick and duration, Rust computes the deadline.
 ///
-/// Arguments:
-///   current_tick: current system tick
-///   duration:     relative timeout in ticks
-///   deadline:     pointer to receive absolute deadline
+/// Verified: TO2 (deadline = current_tick + duration), TO5 (no overflow).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_timeout_add_decide(
+    current_tick: u64,
+    duration: u64,
+) -> GaleTimeoutAddDecision {
+    if current_tick >= K_FOREVER_TICKS {
+        return GaleTimeoutAddDecision {
+            ret: EINVAL,
+            deadline: 0,
+        };
+    }
+
+    if duration >= K_FOREVER_TICKS - current_tick {
+        return GaleTimeoutAddDecision {
+            ret: EINVAL,
+            deadline: 0,
+        };
+    }
+
+    #[allow(clippy::arithmetic_side_effects)]
+    let dl = current_tick + duration;
+    GaleTimeoutAddDecision {
+        ret: OK,
+        deadline: dl,
+    }
+}
+
+/// Decision struct for z_abort_timeout — tells C shim whether abort is valid.
+#[repr(C)]
+pub struct GaleTimeoutAbortDecision {
+    /// Return code: 0 (OK, was active), -EINVAL (already inactive)
+    pub ret: i32,
+    /// Action: 0=DO_REMOVE (remove from list), 1=NOOP (already inactive)
+    pub action: u8,
+}
+
+pub const GALE_TIMEOUT_ACTION_REMOVE: u8 = 0;
+pub const GALE_TIMEOUT_ACTION_NOOP: u8 = 1;
+
+/// Decide whether to abort a pending timeout.
 ///
-/// Returns:
-///   0 (OK)   — *deadline set to current_tick + duration
-///   -EINVAL  — overflow (current_tick + duration >= u64::MAX)
+/// timeout.c z_abort_timeout:
+///   C extracts whether the timeout node is linked (active).
+///   Rust decides: remove or noop.
+///
+/// Verified: TO3 (abort clears to inactive).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_timeout_abort_decide(
+    is_linked: u32,
+) -> GaleTimeoutAbortDecision {
+    if is_linked != 0 {
+        GaleTimeoutAbortDecision {
+            ret: OK,
+            action: GALE_TIMEOUT_ACTION_REMOVE,
+        }
+    } else {
+        GaleTimeoutAbortDecision {
+            ret: EINVAL,
+            action: GALE_TIMEOUT_ACTION_NOOP,
+        }
+    }
+}
+
+/// Decision struct for sys_clock_announce — tells C shim the new tick and
+/// whether a specific timeout has expired.
+#[repr(C)]
+pub struct GaleTimeoutAnnounceDecision {
+    /// Return code: 0 (OK), -EINVAL (overflow)
+    pub ret: i32,
+    /// Advanced tick value (current_tick + ticks)
+    pub new_tick: u64,
+    /// 1 if the timeout fired (deadline <= new_tick), 0 otherwise
+    pub fired: u32,
+}
+
+/// Advance tick and check if a timeout has expired.
+///
+/// timeout.c sys_clock_announce:
+///   C extracts current_tick, ticks to advance, deadline, and active flag.
+///   Rust computes new_tick and whether the timeout fired.
+///
+/// Verified: TO4 (fires when deadline <= now), TO5 (no overflow),
+///           TO7 (K_FOREVER never expires).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_timeout_announce_decide(
+    current_tick: u64,
+    ticks: u64,
+    deadline: u64,
+    active: u32,
+) -> GaleTimeoutAnnounceDecision {
+    if ticks >= K_FOREVER_TICKS - current_tick {
+        return GaleTimeoutAnnounceDecision {
+            ret: EINVAL,
+            new_tick: 0,
+            fired: 0,
+        };
+    }
+
+    #[allow(clippy::arithmetic_side_effects)]
+    let advanced = current_tick + ticks;
+
+    let fired = if active != 0
+        && deadline != K_FOREVER_TICKS
+        && deadline <= advanced
+    {
+        1u32
+    } else {
+        0u32
+    };
+
+    GaleTimeoutAnnounceDecision {
+        ret: OK,
+        new_tick: advanced,
+        fired,
+    }
+}
+
+// ---- Legacy API (kept for backward compatibility) ----
+
+/// Schedule a timeout: compute absolute deadline from current tick + duration.
+///
+/// Delegates to gale_timeout_add_decide.
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_timeout_add(
     current_tick: u64,
@@ -2879,58 +3005,27 @@ pub extern "C" fn gale_timeout_add(
             return EINVAL;
         }
 
-        if current_tick >= K_FOREVER_TICKS {
-            return EINVAL;
+        let d = gale_timeout_add_decide(current_tick, duration);
+        if d.ret != OK {
+            return d.ret;
         }
 
-        if duration >= K_FOREVER_TICKS - current_tick {
-            return EINVAL;
-        }
-
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *deadline = current_tick + duration;
-        }
+        *deadline = d.deadline;
         OK
     }
 }
 
 /// Abort a pending timeout.
 ///
-/// timeout.c z_abort_timeout:
-///   Sets timeout to inactive.
-///
-/// Arguments:
-///   active: 1 if timeout is active, 0 if inactive
-///
-/// Returns:
-///   0 (OK)   — timeout was active and is now cancelled
-///   -EINVAL  — timeout was already inactive
+/// Delegates to gale_timeout_abort_decide.
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_timeout_abort(active: u32) -> i32 {
-    if active != 0 {
-        OK
-    } else {
-        EINVAL
-    }
+    gale_timeout_abort_decide(active).ret
 }
 
 /// Advance tick and check if a timeout has expired.
 ///
-/// timeout.c sys_clock_announce:
-///   curr_tick += ticks; fire if deadline <= curr_tick
-///
-/// Arguments:
-///   current_tick: current system tick
-///   ticks:        ticks to advance
-///   deadline:     absolute deadline of this timeout
-///   active:       1 if timeout is active
-///   new_tick:     pointer to receive advanced tick
-///   fired:        pointer to receive 1 if expired, 0 otherwise
-///
-/// Returns:
-///   0 (OK)   — *new_tick and *fired set
-///   -EINVAL  — overflow or null pointer
+/// Delegates to gale_timeout_announce_decide.
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_timeout_announce(
     current_tick: u64,
@@ -2945,22 +3040,13 @@ pub extern "C" fn gale_timeout_announce(
             return EINVAL;
         }
 
-        if ticks >= K_FOREVER_TICKS - current_tick {
-            return EINVAL;
+        let d = gale_timeout_announce_decide(current_tick, ticks, deadline, active);
+        if d.ret != OK {
+            return d.ret;
         }
 
-        #[allow(clippy::arithmetic_side_effects)]
-        let advanced = current_tick + ticks;
-        *new_tick = advanced;
-
-        if active != 0
-            && deadline != K_FOREVER_TICKS
-            && deadline <= advanced
-        {
-            *fired = 1;
-        } else {
-            *fired = 0;
-        }
+        *new_tick = d.new_tick;
+        *fired = d.fired;
         OK
     }
 }
