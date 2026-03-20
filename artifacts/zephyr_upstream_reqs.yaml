@@ -1,7 +1,7 @@
 # Zephyr upstream requirements — auto-imported from reqmgmt via StrictDoc JSON export.
 #
 # Source: https://github.com/zephyrproject-rtos/reqmgmt
-# File:   docs/software_requirements/semaphore.sdoc
+# Files:  docs/software_requirements/{semaphore,mutex,condvar,futex,poll}.sdoc
 # Tool:   strictdoc export --formats json | python3 convert.py
 #
 # DO NOT EDIT MANUALLY — regenerate from source.
@@ -266,4 +266,248 @@ artifacts:
     fields:
       priority: must
       source: "reqmgmt/semaphore.sdoc ZEP-SYRS-14"
+
+  # ── Mutex ─────────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-MUT
+    type: stakeholder-req
+    title: "Zephyr: Reentrant Mutex"
+    status: approved
+    description: >
+      The system shall implement a reentrant mutex synchronization primitive with ownership tracking and priority inheritance for coordinating exclusive access to shared resources among multiple threads.
+    tags: [zephyr, upstream, mutex]
+    fields:
+      priority: must
+      source: "reqmgmt/mutex.sdoc ZEP-SYRS-MUT"
+
+  - id: ZEP-SRS-MUT-1
+    type: stakeholder-req
+    title: "Zephyr: Mutex Reentrant Locking"
+    status: approved
+    description: >
+      The Zephyr RTOS mutex shall support reentrant locking by the owning thread, incrementing the lock count on each successive lock by the same owner.
+    tags: [zephyr, upstream, mutex]
+    fields:
+      priority: must
+      source: "reqmgmt/mutex.sdoc ZEP-SRS-MUT-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-MUT
+      - type: satisfied-by
+        target: SWREQ-MUT-M04
+
+  - id: ZEP-SRS-MUT-2
+    type: stakeholder-req
+    title: "Zephyr: Mutex Priority Inheritance"
+    status: approved
+    description: >
+      The Zephyr RTOS mutex shall provide priority inheritance to prevent priority inversion, ensuring the mutex owner temporarily inherits the priority of the highest-priority waiting thread.
+    tags: [zephyr, upstream, mutex]
+    fields:
+      priority: must
+      source: "reqmgmt/mutex.sdoc ZEP-SRS-MUT-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-MUT
+      - type: satisfied-by
+        target: SWREQ-MUT-M08
+      - type: satisfied-by
+        target: SWREQ-MUT-M11
+
+  - id: ZEP-SRS-MUT-3
+    type: stakeholder-req
+    title: "Zephyr: Mutex Lock With Timeout"
+    status: approved
+    description: >
+      The Zephyr RTOS mutex lock shall block the calling thread with a timeout when the mutex is held by another thread, or return -EBUSY immediately when called with K_NO_WAIT.
+    tags: [zephyr, upstream, mutex]
+    fields:
+      priority: must
+      source: "reqmgmt/mutex.sdoc ZEP-SRS-MUT-3"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-MUT
+      - type: satisfied-by
+        target: SWREQ-MUT-M03
+      - type: satisfied-by
+        target: SWREQ-MUT-M05
+
+  - id: ZEP-SRS-MUT-4
+    type: stakeholder-req
+    title: "Zephyr: Mutex Unlock By Non-Owner Error"
+    status: approved
+    description: >
+      The Zephyr RTOS shall return an error when a thread attempts to unlock a mutex it does not own.
+    tags: [zephyr, upstream, mutex]
+    fields:
+      priority: must
+      source: "reqmgmt/mutex.sdoc ZEP-SRS-MUT-4"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-MUT
+      - type: satisfied-by
+        target: SWREQ-MUT-M06
+
+  # ── Condvar ───────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-CV
+    type: stakeholder-req
+    title: "Zephyr: Condition Variable"
+    status: approved
+    description: >
+      The system shall implement a condition variable synchronization primitive with signal, broadcast, and wait operations for coordinating threads waiting on a condition.
+    tags: [zephyr, upstream, condvar]
+    fields:
+      priority: must
+      source: "reqmgmt/condvar.sdoc ZEP-SYRS-CV"
+
+  - id: ZEP-SRS-CV-1
+    type: stakeholder-req
+    title: "Zephyr: Condvar Signal Wakes One"
+    status: approved
+    description: >
+      The Zephyr RTOS condition variable signal shall wake exactly one waiting thread, selecting the highest-priority waiter from the wait queue.
+    tags: [zephyr, upstream, condvar]
+    fields:
+      priority: must
+      source: "reqmgmt/condvar.sdoc ZEP-SRS-CV-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-CV
+      - type: satisfied-by
+        target: SWREQ-CV-C02
+
+  - id: ZEP-SRS-CV-2
+    type: stakeholder-req
+    title: "Zephyr: Condvar Broadcast Wakes All"
+    status: approved
+    description: >
+      The Zephyr RTOS condition variable broadcast shall wake all waiting threads currently in the wait queue.
+    tags: [zephyr, upstream, condvar]
+    fields:
+      priority: must
+      source: "reqmgmt/condvar.sdoc ZEP-SRS-CV-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-CV
+      - type: satisfied-by
+        target: SWREQ-CV-C04
+
+  - id: ZEP-SRS-CV-3
+    type: stakeholder-req
+    title: "Zephyr: Condvar Wait Atomically Releases Mutex And Blocks"
+    status: approved
+    description: >
+      The Zephyr RTOS condition variable wait shall atomically release the associated mutex and block the calling thread on the condition variable's wait queue.
+    tags: [zephyr, upstream, condvar]
+    fields:
+      priority: must
+      source: "reqmgmt/condvar.sdoc ZEP-SRS-CV-3"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-CV
+      - type: satisfied-by
+        target: SWREQ-CV-C06
+
+  # ── Futex ─────────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-FX
+    type: stakeholder-req
+    title: "Zephyr: Fast Userspace Mutex (Futex)"
+    status: approved
+    description: >
+      The system shall implement a futex synchronization primitive with wait and wake operations for efficient userspace-to-kernel thread synchronization.
+    tags: [zephyr, upstream, futex]
+    fields:
+      priority: must
+      source: "reqmgmt/futex.sdoc ZEP-SYRS-FX"
+
+  - id: ZEP-SRS-FX-1
+    type: stakeholder-req
+    title: "Zephyr: Futex Wait Blocks On Value Match"
+    status: approved
+    description: >
+      The Zephyr RTOS futex wait shall block the calling thread if the atomic value at the futex address equals the expected value provided by the caller.
+    tags: [zephyr, upstream, futex]
+    fields:
+      priority: must
+      source: "reqmgmt/futex.sdoc ZEP-SRS-FX-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-FX
+      - type: satisfied-by
+        target: SWREQ-FX-FX01
+
+  - id: ZEP-SRS-FX-2
+    type: stakeholder-req
+    title: "Zephyr: Futex Wake Wakes Up To N Threads"
+    status: approved
+    description: >
+      The Zephyr RTOS futex wake shall wake up to N waiting threads from the futex wait queue, where N is specified by the caller or all waiters when wake_all is requested.
+    tags: [zephyr, upstream, futex]
+    fields:
+      priority: must
+      source: "reqmgmt/futex.sdoc ZEP-SRS-FX-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-FX
+      - type: satisfied-by
+        target: SWREQ-FX-FX03
+      - type: satisfied-by
+        target: SWREQ-FX-FX04
+      - type: satisfied-by
+        target: SWREQ-FX-FX05
+
+  # ── Poll ──────────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-PL
+    type: stakeholder-req
+    title: "Zephyr: Poll Events"
+    status: approved
+    description: >
+      The system shall implement a poll event subsystem for monitoring multiple kernel objects simultaneously and receiving signal notifications.
+    tags: [zephyr, upstream, poll]
+    fields:
+      priority: must
+      source: "reqmgmt/poll.sdoc ZEP-SYRS-PL"
+
+  - id: ZEP-SRS-PL-1
+    type: stakeholder-req
+    title: "Zephyr: Poll Monitors Multiple Kernel Objects"
+    status: approved
+    description: >
+      The Zephyr RTOS poll shall provide a mechanism to monitor multiple kernel objects simultaneously, checking each object's readiness condition and reporting which objects are ready.
+    tags: [zephyr, upstream, poll]
+    fields:
+      priority: must
+      source: "reqmgmt/poll.sdoc ZEP-SRS-PL-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-PL
+      - type: satisfied-by
+        target: SWREQ-PL-PL01
+      - type: satisfied-by
+        target: SWREQ-PL-PL02
+      - type: satisfied-by
+        target: SWREQ-PL-PL03
+
+  - id: ZEP-SRS-PL-2
+    type: stakeholder-req
+    title: "Zephyr: Poll Signal Wakes Pollers"
+    status: approved
+    description: >
+      The Zephyr RTOS poll signal shall wake all threads currently polling on the signal object, delivering a result value to each woken poller.
+    tags: [zephyr, upstream, poll]
+    fields:
+      priority: must
+      source: "reqmgmt/poll.sdoc ZEP-SRS-PL-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-PL
+      - type: satisfied-by
+        target: SWREQ-PL-PL04
+      - type: satisfied-by
+        target: SWREQ-PL-PL05
+      - type: satisfied-by
+        target: SWREQ-PL-PL06
 
