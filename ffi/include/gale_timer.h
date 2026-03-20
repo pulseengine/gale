@@ -56,6 +56,24 @@ int32_t gale_timer_expire(uint32_t status,
 uint32_t gale_timer_status_get(uint32_t status,
                                  uint32_t *new_status);
 
+/* ---- Decision API for timer ---- */
+
+struct gale_timer_expire_decision {
+    uint32_t new_status;  /* status + 1 (saturates at UINT32_MAX) */
+    uint8_t is_periodic;  /* 1 = periodic (period > 0), 0 = one-shot */
+};
+
+struct gale_timer_expire_decision gale_k_timer_expire_decide(
+    uint32_t status, uint32_t period);
+
+struct gale_timer_status_decision {
+    uint32_t count;       /* old status value to return */
+    uint32_t new_status;  /* always 0 (reset) */
+};
+
+struct gale_timer_status_decision gale_k_timer_status_decide(
+    uint32_t status);
+
 #ifdef __cplusplus
 }
 #endif

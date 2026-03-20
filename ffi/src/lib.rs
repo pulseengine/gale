@@ -943,6 +943,162 @@ pub extern "C" fn gale_pipe_read_check(
     }
 }
 
+// ---- Phase 2: Pipe Decision API ----
+
+/// Decision struct for k_pipe_write -- tells C shim what action to take.
+#[repr(C)]
+pub struct GalePipeWriteDecision {
+    /// Return code (error code when action=RETURN_ERROR)
+    pub ret: i32,
+    /// Action: 0=WRITE_OK, 1=WAKE_READER, 2=PEND_CURRENT, 3=RETURN_ERROR
+    pub action: u8,
+    /// Bytes that can be written to ring buffer
+    pub actual_bytes: u32,
+    /// Updated used count after write
+    pub new_used: u32,
+}
+
+pub const GALE_PIPE_ACTION_WRITE_OK: u8 = 0;
+pub const GALE_PIPE_ACTION_WAKE_READER: u8 = 1;
+pub const GALE_PIPE_ACTION_WRITE_PEND: u8 = 2;
+pub const GALE_PIPE_ACTION_WRITE_ERROR: u8 = 3;
+
+/// Full decision for k_pipe_write: decides what the C shim should do.
+///
+/// Verified: PP3-PP5, PP9-PP10
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_pipe_write_decide(
+    used: u32,
+    size: u32,
+    flags: u8,
+    request_len: u32,
+    has_reader: u32,
+) -> GalePipeWriteDecision {
+    if (flags & PIPE_FLAG_RESET) != 0 {
+        return GalePipeWriteDecision {
+            ret: ECANCELED,
+            action: GALE_PIPE_ACTION_WRITE_ERROR,
+            actual_bytes: 0,
+            new_used: used,
+        };
+    }
+    if (flags & PIPE_FLAG_OPEN) == 0 {
+        return GalePipeWriteDecision {
+            ret: EPIPE,
+            action: GALE_PIPE_ACTION_WRITE_ERROR,
+            actual_bytes: 0,
+            new_used: used,
+        };
+    }
+    if used == 0 && has_reader != 0 {
+        let actual = if size > 0 && request_len > 0 {
+            if request_len <= size { request_len } else { size }
+        } else {
+            0
+        };
+        return GalePipeWriteDecision {
+            ret: OK,
+            action: GALE_PIPE_ACTION_WAKE_READER,
+            actual_bytes: actual,
+            new_used: 0,
+        };
+    }
+    if size == 0 || used >= size {
+        return GalePipeWriteDecision {
+            ret: OK,
+            action: GALE_PIPE_ACTION_WRITE_PEND,
+            actual_bytes: 0,
+            new_used: used,
+        };
+    }
+    #[allow(clippy::arithmetic_side_effects)]
+    let free = size - used;
+    let n = if request_len <= free { request_len } else { free };
+    #[allow(clippy::arithmetic_side_effects)]
+    let nu = used + n;
+    GalePipeWriteDecision {
+        ret: OK,
+        action: GALE_PIPE_ACTION_WRITE_OK,
+        actual_bytes: n,
+        new_used: nu,
+    }
+}
+
+/// Decision struct for k_pipe_read -- tells C shim what action to take.
+#[repr(C)]
+pub struct GalePipeReadDecision {
+    /// Return code (error code when action=RETURN_ERROR)
+    pub ret: i32,
+    /// Action: 0=READ_OK, 1=WAKE_WRITER, 2=PEND_CURRENT, 3=RETURN_ERROR
+    pub action: u8,
+    /// Bytes that can be read from ring buffer
+    pub actual_bytes: u32,
+    /// Updated used count after read
+    pub new_used: u32,
+}
+
+pub const GALE_PIPE_ACTION_READ_OK: u8 = 0;
+pub const GALE_PIPE_ACTION_WAKE_WRITER: u8 = 1;
+pub const GALE_PIPE_ACTION_READ_PEND: u8 = 2;
+pub const GALE_PIPE_ACTION_READ_ERROR: u8 = 3;
+
+/// Full decision for k_pipe_read: decides what the C shim should do.
+///
+/// Verified: PP3-PP6, PP9-PP10
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_pipe_read_decide(
+    used: u32,
+    size: u32,
+    flags: u8,
+    request_len: u32,
+    has_writer: u32,
+) -> GalePipeReadDecision {
+    if (flags & PIPE_FLAG_RESET) != 0 {
+        return GalePipeReadDecision {
+            ret: ECANCELED,
+            action: GALE_PIPE_ACTION_READ_ERROR,
+            actual_bytes: 0,
+            new_used: used,
+        };
+    }
+    if size > 0 && used >= size && has_writer != 0 {
+        let n = if request_len <= used { request_len } else { used };
+        #[allow(clippy::arithmetic_side_effects)]
+        let nu = used - n;
+        return GalePipeReadDecision {
+            ret: OK,
+            action: GALE_PIPE_ACTION_WAKE_WRITER,
+            actual_bytes: n,
+            new_used: nu,
+        };
+    }
+    if used > 0 {
+        let n = if request_len <= used { request_len } else { used };
+        #[allow(clippy::arithmetic_side_effects)]
+        let nu = used - n;
+        return GalePipeReadDecision {
+            ret: OK,
+            action: GALE_PIPE_ACTION_READ_OK,
+            actual_bytes: n,
+            new_used: nu,
+        };
+    }
+    if (flags & PIPE_FLAG_OPEN) == 0 {
+        return GalePipeReadDecision {
+            ret: EPIPE,
+            action: GALE_PIPE_ACTION_READ_ERROR,
+            actual_bytes: 0,
+            new_used: 0,
+        };
+    }
+    GalePipeReadDecision {
+        ret: OK,
+        action: GALE_PIPE_ACTION_READ_PEND,
+        actual_bytes: 0,
+        new_used: 0,
+    }
+}
+
 /// Validate stack init parameters.
 ///
 /// stack.c:27-42:
@@ -4176,6 +4332,53 @@ mod kani_timer_proofs {
     #[kani::proof]
     fn timer_null_pointers() {
         assert!(gale_timer_expire(0, core::ptr::null_mut()) == EINVAL);
+    }
+
+    /// TM5/TM8: expire_decide increments status (saturating at u32::MAX).
+    #[kani::proof]
+    fn timer_expire_decide_validates() {
+        let status: u32 = kani::any();
+        let period: u32 = kani::any();
+
+        let d = gale_k_timer_expire_decide(status, period);
+
+        if status < u32::MAX {
+            assert!(d.new_status == status + 1);
+        } else {
+            assert!(d.new_status == u32::MAX);
+        }
+
+        if period > 0 {
+            assert!(d.is_periodic == 1);
+        } else {
+            assert!(d.is_periodic == 0);
+        }
+    }
+
+    /// TM2: status_decide returns old status and resets to 0.
+    #[kani::proof]
+    fn timer_status_decide_resets() {
+        let status: u32 = kani::any();
+
+        let d = gale_k_timer_status_decide(status);
+
+        assert!(d.count == status);
+        assert!(d.new_status == 0);
+    }
+
+    /// Decision roundtrip: expire_decide then status_decide.
+    #[kani::proof]
+    fn timer_decide_roundtrip() {
+        let status: u32 = kani::any();
+        let period: u32 = kani::any();
+        kani::assume(status < u32::MAX);
+
+        let expire_d = gale_k_timer_expire_decide(status, period);
+        assert!(expire_d.new_status == status + 1);
+
+        let status_d = gale_k_timer_status_decide(expire_d.new_status);
+        assert!(status_d.count == status + 1);
+        assert!(status_d.new_status == 0);
     }
 }
 
