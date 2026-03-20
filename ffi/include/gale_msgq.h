@@ -109,6 +109,40 @@ int32_t gale_msgq_peek_at(uint32_t read_idx,
                           uint32_t idx,
                           uint32_t *slot_idx);
 
+/* ---- Phase 2: Full Decision API ---- */
+
+struct gale_msgq_put_decision {
+    int32_t ret;
+    uint8_t action;       /* 0=PUT_OK, 1=WAKE_READER, 2=PEND_CURRENT, 3=RETURN_FULL */
+    uint32_t new_write_idx;
+    uint32_t new_used;
+};
+
+#define GALE_MSGQ_ACTION_PUT_OK      0
+#define GALE_MSGQ_ACTION_WAKE_READER 1
+#define GALE_MSGQ_ACTION_PUT_PEND    2
+#define GALE_MSGQ_ACTION_RETURN_FULL 3
+
+struct gale_msgq_put_decision gale_k_msgq_put_decide(
+    uint32_t write_idx, uint32_t used_msgs, uint32_t max_msgs,
+    uint32_t has_waiter, uint32_t is_no_wait);
+
+struct gale_msgq_get_decision {
+    int32_t ret;
+    uint8_t action;       /* 0=GET_OK, 1=WAKE_WRITER, 2=PEND_CURRENT, 3=RETURN_EMPTY */
+    uint32_t new_read_idx;
+    uint32_t new_used;
+};
+
+#define GALE_MSGQ_ACTION_GET_OK       0
+#define GALE_MSGQ_ACTION_WAKE_WRITER  1
+#define GALE_MSGQ_ACTION_GET_PEND     2
+#define GALE_MSGQ_ACTION_RETURN_EMPTY 3
+
+struct gale_msgq_get_decision gale_k_msgq_get_decide(
+    uint32_t read_idx, uint32_t used_msgs, uint32_t max_msgs,
+    uint32_t has_waiter, uint32_t is_no_wait);
+
 #ifdef __cplusplus
 }
 #endif
