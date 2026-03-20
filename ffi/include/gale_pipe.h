@@ -59,6 +59,40 @@ int32_t gale_pipe_read_check(uint32_t used,
                               uint32_t *actual_len,
                               uint32_t *new_used);
 
+/* ---- Phase 2: Full Decision API ---- */
+
+struct gale_pipe_write_decision {
+    int32_t ret;
+    uint8_t action;      /* 0=WRITE_OK, 1=WAKE_READER, 2=PEND_CURRENT, 3=RETURN_ERROR */
+    uint32_t actual_bytes;
+    uint32_t new_used;
+};
+
+#define GALE_PIPE_ACTION_WRITE_OK     0
+#define GALE_PIPE_ACTION_WAKE_READER  1
+#define GALE_PIPE_ACTION_WRITE_PEND   2
+#define GALE_PIPE_ACTION_WRITE_ERROR  3
+
+struct gale_pipe_write_decision gale_k_pipe_write_decide(
+    uint32_t used, uint32_t size, uint8_t flags,
+    uint32_t request_len, uint32_t has_reader);
+
+struct gale_pipe_read_decision {
+    int32_t ret;
+    uint8_t action;      /* 0=READ_OK, 1=WAKE_WRITER, 2=PEND_CURRENT, 3=RETURN_ERROR */
+    uint32_t actual_bytes;
+    uint32_t new_used;
+};
+
+#define GALE_PIPE_ACTION_READ_OK      0
+#define GALE_PIPE_ACTION_WAKE_WRITER  1
+#define GALE_PIPE_ACTION_READ_PEND    2
+#define GALE_PIPE_ACTION_READ_ERROR   3
+
+struct gale_pipe_read_decision gale_k_pipe_read_decide(
+    uint32_t used, uint32_t size, uint8_t flags,
+    uint32_t request_len, uint32_t has_writer);
+
 #ifdef __cplusplus
 }
 #endif

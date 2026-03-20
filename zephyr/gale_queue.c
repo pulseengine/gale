@@ -4,17 +4,18 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Gale queue — verified unbounded queue count arithmetic.
+ * Gale queue — phase 2: Extract→Decide→Apply pattern.
  *
- * This is kernel/queue.c with the count tracking replaced by calls
- * to the formally verified Rust implementation.  The linked list
- * (sys_sflist), wait queue, scheduling, alloc nodes, polling, and
- * tracing remain native Zephyr.
+ * This is kernel/queue.c with queue_insert and k_queue_get rewritten
+ * to use Rust decision structs.  C extracts kernel state (spinlock,
+ * wait queue side effects), Rust decides the action, C applies it.
+ *
+ * The linked list (sys_sflist), alloc nodes, polling, and tracing
+ * remain native Zephyr.
  *
  * Verified operations (Verus proofs):
- *   gale_queue_append_validate  — QU1 (no overflow), QU2 (increment)
- *   gale_queue_prepend_validate — QU3 (no overflow), QU4 (increment)
- *   gale_queue_get_validate     — QU5 (no underflow), QU6 (decrement)
+ *   gale_k_queue_insert_decide — QU1-QU4 (wake vs insert decision)
+ *   gale_k_queue_get_decide    — QU5/QU6 (dequeue vs null vs pend decision)
  */
 
 #include <zephyr/kernel.h>
@@ -131,7 +132,6 @@ static inline void z_vrfy_k_queue_cancel_wait(struct k_queue *queue)
 static int32_t queue_insert(struct k_queue *queue, void *prev, void *data,
 			    bool alloc, bool is_append)
 {
-	struct k_thread *first_pending_thread;
 	k_spinlock_key_t key = k_spin_lock(&queue->lock);
 	int32_t result = 0;
 	bool resched = false;
@@ -141,36 +141,43 @@ static int32_t queue_insert(struct k_queue *queue, void *prev, void *data,
 	if (is_append) {
 		prev = sys_sflist_peek_tail(&queue->data_q);
 	}
-	first_pending_thread = z_unpend_first_thread(&queue->wait_q);
 
-	if (unlikely(first_pending_thread != NULL)) {
+	/* Extract: try to unpend first waiter (side effect: removes from queue) */
+	struct k_thread *first_pending_thread =
+		z_unpend_first_thread(&queue->wait_q);
+
+	/* Decide: Rust determines action based on whether a waiter was found */
+	struct gale_queue_insert_decision d = gale_k_queue_insert_decide(
+		first_pending_thread != NULL ? 1U : 0U);
+
+	/* Apply: execute Rust's decision */
+	if (d.action == GALE_QUEUE_ACTION_WAKE) {
 		SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_queue, queue_insert, queue, alloc, K_FOREVER);
 
 		prepare_thread_to_run(first_pending_thread, data);
 		resched = true;
-		goto out;
-	}
-
-	/* Only need to actually allocate if no threads are pending */
-	if (alloc) {
-		struct alloc_node *anode;
-
-		anode = z_thread_malloc(sizeof(*anode));
-		if (anode == NULL) {
-			result = -ENOMEM;
-			goto out;
-		}
-		anode->data = data;
-		sys_sfnode_init(&anode->node, 0x1);
-		data = anode;
 	} else {
-		sys_sfnode_init(data, 0x0);
+		/* INSERT_INTO_LIST: allocate node if needed, then insert */
+		if (alloc) {
+			struct alloc_node *anode;
+
+			anode = z_thread_malloc(sizeof(*anode));
+			if (anode == NULL) {
+				result = -ENOMEM;
+				goto out;
+			}
+			anode->data = data;
+			sys_sfnode_init(&anode->node, 0x1);
+			data = anode;
+		} else {
+			sys_sfnode_init(data, 0x0);
+		}
+
+		SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_queue, queue_insert, queue, alloc, K_FOREVER);
+
+		sys_sflist_insert(&queue->data_q, prev, data);
+		resched = handle_poll_events(queue, K_POLL_STATE_DATA_AVAILABLE);
 	}
-
-	SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_queue, queue_insert, queue, alloc, K_FOREVER);
-
-	sys_sflist_insert(&queue->data_q, prev, data);
-	resched = handle_poll_events(queue, K_POLL_STATE_DATA_AVAILABLE);
 
 out:
 	if (resched) {
@@ -329,7 +336,15 @@ void *z_impl_k_queue_get(struct k_queue *queue, k_timeout_t timeout)
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_queue, get, queue, timeout);
 
-	if (likely(!sys_sflist_is_empty(&queue->data_q))) {
+	/* Extract: check if list has data */
+	uint32_t has_data = !sys_sflist_is_empty(&queue->data_q) ? 1U : 0U;
+
+	/* Decide: Rust determines action */
+	struct gale_queue_get_decision d = gale_k_queue_get_decide(
+		has_data, K_TIMEOUT_EQ(timeout, K_NO_WAIT) ? 1U : 0U);
+
+	/* Apply: execute Rust's decision */
+	if (d.action == GALE_QUEUE_ACTION_DEQUEUE) {
 		sys_sfnode_t *node;
 
 		node = sys_sflist_get_not_empty(&queue->data_q);
@@ -339,24 +354,23 @@ void *z_impl_k_queue_get(struct k_queue *queue, k_timeout_t timeout)
 		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_queue, get, queue, timeout, data);
 
 		return data;
-	}
-
-	SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_queue, get, queue, timeout);
-
-	if (K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
+	} else if (d.action == GALE_QUEUE_ACTION_RETURN_NULL) {
 		k_spin_unlock(&queue->lock, key);
 
 		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_queue, get, queue, timeout, NULL);
 
 		return NULL;
+	} else {
+		/* PEND_CURRENT: block on wait queue with timeout */
+		SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_queue, get, queue, timeout);
+
+		int ret = z_pend_curr(&queue->lock, key, &queue->wait_q, timeout);
+
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_queue, get, queue, timeout,
+			(ret != 0) ? NULL : _current->base.swap_data);
+
+		return (ret != 0) ? NULL : _current->base.swap_data;
 	}
-
-	int ret = z_pend_curr(&queue->lock, key, &queue->wait_q, timeout);
-
-	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_queue, get, queue, timeout,
-		(ret != 0) ? NULL : _current->base.swap_data);
-
-	return (ret != 0) ? NULL : _current->base.swap_data;
 }
 
 bool k_queue_remove(struct k_queue *queue, void *data)

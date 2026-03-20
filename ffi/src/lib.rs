@@ -509,6 +509,144 @@ pub extern "C" fn gale_mutex_unlock_validate(
     }
 }
 
+// ---- Phase 2: Full Decision API for Mutex ----
+
+/// Decision struct for k_mutex_lock — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleMutexLockDecision {
+    /// Return code: 0 (acquired), -EBUSY (would block)
+    pub ret: i32,
+    /// Action: 0=ACQUIRED, 1=PEND_CURRENT, 2=RETURN_BUSY
+    pub action: u8,
+    /// New lock_count value (only meaningful when action=ACQUIRED)
+    pub new_lock_count: u32,
+}
+
+pub const GALE_MUTEX_ACTION_ACQUIRED: u8 = 0;
+pub const GALE_MUTEX_ACTION_PEND: u8 = 1;
+pub const GALE_MUTEX_ACTION_BUSY: u8 = 2;
+
+/// Full decision for k_mutex_lock: decides whether to acquire, pend, or return busy.
+///
+/// Handles reentrant locking, ownership check, and pend-or-busy decision.
+/// Priority inheritance logic stays in C — Rust decides the action,
+/// C applies it including any priority adjustments.
+///
+/// Verified: M3 (acquire), M4 (reentrant), M5 (contended), M10 (no overflow).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_mutex_lock_decide(
+    lock_count: u32,
+    owner_is_null: u32,
+    owner_is_current: u32,
+    is_no_wait: u32,
+) -> GaleMutexLockDecision {
+    if owner_is_null != 0 {
+        // Mutex unlocked — acquire (M3).
+        GaleMutexLockDecision {
+            ret: OK,
+            action: GALE_MUTEX_ACTION_ACQUIRED,
+            new_lock_count: 1,
+        }
+    } else if owner_is_current != 0 {
+        // Reentrant lock — same owner (M4, M10).
+        match lock_count.checked_add(1) {
+            Some(n) => GaleMutexLockDecision {
+                ret: OK,
+                action: GALE_MUTEX_ACTION_ACQUIRED,
+                new_lock_count: n,
+            },
+            None => {
+                // Overflow would violate M10.
+                GaleMutexLockDecision {
+                    ret: EINVAL,
+                    action: GALE_MUTEX_ACTION_BUSY,
+                    new_lock_count: lock_count,
+                }
+            }
+        }
+    } else if is_no_wait != 0 {
+        // Different owner, no-wait — return busy (M5).
+        GaleMutexLockDecision {
+            ret: EBUSY,
+            action: GALE_MUTEX_ACTION_BUSY,
+            new_lock_count: lock_count,
+        }
+    } else {
+        // Different owner, willing to wait — pend (M5).
+        GaleMutexLockDecision {
+            ret: 0,
+            action: GALE_MUTEX_ACTION_PEND,
+            new_lock_count: lock_count,
+        }
+    }
+}
+
+/// Decision struct for k_mutex_unlock — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleMutexUnlockDecision {
+    /// Return code: 0 (success), -EINVAL (not locked), -EPERM (not owner)
+    pub ret: i32,
+    /// Action: 0=RELEASED (still held), 1=UNLOCKED (check waiters), 2=ERROR
+    pub action: u8,
+    /// New lock_count value (decremented if RELEASED, 0 if UNLOCKED)
+    pub new_lock_count: u32,
+}
+
+pub const GALE_MUTEX_UNLOCK_RELEASED: u8 = 0;
+pub const GALE_MUTEX_UNLOCK_UNLOCKED: u8 = 1;
+pub const GALE_MUTEX_UNLOCK_ERROR: u8 = 2;
+
+/// Full decision for k_mutex_unlock: decides whether to decrement, fully unlock,
+/// or return an error.
+///
+/// Priority inheritance restoration stays in C — Rust decides the action,
+/// C applies it including any priority adjustments.
+///
+/// Verified: M6a (EINVAL), M6b (EPERM), M7 (reentrant), M10 (no underflow).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_mutex_unlock_decide(
+    lock_count: u32,
+    owner_is_null: u32,
+    owner_is_current: u32,
+) -> GaleMutexUnlockDecision {
+    // M6a: not locked
+    if owner_is_null != 0 {
+        return GaleMutexUnlockDecision {
+            ret: EINVAL,
+            action: GALE_MUTEX_UNLOCK_ERROR,
+            new_lock_count: 0,
+        };
+    }
+
+    // M6b: not owner
+    if owner_is_current == 0 {
+        return GaleMutexUnlockDecision {
+            ret: EPERM,
+            action: GALE_MUTEX_UNLOCK_ERROR,
+            new_lock_count: lock_count,
+        };
+    }
+
+    // M7: reentrant release (lock_count > 1)
+    if lock_count > 1 {
+        // Verified: lock_count > 1, so lock_count - 1 >= 1, no underflow.
+        #[allow(clippy::arithmetic_side_effects)]
+        let new_count = lock_count - 1;
+        GaleMutexUnlockDecision {
+            ret: OK,
+            action: GALE_MUTEX_UNLOCK_RELEASED,
+            new_lock_count: new_count,
+        }
+    } else {
+        // Fully unlocked — caller handles waiter transfer.
+        GaleMutexUnlockDecision {
+            ret: OK,
+            action: GALE_MUTEX_UNLOCK_UNLOCKED,
+            new_lock_count: 0,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Message Queue FFI exports — ring buffer index arithmetic
 // ---------------------------------------------------------------------------
@@ -779,6 +917,147 @@ pub extern "C" fn gale_msgq_peek_at(
             }
         }
         OK
+    }
+}
+
+// ---- Phase 2: Full Decision API for msgq ----
+
+/// Decision struct for k_msgq_put -- tells C shim what action to take.
+#[repr(C)]
+pub struct GaleMsgqPutDecision {
+    /// Return code: 0 (OK), -ENOMSG (full)
+    pub ret: i32,
+    /// Action: 0=PUT_OK, 1=WAKE_READER, 2=PEND_CURRENT, 3=RETURN_FULL
+    pub action: u8,
+    /// New write index (only meaningful when action=PUT_OK)
+    pub new_write_idx: u32,
+    /// New used count
+    pub new_used: u32,
+}
+
+pub const GALE_MSGQ_ACTION_PUT_OK: u8 = 0;
+pub const GALE_MSGQ_ACTION_WAKE_READER: u8 = 1;
+pub const GALE_MSGQ_ACTION_PUT_PEND: u8 = 2;
+pub const GALE_MSGQ_ACTION_RETURN_FULL: u8 = 3;
+
+/// Full decision for k_msgq_put: decides whether to put, wake a reader, pend,
+/// or return full.
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_msgq_put_decide(
+    write_idx: u32,
+    used_msgs: u32,
+    max_msgs: u32,
+    has_waiter: u32,
+    is_no_wait: u32,
+) -> GaleMsgqPutDecision {
+    if used_msgs < max_msgs {
+        if has_waiter != 0 {
+            GaleMsgqPutDecision {
+                ret: OK,
+                action: GALE_MSGQ_ACTION_WAKE_READER,
+                new_write_idx: write_idx,
+                new_used: used_msgs,
+            }
+        } else {
+            #[allow(clippy::arithmetic_side_effects)]
+            let next = if write_idx + 1 < max_msgs {
+                write_idx + 1
+            } else {
+                0
+            };
+            #[allow(clippy::arithmetic_side_effects)]
+            let new_used = used_msgs + 1;
+            GaleMsgqPutDecision {
+                ret: OK,
+                action: GALE_MSGQ_ACTION_PUT_OK,
+                new_write_idx: next,
+                new_used,
+            }
+        }
+    } else if is_no_wait != 0 {
+        GaleMsgqPutDecision {
+            ret: ENOMSG,
+            action: GALE_MSGQ_ACTION_RETURN_FULL,
+            new_write_idx: write_idx,
+            new_used: used_msgs,
+        }
+    } else {
+        GaleMsgqPutDecision {
+            ret: 0,
+            action: GALE_MSGQ_ACTION_PUT_PEND,
+            new_write_idx: write_idx,
+            new_used: used_msgs,
+        }
+    }
+}
+
+/// Decision struct for k_msgq_get -- tells C shim what action to take.
+#[repr(C)]
+pub struct GaleMsgqGetDecision {
+    /// Return code: 0 (OK), -ENOMSG (empty)
+    pub ret: i32,
+    /// Action: 0=GET_OK, 1=WAKE_WRITER, 2=PEND_CURRENT, 3=RETURN_EMPTY
+    pub action: u8,
+    /// New read index (only meaningful when action=GET_OK or WAKE_WRITER)
+    pub new_read_idx: u32,
+    /// New used count
+    pub new_used: u32,
+}
+
+pub const GALE_MSGQ_ACTION_GET_OK: u8 = 0;
+pub const GALE_MSGQ_ACTION_WAKE_WRITER: u8 = 1;
+pub const GALE_MSGQ_ACTION_GET_PEND: u8 = 2;
+pub const GALE_MSGQ_ACTION_RETURN_EMPTY: u8 = 3;
+
+/// Full decision for k_msgq_get: decides whether to get, wake a writer, pend,
+/// or return empty.
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_msgq_get_decide(
+    read_idx: u32,
+    used_msgs: u32,
+    max_msgs: u32,
+    has_waiter: u32,
+    is_no_wait: u32,
+) -> GaleMsgqGetDecision {
+    if used_msgs > 0 {
+        #[allow(clippy::arithmetic_side_effects)]
+        let next = if read_idx + 1 < max_msgs {
+            read_idx + 1
+        } else {
+            0
+        };
+        #[allow(clippy::arithmetic_side_effects)]
+        let new_used = used_msgs - 1;
+
+        if has_waiter != 0 {
+            GaleMsgqGetDecision {
+                ret: OK,
+                action: GALE_MSGQ_ACTION_WAKE_WRITER,
+                new_read_idx: next,
+                new_used,
+            }
+        } else {
+            GaleMsgqGetDecision {
+                ret: OK,
+                action: GALE_MSGQ_ACTION_GET_OK,
+                new_read_idx: next,
+                new_used,
+            }
+        }
+    } else if is_no_wait != 0 {
+        GaleMsgqGetDecision {
+            ret: ENOMSG,
+            action: GALE_MSGQ_ACTION_RETURN_EMPTY,
+            new_read_idx: read_idx,
+            new_used: 0,
+        }
+    } else {
+        GaleMsgqGetDecision {
+            ret: 0,
+            action: GALE_MSGQ_ACTION_GET_PEND,
+            new_read_idx: read_idx,
+            new_used: 0,
+        }
     }
 }
 
@@ -3896,6 +4175,141 @@ mod kani_mutex_proofs {
     fn mutex_unlock_null_returns_einval() {
         let ret = gale_mutex_unlock_validate(1, 0, 1, core::ptr::null_mut());
         assert!(ret == EINVAL);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — mutex decision structs
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_mutex_decide_proofs {
+    use super::*;
+
+    /// M3: lock_decide on unlocked mutex returns ACQUIRED with lock_count = 1.
+    #[kani::proof]
+    fn mutex_lock_decide_unlocked() {
+        let d = gale_k_mutex_lock_decide(0, 1, 0, 0);
+        assert!(d.ret == OK);
+        assert!(d.action == GALE_MUTEX_ACTION_ACQUIRED);
+        assert!(d.new_lock_count == 1);
+    }
+
+    /// M4/M10: lock_decide reentrant increments without overflow.
+    #[kani::proof]
+    fn mutex_lock_decide_reentrant() {
+        let lock_count: u32 = kani::any();
+        kani::assume(lock_count > 0 && lock_count < u32::MAX);
+
+        let d = gale_k_mutex_lock_decide(lock_count, 0, 1, 0);
+        assert!(d.ret == OK);
+        assert!(d.action == GALE_MUTEX_ACTION_ACQUIRED);
+        assert!(d.new_lock_count == lock_count + 1);
+    }
+
+    /// M10: lock_decide reentrant at u32::MAX returns error (overflow protection).
+    #[kani::proof]
+    fn mutex_lock_decide_reentrant_overflow() {
+        let d = gale_k_mutex_lock_decide(u32::MAX, 0, 1, 0);
+        assert!(d.ret == EINVAL);
+        assert!(d.action == GALE_MUTEX_ACTION_BUSY);
+        assert!(d.new_lock_count == u32::MAX);
+    }
+
+    /// M5: lock_decide contended with no-wait returns BUSY.
+    #[kani::proof]
+    fn mutex_lock_decide_contended_no_wait() {
+        let lock_count: u32 = kani::any();
+        kani::assume(lock_count > 0);
+
+        let d = gale_k_mutex_lock_decide(lock_count, 0, 0, 1);
+        assert!(d.ret == EBUSY);
+        assert!(d.action == GALE_MUTEX_ACTION_BUSY);
+    }
+
+    /// M5: lock_decide contended willing to wait returns PEND.
+    #[kani::proof]
+    fn mutex_lock_decide_contended_pend() {
+        let lock_count: u32 = kani::any();
+        kani::assume(lock_count > 0);
+
+        let d = gale_k_mutex_lock_decide(lock_count, 0, 0, 0);
+        assert!(d.ret == 0);
+        assert!(d.action == GALE_MUTEX_ACTION_PEND);
+    }
+
+    /// M6a: unlock_decide when not locked returns EINVAL + ERROR action.
+    #[kani::proof]
+    fn mutex_unlock_decide_not_locked() {
+        let d = gale_k_mutex_unlock_decide(0, 1, 0);
+        assert!(d.ret == EINVAL);
+        assert!(d.action == GALE_MUTEX_UNLOCK_ERROR);
+    }
+
+    /// M6b: unlock_decide by wrong owner returns EPERM + ERROR action.
+    #[kani::proof]
+    fn mutex_unlock_decide_not_owner() {
+        let lock_count: u32 = kani::any();
+        kani::assume(lock_count > 0);
+
+        let d = gale_k_mutex_unlock_decide(lock_count, 0, 0);
+        assert!(d.ret == EPERM);
+        assert!(d.action == GALE_MUTEX_UNLOCK_ERROR);
+    }
+
+    /// M7: unlock_decide reentrant decrements correctly.
+    #[kani::proof]
+    fn mutex_unlock_decide_reentrant() {
+        let lock_count: u32 = kani::any();
+        kani::assume(lock_count > 1);
+
+        let d = gale_k_mutex_unlock_decide(lock_count, 0, 1);
+        assert!(d.ret == OK);
+        assert!(d.action == GALE_MUTEX_UNLOCK_RELEASED);
+        assert!(d.new_lock_count == lock_count - 1);
+    }
+
+    /// M9: unlock_decide final unlock returns UNLOCKED.
+    #[kani::proof]
+    fn mutex_unlock_decide_final() {
+        let d = gale_k_mutex_unlock_decide(1, 0, 1);
+        assert!(d.ret == OK);
+        assert!(d.action == GALE_MUTEX_UNLOCK_UNLOCKED);
+        assert!(d.new_lock_count == 0);
+    }
+
+    /// Lock-unlock roundtrip via decision structs.
+    #[kani::proof]
+    fn mutex_decide_roundtrip() {
+        // Lock (unlocked mutex)
+        let dl = gale_k_mutex_lock_decide(0, 1, 0, 0);
+        assert!(dl.ret == OK);
+        assert!(dl.action == GALE_MUTEX_ACTION_ACQUIRED);
+        assert!(dl.new_lock_count == 1);
+
+        // Unlock
+        let du = gale_k_mutex_unlock_decide(dl.new_lock_count, 0, 1);
+        assert!(du.ret == OK);
+        assert!(du.action == GALE_MUTEX_UNLOCK_UNLOCKED);
+        assert!(du.new_lock_count == 0);
+    }
+
+    /// Reentrant lock-unlock roundtrip via decision structs.
+    #[kani::proof]
+    fn mutex_decide_reentrant_roundtrip() {
+        let lock_count: u32 = kani::any();
+        kani::assume(lock_count > 0 && lock_count < u32::MAX);
+
+        // Reentrant lock
+        let dl = gale_k_mutex_lock_decide(lock_count, 0, 1, 0);
+        assert!(dl.ret == OK);
+        assert!(dl.new_lock_count == lock_count + 1);
+
+        // Reentrant unlock
+        let du = gale_k_mutex_unlock_decide(dl.new_lock_count, 0, 1);
+        assert!(du.ret == OK);
+        assert!(du.action == GALE_MUTEX_UNLOCK_RELEASED);
+        assert!(du.new_lock_count == lock_count);
     }
 }
 
