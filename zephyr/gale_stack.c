@@ -6,13 +6,13 @@
  *
  * Gale stack — verified LIFO count/capacity arithmetic.
  *
- * This is kernel/stack.c with the capacity check and count tracking
- * replaced by calls to the formally verified Rust implementation.
- * Wait queue, scheduling, tracing, and data storage remain native Zephyr.
+ * This is kernel/stack.c with push/pop rewritten to use Rust decision
+ * structs.  C extracts kernel state (spinlock, wait queue peek),
+ * Rust decides the action, C applies it.
  *
  * Verified operations (Verus proofs):
- *   gale_stack_push_validate — SK1 (bounds), SK3 (increment), SK4 (-ENOMEM)
- *   gale_stack_pop_validate  — SK1 (bounds), SK5 (decrement), SK6 (-EBUSY)
+ *   gale_k_stack_push_decide — SK1 (bounds), SK3 (increment), SK4 (-ENOMEM)
+ *   gale_k_stack_pop_decide  — SK1 (bounds), SK5 (decrement), SK6 (-EBUSY)
  *   gale_stack_init_validate — SK2 (capacity > 0)
  */
 
@@ -110,46 +110,40 @@ int k_stack_cleanup(struct k_stack *stack)
 
 int z_impl_k_stack_push(struct k_stack *stack, stack_data_t data)
 {
-	struct k_thread *first_pending_thread;
-	int ret = 0;
 	k_spinlock_key_t key = k_spin_lock(&stack->lock);
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_stack, push, stack);
 
-	/* --- Gale verified capacity check --- */
+	/* Extract: read state, peek at wait queue head (no side effect) */
 	uint32_t count = (uint32_t)(stack->next - stack->base);
 	uint32_t capacity = (uint32_t)(stack->top - stack->base);
-	uint32_t new_count;
+	uint32_t has_waiter = (z_waitq_head(&stack->wait_q) != NULL) ? 1U : 0U;
 
-	ret = gale_stack_push_validate(count, capacity, &new_count);
-	if (ret != 0) {
-		/* SK4: stack full (-ENOMEM) */
-		goto out;
-	}
+	/* Decide: Rust determines action based on count, capacity, waiter */
+	struct gale_stack_push_decision d = gale_k_stack_push_decide(
+		count, capacity, has_waiter);
 
-	first_pending_thread = z_unpend_first_thread(&stack->wait_q);
+	/* Apply: execute Rust's decision */
+	if (d.action == GALE_STACK_PUSH_WAKE) {
+		struct k_thread *thread = z_unpend_first_thread(&stack->wait_q);
 
-	if (unlikely(first_pending_thread != NULL)) {
-		z_thread_return_value_set_with_data(first_pending_thread,
-						   0, (void *)data);
-
-		z_ready_thread(first_pending_thread);
+		z_thread_return_value_set_with_data(thread,
+						    0, (void *)data);
+		z_ready_thread(thread);
 		z_reschedule(&stack->lock, key);
-		goto end;
-	} else {
+	} else if (d.action == GALE_STACK_PUSH_STORE) {
 		/* SK3: count incremented — store data and advance pointer */
 		*(stack->next) = data;
 		stack->next++;
-		goto out;
+		k_spin_unlock(&stack->lock, key);
+	} else {
+		/* FULL: -ENOMEM */
+		k_spin_unlock(&stack->lock, key);
 	}
 
-out:
-	k_spin_unlock(&stack->lock, key);
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_stack, push, stack, d.ret);
 
-end:
-	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_stack, push, stack, ret);
-
-	return ret;
+	return d.ret;
 }
 
 #ifdef CONFIG_USERSPACE
@@ -172,32 +166,29 @@ int z_impl_k_stack_pop(struct k_stack *stack, stack_data_t *data,
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_stack, pop, stack, timeout);
 
-	/* --- Gale verified empty check --- */
+	/* Extract: read count and timeout mode */
 	uint32_t count = (uint32_t)(stack->next - stack->base);
-	uint32_t new_count;
 
-	result = gale_stack_pop_validate(count, &new_count);
-	if (result == 0) {
-		/* SK5: count decremented — read data and retreat pointer */
-		stack->next--;
-		*data = *(stack->next);
+	/* Decide: Rust determines pop/pend/busy */
+	struct gale_stack_pop_decision d = gale_k_stack_pop_decide(
+		count, K_TIMEOUT_EQ(timeout, K_NO_WAIT) ? 1U : 0U);
+
+	/* Apply: execute Rust's decision */
+	if (d.action == GALE_STACK_POP_OK) {
+		if (d.ret == 0) {
+			/* SK5: count decremented — read data and retreat pointer */
+			stack->next--;
+			*data = *(stack->next);
+		}
 		k_spin_unlock(&stack->lock, key);
 
 		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_stack, pop, stack,
-						timeout, 0);
-		return 0;
+						timeout, d.ret);
+		return d.ret;
 	}
 
-	/* Stack empty — check timeout */
+	/* PEND_CURRENT: block on wait queue with timeout */
 	SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_stack, pop, stack, timeout);
-
-	if (K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
-		k_spin_unlock(&stack->lock, key);
-
-		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_stack, pop, stack,
-						timeout, -EBUSY);
-		return -EBUSY;
-	}
 
 	result = z_pend_curr(&stack->lock, key, &stack->wait_q, timeout);
 	if (result == -EAGAIN) {
