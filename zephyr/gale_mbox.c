@@ -4,17 +4,21 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Gale mailbox — verified stateless message validation.
+ * Gale mailbox — phase 2: Extract→Decide→Apply pattern.
  *
- * This is kernel/mailbox.c with the message matching logic
- * replaced by calls to the formally verified Rust implementation.
- * Wait queues, scheduling, async message descriptors, data copy,
- * and tracing remain native Zephyr.
+ * This is kernel/mailbox.c with mbox_message_put and k_mbox_get
+ * rewritten to use Rust decision structs.  C extracts kernel state
+ * (spinlock, wait queue scan, message matching), Rust decides the
+ * post-scan action, C applies it.
+ *
+ * Data movement (message copy), async descriptors, and tracing
+ * remain native Zephyr.
  *
  * Verified operations (Verus proofs):
- *   gale_mbox_validate_send — MB1 (size > 0)
- *   gale_mbox_match_check   — MB2-MB4 (K_ANY, equal, different)
- *   gale_mbox_data_exchange — MB5-MB6 (min computation)
+ *   gale_mbox_match_check     — MB2-MB4 (K_ANY, equal, different)
+ *   gale_mbox_data_exchange   — MB5-MB6 (min computation)
+ *   gale_k_mbox_put_decide    — post-scan put decision
+ *   gale_k_mbox_get_decide    — post-scan get decision
  */
 
 #include <zephyr/kernel.h>
@@ -183,13 +187,14 @@ static void mbox_message_dispose(struct k_mbox_msg *rx_msg)
 }
 
 /**
- * @brief Send a mailbox message.
+ * @brief Send a mailbox message — Extract→Decide→Apply pattern.
  */
 static int mbox_message_put(struct k_mbox *mbox, struct k_mbox_msg *tx_msg,
 			     k_timeout_t timeout)
 {
 	struct k_thread *sending_thread;
 	struct k_thread *receiving_thread;
+	struct k_thread *matched_receiver = NULL;
 	struct k_mbox_msg *rx_msg;
 	k_spinlock_key_t key;
 
@@ -200,7 +205,7 @@ static int mbox_message_put(struct k_mbox *mbox, struct k_mbox_msg *tx_msg,
 	sending_thread = tx_msg->_syncing_thread;
 	sending_thread->base.swap_data = tx_msg;
 
-	/* search mailbox's rx queue for a compatible receiver */
+	/* Extract: search mailbox's rx queue for a compatible receiver */
 	key = k_spin_lock(&mbox->lock);
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_mbox, message_put, mbox, timeout);
@@ -211,52 +216,60 @@ static int mbox_message_put(struct k_mbox *mbox, struct k_mbox_msg *tx_msg,
 		if (mbox_message_match(tx_msg, rx_msg) == 0) {
 			/* take receiver out of rx queue */
 			z_unpend_thread(receiving_thread);
-
-			/* ready receiver for execution */
-			arch_thread_return_value_set(receiving_thread, 0);
-			z_ready_thread(receiving_thread);
-
-#if (CONFIG_NUM_MBOX_ASYNC_MSGS > 0)
-			if ((sending_thread->base.thread_state & _THREAD_DUMMY)
-			    != 0U) {
-				z_reschedule(&mbox->lock, key);
-				return 0;
-			}
-#endif /* CONFIG_NUM_MBOX_ASYNC_MSGS */
-			SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_mbox, message_put, mbox, timeout);
-
-			int ret = z_pend_curr(&mbox->lock, key, NULL, K_FOREVER);
-
-			SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mbox, message_put, mbox, timeout, ret);
-
-			return ret;
+			matched_receiver = receiving_thread;
+			break;
 		}
 	}
 
-	/* didn't find a matching receiver: don't wait for one */
-	if (K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
+	/* Decide: Rust determines post-scan action */
+	struct gale_mbox_put_decision d = gale_k_mbox_put_decide(
+		matched_receiver != NULL ? 1U : 0U,
+		K_TIMEOUT_EQ(timeout, K_NO_WAIT) ? 1U : 0U);
+
+	/* Apply: execute Rust's decision */
+	if (d.action == GALE_MBOX_ACTION_MATCHED) {
+		/* ready receiver for execution */
+		arch_thread_return_value_set(matched_receiver, 0);
+		z_ready_thread(matched_receiver);
+
+#if (CONFIG_NUM_MBOX_ASYNC_MSGS > 0)
+		if ((sending_thread->base.thread_state & _THREAD_DUMMY)
+		    != 0U) {
+			z_reschedule(&mbox->lock, key);
+			return 0;
+		}
+#endif /* CONFIG_NUM_MBOX_ASYNC_MSGS */
+		SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_mbox, message_put, mbox, timeout);
+
+		int ret = z_pend_curr(&mbox->lock, key, NULL, K_FOREVER);
+
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mbox, message_put, mbox, timeout, ret);
+
+		return ret;
+	} else if (d.action == GALE_MBOX_ACTION_RETURN_ENOMSG) {
 		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mbox, message_put, mbox, timeout, -ENOMSG);
 
 		k_spin_unlock(&mbox->lock, key);
 		return -ENOMSG;
-	}
-
+	} else {
+		/* PEND_TX: sender waits on tx queue for receiver */
 #if (CONFIG_NUM_MBOX_ASYNC_MSGS > 0)
-	/* asynchronous send: dummy thread waits on tx queue for receiver */
-	if ((sending_thread->base.thread_state & _THREAD_DUMMY) != 0U) {
-		z_pend_thread(sending_thread, &mbox->tx_msg_queue, K_FOREVER);
-		k_spin_unlock(&mbox->lock, key);
-		return 0;
-	}
+		/* asynchronous send: dummy thread waits on tx queue */
+		if ((sending_thread->base.thread_state & _THREAD_DUMMY) != 0U) {
+			z_pend_thread(sending_thread, &mbox->tx_msg_queue, K_FOREVER);
+			k_spin_unlock(&mbox->lock, key);
+			return 0;
+		}
 #endif /* CONFIG_NUM_MBOX_ASYNC_MSGS */
-	SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_mbox, message_put, mbox, timeout);
+		SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_mbox, message_put, mbox, timeout);
 
-	/* synchronous send: sender waits on tx queue for receiver or timeout */
-	int ret = z_pend_curr(&mbox->lock, key, &mbox->tx_msg_queue, timeout);
+		/* synchronous send: sender waits on tx queue for receiver or timeout */
+		int ret = z_pend_curr(&mbox->lock, key, &mbox->tx_msg_queue, timeout);
 
-	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mbox, message_put, mbox, timeout, ret);
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mbox, message_put, mbox, timeout, ret);
 
-	return ret;
+		return ret;
+	}
 }
 
 int k_mbox_put(struct k_mbox *mbox, struct k_mbox_msg *tx_msg,
@@ -333,6 +346,7 @@ int k_mbox_get(struct k_mbox *mbox, struct k_mbox_msg *rx_msg, void *buffer,
 	       k_timeout_t timeout)
 {
 	struct k_thread *sending_thread;
+	struct k_thread *matched_sender = NULL;
 	struct k_mbox_msg *tx_msg;
 	k_spinlock_key_t key;
 	int result;
@@ -340,7 +354,7 @@ int k_mbox_get(struct k_mbox *mbox, struct k_mbox_msg *rx_msg, void *buffer,
 	/* save receiver id so it can be used during message matching */
 	rx_msg->tx_target_thread = _current;
 
-	/* search mailbox's tx queue for a compatible sender */
+	/* Extract: search mailbox's tx queue for a compatible sender */
 	key = k_spin_lock(&mbox->lock);
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_mbox, get, mbox, timeout);
@@ -351,41 +365,46 @@ int k_mbox_get(struct k_mbox *mbox, struct k_mbox_msg *rx_msg, void *buffer,
 		if (mbox_message_match(tx_msg, rx_msg) == 0) {
 			/* take sender out of mailbox's tx queue */
 			z_unpend_thread(sending_thread);
-
-			k_spin_unlock(&mbox->lock, key);
-
-			/* consume message data immediately, if needed */
-			result = mbox_message_data_check(rx_msg, buffer);
-
-			SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mbox, get, mbox, timeout, result);
-			return result;
+			matched_sender = sending_thread;
+			break;
 		}
 	}
 
-	/* didn't find a matching sender */
+	/* Decide: Rust determines post-scan action */
+	struct gale_mbox_get_decision d = gale_k_mbox_get_decide(
+		matched_sender != NULL ? 1U : 0U,
+		K_TIMEOUT_EQ(timeout, K_NO_WAIT) ? 1U : 0U);
 
-	if (K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
+	/* Apply: execute Rust's decision */
+	if (d.action == GALE_MBOX_ACTION_CONSUME) {
+		k_spin_unlock(&mbox->lock, key);
+
+		/* consume message data immediately, if needed */
+		result = mbox_message_data_check(rx_msg, buffer);
+
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mbox, get, mbox, timeout, result);
+		return result;
+	} else if (d.action == GALE_MBOX_ACTION_RETURN_ENOMSG) {
 		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mbox, get, mbox, timeout, -ENOMSG);
 
-		/* don't wait for a matching sender to appear */
 		k_spin_unlock(&mbox->lock, key);
 		return -ENOMSG;
+	} else {
+		/* PEND_RX: wait until a matching sender appears or timeout */
+		SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_mbox, get, mbox, timeout);
+
+		_current->base.swap_data = rx_msg;
+		result = z_pend_curr(&mbox->lock, key, &mbox->rx_msg_queue, timeout);
+
+		/* consume message data immediately, if needed */
+		if (result == 0) {
+			result = mbox_message_data_check(rx_msg, buffer);
+		}
+
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mbox, get, mbox, timeout, result);
+
+		return result;
 	}
-
-	SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_mbox, get, mbox, timeout);
-
-	/* wait until a matching sender appears or a timeout occurs */
-	_current->base.swap_data = rx_msg;
-	result = z_pend_curr(&mbox->lock, key, &mbox->rx_msg_queue, timeout);
-
-	/* consume message data immediately, if needed */
-	if (result == 0) {
-		result = mbox_message_data_check(rx_msg, buffer);
-	}
-
-	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mbox, get, mbox, timeout, result);
-
-	return result;
 }
 
 #ifdef CONFIG_OBJ_CORE_MAILBOX
