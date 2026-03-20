@@ -2244,6 +2244,156 @@ pub extern "C" fn gale_mbox_data_exchange(tx_size: u32, rx_buf_size: u32) -> u32
     }
 }
 
+// ---- Phase 2: Queue Decision API ----
+
+/// Decision struct for queue insert (append/prepend) — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleQueueInsertDecision {
+    /// Action: 0=INSERT_INTO_LIST, 1=WAKE_THREAD
+    pub action: u8,
+}
+
+pub const GALE_QUEUE_ACTION_INSERT: u8 = 0;
+pub const GALE_QUEUE_ACTION_WAKE: u8 = 1;
+
+/// Full decision for queue insert: decides whether to wake a pending thread
+/// or insert data into the linked list.
+///
+/// The C shim calls z_unpend_first_thread first (side effect), then passes
+/// whether a waiter was found. Rust decides the action.
+///
+/// Verified: QU1/QU2 (append), QU3/QU4 (prepend) — state transition only.
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_queue_insert_decide(
+    has_waiter: u32,
+) -> GaleQueueInsertDecision {
+    if has_waiter != 0 {
+        GaleQueueInsertDecision {
+            action: GALE_QUEUE_ACTION_WAKE,
+        }
+    } else {
+        GaleQueueInsertDecision {
+            action: GALE_QUEUE_ACTION_INSERT,
+        }
+    }
+}
+
+/// Decision struct for k_queue_get — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleQueueGetDecision {
+    /// Action: 0=DEQUEUE, 1=RETURN_NULL, 2=PEND_CURRENT
+    pub action: u8,
+}
+
+pub const GALE_QUEUE_ACTION_DEQUEUE: u8 = 0;
+pub const GALE_QUEUE_ACTION_RETURN_NULL: u8 = 1;
+pub const GALE_QUEUE_ACTION_PEND: u8 = 2;
+
+/// Full decision for k_queue_get: decides whether to dequeue data,
+/// return NULL immediately, or pend the current thread.
+///
+/// The C shim checks if the list has data and whether timeout is K_NO_WAIT.
+/// Rust decides the action.
+///
+/// Verified: QU5/QU6 — state transition only.
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_queue_get_decide(
+    has_data: u32,
+    is_no_wait: u32,
+) -> GaleQueueGetDecision {
+    if has_data != 0 {
+        GaleQueueGetDecision {
+            action: GALE_QUEUE_ACTION_DEQUEUE,
+        }
+    } else if is_no_wait != 0 {
+        GaleQueueGetDecision {
+            action: GALE_QUEUE_ACTION_RETURN_NULL,
+        }
+    } else {
+        GaleQueueGetDecision {
+            action: GALE_QUEUE_ACTION_PEND,
+        }
+    }
+}
+
+// ---- Phase 2: Mbox Decision API ----
+
+/// Decision struct for mbox_message_put — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleMboxPutDecision {
+    /// Action: 0=MATCHED (wake receiver), 1=RETURN_ENOMSG, 2=PEND_TX_QUEUE
+    pub action: u8,
+}
+
+pub const GALE_MBOX_ACTION_MATCHED: u8 = 0;
+pub const GALE_MBOX_ACTION_RETURN_ENOMSG: u8 = 1;
+pub const GALE_MBOX_ACTION_PEND_TX: u8 = 2;
+
+/// Full decision for mbox_message_put: decides post-scan action.
+///
+/// The C shim scans the rx queue for a compatible receiver (side effect),
+/// then passes whether a match was found and the timeout mode.
+/// Rust decides the action.
+///
+/// Verified: MB2-MB4 (match check delegated), state transition decision.
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_mbox_put_decide(
+    matched: u32,
+    is_no_wait: u32,
+) -> GaleMboxPutDecision {
+    if matched != 0 {
+        GaleMboxPutDecision {
+            action: GALE_MBOX_ACTION_MATCHED,
+        }
+    } else if is_no_wait != 0 {
+        GaleMboxPutDecision {
+            action: GALE_MBOX_ACTION_RETURN_ENOMSG,
+        }
+    } else {
+        GaleMboxPutDecision {
+            action: GALE_MBOX_ACTION_PEND_TX,
+        }
+    }
+}
+
+/// Decision struct for k_mbox_get — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleMboxGetDecision {
+    /// Action: 0=MATCHED (consume data), 1=RETURN_ENOMSG, 2=PEND_RX_QUEUE
+    pub action: u8,
+}
+
+pub const GALE_MBOX_ACTION_CONSUME: u8 = 0;
+// GALE_MBOX_ACTION_RETURN_ENOMSG = 1 (shared with put)
+pub const GALE_MBOX_ACTION_PEND_RX: u8 = 2;
+
+/// Full decision for k_mbox_get: decides post-scan action.
+///
+/// The C shim scans the tx queue for a compatible sender (side effect),
+/// then passes whether a match was found and the timeout mode.
+/// Rust decides the action.
+///
+/// Verified: MB2-MB4 (match check delegated), state transition decision.
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_mbox_get_decide(
+    matched: u32,
+    is_no_wait: u32,
+) -> GaleMboxGetDecision {
+    if matched != 0 {
+        GaleMboxGetDecision {
+            action: GALE_MBOX_ACTION_CONSUME,
+        }
+    } else if is_no_wait != 0 {
+        GaleMboxGetDecision {
+            action: GALE_MBOX_ACTION_RETURN_ENOMSG,
+        }
+    } else {
+        GaleMboxGetDecision {
+            action: GALE_MBOX_ACTION_PEND_RX,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // FFI exports — timeout (tick arithmetic + deadline tracking)
 // ---------------------------------------------------------------------------
