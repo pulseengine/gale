@@ -1340,7 +1340,10 @@ pub extern "C" fn gale_k_pipe_read_decide(
             new_used: used,
         };
     }
-    if size > 0 && used >= size && has_writer != 0 {
+    if used >= size && has_writer != 0 {
+        // Buffer full (or zero-size pipe): wake writers so they can
+        // copy data directly to us.  For zero-size pipes size==0 and
+        // used==0, so this path is the only way to trigger the writer.
         let n = if request_len <= used { request_len } else { used };
         #[allow(clippy::arithmetic_side_effects)]
         let nu = used - n;
