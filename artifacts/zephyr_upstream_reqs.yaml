@@ -1,7 +1,7 @@
 # Zephyr upstream requirements — auto-imported from reqmgmt via StrictDoc JSON export.
 #
 # Source: https://github.com/zephyrproject-rtos/reqmgmt
-# Files:  docs/software_requirements/{semaphore,mutex,condvar,futex,poll,msgq,stack,pipe,queue,mbox,fifo,lifo}.sdoc
+# Files:  docs/software_requirements/{semaphore,mutex,condvar,futex,poll,msgq,stack,pipe,queue,mbox,fifo,lifo,timer,event,timeout,timeslice,work,mem_slab,kheap,mempool,fatal,dynamic,smp,thread,sched}.sdoc
 # Tool:   strictdoc export --formats json | python3 convert.py
 #
 # DO NOT EDIT MANUALLY — regenerate from source.
@@ -927,4 +927,669 @@ artifacts:
         target: SWREQ-LI-LI03
       - type: satisfied-by
         target: SWREQ-LI-LI04
+
+  # ── Timer ────────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-TM
+    type: stakeholder-req
+    title: "Zephyr: Kernel Timer"
+    status: approved
+    description: >
+      The system shall implement a timer primitive supporting periodic and one-shot expiration with callback notification.
+    tags: [zephyr, upstream, timer]
+    fields:
+      priority: must
+      source: "reqmgmt/timer.sdoc ZEP-SYRS-TM"
+
+  - id: ZEP-SRS-TM-1
+    type: stakeholder-req
+    title: "Zephyr: Timer Periodic and One-Shot Mode"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide a timer that supports both periodic (auto-restarting) and one-shot (single expiration) modes, configurable via the period parameter at start time.
+    tags: [zephyr, upstream, timer]
+    fields:
+      priority: must
+      source: "reqmgmt/timer.sdoc ZEP-SRS-TM-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-TM
+      - type: satisfies
+        target: SYSREQ-TM-001
+
+  - id: ZEP-SRS-TM-2
+    type: stakeholder-req
+    title: "Zephyr: Timer Status Counting"
+    status: approved
+    description: >
+      The Zephyr RTOS shall maintain a status counter for each timer that is incremented on each expiration and atomically read-and-reset via k_timer_status_get.
+    tags: [zephyr, upstream, timer]
+    fields:
+      priority: must
+      source: "reqmgmt/timer.sdoc ZEP-SRS-TM-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-TM
+      - type: satisfies
+        target: SYSREQ-TM-001
+
+  - id: ZEP-SRS-TM-3
+    type: stakeholder-req
+    title: "Zephyr: Timer Expiry Callback"
+    status: approved
+    description: >
+      The Zephyr RTOS shall invoke a user-provided expiry function in ISR context each time the timer expires, and an optional stop function when the timer is stopped.
+    tags: [zephyr, upstream, timer]
+    fields:
+      priority: must
+      source: "reqmgmt/timer.sdoc ZEP-SRS-TM-3"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-TM
+      - type: satisfies
+        target: SYSREQ-TM-001
+
+  # ── Event ────────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-EV
+    type: stakeholder-req
+    title: "Zephyr: Kernel Event"
+    status: approved
+    description: >
+      The system shall implement an event object supporting bitmask-based signaling between threads and ISRs.
+    tags: [zephyr, upstream, event]
+    fields:
+      priority: must
+      source: "reqmgmt/event.sdoc ZEP-SYRS-EV"
+
+  - id: ZEP-SRS-EV-1
+    type: stakeholder-req
+    title: "Zephyr: Event Bitmask Post and Wait"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide an event object where threads can post (OR) event bits and wait for specific bits to be set.
+    tags: [zephyr, upstream, event]
+    fields:
+      priority: must
+      source: "reqmgmt/event.sdoc ZEP-SRS-EV-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-EV
+      - type: satisfies
+        target: SYSREQ-EV-001
+
+  - id: ZEP-SRS-EV-2
+    type: stakeholder-req
+    title: "Zephyr: Event ANY/ALL Matching Modes"
+    status: approved
+    description: >
+      The Zephyr RTOS shall support two wait modes: K_EVENT_WAIT_ANY (unblock when any requested bit is set) and K_EVENT_WAIT_ALL (unblock only when all requested bits are set).
+    tags: [zephyr, upstream, event]
+    fields:
+      priority: must
+      source: "reqmgmt/event.sdoc ZEP-SRS-EV-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-EV
+      - type: satisfies
+        target: SYSREQ-EV-001
+
+  - id: ZEP-SRS-EV-3
+    type: stakeholder-req
+    title: "Zephyr: Event Blocking Wait with Timeout"
+    status: approved
+    description: >
+      The Zephyr RTOS shall allow threads to block on an event with a configurable timeout, returning an error code if the requested events are not received within the specified time.
+    tags: [zephyr, upstream, event]
+    fields:
+      priority: must
+      source: "reqmgmt/event.sdoc ZEP-SRS-EV-3"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-EV
+      - type: satisfies
+        target: SYSREQ-EV-001
+
+  # ── Timeout ──────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-TO
+    type: stakeholder-req
+    title: "Zephyr: Timeout Subsystem"
+    status: approved
+    description: >
+      The system shall implement a timeout subsystem for tracking absolute deadlines and managing time-based blocking operations.
+    tags: [zephyr, upstream, timeout]
+    fields:
+      priority: must
+      source: "reqmgmt/timeout.sdoc ZEP-SYRS-TO"
+
+  - id: ZEP-SRS-TO-1
+    type: stakeholder-req
+    title: "Zephyr: Timeout Deadline Tracking"
+    status: approved
+    description: >
+      The Zephyr RTOS shall track timeout deadlines as absolute tick values and maintain a sorted list of pending timeouts for efficient expiry processing.
+    tags: [zephyr, upstream, timeout]
+    fields:
+      priority: must
+      source: "reqmgmt/timeout.sdoc ZEP-SRS-TO-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-TO
+      - type: satisfies
+        target: SYSREQ-TO-001
+
+  - id: ZEP-SRS-TO-2
+    type: stakeholder-req
+    title: "Zephyr: Timeout Overflow Protection"
+    status: approved
+    description: >
+      The Zephyr RTOS shall handle tick counter overflow correctly, ensuring that timeout arithmetic remains valid across the full range of the system tick counter.
+    tags: [zephyr, upstream, timeout]
+    fields:
+      priority: must
+      source: "reqmgmt/timeout.sdoc ZEP-SRS-TO-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-TO
+      - type: satisfies
+        target: SYSREQ-TO-001
+
+  # ── Timeslice ────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-TS
+    type: stakeholder-req
+    title: "Zephyr: Timeslice Subsystem"
+    status: approved
+    description: >
+      The system shall implement time-slice enforcement for preemptive round-robin scheduling among equal-priority threads.
+    tags: [zephyr, upstream, timeslice]
+    fields:
+      priority: must
+      source: "reqmgmt/timeslice.sdoc ZEP-SYRS-TS"
+
+  - id: ZEP-SRS-TS-1
+    type: stakeholder-req
+    title: "Zephyr: Time Quantum Enforcement"
+    status: approved
+    description: >
+      The Zephyr RTOS shall enforce a configurable time quantum (slice duration) per thread, rotating the current thread to the end of its priority queue when the slice expires.
+    tags: [zephyr, upstream, timeslice]
+    fields:
+      priority: must
+      source: "reqmgmt/timeslice.sdoc ZEP-SRS-TS-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-TS
+      - type: satisfies
+        target: SYSREQ-TS-001
+
+  - id: ZEP-SRS-TS-2
+    type: stakeholder-req
+    title: "Zephyr: Cooperative Thread Exemption from Timeslicing"
+    status: approved
+    description: >
+      The Zephyr RTOS shall exempt cooperative-priority threads (priority < 0) from time-slice preemption, allowing them to run until they voluntarily yield or block.
+    tags: [zephyr, upstream, timeslice]
+    fields:
+      priority: must
+      source: "reqmgmt/timeslice.sdoc ZEP-SRS-TS-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-TS
+      - type: satisfies
+        target: SYSREQ-TS-001
+
+  # ── Work ─────────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-WK
+    type: stakeholder-req
+    title: "Zephyr: Work Queue"
+    status: approved
+    description: >
+      The system shall implement a work queue subsystem for deferred execution of work items in thread context.
+    tags: [zephyr, upstream, work]
+    fields:
+      priority: must
+      source: "reqmgmt/work.sdoc ZEP-SYRS-WK"
+
+  - id: ZEP-SRS-WK-1
+    type: stakeholder-req
+    title: "Zephyr: Deferred Execution via Work Items"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide a mechanism to submit work items for deferred execution in a dedicated work queue thread context.
+    tags: [zephyr, upstream, work]
+    fields:
+      priority: must
+      source: "reqmgmt/work.sdoc ZEP-SRS-WK-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-WK
+      - type: satisfies
+        target: SYSREQ-WK-001
+
+  - id: ZEP-SRS-WK-2
+    type: stakeholder-req
+    title: "Zephyr: Delayed Work Submission"
+    status: approved
+    description: >
+      The Zephyr RTOS shall support scheduling work items for submission after a specified delay, allowing deferred-deferred execution patterns.
+    tags: [zephyr, upstream, work]
+    fields:
+      priority: must
+      source: "reqmgmt/work.sdoc ZEP-SRS-WK-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-WK
+      - type: satisfies
+        target: SYSREQ-WK-001
+
+  - id: ZEP-SRS-WK-3
+    type: stakeholder-req
+    title: "Zephyr: Work Item Cancellation"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide a mechanism to cancel a pending or delayed work item, preventing its execution if it has not yet started running.
+    tags: [zephyr, upstream, work]
+    fields:
+      priority: must
+      source: "reqmgmt/work.sdoc ZEP-SRS-WK-3"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-WK
+      - type: satisfies
+        target: SYSREQ-WK-001
+
+  # ── MemSlab ──────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-MS
+    type: stakeholder-req
+    title: "Zephyr: Memory Slab Allocator"
+    status: approved
+    description: >
+      The system shall implement a fixed-size block memory allocator for deterministic memory allocation.
+    tags: [zephyr, upstream, mem-slab]
+    fields:
+      priority: must
+      source: "reqmgmt/mem_slab.sdoc ZEP-SYRS-MS"
+
+  - id: ZEP-SRS-MS-1
+    type: stakeholder-req
+    title: "Zephyr: Fixed-Size Block Allocation"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide a memory slab allocator that manages a pool of equal-size memory blocks, returning a block on allocation and accepting a block on free.
+    tags: [zephyr, upstream, mem-slab]
+    fields:
+      priority: must
+      source: "reqmgmt/mem_slab.sdoc ZEP-SRS-MS-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-MS
+      - type: satisfies
+        target: SYSREQ-MS-001
+
+  - id: ZEP-SRS-MS-2
+    type: stakeholder-req
+    title: "Zephyr: Memory Slab Blocking Allocation with Timeout"
+    status: approved
+    description: >
+      The Zephyr RTOS shall allow threads to block when allocating from an exhausted memory slab, with a configurable timeout after which an error is returned.
+    tags: [zephyr, upstream, mem-slab]
+    fields:
+      priority: must
+      source: "reqmgmt/mem_slab.sdoc ZEP-SRS-MS-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-MS
+      - type: satisfies
+        target: SYSREQ-MS-001
+
+  - id: ZEP-SRS-MS-3
+    type: stakeholder-req
+    title: "Zephyr: Memory Slab Bounded Pool"
+    status: approved
+    description: >
+      The Zephyr RTOS shall enforce that the number of allocated blocks never exceeds the configured pool capacity, maintaining the invariant 0 <= num_used <= num_blocks.
+    tags: [zephyr, upstream, mem-slab]
+    fields:
+      priority: must
+      source: "reqmgmt/mem_slab.sdoc ZEP-SRS-MS-3"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-MS
+      - type: satisfies
+        target: SYSREQ-MS-001
+
+  # ── KHeap ────────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-KH
+    type: stakeholder-req
+    title: "Zephyr: Kernel Heap"
+    status: approved
+    description: >
+      The system shall implement a kernel heap allocator supporting dynamic memory allocation with blocking wait and alignment control.
+    tags: [zephyr, upstream, kheap]
+    fields:
+      priority: must
+      source: "reqmgmt/kheap.sdoc ZEP-SYRS-KH"
+
+  - id: ZEP-SRS-KH-1
+    type: stakeholder-req
+    title: "Zephyr: Dynamic Heap Allocation"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide a heap allocator supporting k_heap_alloc for variable-size allocation with optional blocking wait when memory is unavailable.
+    tags: [zephyr, upstream, kheap]
+    fields:
+      priority: must
+      source: "reqmgmt/kheap.sdoc ZEP-SRS-KH-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-KH
+      - type: satisfies
+        target: SYSREQ-KH-001
+
+  - id: ZEP-SRS-KH-2
+    type: stakeholder-req
+    title: "Zephyr: Aligned Heap Allocation"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide k_heap_aligned_alloc for allocating memory with a specified alignment, ensuring the returned pointer satisfies the requested alignment constraint.
+    tags: [zephyr, upstream, kheap]
+    fields:
+      priority: must
+      source: "reqmgmt/kheap.sdoc ZEP-SRS-KH-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-KH
+      - type: satisfies
+        target: SYSREQ-KH-001
+
+  # ── Mempool ──────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-MP
+    type: stakeholder-req
+    title: "Zephyr: Memory Pool"
+    status: approved
+    description: >
+      The system shall implement a memory pool providing fixed-block allocation with bounded capacity tracking.
+    tags: [zephyr, upstream, mempool]
+    fields:
+      priority: must
+      source: "reqmgmt/mempool.sdoc ZEP-SYRS-MP"
+
+  - id: ZEP-SRS-MP-1
+    type: stakeholder-req
+    title: "Zephyr: Memory Pool Management"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide a memory pool that tracks allocated and free block counts, ensuring the conservation invariant (allocated + free == capacity) holds at all times.
+    tags: [zephyr, upstream, mempool]
+    fields:
+      priority: must
+      source: "reqmgmt/mempool.sdoc ZEP-SRS-MP-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-MP
+      - type: satisfies
+        target: SYSREQ-MP-001
+
+  - id: ZEP-SRS-MP-2
+    type: stakeholder-req
+    title: "Zephyr: Memory Pool Block Size Classes"
+    status: approved
+    description: >
+      The Zephyr RTOS shall support memory pools with fixed block sizes, where all blocks within a pool are of identical size to ensure O(1) allocation and deallocation.
+    tags: [zephyr, upstream, mempool]
+    fields:
+      priority: must
+      source: "reqmgmt/mempool.sdoc ZEP-SRS-MP-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-MP
+      - type: satisfies
+        target: SYSREQ-MP-001
+
+  # ── Fatal ────────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-FT
+    type: stakeholder-req
+    title: "Zephyr: Fatal Error Handling"
+    status: approved
+    description: >
+      The system shall implement fatal error classification and recovery decision logic for safe system shutdown.
+    tags: [zephyr, upstream, fatal]
+    fields:
+      priority: must
+      source: "reqmgmt/fatal.sdoc ZEP-SYRS-FT"
+
+  - id: ZEP-SRS-FT-1
+    type: stakeholder-req
+    title: "Zephyr: Fatal Error Classification"
+    status: approved
+    description: >
+      The Zephyr RTOS shall classify fatal errors into distinct reason codes (CPU exception, oops, panic, stack overflow, kernel oops) to enable appropriate recovery or halt decisions.
+    tags: [zephyr, upstream, fatal]
+    fields:
+      priority: must
+      source: "reqmgmt/fatal.sdoc ZEP-SRS-FT-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-FT
+      - type: satisfies
+        target: SYSREQ-FT-001
+
+  - id: ZEP-SRS-FT-2
+    type: stakeholder-req
+    title: "Zephyr: System Halt on Unrecoverable Error"
+    status: approved
+    description: >
+      The Zephyr RTOS shall halt the system when a fatal error occurs in ISR context or when the faulting thread is marked essential, as recovery is not possible in these cases.
+    tags: [zephyr, upstream, fatal]
+    fields:
+      priority: must
+      source: "reqmgmt/fatal.sdoc ZEP-SRS-FT-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-FT
+      - type: satisfies
+        target: SYSREQ-FT-001
+
+  # ── Dynamic ──────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-DY
+    type: stakeholder-req
+    title: "Zephyr: Dynamic Thread Creation"
+    status: approved
+    description: >
+      The system shall implement dynamic thread creation with stack pool management for runtime thread provisioning.
+    tags: [zephyr, upstream, dynamic]
+    fields:
+      priority: must
+      source: "reqmgmt/dynamic.sdoc ZEP-SYRS-DY"
+
+  - id: ZEP-SRS-DY-1
+    type: stakeholder-req
+    title: "Zephyr: Dynamic Thread Creation"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide a mechanism to create threads dynamically at runtime, allocating stack memory from a pre-configured stack pool.
+    tags: [zephyr, upstream, dynamic]
+    fields:
+      priority: must
+      source: "reqmgmt/dynamic.sdoc ZEP-SRS-DY-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-DY
+      - type: satisfies
+        target: SYSREQ-DY-001
+
+  - id: ZEP-SRS-DY-2
+    type: stakeholder-req
+    title: "Zephyr: Dynamic Thread Stack Pool Management"
+    status: approved
+    description: >
+      The Zephyr RTOS shall manage a bounded pool of thread stacks, enforcing the invariant that the number of active dynamic threads never exceeds the pool maximum.
+    tags: [zephyr, upstream, dynamic]
+    fields:
+      priority: must
+      source: "reqmgmt/dynamic.sdoc ZEP-SRS-DY-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-DY
+      - type: satisfies
+        target: SYSREQ-DY-001
+
+  # ── SMP ──────────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-SM
+    type: stakeholder-req
+    title: "Zephyr: SMP CPU Management"
+    status: approved
+    description: >
+      The system shall implement SMP CPU lifecycle management with global lock coordination for multi-processor operation.
+    tags: [zephyr, upstream, smp]
+    fields:
+      priority: must
+      source: "reqmgmt/smp.sdoc ZEP-SYRS-SM"
+
+  - id: ZEP-SRS-SM-1
+    type: stakeholder-req
+    title: "Zephyr: SMP CPU Lifecycle"
+    status: approved
+    description: >
+      The Zephyr RTOS shall manage CPU lifecycle transitions (init, start, stop, resume) while maintaining the invariant that the number of active CPUs is bounded by [1, max_cpus].
+    tags: [zephyr, upstream, smp]
+    fields:
+      priority: must
+      source: "reqmgmt/smp.sdoc ZEP-SRS-SM-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-SM
+      - type: satisfies
+        target: SYSREQ-SM-001
+
+  - id: ZEP-SRS-SM-2
+    type: stakeholder-req
+    title: "Zephyr: SMP Global Lock"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide a global SMP lock mechanism ensuring mutual exclusion across CPUs, with lock/unlock/release semantics and correct nesting behavior.
+    tags: [zephyr, upstream, smp]
+    fields:
+      priority: must
+      source: "reqmgmt/smp.sdoc ZEP-SRS-SM-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-SM
+      - type: satisfies
+        target: SYSREQ-SM-001
+
+  # ── Thread Lifecycle ─────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-TL
+    type: stakeholder-req
+    title: "Zephyr: Thread Lifecycle"
+    status: approved
+    description: >
+      The system shall implement thread lifecycle management including creation, starting, aborting, and joining with proper state tracking.
+    tags: [zephyr, upstream, thread]
+    fields:
+      priority: must
+      source: "reqmgmt/thread.sdoc ZEP-SYRS-TL"
+
+  - id: ZEP-SRS-TL-1
+    type: stakeholder-req
+    title: "Zephyr: Thread Create and Start"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide k_thread_create to initialize a thread with a stack, entry point, priority, and options, supporting both immediate and delayed start.
+    tags: [zephyr, upstream, thread]
+    fields:
+      priority: must
+      source: "reqmgmt/thread.sdoc ZEP-SRS-TL-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-TL
+      - type: satisfies
+        target: SYSREQ-TL-001
+
+  - id: ZEP-SRS-TL-2
+    type: stakeholder-req
+    title: "Zephyr: Thread Abort and Join"
+    status: approved
+    description: >
+      The Zephyr RTOS shall provide k_thread_abort to terminate a thread with cleanup and k_thread_join to block the calling thread until the target thread terminates.
+    tags: [zephyr, upstream, thread]
+    fields:
+      priority: must
+      source: "reqmgmt/thread.sdoc ZEP-SRS-TL-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-TL
+      - type: satisfies
+        target: SYSREQ-TL-001
+
+  # ── Scheduler ────────────────────────────────────────────────────────────
+
+  - id: ZEP-SYRS-SC
+    type: stakeholder-req
+    title: "Zephyr: Priority Scheduler"
+    status: approved
+    description: >
+      The system shall implement a priority-based preemptive scheduler with run queue management and cooperative thread support.
+    tags: [zephyr, upstream, sched]
+    fields:
+      priority: must
+      source: "reqmgmt/sched.sdoc ZEP-SYRS-SC"
+
+  - id: ZEP-SRS-SC-1
+    type: stakeholder-req
+    title: "Zephyr: Priority-Based Scheduling"
+    status: approved
+    description: >
+      The Zephyr RTOS shall schedule threads based on priority, always selecting the highest-priority ready thread for execution via the run queue.
+    tags: [zephyr, upstream, sched]
+    fields:
+      priority: must
+      source: "reqmgmt/sched.sdoc ZEP-SRS-SC-1"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-SC
+      - type: satisfies
+        target: SYSREQ-SC-001
+
+  - id: ZEP-SRS-SC-2
+    type: stakeholder-req
+    title: "Zephyr: Preemption Policy"
+    status: approved
+    description: >
+      The Zephyr RTOS shall preempt the current thread when a higher-priority thread becomes ready, unless the current thread is cooperative or has the preemption lock set.
+    tags: [zephyr, upstream, sched]
+    fields:
+      priority: must
+      source: "reqmgmt/sched.sdoc ZEP-SRS-SC-2"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-SC
+      - type: satisfies
+        target: SYSREQ-SC-001
+
+  - id: ZEP-SRS-SC-3
+    type: stakeholder-req
+    title: "Zephyr: Cooperative Thread Protection"
+    status: approved
+    description: >
+      The Zephyr RTOS shall protect cooperative-priority threads from preemption, ensuring they run until they voluntarily yield, block, or terminate.
+    tags: [zephyr, upstream, sched]
+    fields:
+      priority: must
+      source: "reqmgmt/sched.sdoc ZEP-SRS-SC-3"
+    links:
+      - type: derives-from
+        target: ZEP-SYRS-SC
+      - type: satisfies
+        target: SYSREQ-SC-001
 
