@@ -4,16 +4,17 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Gale pipe — verified state machine + byte count validation.
+ * Gale pipe — phase 2: Extract->Decide->Apply pattern.
  *
- * This is kernel/pipe.c with the state machine checks (pipe_closed,
- * pipe_resetting, pipe_full, pipe_empty) replaced by calls to the
- * formally verified Rust implementation (gale_pipe_write_check,
- * gale_pipe_read_check).
+ * This is kernel/pipe.c with write/read rewritten to use Rust decision
+ * structs.  C extracts kernel state (spinlock, wait queue, ring buffer),
+ * Rust decides the action, C applies it.
  *
  * Verified operations (Verus proofs):
- *   gale_pipe_write_check — PP1-PP2, PP4-PP6, PP8, PP10 (state + byte count)
- *   gale_pipe_read_check  — PP1, PP3, PP4-PP5, PP7, PP9, PP10
+ *   gale_k_pipe_write_decide — PP3-PP5, PP9-PP10 (state + byte count)
+ *   gale_k_pipe_read_decide  — PP3-PP6, PP9-PP10
+ *   gale_pipe_write_check    — PP1-PP2, PP4-PP6, PP8, PP10 (phase 1, retained)
+ *   gale_pipe_read_check     — PP1, PP3, PP4-PP5, PP7, PP9, PP10 (phase 1, retained)
  *
  * Ring buffer data transfer, scheduling, wait queues, tracing, poll,
  * userspace, and OBJ_CORE remain native Zephyr.
@@ -142,42 +143,28 @@ int z_impl_k_pipe_write(struct k_pipe *pipe, const uint8_t *data, size_t len, k_
 	k_timepoint_t end = sys_timepoint_calc(timeout);
 	k_spinlock_key_t key = k_spin_lock(&pipe->lock);
 	bool need_resched = false;
-	uint32_t actual_len, new_used;
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_pipe, write, pipe, data, len, timeout);
 
-	/* --- Gale verified initial state check --- */
-	rc = gale_pipe_write_check(ring_buf_size_get(&pipe->buf),
-				   ring_buf_capacity_get(&pipe->buf),
-				   pipe->flags,
-				   (uint32_t)len,
-				   &actual_len, &new_used);
-	if (rc == -ECANCELED) {
-		/* PP5: resetting pipe rejects operations */
-		goto exit;
-	}
-
 	for (;;) {
-		/* --- Gale verified per-iteration state check --- */
-		rc = gale_pipe_write_check(ring_buf_size_get(&pipe->buf),
-					   ring_buf_capacity_get(&pipe->buf),
-					   pipe->flags,
-					   (uint32_t)(len - written),
-					   &actual_len, &new_used);
-		if (unlikely(rc == -EPIPE)) {
-			/* PP4: closed pipe rejects operations */
-			break;
-		}
-		if (unlikely(rc == -ECANCELED)) {
+		/* Extract: gather kernel state */
+		uint32_t used = ring_buf_size_get(&pipe->buf);
+		uint32_t capacity = ring_buf_capacity_get(&pipe->buf);
+		uint32_t has_reader = z_waitq_head(&pipe->data) != NULL ? 1U : 0U;
+
+		/* Decide: Rust determines action */
+		struct gale_pipe_write_decision d = gale_k_pipe_write_decide(
+			used, capacity, pipe->flags,
+			(uint32_t)(len - written), has_reader);
+
+		/* Apply: execute Rust's decision */
+		if (d.action == GALE_PIPE_ACTION_WRITE_ERROR) {
+			rc = d.ret;
 			break;
 		}
 
-		if (ring_buf_is_empty(&pipe->buf)) {
+		if (d.action == GALE_PIPE_ACTION_WAKE_READER) {
 			if (IS_ENABLED(CONFIG_KERNEL_COHERENCE)) {
-				/*
-				 * Stacks not in coherent memory — can't do
-				 * direct-to-readers copy. Wake readers instead.
-				 */
 				need_resched = z_sched_wake_all(&pipe->data, 0, NULL);
 			} else if (pipe->waiting != 0) {
 				written += copy_to_pending_readers(pipe, &need_resched,
@@ -190,17 +177,21 @@ int z_impl_k_pipe_write(struct k_pipe *pipe, const uint8_t *data, size_t len, k_
 			}
 		}
 
+		if (d.action == GALE_PIPE_ACTION_WRITE_OK ||
+		    d.action == GALE_PIPE_ACTION_WAKE_READER) {
 #ifdef CONFIG_POLL
-		need_resched |= z_handle_obj_poll_events(&pipe->poll_events,
-							 K_POLL_STATE_PIPE_DATA_AVAILABLE);
+			need_resched |= z_handle_obj_poll_events(&pipe->poll_events,
+								 K_POLL_STATE_PIPE_DATA_AVAILABLE);
 #endif /* CONFIG_POLL */
 
-		written += ring_buf_put(&pipe->buf, &data[written], len - written);
-		if (likely(written == len)) {
-			rc = written;
-			break;
+			written += ring_buf_put(&pipe->buf, &data[written], len - written);
+			if (likely(written == len)) {
+				rc = written;
+				break;
+			}
 		}
 
+		/* PEND_CURRENT or partial write: block on space wait queue */
 		rc = wait_for(&pipe->space, pipe, &key, end, &need_resched);
 		if (rc != 0) {
 			if (rc == -EAGAIN) {
@@ -209,7 +200,7 @@ int z_impl_k_pipe_write(struct k_pipe *pipe, const uint8_t *data, size_t len, k_
 			break;
 		}
 	}
-exit:
+
 	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_pipe, write, pipe, rc);
 	if (need_resched) {
 		z_reschedule(&pipe->lock, key);
@@ -226,48 +217,52 @@ int z_impl_k_pipe_read(struct k_pipe *pipe, uint8_t *data, size_t len, k_timeout
 	k_timepoint_t end = sys_timepoint_calc(timeout);
 	k_spinlock_key_t key = k_spin_lock(&pipe->lock);
 	bool need_resched = false;
-	uint32_t actual_len, new_used;
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_pipe, read, pipe, data, len, timeout);
 
-	/* --- Gale verified initial state check --- */
-	rc = gale_pipe_read_check(ring_buf_size_get(&pipe->buf),
-				  pipe->flags,
-				  (uint32_t)len,
-				  &actual_len, &new_used);
-	if (rc == -ECANCELED) {
-		/* PP5: resetting pipe rejects operations */
-		goto exit;
-	}
-
 	for (;;) {
-		if (ring_buf_space_get(&pipe->buf) == 0) {
-			/* Buffer full — wake pending writers. */
-			need_resched = z_sched_wake_all(&pipe->space, 0, NULL);
-		}
-
-		buf.used += ring_buf_get(&pipe->buf, &data[buf.used], len - buf.used);
-		if (likely(buf.used == len)) {
+		/* After waking from direct copy, buf.used may already
+		 * satisfy the request — check before asking Rust.
+		 */
+		if (buf.used >= len) {
 			rc = buf.used;
 			break;
 		}
 
-		/* --- Gale verified state check after partial read --- */
-		rc = gale_pipe_read_check(ring_buf_size_get(&pipe->buf),
-					  pipe->flags,
-					  (uint32_t)(len - buf.used),
-					  &actual_len, &new_used);
-		if (rc == -EPIPE) {
-			/* PP4: closed + empty — return partial read or error */
-			rc = buf.used ? (int)buf.used : -EPIPE;
-			break;
-		}
-		if (rc == -ECANCELED) {
-			rc = -ECANCELED;
+		/* Extract: gather kernel state */
+		uint32_t used = ring_buf_size_get(&pipe->buf);
+		uint32_t capacity = ring_buf_capacity_get(&pipe->buf);
+		uint32_t has_writer = z_waitq_head(&pipe->space) != NULL ? 1U : 0U;
+
+		/* Decide: Rust determines action */
+		struct gale_pipe_read_decision d = gale_k_pipe_read_decide(
+			used, capacity, pipe->flags,
+			(uint32_t)(len - buf.used), has_writer);
+
+		/* Apply: execute Rust's decision */
+		if (d.action == GALE_PIPE_ACTION_READ_ERROR) {
+			if (d.ret == -EPIPE) {
+				rc = buf.used ? (int)buf.used : -EPIPE;
+			} else {
+				rc = d.ret;
+			}
 			break;
 		}
 
-		/* Provide direct-copy buffer to potential writers */
+		if (d.action == GALE_PIPE_ACTION_WAKE_WRITER) {
+			need_resched = z_sched_wake_all(&pipe->space, 0, NULL);
+		}
+
+		if (d.action == GALE_PIPE_ACTION_READ_OK ||
+		    d.action == GALE_PIPE_ACTION_WAKE_WRITER) {
+			buf.used += ring_buf_get(&pipe->buf, &data[buf.used], len - buf.used);
+			if (likely(buf.used == len)) {
+				rc = buf.used;
+				break;
+			}
+		}
+
+		/* PEND_CURRENT or partial read: provide direct-copy buffer, then block */
 		_current->base.swap_data = &buf;
 
 		rc = wait_for(&pipe->data, pipe, &key, end, &need_resched);
@@ -278,7 +273,7 @@ int z_impl_k_pipe_read(struct k_pipe *pipe, uint8_t *data, size_t len, k_timeout
 			break;
 		}
 	}
-exit:
+
 	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_pipe, read, pipe, rc);
 	if (need_resched) {
 		z_reschedule(&pipe->lock, key);

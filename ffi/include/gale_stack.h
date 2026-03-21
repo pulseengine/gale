@@ -58,6 +58,33 @@ int32_t gale_stack_push_validate(uint32_t count,
 int32_t gale_stack_pop_validate(uint32_t count,
                                  uint32_t *new_count);
 
+/* ---- Phase 2: Full Decision API ---- */
+
+struct gale_stack_push_decision {
+    int32_t ret;
+    uint32_t new_count;
+    uint8_t action;     /* 0=STORE_DATA, 1=WAKE_WAITER, 2=FULL */
+};
+
+#define GALE_STACK_PUSH_STORE 0
+#define GALE_STACK_PUSH_WAKE  1
+#define GALE_STACK_PUSH_FULL  2
+
+struct gale_stack_push_decision gale_k_stack_push_decide(
+    uint32_t count, uint32_t capacity, uint32_t has_waiter);
+
+struct gale_stack_pop_decision {
+    int32_t ret;
+    uint32_t new_count;
+    uint8_t action;     /* 0=POP_OK, 1=PEND_CURRENT */
+};
+
+#define GALE_STACK_POP_OK   0
+#define GALE_STACK_POP_PEND 1
+
+struct gale_stack_pop_decision gale_k_stack_pop_decide(
+    uint32_t count, uint32_t is_no_wait);
+
 #ifdef __cplusplus
 }
 #endif

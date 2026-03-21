@@ -140,24 +140,91 @@ int k_msgq_cleanup(struct k_msgq *msgq)
 }
 
 /* -----------------------------------------------------------------------
- * put_msg_in_queue  (replaces msg_q.c:130-228)
+ * z_impl_k_msgq_put  (decision struct pattern)
  *
- * Core logic: if space available, delegate index math to verified Rust.
+ * Extract: spinlock, try unpend waiter (side effect).
+ * Decide:  Rust determines action via gale_k_msgq_put_decide.
+ * Apply:   C executes the decision (memcpy, wake, pend, or return).
  * ----------------------------------------------------------------------- */
 
-static inline int put_msg_in_queue(struct k_msgq *msgq, const void *data,
-				   k_timeout_t timeout, bool put_at_back)
+int z_impl_k_msgq_put(struct k_msgq *msgq, const void *data,
+		       k_timeout_t timeout)
 {
 	__ASSERT(!arch_is_in_isr() || K_TIMEOUT_EQ(timeout, K_NO_WAIT), "");
 
 	k_spinlock_key_t key = k_spin_lock(&msgq->lock);
-	int result;
 	bool resched = false;
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_msgq, put, msgq, timeout);
 
+	/* Extract: try to unpend first waiter (side effect: removes from queue) */
+	struct k_thread *pending_thread = z_unpend_first_thread(&msgq->wait_q);
+
+	/* Decide: Rust determines action */
+	struct gale_msgq_put_decision d = gale_k_msgq_put_decide(
+		ptr_to_slot(msgq, msgq->write_ptr),
+		msgq->used_msgs,
+		msgq->max_msgs,
+		pending_thread != NULL ? 1U : 0U,
+		K_TIMEOUT_EQ(timeout, K_NO_WAIT) ? 1U : 0U);
+
+	/* Apply: execute Rust's decision */
+	if (d.action == GALE_MSGQ_ACTION_WAKE_READER) {
+		/* A receiver was waiting — copy directly to it. */
+		(void)memcpy(pending_thread->base.swap_data,
+			     data, msgq->msg_size);
+		arch_thread_return_value_set(pending_thread, 0);
+		z_ready_thread(pending_thread);
+		resched = true;
+	} else if (d.action == GALE_MSGQ_ACTION_PUT_OK) {
+		/* Space available — put in ring buffer at write slot. */
+		(void)memcpy(msgq->write_ptr, data, msgq->msg_size);
+		msgq->write_ptr = slot_to_ptr(msgq, d.new_write_idx);
+		msgq->used_msgs = d.new_used;
+#ifdef CONFIG_POLL
+		resched = z_handle_obj_poll_events(
+			&msgq->poll_events, K_POLL_STATE_MSGQ_DATA_AVAILABLE);
+#endif
+	} else if (d.action == GALE_MSGQ_ACTION_PUT_PEND) {
+		/* Queue full, blocking — pend current thread. */
+		SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_msgq, put, msgq, timeout);
+		_current->base.swap_data = (void *)data;
+		int result = z_pend_curr(&msgq->lock, key,
+					 &msgq->wait_q, timeout);
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, result);
+		return result;
+	} else {
+		/* RETURN_FULL: queue full, non-blocking. */
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, d.ret);
+		k_spin_unlock(&msgq->lock, key);
+		return d.ret;
+	}
+
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, 0);
+
+	if (resched) {
+		z_reschedule(&msgq->lock, key);
+	} else {
+		k_spin_unlock(&msgq->lock, key);
+	}
+
+	return 0;
+}
+
+/* -----------------------------------------------------------------------
+ * z_impl_k_msgq_put_front  (uses Phase 1 gale_msgq_put_front)
+ *
+ * Always K_NO_WAIT — no decision struct needed.  Same pattern as before.
+ * ----------------------------------------------------------------------- */
+
+static inline int put_front_in_queue(struct k_msgq *msgq, const void *data)
+{
+	k_spinlock_key_t key = k_spin_lock(&msgq->lock);
+	bool resched = false;
+
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_msgq, put, msgq, K_NO_WAIT);
+
 	if (msgq->used_msgs < msgq->max_msgs) {
-		/* Queue has space. */
 		struct k_thread *pending_thread;
 
 		pending_thread = z_unpend_first_thread(&msgq->wait_q);
@@ -169,30 +236,6 @@ static inline int put_msg_in_queue(struct k_msgq *msgq, const void *data,
 			arch_thread_return_value_set(pending_thread, 0);
 			z_ready_thread(pending_thread);
 			resched = true;
-		} else if (put_at_back) {
-			/* Put at back: memcpy to current write slot,
-			 * then advance write index via verified Rust.
-			 */
-			(void)memcpy(msgq->write_ptr, data, msgq->msg_size);
-
-			uint32_t new_write_idx, new_used;
-			uint32_t cur_write = ptr_to_slot(msgq, msgq->write_ptr);
-
-			int rc = gale_msgq_put(cur_write,
-					       msgq->used_msgs,
-					       msgq->max_msgs,
-					       &new_write_idx,
-					       &new_used);
-			__ASSERT(rc == 0, "gale_msgq_put: %d", rc);
-			ARG_UNUSED(rc);
-
-			msgq->write_ptr = slot_to_ptr(msgq, new_write_idx);
-			msgq->used_msgs = new_used;
-
-#ifdef CONFIG_POLL
-			resched = z_handle_obj_poll_events(
-				&msgq->poll_events, K_POLL_STATE_MSGQ_DATA_AVAILABLE);
-#endif
 		} else {
 			/* Put at front: retreat read index via verified Rust,
 			 * then memcpy to new read slot.
@@ -215,46 +258,25 @@ static inline int put_msg_in_queue(struct k_msgq *msgq, const void *data,
 
 #ifdef CONFIG_POLL
 			resched = z_handle_obj_poll_events(
-				&msgq->poll_events, K_POLL_STATE_MSGQ_DATA_AVAILABLE);
+				&msgq->poll_events,
+				K_POLL_STATE_MSGQ_DATA_AVAILABLE);
 #endif
 		}
 
-		result = 0;
-	} else if (K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
-		/* Queue full, non-blocking. */
-		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, -ENOMSG);
-		result = -ENOMSG;
-	} else {
-		/* Queue full, blocking — pend current thread. */
-		SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_msgq, put, msgq, timeout);
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, 0);
 
-		_current->base.swap_data = (void *)data;
-		result = z_pend_curr(&msgq->lock, key,
-				     &msgq->wait_q, timeout);
-
-		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, result);
-		return result;
+		if (resched) {
+			z_reschedule(&msgq->lock, key);
+		} else {
+			k_spin_unlock(&msgq->lock, key);
+		}
+		return 0;
 	}
 
-	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, result);
-
-	if (resched) {
-		z_reschedule(&msgq->lock, key);
-	} else {
-		k_spin_unlock(&msgq->lock, key);
-	}
-
-	return result;
-}
-
-/* -----------------------------------------------------------------------
- * Public put APIs
- * ----------------------------------------------------------------------- */
-
-int z_impl_k_msgq_put(struct k_msgq *msgq, const void *data,
-		       k_timeout_t timeout)
-{
-	return put_msg_in_queue(msgq, data, timeout, true);
+	/* Queue full — non-blocking always. */
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, -ENOMSG);
+	k_spin_unlock(&msgq->lock, key);
+	return -ENOMSG;
 }
 
 #ifdef CONFIG_USERSPACE
@@ -271,7 +293,7 @@ static inline int z_vrfy_k_msgq_put(struct k_msgq *msgq, const void *data,
 
 int z_impl_k_msgq_put_front(struct k_msgq *msgq, const void *data)
 {
-	return put_msg_in_queue(msgq, data, K_NO_WAIT, false);
+	return put_front_in_queue(msgq, data);
 }
 
 #ifdef CONFIG_USERSPACE
@@ -290,86 +312,97 @@ static inline int z_vrfy_k_msgq_put_front(struct k_msgq *msgq,
  * k_msgq_get  (replaces msg_q.c:280-349)
  * ----------------------------------------------------------------------- */
 
+/* -----------------------------------------------------------------------
+ * z_impl_k_msgq_get  (decision struct pattern)
+ *
+ * Extract: spinlock, try unpend writer (side effect — only when used > 0).
+ * Decide:  Rust determines action via gale_k_msgq_get_decide.
+ * Apply:   C executes the decision (memcpy, wake writer, pend, or return).
+ * ----------------------------------------------------------------------- */
+
 int z_impl_k_msgq_get(struct k_msgq *msgq, void *data,
 		       k_timeout_t timeout)
 {
 	__ASSERT(!arch_is_in_isr() || K_TIMEOUT_EQ(timeout, K_NO_WAIT), "");
 
 	k_spinlock_key_t key = k_spin_lock(&msgq->lock);
-	int result;
 	bool resched = false;
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_msgq, get, msgq, timeout);
 
+	/* Extract: only check for pending writer if queue has messages
+	 * (a writer can only be pending when the queue was full).
+	 */
+	struct k_thread *pending_thread = NULL;
+
 	if (msgq->used_msgs > 0U) {
-		/* Queue has messages — copy from read slot. */
-		(void)memcpy(data, msgq->read_ptr, msgq->msg_size);
-
-		/* Advance read index via verified Rust. */
-		uint32_t new_read_idx, new_used;
-		uint32_t cur_read = ptr_to_slot(msgq, msgq->read_ptr);
-
-		int rc = gale_msgq_get(cur_read,
-				       msgq->used_msgs,
-				       msgq->max_msgs,
-				       &new_read_idx,
-				       &new_used);
-		__ASSERT(rc == 0, "gale_msgq_get: %d", rc);
-		ARG_UNUSED(rc);
-
-		msgq->read_ptr = slot_to_ptr(msgq, new_read_idx);
-		msgq->used_msgs = new_used;
-
-		/* Check for pending sender. */
-		struct k_thread *pending_thread;
-
 		pending_thread = z_unpend_first_thread(&msgq->wait_q);
-		if (pending_thread != NULL) {
-			/* A sender was waiting — copy its message into the
-			 * queue at the current write slot.
-			 */
-			(void)memcpy(msgq->write_ptr,
-				     (char *)pending_thread->base.swap_data,
-				     msgq->msg_size);
-
-			/* Advance write index via verified Rust. */
-			uint32_t new_write_idx, new_used2;
-			uint32_t cur_write = ptr_to_slot(msgq,
-							 msgq->write_ptr);
-
-			rc = gale_msgq_put(cur_write,
-					   msgq->used_msgs,
-					   msgq->max_msgs,
-					   &new_write_idx,
-					   &new_used2);
-			__ASSERT(rc == 0, "gale_msgq_put (sender): %d", rc);
-
-			msgq->write_ptr = slot_to_ptr(msgq, new_write_idx);
-			msgq->used_msgs = new_used2;
-
-			arch_thread_return_value_set(pending_thread, 0);
-			z_ready_thread(pending_thread);
-			resched = true;
-		}
-
-		result = 0;
-	} else if (K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
-		/* Queue empty, non-blocking. */
-		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, get, msgq, -ENOMSG);
-		result = -ENOMSG;
-	} else {
-		/* Queue empty, blocking — pend current thread. */
-		SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_msgq, get, msgq, timeout);
-
-		_current->base.swap_data = data;
-		result = z_pend_curr(&msgq->lock, key,
-				     &msgq->wait_q, timeout);
-
-		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, get, msgq, result);
-		return result;
 	}
 
-	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, get, msgq, result);
+	/* Decide: Rust determines action */
+	struct gale_msgq_get_decision d = gale_k_msgq_get_decide(
+		ptr_to_slot(msgq, msgq->read_ptr),
+		msgq->used_msgs,
+		msgq->max_msgs,
+		pending_thread != NULL ? 1U : 0U,
+		K_TIMEOUT_EQ(timeout, K_NO_WAIT) ? 1U : 0U);
+
+	/* Apply: execute Rust's decision */
+	if (d.action == GALE_MSGQ_ACTION_WAKE_WRITER) {
+		/* Messages available + writer waiting.
+		 * 1. Copy message from read slot to caller.
+		 * 2. Advance read index per decision.
+		 * 3. Copy writer's message into write slot.
+		 * 4. Advance write index via Phase 1 gale_msgq_put.
+		 * 5. Wake the writer.
+		 */
+		(void)memcpy(data, msgq->read_ptr, msgq->msg_size);
+		msgq->read_ptr = slot_to_ptr(msgq, d.new_read_idx);
+		msgq->used_msgs = d.new_used;
+
+		/* Accept the pending writer's message. */
+		(void)memcpy(msgq->write_ptr,
+			     (char *)pending_thread->base.swap_data,
+			     msgq->msg_size);
+
+		uint32_t new_write_idx, new_used2;
+		uint32_t cur_write = ptr_to_slot(msgq, msgq->write_ptr);
+
+		int rc = gale_msgq_put(cur_write,
+				       msgq->used_msgs,
+				       msgq->max_msgs,
+				       &new_write_idx,
+				       &new_used2);
+		__ASSERT(rc == 0, "gale_msgq_put (sender): %d", rc);
+		ARG_UNUSED(rc);
+
+		msgq->write_ptr = slot_to_ptr(msgq, new_write_idx);
+		msgq->used_msgs = new_used2;
+
+		arch_thread_return_value_set(pending_thread, 0);
+		z_ready_thread(pending_thread);
+		resched = true;
+	} else if (d.action == GALE_MSGQ_ACTION_GET_OK) {
+		/* Messages available, no pending writer. */
+		(void)memcpy(data, msgq->read_ptr, msgq->msg_size);
+		msgq->read_ptr = slot_to_ptr(msgq, d.new_read_idx);
+		msgq->used_msgs = d.new_used;
+	} else if (d.action == GALE_MSGQ_ACTION_GET_PEND) {
+		/* Queue empty, blocking — pend current thread. */
+		SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_msgq, get, msgq, timeout);
+		_current->base.swap_data = data;
+		int result = z_pend_curr(&msgq->lock, key,
+					 &msgq->wait_q, timeout);
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, get, msgq, result);
+		return result;
+	} else {
+		/* RETURN_EMPTY: queue empty, non-blocking. */
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, get, msgq, d.ret);
+		k_spin_unlock(&msgq->lock, key);
+		return d.ret;
+	}
+
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, get, msgq, 0);
 
 	if (resched) {
 		z_reschedule(&msgq->lock, key);
@@ -377,7 +410,7 @@ int z_impl_k_msgq_get(struct k_msgq *msgq, void *data,
 		k_spin_unlock(&msgq->lock, key);
 	}
 
-	return result;
+	return 0;
 }
 
 #ifdef CONFIG_USERSPACE

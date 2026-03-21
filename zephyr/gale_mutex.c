@@ -4,18 +4,17 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Gale mutex — phase 1: verified state machine validation.
+ * Gale mutex — phase 2: decision struct pattern.
  *
- * This is kernel/mutex.c with the ownership checks and lock_count
- * arithmetic replaced by calls to the formally verified Rust
- * implementation.  Wait queue, scheduling, priority inheritance,
- * and tracing remain native Zephyr.
+ * Rust decides the action (acquire/pend/busy for lock,
+ * released/unlocked/error for unlock), C applies it.
+ * Priority inheritance logic stays in C.
  *
  * Verified operations (Verus proofs):
- *   gale_mutex_lock_validate   — M3 (acquire), M4 (reentrant),
- *                                M5 (contended), M10 (no overflow)
- *   gale_mutex_unlock_validate — M6a (EINVAL), M6b (EPERM),
- *                                M7 (reentrant), M10 (no underflow)
+ *   gale_k_mutex_lock_decide   — M3 (acquire), M4 (reentrant),
+ *                                 M5 (contended), M10 (no overflow)
+ *   gale_k_mutex_unlock_decide — M6a (EINVAL), M6b (EPERM),
+ *                                 M7 (reentrant), M10 (no underflow)
  */
 
 #include <zephyr/kernel.h>
@@ -96,8 +95,6 @@ static bool adjust_owner_prio(struct k_mutex *mutex, int32_t new_prio)
 int z_impl_k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout)
 {
 	k_spinlock_key_t key;
-	int ret;
-	uint32_t new_lock_count;
 #if (CONFIG_PRIORITY_CEILING < K_LOWEST_THREAD_PRIO)
 	bool resched = false;
 	int new_prio;
@@ -109,17 +106,15 @@ int z_impl_k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout)
 
 	key = k_spin_lock(&lock);
 
-	/*
-	 * Validated by Gale: M3 (acquire), M4 (reentrant),
-	 * M5 (contended), M10 (no overflow).
-	 */
-	ret = gale_mutex_lock_validate(
+	/* Decide: Rust determines action based on ownership and timeout */
+	struct gale_mutex_lock_decision d = gale_k_mutex_lock_decide(
 		mutex->lock_count,
 		(mutex->owner == NULL) ? 1U : 0U,
 		(mutex->owner == _current) ? 1U : 0U,
-		&new_lock_count);
+		K_TIMEOUT_EQ(timeout, K_NO_WAIT) ? 1U : 0U);
 
-	if (ret == 0) {
+	/* Apply: execute Rust's decision */
+	if (d.action == GALE_MUTEX_ACTION_ACQUIRED) {
 		/* Lock acquired (new or reentrant). */
 
 #if (CONFIG_PRIORITY_CEILING < K_LOWEST_THREAD_PRIO)
@@ -128,7 +123,7 @@ int z_impl_k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout)
 					mutex->owner_orig_prio;
 #endif
 
-		mutex->lock_count = new_lock_count;
+		mutex->lock_count = d.new_lock_count;
 		mutex->owner = _current;
 
 #if (CONFIG_PRIORITY_CEILING < K_LOWEST_THREAD_PRIO)
@@ -148,16 +143,17 @@ int z_impl_k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout)
 		return 0;
 	}
 
-	/* ret == -EBUSY: mutex held by a different thread. */
-
-	if (unlikely(K_TIMEOUT_EQ(timeout, K_NO_WAIT))) {
+	if (d.action == GALE_MUTEX_ACTION_BUSY) {
+		/* No-wait or overflow: return immediately */
 		k_spin_unlock(&lock, key);
 
 		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mutex, lock, mutex,
-						timeout, -EBUSY);
+						timeout, d.ret);
 
-		return -EBUSY;
+		return d.ret;
 	}
+
+	/* GALE_MUTEX_ACTION_PEND: block on wait queue */
 
 	SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_mutex, lock, mutex, timeout);
 
@@ -236,41 +232,36 @@ static inline int z_vrfy_k_mutex_lock(struct k_mutex *mutex,
 int z_impl_k_mutex_unlock(struct k_mutex *mutex)
 {
 	struct k_thread *new_owner;
-	uint32_t new_lock_count;
-	int ret;
 
 	__ASSERT(!arch_is_in_isr(), "mutexes cannot be used inside ISRs");
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_mutex, unlock, mutex);
 
-	/*
-	 * Validated by Gale: M6a (EINVAL), M6b (EPERM),
-	 * M7 (reentrant decrement), M10 (no underflow).
-	 */
-	ret = gale_mutex_unlock_validate(
+	/* Decide: Rust determines action based on ownership */
+	struct gale_mutex_unlock_decision d = gale_k_mutex_unlock_decide(
 		mutex->lock_count,
 		(mutex->owner == NULL) ? 1U : 0U,
-		(mutex->owner == _current) ? 1U : 0U,
-		&new_lock_count);
+		(mutex->owner == _current) ? 1U : 0U);
 
-	if (ret < 0) {
+	/* Apply: execute Rust's decision */
+	if (d.action == GALE_MUTEX_UNLOCK_ERROR) {
 		/* -EINVAL or -EPERM */
-		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mutex, unlock, mutex, ret);
-		return ret;
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mutex, unlock, mutex, d.ret);
+		return d.ret;
 	}
 
 	LOG_DBG("mutex %p lock_count: %d", mutex, mutex->lock_count);
 
-	if (ret == GALE_MUTEX_RELEASED) {
+	if (d.action == GALE_MUTEX_UNLOCK_RELEASED) {
 		/*
 		 * Reentrant release: lock_count decremented, still held.
 		 * Validated by Gale — no underflow.
 		 */
-		mutex->lock_count = new_lock_count;
+		mutex->lock_count = d.new_lock_count;
 		goto k_mutex_unlock_return;
 	}
 
-	/* GALE_MUTEX_UNLOCKED: final unlock — handle waiters. */
+	/* GALE_MUTEX_UNLOCK_UNLOCKED: final unlock — handle waiters. */
 
 	k_spinlock_key_t key = k_spin_lock(&lock);
 
@@ -298,7 +289,6 @@ int z_impl_k_mutex_unlock(struct k_mutex *mutex)
 		mutex->lock_count = 0U;
 		k_spin_unlock(&lock, key);
 	}
-
 
 k_mutex_unlock_return:
 	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mutex, unlock, mutex, 0);

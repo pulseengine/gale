@@ -43,6 +43,49 @@ int32_t gale_fifo_put_validate(uint32_t count,
 int32_t gale_fifo_get_validate(uint32_t count,
                                 uint32_t *new_count);
 
+/* ---- Phase 2: Full Decision API ---- */
+
+struct gale_fifo_put_decision {
+    uint8_t action;     /* 0=PUT_OK, 1=WAKE_THREAD */
+};
+
+#define GALE_FIFO_PUT_OK    0
+#define GALE_FIFO_PUT_WAKE  1
+
+/**
+ * Decide action for fifo put (queue_insert).
+ *
+ * C shim calls z_unpend_first_thread first, then passes whether
+ * a waiter was found.  Rust decides the action.
+ *
+ * @param count       Current element count (unused — fifo is unbounded).
+ * @param has_waiter  1 if a thread was unpended, 0 otherwise.
+ *
+ * @return Decision struct with action field.
+ */
+struct gale_fifo_put_decision gale_k_fifo_put_decide(
+    uint32_t count, uint32_t has_waiter);
+
+struct gale_fifo_get_decision {
+    int32_t ret;        /* 0 (OK), -EBUSY (empty + no_wait) */
+    uint8_t action;     /* 0=GET_OK, 1=PEND_CURRENT, 2=RETURN_NODATA */
+};
+
+#define GALE_FIFO_GET_OK      0
+#define GALE_FIFO_GET_PEND    1
+#define GALE_FIFO_GET_NODATA  2
+
+/**
+ * Decide action for fifo get (k_queue_get).
+ *
+ * @param count       Current element count.
+ * @param is_no_wait  1 if K_NO_WAIT, 0 otherwise.
+ *
+ * @return Decision struct with ret and action fields.
+ */
+struct gale_fifo_get_decision gale_k_fifo_get_decide(
+    uint32_t count, uint32_t is_no_wait);
+
 #ifdef __cplusplus
 }
 #endif

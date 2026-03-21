@@ -49,6 +49,30 @@ int32_t gale_mbox_match_check(uint32_t send_id, uint32_t recv_id);
  */
 uint32_t gale_mbox_data_exchange(uint32_t tx_size, uint32_t rx_buf_size);
 
+/* ---- Phase 2: Full Decision API ---- */
+
+struct gale_mbox_put_decision {
+    uint8_t action;     /* 0=MATCHED, 1=RETURN_ENOMSG, 2=PEND_TX_QUEUE */
+};
+
+#define GALE_MBOX_ACTION_MATCHED      0
+#define GALE_MBOX_ACTION_RETURN_ENOMSG 1
+#define GALE_MBOX_ACTION_PEND_TX      2
+
+struct gale_mbox_put_decision gale_k_mbox_put_decide(
+    uint32_t matched, uint32_t is_no_wait);
+
+struct gale_mbox_get_decision {
+    uint8_t action;     /* 0=MATCHED, 1=RETURN_ENOMSG, 2=PEND_RX_QUEUE */
+};
+
+#define GALE_MBOX_ACTION_CONSUME  0
+/* GALE_MBOX_ACTION_RETURN_ENOMSG = 1 (shared with put) */
+#define GALE_MBOX_ACTION_PEND_RX  2
+
+struct gale_mbox_get_decision gale_k_mbox_get_decide(
+    uint32_t matched, uint32_t is_no_wait);
+
 #ifdef __cplusplus
 }
 #endif
