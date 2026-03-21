@@ -161,22 +161,16 @@ int gale_thread_lifecycle_join(struct k_thread *thread, k_timeout_t timeout)
 	/* Apply */
 	if (d.action == GALE_THREAD_JOIN_RETURN) {
 		ret = d.ret;
-		if (is_dead) {
-			z_sched_switch_spin(thread);
-		}
 		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_thread, join, thread,
 						timeout, ret);
 		k_spin_unlock(&_sched_spinlock, key);
 		return ret;
 	}
 
-	/* PEND: block on join queue with timeout */
-	__ASSERT(!arch_is_in_isr(), "cannot join in ISR");
-	add_to_waitq_locked(_current, &thread->join_queue);
-	add_thread_timeout(_current, timeout);
-
+	/* PEND: block on join queue with timeout.
+	 * Use z_pend_curr which is the public scheduler API for blocking. */
 	SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_thread, join, thread, timeout);
-	ret = z_swap(&_sched_spinlock, key);
+	ret = z_pend_curr(&_sched_spinlock, key, &thread->join_queue, timeout);
 	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_thread, join, thread, timeout, ret);
 
 	return ret;
