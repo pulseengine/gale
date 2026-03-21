@@ -63,6 +63,14 @@ static const char *reason_to_str(unsigned int reason)
 	}
 }
 
+FUNC_NORETURN void k_fatal_halt(unsigned int reason)
+{
+	ARG_UNUSED(reason);
+	for (;;) {
+		/* spin forever */
+	}
+}
+
 void z_fatal_error(unsigned int reason, const struct arch_esf *esf)
 {
 	/* We can't allow this code to be preempted, but don't need to
