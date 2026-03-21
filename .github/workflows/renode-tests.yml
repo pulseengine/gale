@@ -72,7 +72,7 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
-          west init -m https://github.com/zephyrproject-rtos/zephyr.git zephyr-workspace
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
           west sdk install
