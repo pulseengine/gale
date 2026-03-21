@@ -38,6 +38,26 @@ int32_t gale_futex_wake(uint32_t num_waiters,
                          uint32_t *woken,
                          uint32_t *remaining);
 
+/* ---- Phase 2: Full Decision API ---- */
+
+struct gale_futex_wait_decision {
+    uint8_t action;     /* 0=BLOCK (pend on wait queue), 1=RETURN_EAGAIN */
+    int32_t ret;        /* 0 if blocking, -EAGAIN/-ETIMEDOUT if not */
+};
+
+#define GALE_FUTEX_ACTION_BLOCK        0
+#define GALE_FUTEX_ACTION_RETURN_EAGAIN 1
+
+struct gale_futex_wait_decision gale_k_futex_wait_decide(
+    uint32_t val, uint32_t expected, uint32_t is_no_wait);
+
+struct gale_futex_wake_decision {
+    uint32_t wake_limit;  /* maximum number of threads to wake */
+};
+
+struct gale_futex_wake_decision gale_k_futex_wake_decide(
+    uint32_t num_waiters, uint32_t wake_all);
+
 #ifdef __cplusplus
 }
 #endif
