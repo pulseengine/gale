@@ -27,6 +27,8 @@ pub const EOVERFLOW: i32 = -139;
 pub const EBADF: i32 = -9;
 /// Address already in use / object already initialized.
 pub const EADDRINUSE: i32 = -112;
+/// Resource deadlock would occur.
+pub const EDEADLK: i32 = -45;
 
 /// Success return value.
 pub const OK: i32 = 0;
