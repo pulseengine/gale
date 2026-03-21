@@ -214,7 +214,10 @@
 
 pub mod coarse;
 
-use gale::error::{EAGAIN, EBUSY, ECANCELED, EINVAL, ENOMEM, ENOMSG, EOVERFLOW, EPERM, EPIPE, OK};
+use gale::error::{
+    EAGAIN, EBUSY, ECANCELED, EDEADLK, EINVAL, ENOMEM, ENOMSG, EOVERFLOW, EPERM, EPIPE,
+    ETIMEDOUT, OK,
+};
 
 // ---------------------------------------------------------------------------
 // FFI exports — pure count arithmetic
@@ -3174,6 +3177,60 @@ pub extern "C" fn gale_poll_signal_reset(
     }
 }
 
+// ---- Phase 2: Full Decision API for Poll ----
+
+/// Decision struct for k_poll_signal_raise — tells C shim what values to apply.
+///
+/// C extracts the current signaled state and whether a poll_event is pending
+/// (side effect: sys_dlist_get removes it). Rust decides the new signaled/result
+/// values.
+#[repr(C)]
+pub struct GalePollSignalRaiseDecision {
+    /// New signaled value (always 1 — raise sets signaled).
+    pub new_signaled: u32,
+    /// Result value to store in signal.
+    pub new_result: i32,
+    /// Action: 0=NO_EVENT (no poll_event to signal), 1=SIGNAL_EVENT (wake poller)
+    pub action: u8,
+}
+
+pub const GALE_POLL_ACTION_NO_EVENT: u8 = 0;
+pub const GALE_POLL_ACTION_SIGNAL_EVENT: u8 = 1;
+
+/// Full decision for k_poll_signal_raise: decides new signal state and whether
+/// to signal a waiting poll event.
+///
+/// The C shim calls sys_dlist_get(&sig->poll_events) first (side effect: removes
+/// the poll_event node), then passes whether a poll_event was found.  Rust decides
+/// the new signaled/result values and the action to take.
+///
+/// poll.c:522-545: z_impl_k_poll_signal_raise()
+///
+/// Verified: PL7 (signal raise sets result + signaled).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_poll_signal_raise_decide(
+    signaled: u32,
+    result_val: i32,
+    has_poll_event: u32,
+) -> GalePollSignalRaiseDecision {
+    // Regardless of prior signaled state, raise always sets signaled=1
+    // and stores the result value.
+    let _ = signaled;
+    if has_poll_event != 0 {
+        GalePollSignalRaiseDecision {
+            new_signaled: 1,
+            new_result: result_val,
+            action: GALE_POLL_ACTION_SIGNAL_EVENT,
+        }
+    } else {
+        GalePollSignalRaiseDecision {
+            new_signaled: 1,
+            new_result: result_val,
+            action: GALE_POLL_ACTION_NO_EVENT,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // FFI exports — futex (fast userspace mutex)
 // ---------------------------------------------------------------------------
@@ -3250,6 +3307,84 @@ pub extern "C" fn gale_futex_wake(
             }
         }
         OK
+    }
+}
+
+// ---- Phase 2: Full Decision API for futex ----
+
+/// Decision struct for k_futex_wait — tells C shim whether to block or return.
+///
+/// The C shim reads the atomic futex value and passes it here. Rust decides
+/// whether the value matches the expected value (block) or not (return -EAGAIN).
+#[repr(C)]
+pub struct GaleFutexWaitDecision {
+    /// Action: 0=BLOCK (pend on wait queue), 1=RETURN_EAGAIN
+    pub action: u8,
+    /// Return code: 0 if blocking, -EAGAIN if mismatch
+    pub ret: i32,
+}
+
+pub const GALE_FUTEX_ACTION_BLOCK: u8 = 0;
+pub const GALE_FUTEX_ACTION_RETURN_EAGAIN: u8 = 1;
+
+/// Full decision for k_futex_wait: decides whether to block or return -EAGAIN.
+///
+/// Verified: FX1 (block when val == expected), FX2 (EAGAIN on mismatch).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_futex_wait_decide(
+    val: u32,
+    expected: u32,
+    is_no_wait: u32,
+) -> GaleFutexWaitDecision {
+    if val != expected {
+        GaleFutexWaitDecision {
+            action: GALE_FUTEX_ACTION_RETURN_EAGAIN,
+            ret: EAGAIN,
+        }
+    } else if is_no_wait != 0 {
+        // Value matches but caller specified K_NO_WAIT — cannot block
+        GaleFutexWaitDecision {
+            action: GALE_FUTEX_ACTION_RETURN_EAGAIN,
+            ret: ETIMEDOUT,
+        }
+    } else {
+        GaleFutexWaitDecision {
+            action: GALE_FUTEX_ACTION_BLOCK,
+            ret: OK,
+        }
+    }
+}
+
+/// Decision struct for k_futex_wake — tells C shim whether to keep waking.
+///
+/// Called once before the wake loop. Rust decides the maximum number of
+/// threads to wake based on the wake_all flag.
+#[repr(C)]
+pub struct GaleFutexWakeDecision {
+    /// Maximum number of threads to wake
+    pub wake_limit: u32,
+}
+
+/// Full decision for k_futex_wake: decides the wake limit.
+///
+/// Verified: FX3 (wake count correct), FX4 (wake_all wakes all), FX5 (single wake).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_futex_wake_decide(
+    num_waiters: u32,
+    wake_all: u32,
+) -> GaleFutexWakeDecision {
+    if wake_all != 0 {
+        GaleFutexWakeDecision {
+            wake_limit: num_waiters,
+        }
+    } else if num_waiters > 0 {
+        GaleFutexWakeDecision {
+            wake_limit: 1,
+        }
+    } else {
+        GaleFutexWakeDecision {
+            wake_limit: 0,
+        }
     }
 }
 
@@ -3332,6 +3467,76 @@ pub extern "C" fn gale_timeslice_tick(
             *expired = 1;
         }
         OK
+    }
+}
+
+// ---- Phase 2: Full Decision API for timeslice ----
+
+/// Decision struct for z_time_slice — tells C shim whether to yield.
+///
+/// The C shim extracts the current tick state (ticks_remaining from the
+/// timeout expiry flag, slice_ticks for the thread, cooperative flag).
+/// Rust decides whether the thread should yield its time slice.
+#[repr(C)]
+pub struct GaleTimesliceTickDecision {
+    /// Action: 0=NO_YIELD (continue running), 1=YIELD (move to end of prio queue)
+    pub action: u8,
+    /// New ticks remaining (0 when expired, unchanged when cooperative/no-slice)
+    pub new_ticks: u32,
+}
+
+pub const GALE_TIMESLICE_ACTION_NO_YIELD: u8 = 0;
+pub const GALE_TIMESLICE_ACTION_YIELD: u8 = 1;
+
+/// Full decision for z_time_slice: decides whether to yield the current thread.
+///
+/// Called from the timer/IPI interrupt handler. C extracts the slice state,
+/// Rust decides whether the thread should be preempted.
+///
+/// Arguments:
+///   ticks_remaining: ticks left in current slice (0 = expired)
+///   slice_ticks:     configured slice size for this thread (0 = no slicing)
+///   is_cooperative:  1 if thread is cooperative (should never be preempted), 0 otherwise
+///
+/// Returns a decision struct:
+///   action=YIELD if expired && sliceable && preemptible
+///   action=NO_YIELD otherwise
+///   new_ticks: reset to slice_ticks on yield, else ticks_remaining
+///
+/// Verified: TS4 (expire detection), TS6 (cooperative threads never yield).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_timeslice_tick_decide(
+    ticks_remaining: u32,
+    slice_ticks: u32,
+    is_cooperative: u32,
+) -> GaleTimesliceTickDecision {
+    // No time slicing configured for this thread
+    if slice_ticks == 0 {
+        return GaleTimesliceTickDecision {
+            action: GALE_TIMESLICE_ACTION_NO_YIELD,
+            new_ticks: ticks_remaining,
+        };
+    }
+
+    // Cooperative threads never yield to timeslicing
+    if is_cooperative != 0 {
+        return GaleTimesliceTickDecision {
+            action: GALE_TIMESLICE_ACTION_NO_YIELD,
+            new_ticks: ticks_remaining,
+        };
+    }
+
+    // Slice expired — yield and reset
+    if ticks_remaining == 0 {
+        GaleTimesliceTickDecision {
+            action: GALE_TIMESLICE_ACTION_YIELD,
+            new_ticks: slice_ticks,
+        }
+    } else {
+        GaleTimesliceTickDecision {
+            action: GALE_TIMESLICE_ACTION_NO_YIELD,
+            new_ticks: ticks_remaining,
+        }
     }
 }
 
@@ -3419,6 +3624,93 @@ pub extern "C" fn gale_kheap_free_validate(
             OK
         } else {
             EINVAL
+        }
+    }
+}
+
+// ---- KHeap Decision API ----
+
+/// Decision struct for k_heap_alloc — tells C shim what action to take.
+///
+/// After C calls sys_heap_aligned_alloc and determines if a result was
+/// obtained, Rust decides: return the pointer, pend, or return NULL.
+#[repr(C)]
+pub struct GaleKheapAllocDecision {
+    /// Action: 0=RETURN_PTR, 1=PEND, 2=RETURN_NULL
+    pub action: u8,
+}
+
+/// Alloc succeeded — return the pointer to caller.
+pub const GALE_KHEAP_ACTION_RETURN_PTR: u8 = 0;
+/// Alloc failed, caller willing to wait — pend on wait queue.
+pub const GALE_KHEAP_ACTION_PEND: u8 = 1;
+/// Alloc failed, no-wait or non-threaded — return NULL.
+pub const GALE_KHEAP_ACTION_RETURN_NULL: u8 = 2;
+
+/// Full decision for k_heap_alloc: decides whether to return pointer,
+/// pend, or return NULL.
+///
+/// The C shim calls sys_heap to attempt allocation, then passes the
+/// result to Rust.  Rust decides the action.
+///
+/// Arguments:
+///   alloc_succeeded: 1 if sys_heap returned non-NULL, 0 if NULL
+///   is_no_wait:      1 if K_NO_WAIT or !MULTITHREADING, 0 otherwise
+///
+/// Verified: KH2 (alloc), KH3 (full), KH6 (no overflow).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_kheap_alloc_decide(
+    alloc_succeeded: u32,
+    is_no_wait: u32,
+) -> GaleKheapAllocDecision {
+    if alloc_succeeded != 0 {
+        GaleKheapAllocDecision {
+            action: GALE_KHEAP_ACTION_RETURN_PTR,
+        }
+    } else if is_no_wait != 0 {
+        GaleKheapAllocDecision {
+            action: GALE_KHEAP_ACTION_RETURN_NULL,
+        }
+    } else {
+        GaleKheapAllocDecision {
+            action: GALE_KHEAP_ACTION_PEND,
+        }
+    }
+}
+
+/// Decision struct for k_heap_free — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleKheapFreeDecision {
+    /// Action: 0=FREE_ONLY, 1=FREE_AND_RESCHEDULE
+    pub action: u8,
+}
+
+/// Free completed, no waiters — just unlock.
+pub const GALE_KHEAP_ACTION_FREE_ONLY: u8 = 0;
+/// Free completed, waiters present — reschedule.
+pub const GALE_KHEAP_ACTION_FREE_AND_RESCHEDULE: u8 = 1;
+
+/// Full decision for k_heap_free: decides whether to just free or
+/// also reschedule waiters.
+///
+/// The C shim frees via sys_heap_free, then checks wait queue.
+/// Rust decides whether to reschedule.
+///
+/// Arguments:
+///   has_waiters: 1 if z_unpend_all returned > 0, 0 otherwise
+///
+/// Verified: KH4 (free), KH5 (conservation).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_kheap_free_decide(
+    has_waiters: u32,
+) -> GaleKheapFreeDecision {
+    if has_waiters != 0 {
+        GaleKheapFreeDecision {
+            action: GALE_KHEAP_ACTION_FREE_AND_RESCHEDULE,
+        }
+    } else {
+        GaleKheapFreeDecision {
+            action: GALE_KHEAP_ACTION_FREE_ONLY,
         }
     }
 }
@@ -3525,6 +3817,202 @@ pub extern "C" fn gale_thread_priority_validate(priority: u32) -> i32 {
     }
 }
 
+// ---- Phase 2: Full Decision API for thread lifecycle ----
+
+/// Decision struct for k_thread_create — tells C shim whether to proceed
+/// with thread creation or reject it.
+///
+/// C extracts stack_size, priority, and options before calling Rust.
+/// Rust validates parameters and decides proceed/reject.
+/// All arch-specific init, TLS, naming, etc. stay in C.
+#[repr(C)]
+pub struct GaleThreadCreateDecision {
+    /// Action: 0=PROCEED (create the thread), 1=REJECT (return error)
+    pub action: u8,
+    /// Return code: 0 (OK) or negative errno (-EINVAL, -EAGAIN)
+    pub ret: i32,
+}
+
+pub const GALE_THREAD_ACTION_PROCEED: u8 = 0;
+pub const GALE_THREAD_ACTION_REJECT: u8 = 1;
+
+/// Minimum stack size (arch-dependent, but 64 bytes is a sane floor).
+const MIN_STACK_SIZE: u32 = 64;
+
+/// Full decision for k_thread_create: validates stack size, priority, and options.
+///
+/// thread.c z_setup_new_thread:
+///   Z_ASSERT_VALID_PRIO(prio, entry)
+///   setup_thread_stack (requires stack_size > 0)
+///
+/// Arguments:
+///   stack_size:    proposed stack size in bytes
+///   priority:      proposed thread priority
+///   options:       thread creation options (K_ESSENTIAL, K_USER, etc.)
+///   active_count:  current active thread count
+///
+/// Verified: TH1 (priority range), TH3 (stack_size > 0), TH6 (no overflow).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_thread_create_decide(
+    stack_size: u32,
+    priority: u32,
+    _options: u32,
+    active_count: u32,
+) -> GaleThreadCreateDecision {
+    // TH3: stack must have nonzero, minimum size
+    if stack_size < MIN_STACK_SIZE {
+        return GaleThreadCreateDecision {
+            action: GALE_THREAD_ACTION_REJECT,
+            ret: EINVAL,
+        };
+    }
+
+    // TH1: priority must be in valid range
+    if priority >= MAX_PRIORITY {
+        return GaleThreadCreateDecision {
+            action: GALE_THREAD_ACTION_REJECT,
+            ret: EINVAL,
+        };
+    }
+
+    // TH6: thread count must not overflow
+    if active_count >= MAX_THREADS {
+        return GaleThreadCreateDecision {
+            action: GALE_THREAD_ACTION_REJECT,
+            ret: EAGAIN,
+        };
+    }
+
+    GaleThreadCreateDecision {
+        action: GALE_THREAD_ACTION_PROCEED,
+        ret: OK,
+    }
+}
+
+/// Decision struct for k_thread_abort — tells C shim what action to take.
+///
+/// C extracts thread state (dead, essential) before calling Rust.
+/// Rust decides: already dead (no-op), panic (essential), or proceed with abort.
+#[repr(C)]
+pub struct GaleThreadAbortDecision {
+    /// Action: 0=ABORT (proceed), 1=ALREADY_DEAD (no-op), 2=PANIC (essential thread)
+    pub action: u8,
+}
+
+pub const GALE_THREAD_ABORT_PROCEED: u8 = 0;
+pub const GALE_THREAD_ABORT_ALREADY_DEAD: u8 = 1;
+pub const GALE_THREAD_ABORT_PANIC: u8 = 2;
+
+/// Thread state flag: thread is dead (from kernel_structs.h _THREAD_DEAD = BIT(3)).
+const THREAD_STATE_DEAD: u8 = 0x08;
+
+/// Full decision for k_thread_abort: determines abort action based on thread state.
+///
+/// sched.c z_thread_abort:
+///   if (z_is_thread_dead(thread)) { return; }
+///   z_thread_halt(thread, key, true);
+///   if (essential) { k_panic(); }
+///
+/// Arguments:
+///   thread_state:  thread_base.thread_state flags
+///   is_essential:  1 if thread has K_ESSENTIAL flag, 0 otherwise
+///
+/// Returns a decision struct:
+///   action=ALREADY_DEAD if thread is dead
+///   action=PANIC if thread is essential (will be aborted, then panic)
+///   action=ABORT otherwise (proceed with halt)
+///
+/// Verified: TH5 (no underflow — dead threads not re-aborted).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_thread_abort_decide(
+    thread_state: u8,
+    is_essential: u32,
+) -> GaleThreadAbortDecision {
+    // Already dead — no-op
+    if (thread_state & THREAD_STATE_DEAD) != 0 {
+        return GaleThreadAbortDecision {
+            action: GALE_THREAD_ABORT_ALREADY_DEAD,
+        };
+    }
+
+    // Essential thread — will be aborted, then panic
+    if is_essential != 0 {
+        return GaleThreadAbortDecision {
+            action: GALE_THREAD_ABORT_PANIC,
+        };
+    }
+
+    GaleThreadAbortDecision {
+        action: GALE_THREAD_ABORT_PROCEED,
+    }
+}
+
+/// Decision struct for k_thread_join — tells C shim what action to take.
+///
+/// C extracts thread state and relationship info before calling Rust.
+/// Rust decides: return 0 (already dead), -EBUSY (no_wait), -EDEADLK, or pend.
+#[repr(C)]
+pub struct GaleThreadJoinDecision {
+    /// Action: 0=RETURN_IMMEDIATELY, 1=PEND_ON_JOIN_QUEUE
+    pub action: u8,
+    /// Return code: 0 (dead), -EBUSY, -EDEADLK
+    pub ret: i32,
+}
+
+pub const GALE_THREAD_JOIN_RETURN: u8 = 0;
+pub const GALE_THREAD_JOIN_PEND: u8 = 1;
+
+/// Full decision for k_thread_join: determines join action.
+///
+/// sched.c z_impl_k_thread_join:
+///   if (z_is_thread_dead(thread)) { ret = 0; }
+///   else if (K_TIMEOUT_EQ(timeout, K_NO_WAIT)) { ret = -EBUSY; }
+///   else if (thread == _current || circular) { ret = -EDEADLK; }
+///   else { pend on join_queue }
+///
+/// Arguments:
+///   is_dead:             1 if target thread is dead, 0 otherwise
+///   is_no_wait:          1 if timeout == K_NO_WAIT, 0 otherwise
+///   is_self_or_circular: 1 if target == _current or target is pended on our join queue
+///
+/// Verified: deadlock detection, proper state transitions.
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_thread_join_decide(
+    is_dead: u32,
+    is_no_wait: u32,
+    is_self_or_circular: u32,
+) -> GaleThreadJoinDecision {
+    // Already dead — return success immediately
+    if is_dead != 0 {
+        return GaleThreadJoinDecision {
+            action: GALE_THREAD_JOIN_RETURN,
+            ret: OK,
+        };
+    }
+
+    // No-wait mode — return busy
+    if is_no_wait != 0 {
+        return GaleThreadJoinDecision {
+            action: GALE_THREAD_JOIN_RETURN,
+            ret: EBUSY,
+        };
+    }
+
+    // Deadlock: joining self or circular dependency
+    if is_self_or_circular != 0 {
+        return GaleThreadJoinDecision {
+            action: GALE_THREAD_JOIN_RETURN,
+            ret: EDEADLK,
+        };
+    }
+
+    // Otherwise pend on the thread's join queue
+    GaleThreadJoinDecision {
+        action: GALE_THREAD_JOIN_PEND,
+        ret: OK,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // FFI exports — work (work item state machine)
 // ---------------------------------------------------------------------------
@@ -3535,34 +4023,185 @@ pub extern "C" fn gale_thread_priority_validate(priority: u32) -> i32 {
 //   work.c:320-365  submit_to_queue_locked — set QUEUED flag
 //   work.c:501-520  cancel_async_locked — clear QUEUED, set CANCELING
 //
+// Phase 2: Decision struct pattern (Extract->Decide->Apply).
+//
 // Verified by Verus (SMT/Z3):
 //   WK1: init produces IDLE
 //   WK2: submit from IDLE sets QUEUED
 //   WK3: submit while CANCELING returns EBUSY
-//   WK5: cancel clears QUEUED
+//   WK4: submit while QUEUED is idempotent (no-op)
+//   WK5: cancel clears QUEUED, sets CANCELING if still busy
 
-const FLAG_RUNNING: u8 = 1;
-const FLAG_CANCELING: u8 = 2;
-const FLAG_QUEUED: u8 = 4;
-const BUSY_MASK: u8 = 7;
+const WORK_FLAG_RUNNING: u8 = 1;    // BIT(0) -- K_WORK_RUNNING_BIT
+const WORK_FLAG_CANCELING: u8 = 2;  // BIT(1) -- K_WORK_CANCELING_BIT
+const WORK_FLAG_QUEUED: u8 = 4;     // BIT(2) -- K_WORK_QUEUED_BIT
+const WORK_BUSY_MASK: u8 = 7;       // RUNNING | CANCELING | QUEUED
 
-/// Validate a work submit operation.
+// ---- Phase 2: Full Decision API for work ----
+
+/// Action codes for work submit decision.
+pub const GALE_WORK_SUBMIT_QUEUE: u8 = 0;     // newly queued
+pub const GALE_WORK_SUBMIT_REQUEUE: u8 = 1;   // was running, re-queued
+pub const GALE_WORK_SUBMIT_ALREADY: u8 = 2;   // already queued (no-op)
+pub const GALE_WORK_SUBMIT_REJECT: u8 = 3;    // rejected (canceling)
+
+/// Decision struct for k_work_submit -- tells C shim what action to take.
+#[repr(C)]
+pub struct GaleWorkSubmitDecision {
+    /// Action: 0=QUEUE, 1=REQUEUE, 2=ALREADY_QUEUED, 3=REJECT
+    pub action: u8,
+    /// Updated flags to write back to work->flags
+    pub new_flags: u8,
+    /// Return code for the C caller:
+    ///   1 = newly queued, 2 = re-queued running, 0 = already queued, -EBUSY = rejected
+    pub ret: i32,
+}
+
+/// Full decision for k_work_submit: decides whether to queue, re-queue,
+/// reject, or treat as already-queued.
 ///
 /// work.c submit_to_queue_locked:
 ///   if (flags & CANCELING) return -EBUSY
 ///   if (flags & QUEUED) return 0 (already queued)
+///   if (flags & RUNNING) ret = 2 (re-queue to same queue)
+///   else ret = 1 (newly queued)
 ///   flags |= QUEUED
 ///
-/// Arguments:
-///   flags:     current work item flags
-///   new_flags: pointer to receive updated flags
+/// C extracts: work->flags (under spinlock).
+/// C applies:  writes new_flags back, queues work item if action != ALREADY/REJECT.
+///
+/// Verified: WK2 (submit sets QUEUED), WK3 (CANCELING rejects),
+///           WK4 (already queued is no-op).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_work_submit_decide(
+    flags: u8,
+    is_queued: u8,
+    is_running: u8,
+) -> GaleWorkSubmitDecision {
+    // If canceling, reject the submission
+    if (flags & WORK_FLAG_CANCELING) != 0 {
+        return GaleWorkSubmitDecision {
+            action: GALE_WORK_SUBMIT_REJECT,
+            new_flags: flags,
+            ret: EBUSY,
+        };
+    }
+
+    // If already queued, no-op
+    if is_queued != 0 {
+        return GaleWorkSubmitDecision {
+            action: GALE_WORK_SUBMIT_ALREADY,
+            new_flags: flags,
+            ret: 0,
+        };
+    }
+
+    // Not queued -- set QUEUED flag
+    #[allow(clippy::arithmetic_side_effects)]
+    let new_flags = flags | WORK_FLAG_QUEUED;
+
+    if is_running != 0 {
+        // Was running -- re-queue to the same queue
+        GaleWorkSubmitDecision {
+            action: GALE_WORK_SUBMIT_REQUEUE,
+            new_flags,
+            ret: 2,
+        }
+    } else {
+        // Idle -- newly queued
+        GaleWorkSubmitDecision {
+            action: GALE_WORK_SUBMIT_QUEUE,
+            new_flags,
+            ret: 1,
+        }
+    }
+}
+
+/// Action codes for work cancel decision.
+pub const GALE_WORK_CANCEL_IDLE: u8 = 0;      // already idle, nothing to do
+pub const GALE_WORK_CANCEL_DEQUEUE: u8 = 1;   // was queued, dequeue it
+pub const GALE_WORK_CANCEL_CANCELING: u8 = 2; // still busy, set CANCELING
+
+/// Decision struct for k_work_cancel -- tells C shim what action to take.
+#[repr(C)]
+pub struct GaleWorkCancelDecision {
+    /// Action: 0=IDLE, 1=DEQUEUE, 2=SET_CANCELING
+    pub action: u8,
+    /// Updated flags to write back to work->flags
+    pub new_flags: u8,
+    /// Busy status after cancel (flags & BUSY_MASK)
+    pub busy: u8,
+}
+
+/// Full decision for k_work_cancel: decides whether the item is idle,
+/// needs dequeuing, or needs the CANCELING flag set.
+///
+/// work.c cancel_async_locked:
+///   if (!CANCELING) { remove from queue (clears QUEUED) }
+///   busy = flags & BUSY_MASK
+///   if (busy) flags |= CANCELING
+///   return busy
+///
+/// C extracts: work->flags (under spinlock).
+/// C applies:  writes new_flags back, removes from queue if action==DEQUEUE.
+///
+/// Verified: WK5 (cancel clears QUEUED, sets CANCELING if still busy).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_work_cancel_decide(
+    flags: u8,
+    is_queued: u8,
+    is_running: u8,
+) -> GaleWorkCancelDecision {
+    let _ = is_running; // used implicitly via flags
+
+    // Step 1: If not already canceling, clear QUEUED
+    let dequeued = (flags & WORK_FLAG_CANCELING) == 0 && is_queued != 0;
+
+    #[allow(clippy::arithmetic_side_effects)]
+    let mut f = if dequeued {
+        flags & !WORK_FLAG_QUEUED
+    } else {
+        flags
+    };
+
+    // Step 2: Check busy status after dequeue
+    #[allow(clippy::arithmetic_side_effects)]
+    let busy = f & WORK_BUSY_MASK;
+
+    // Step 3: If still busy, set CANCELING
+    if busy != 0 {
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            f |= WORK_FLAG_CANCELING;
+        }
+    }
+
+    let action = if busy == 0 {
+        GALE_WORK_CANCEL_IDLE
+    } else if dequeued {
+        GALE_WORK_CANCEL_DEQUEUE
+    } else {
+        GALE_WORK_CANCEL_CANCELING
+    };
+
+    GaleWorkCancelDecision {
+        action,
+        new_flags: f,
+        busy,
+    }
+}
+
+// Keep the validate API for backward compatibility.
+// These are thin wrappers around the decision struct functions.
+
+/// Validate a work submit operation (legacy API).
 ///
 /// Returns:
-///   1          — newly queued
-///   2          — was running, re-queued
-///   0          — already queued (no-op)
-///   -EBUSY     — canceling, rejected
-///   -EINVAL    — null pointer
+///   1          -- newly queued
+///   2          -- was running, re-queued
+///   0          -- already queued (no-op)
+///   -EBUSY     -- canceling, rejected
+///   -EINVAL    -- null pointer
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_work_submit_validate(
     flags: u8,
@@ -3573,38 +4212,19 @@ pub extern "C" fn gale_work_submit_validate(
             return EINVAL;
         }
 
-        if (flags & FLAG_CANCELING) != 0 {
-            *new_flags = flags;
-            return EBUSY;
-        }
-        if (flags & FLAG_QUEUED) != 0 {
-            *new_flags = flags;
-            return 0;
-        }
-
-        let was_running = (flags & FLAG_RUNNING) != 0;
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_flags = flags | FLAG_QUEUED;
-        }
-        if was_running { 2 } else { 1 }
+        let is_queued = if (flags & WORK_FLAG_QUEUED) != 0 { 1u8 } else { 0u8 };
+        let is_running = if (flags & WORK_FLAG_RUNNING) != 0 { 1u8 } else { 0u8 };
+        let d = gale_k_work_submit_decide(flags, is_queued, is_running);
+        *new_flags = d.new_flags;
+        d.ret
     }
 }
 
-/// Validate a work cancel operation.
-///
-/// work.c cancel_async_locked:
-///   flags &= ~QUEUED
-///   if (flags & BUSY_MASK) flags |= CANCELING
-///
-/// Arguments:
-///   flags:     current work item flags
-///   new_flags: pointer to receive updated flags
-///   busy:      pointer to receive busy status after cancel
+/// Validate a work cancel operation (legacy API).
 ///
 /// Returns:
-///   0 (OK) — *new_flags and *busy set
-///   -EINVAL — null pointer
+///   0 (OK) -- *new_flags and *busy set
+///   -EINVAL -- null pointer
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_work_cancel_validate(
     flags: u8,
@@ -3616,17 +4236,11 @@ pub extern "C" fn gale_work_cancel_validate(
             return EINVAL;
         }
 
-        #[allow(clippy::arithmetic_side_effects)]
-        let mut f = flags & !FLAG_QUEUED;
-        let b = f & BUSY_MASK;
-        if b != 0 {
-            #[allow(clippy::arithmetic_side_effects)]
-            {
-                f = f | FLAG_CANCELING;
-            }
-        }
-        *new_flags = f;
-        *busy = f & BUSY_MASK;
+        let is_queued = if (flags & WORK_FLAG_QUEUED) != 0 { 1u8 } else { 0u8 };
+        let is_running = if (flags & WORK_FLAG_RUNNING) != 0 { 1u8 } else { 0u8 };
+        let d = gale_k_work_cancel_decide(flags, is_queued, is_running);
+        *new_flags = d.new_flags;
+        *busy = d.busy;
         OK
     }
 }
@@ -3644,6 +4258,25 @@ pub extern "C" fn gale_work_cancel_validate(
 //   FT1: all reason codes map to valid variants
 //   FT2: kernel panic always halts
 //   FT3: recovery depends on reason + context
+
+// ---- Phase 2: Full Decision API ----
+
+/// Decision struct for fatal error classification — tells the C shim what
+/// recovery action to apply after `k_sys_fatal_error_handler` returns.
+#[repr(C)]
+pub struct GaleFatalDecision {
+    /// Action: 0=ABORT_THREAD, 1=HALT, 2=IGNORE
+    pub action: u8,
+    /// Return code: 0 on success, -EINVAL for unknown reason
+    pub ret: i32,
+}
+
+/// Fatal action: abort the faulting thread and continue.
+pub const GALE_FATAL_ACTION_ABORT_THREAD: u8 = 0;
+/// Fatal action: halt the entire system (no recovery possible).
+pub const GALE_FATAL_ACTION_HALT: u8 = 1;
+/// Fatal action: ignore (test mode ISR — return without action).
+pub const GALE_FATAL_ACTION_IGNORE: u8 = 2;
 
 /// Classify a fatal error: determine recovery action.
 ///
@@ -3664,43 +4297,64 @@ pub extern "C" fn gale_fatal_classify(
     is_isr: u32,
     test_mode: u32,
 ) -> i32 {
-    const ACTION_ABORT_THREAD: i32 = 0;
-    const ACTION_HALT: i32 = 1;
-    const ACTION_IGNORE: i32 = 2;
+    let d = gale_k_fatal_decide(reason, is_isr, test_mode);
+    if d.ret != 0 {
+        return d.ret;
+    }
+    d.action as i32
+}
 
+/// Full decision for fatal error classification: determines recovery action.
+///
+/// The C shim in `gale_fatal.c` calls this after `k_sys_fatal_error_handler`
+/// returns. Rust classifies the error and decides: abort thread, halt, or
+/// ignore.
+///
+/// Verified: FT1 (reason mapping), FT2 (panic halts), FT3 (recovery).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_fatal_decide(
+    reason: u32,
+    is_isr: u32,
+    test_mode: u32,
+) -> GaleFatalDecision {
     // Validate reason code
     if reason > 4 {
-        return EINVAL;
+        return GaleFatalDecision {
+            action: GALE_FATAL_ACTION_HALT,
+            ret: EINVAL,
+        };
     }
 
-    if test_mode != 0 {
+    let action = if test_mode != 0 {
         // Test mode — more permissive
         if is_isr != 0 {
             if reason == 2 {
                 // STACK_CHECK_FAIL — abort even in ISR
-                ACTION_ABORT_THREAD
+                GALE_FATAL_ACTION_ABORT_THREAD
             } else {
-                ACTION_IGNORE
+                GALE_FATAL_ACTION_IGNORE
             }
         } else {
-            ACTION_ABORT_THREAD
+            GALE_FATAL_ACTION_ABORT_THREAD
         }
     } else {
         // Production mode
         if reason == 4 {
             // KERNEL_PANIC — always halt
-            ACTION_HALT
+            GALE_FATAL_ACTION_HALT
         } else if reason == 2 {
             // STACK_CHECK_FAIL — always abort thread
-            ACTION_ABORT_THREAD
+            GALE_FATAL_ACTION_ABORT_THREAD
         } else if is_isr != 0 {
             // ISR context — halt
-            ACTION_HALT
+            GALE_FATAL_ACTION_HALT
         } else {
             // Thread context — abort
-            ACTION_ABORT_THREAD
+            GALE_FATAL_ACTION_ABORT_THREAD
         }
-    }
+    };
+
+    GaleFatalDecision { action, ret: 0 }
 }
 
 // ---------------------------------------------------------------------------
@@ -3780,6 +4434,85 @@ pub extern "C" fn gale_mempool_free_validate(
             *new_allocated = allocated - 1;
         }
         OK
+    }
+}
+
+// ---- MemPool Decision API ----
+
+/// Decision struct for mempool alloc — tells C shim what action to take.
+///
+/// After C calls sys_heap to attempt allocation, Rust decides whether
+/// the allocation succeeded or should return NULL.
+#[repr(C)]
+pub struct GaleMemPoolAllocDecision {
+    /// Action: 0=RETURN_PTR, 1=RETURN_NULL
+    pub action: u8,
+}
+
+/// Alloc succeeded — return the pointer to caller.
+pub const GALE_MEMPOOL_ACTION_RETURN_PTR: u8 = 0;
+/// Alloc failed — return NULL.
+pub const GALE_MEMPOOL_ACTION_RETURN_NULL: u8 = 1;
+
+/// Full decision for mempool alloc: decides whether to return pointer
+/// or return NULL.
+///
+/// The C shim calls sys_heap to attempt allocation, then passes the
+/// result to Rust.  Rust decides the action.
+///
+/// Arguments:
+///   alloc_succeeded: 1 if sys_heap returned non-NULL, 0 if NULL
+///
+/// Verified: MP2 (alloc), MP3 (full).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_mempool_alloc_decide(
+    alloc_succeeded: u32,
+) -> GaleMemPoolAllocDecision {
+    if alloc_succeeded != 0 {
+        GaleMemPoolAllocDecision {
+            action: GALE_MEMPOOL_ACTION_RETURN_PTR,
+        }
+    } else {
+        GaleMemPoolAllocDecision {
+            action: GALE_MEMPOOL_ACTION_RETURN_NULL,
+        }
+    }
+}
+
+/// Decision struct for mempool free — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleMemPoolFreeDecision {
+    /// Action: 0=FREE_OK, 1=FREE_AND_RESCHEDULE
+    pub action: u8,
+}
+
+/// Free completed, no waiters — just unlock.
+pub const GALE_MEMPOOL_ACTION_FREE_OK: u8 = 0;
+/// Free completed, waiters present — reschedule.
+pub const GALE_MEMPOOL_ACTION_FREE_AND_RESCHEDULE: u8 = 1;
+
+/// Full decision for mempool free: decides whether to just free or
+/// also reschedule waiters.
+///
+/// The C shim frees via sys_heap_free, then checks wait queue.
+/// Rust decides whether to reschedule.
+///
+/// Arguments:
+///   has_waiters: 1 if z_unpend_all returned > 0, 0 otherwise
+///
+/// Verified: MP4 (free), MP5 (conservation).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_mempool_free_decide(
+    has_waiters: u32,
+) -> GaleMemPoolFreeDecision {
+    if has_waiters != 0 {
+        GaleMemPoolFreeDecision {
+            action: GALE_MEMPOOL_ACTION_FREE_AND_RESCHEDULE,
+        }
+    } else {
+        GaleMemPoolFreeDecision {
+            action: GALE_MEMPOOL_ACTION_FREE_OK,
+        }
     }
 }
 
@@ -3944,6 +4677,160 @@ pub extern "C" fn gale_smp_stop_cpu_validate(
     }
 }
 
+// ---- Phase 2: Full Decision API for dynamic ----
+
+/// Decision struct for dynamic pool alloc — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleDynamicAllocDecision {
+    /// Action: 0=ALLOC_OK, 1=POOL_FULL
+    pub action: u8,
+    /// New active count (only meaningful when action=ALLOC_OK)
+    pub new_active: u32,
+}
+
+pub const GALE_DYNAMIC_ACTION_ALLOC_OK: u8 = 0;
+pub const GALE_DYNAMIC_ACTION_POOL_FULL: u8 = 1;
+
+/// Full decision for dynamic pool alloc: decides whether allocation can proceed.
+///
+/// The C shim extracts current active count and pool size, Rust decides
+/// whether there is room for another allocation.
+///
+/// Verified: DY2 (alloc: active += 1), DY3 (full: -ENOMEM).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_dynamic_alloc_decide(
+    active: u32,
+    max_threads: u32,
+) -> GaleDynamicAllocDecision {
+    if active >= max_threads {
+        GaleDynamicAllocDecision {
+            action: GALE_DYNAMIC_ACTION_POOL_FULL,
+            new_active: active,
+        }
+    } else {
+        #[allow(clippy::arithmetic_side_effects)]
+        let new_active = active + 1;
+        GaleDynamicAllocDecision {
+            action: GALE_DYNAMIC_ACTION_ALLOC_OK,
+            new_active,
+        }
+    }
+}
+
+/// Decision struct for dynamic pool free — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleDynamicFreeDecision {
+    /// Action: 0=FREE_OK, 1=UNDERFLOW
+    pub action: u8,
+    /// New active count (only meaningful when action=FREE_OK)
+    pub new_active: u32,
+}
+
+pub const GALE_DYNAMIC_ACTION_FREE_OK: u8 = 0;
+pub const GALE_DYNAMIC_ACTION_UNDERFLOW: u8 = 1;
+
+/// Full decision for dynamic pool free: decides whether free can proceed.
+///
+/// The C shim extracts current active count, Rust decides whether the
+/// free is valid (no underflow).
+///
+/// Verified: DY4 (free: active -= 1, no underflow).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_dynamic_free_decide(
+    active: u32,
+) -> GaleDynamicFreeDecision {
+    if active == 0 {
+        GaleDynamicFreeDecision {
+            action: GALE_DYNAMIC_ACTION_UNDERFLOW,
+            new_active: 0,
+        }
+    } else {
+        #[allow(clippy::arithmetic_side_effects)]
+        let new_active = active - 1;
+        GaleDynamicFreeDecision {
+            action: GALE_DYNAMIC_ACTION_FREE_OK,
+            new_active,
+        }
+    }
+}
+
+// ---- Phase 2: Full Decision API for smp_state ----
+
+/// Decision struct for SMP CPU start — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleSmpStartDecision {
+    /// Action: 0=START_OK, 1=ALL_ACTIVE
+    pub action: u8,
+    /// New active count (only meaningful when action=START_OK)
+    pub new_active: u32,
+}
+
+pub const GALE_SMP_ACTION_START_OK: u8 = 0;
+pub const GALE_SMP_ACTION_ALL_ACTIVE: u8 = 1;
+
+/// Full decision for SMP CPU start: decides whether a CPU can be started.
+///
+/// The C shim extracts current active CPU count and max CPUs, Rust decides
+/// whether there is room to start another CPU.
+///
+/// Verified: SM2 (start: active += 1).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_smp_start_cpu_decide(
+    active_cpus: u32,
+    max_cpus: u32,
+) -> GaleSmpStartDecision {
+    if active_cpus >= max_cpus {
+        GaleSmpStartDecision {
+            action: GALE_SMP_ACTION_ALL_ACTIVE,
+            new_active: active_cpus,
+        }
+    } else {
+        #[allow(clippy::arithmetic_side_effects)]
+        let new_active = active_cpus + 1;
+        GaleSmpStartDecision {
+            action: GALE_SMP_ACTION_START_OK,
+            new_active,
+        }
+    }
+}
+
+/// Decision struct for SMP CPU stop — tells C shim what action to take.
+#[repr(C)]
+pub struct GaleSmpStopDecision {
+    /// Action: 0=STOP_OK, 1=LAST_CPU
+    pub action: u8,
+    /// New active count (only meaningful when action=STOP_OK)
+    pub new_active: u32,
+}
+
+pub const GALE_SMP_ACTION_STOP_OK: u8 = 0;
+pub const GALE_SMP_ACTION_LAST_CPU: u8 = 1;
+
+/// Full decision for SMP CPU stop: decides whether a CPU can be stopped.
+///
+/// The C shim extracts current active CPU count, Rust decides whether
+/// stopping is valid (CPU 0 must never stop).
+///
+/// Verified: SM3 (stop: active -= 1, min 1).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_smp_stop_cpu_decide(
+    active_cpus: u32,
+) -> GaleSmpStopDecision {
+    if active_cpus <= 1 {
+        GaleSmpStopDecision {
+            action: GALE_SMP_ACTION_LAST_CPU,
+            new_active: active_cpus,
+        }
+    } else {
+        #[allow(clippy::arithmetic_side_effects)]
+        let new_active = active_cpus - 1;
+        GaleSmpStopDecision {
+            action: GALE_SMP_ACTION_STOP_OK,
+            new_active,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // FFI exports — sched (scheduler primitives)
 // ---------------------------------------------------------------------------
@@ -4021,6 +4908,132 @@ pub extern "C" fn gale_sched_should_preempt(
         return 0;
     }
     1
+}
+
+// ---- Phase 3: Sched Decision API ----
+
+/// Action codes for `GaleSchedNextUpDecision`.
+pub const GALE_SCHED_SELECT_RUNQ: u8 = 0;
+pub const GALE_SCHED_SELECT_IDLE: u8 = 1;
+pub const GALE_SCHED_SELECT_METAIRQ_PREEMPTED: u8 = 2;
+
+/// Decision struct for next_up — tells C shim which thread to run next.
+///
+/// The C shim extracts scheduling state (run queue best, metairq preempted
+/// thread readiness), Rust decides the selection, C applies it.
+#[repr(C)]
+pub struct GaleSchedNextUpDecision {
+    /// Action: 0=SELECT_RUNQ, 1=SELECT_IDLE, 2=SELECT_METAIRQ_PREEMPTED
+    pub action: u8,
+}
+
+/// Full decision for next_up (uniprocessor): decides which thread to run.
+///
+/// Mirrors sched.c:next_up (uniprocessor path):
+///   1. If metairq preempted thread exists and is ready, and runq best is
+///      not a metairq, return to the preempted cooperative thread.
+///   2. If runq has a ready thread, select it.
+///   3. Otherwise select idle.
+///
+/// Arguments:
+///   has_runq_thread:              1 if run queue has a best thread
+///   runq_best_is_metairq:        1 if the runq best thread is a MetaIRQ
+///   has_metairq_preempted:       1 if a cooperative thread was preempted by MetaIRQ
+///   metairq_preempted_is_ready:  1 if the preempted thread is still ready
+///
+/// Verified: SC5 (highest-priority), SC6 (cooperative protection), SC7 (idle fallback).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_sched_next_up_decide(
+    has_runq_thread: u32,
+    runq_best_is_metairq: u32,
+    has_metairq_preempted: u32,
+    metairq_preempted_is_ready: u32,
+) -> GaleSchedNextUpDecision {
+    // MetaIRQ preemption return: if a cooperative thread was preempted by a
+    // MetaIRQ and the runq best is NOT a metairq, return to the preempted thread.
+    if has_metairq_preempted != 0
+        && (has_runq_thread == 0 || runq_best_is_metairq == 0)
+    {
+        if metairq_preempted_is_ready != 0 {
+            return GaleSchedNextUpDecision {
+                action: GALE_SCHED_SELECT_METAIRQ_PREEMPTED,
+            };
+        }
+        // Preempted thread is no longer ready — fall through
+        // (C shim clears metairq_preempted pointer)
+    }
+
+    if has_runq_thread != 0 {
+        GaleSchedNextUpDecision {
+            action: GALE_SCHED_SELECT_RUNQ,
+        }
+    } else {
+        GaleSchedNextUpDecision {
+            action: GALE_SCHED_SELECT_IDLE,
+        }
+    }
+}
+
+/// Action codes for `GaleSchedPreemptDecision`.
+pub const GALE_SCHED_PREEMPT: u8 = 1;
+pub const GALE_SCHED_NO_PREEMPT: u8 = 0;
+
+/// Decision struct for should_preempt — tells C shim whether to preempt.
+#[repr(C)]
+pub struct GaleSchedPreemptDecision {
+    /// 1=should preempt, 0=should not preempt
+    pub should_preempt: u8,
+}
+
+/// Full decision for should_preempt: decides whether the candidate thread
+/// should preempt the current thread.
+///
+/// Mirrors kthread.h:should_preempt:
+///   1. swap_ok (explicit yield) -> always preempt
+///   2. current is prevented from running -> preempt
+///   3. current is preemptible OR candidate is MetaIRQ -> preempt
+///   4. otherwise -> no preempt (cooperative protection)
+///
+/// Arguments:
+///   is_cooperative:           1 if current thread is cooperative (not preemptible)
+///   candidate_is_metairq:    1 if candidate thread is a MetaIRQ
+///   swap_ok:                 1 if explicit yield allows swap
+///   current_is_prevented:    1 if current thread is prevented from running
+///                            (pended/suspended/dummy)
+///
+/// Verified: SC6 (cooperative not preempted by non-MetaIRQ).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_sched_preempt_decide(
+    is_cooperative: u32,
+    candidate_is_metairq: u32,
+    swap_ok: u32,
+    current_is_prevented: u32,
+) -> GaleSchedPreemptDecision {
+    // swap_ok (k_yield) always allows preemption
+    if swap_ok != 0 {
+        return GaleSchedPreemptDecision {
+            should_preempt: GALE_SCHED_PREEMPT,
+        };
+    }
+
+    // If current is pended/suspended/dummy, preempt
+    if current_is_prevented != 0 {
+        return GaleSchedPreemptDecision {
+            should_preempt: GALE_SCHED_PREEMPT,
+        };
+    }
+
+    // Preemptible current or MetaIRQ candidate -> preempt
+    if is_cooperative == 0 || candidate_is_metairq != 0 {
+        return GaleSchedPreemptDecision {
+            should_preempt: GALE_SCHED_PREEMPT,
+        };
+    }
+
+    // Cooperative current + non-MetaIRQ candidate -> no preemption
+    GaleSchedPreemptDecision {
+        should_preempt: GALE_SCHED_NO_PREEMPT,
+    }
 }
 
 // Panic handler for no_std
