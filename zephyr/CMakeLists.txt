@@ -1183,7 +1183,7 @@ endif() # CONFIG_GALE_KERNEL_TIMEOUT
 # Gale poll — formally verified poll event state machine
 # ==========================================================================
 
-if(CONFIG_GALE_KERNEL_POLL AND CONFIG_POLL)
+if(CONFIG_GALE_KERNEL_POLL)
 
 set(GALE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
 set(GALE_FFI_DIR ${GALE_DIR}/ffi)
@@ -1223,7 +1223,7 @@ endif() # CONFIG_GALE_KERNEL_POLL
 # Gale futex — formally verified futex value comparison
 # ==========================================================================
 
-if(CONFIG_GALE_KERNEL_FUTEX AND CONFIG_FUTEX)
+if(CONFIG_GALE_KERNEL_FUTEX)
 
 set(GALE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
 set(GALE_FFI_DIR ${GALE_DIR}/ffi)
@@ -1503,7 +1503,7 @@ endif() # CONFIG_GALE_KERNEL_MEMPOOL
 # Gale dynamic — formally verified dynamic thread pool tracking
 # ==========================================================================
 
-if(CONFIG_GALE_KERNEL_DYNAMIC AND CONFIG_DYNAMIC_THREAD)
+if(CONFIG_GALE_KERNEL_DYNAMIC)
 
 set(GALE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
 set(GALE_FFI_DIR ${GALE_DIR}/ffi)
@@ -1543,7 +1543,7 @@ endif() # CONFIG_GALE_KERNEL_DYNAMIC
 # Gale SMP state — formally verified SMP CPU state tracking
 # ==========================================================================
 
-if(CONFIG_GALE_KERNEL_SMP_STATE AND CONFIG_SMP)
+if(CONFIG_GALE_KERNEL_SMP_STATE)
 
 set(GALE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
 set(GALE_FFI_DIR ${GALE_DIR}/ffi)
