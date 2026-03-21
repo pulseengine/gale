@@ -4910,6 +4910,132 @@ pub extern "C" fn gale_sched_should_preempt(
     1
 }
 
+// ---- Phase 3: Sched Decision API ----
+
+/// Action codes for `GaleSchedNextUpDecision`.
+pub const GALE_SCHED_SELECT_RUNQ: u8 = 0;
+pub const GALE_SCHED_SELECT_IDLE: u8 = 1;
+pub const GALE_SCHED_SELECT_METAIRQ_PREEMPTED: u8 = 2;
+
+/// Decision struct for next_up — tells C shim which thread to run next.
+///
+/// The C shim extracts scheduling state (run queue best, metairq preempted
+/// thread readiness), Rust decides the selection, C applies it.
+#[repr(C)]
+pub struct GaleSchedNextUpDecision {
+    /// Action: 0=SELECT_RUNQ, 1=SELECT_IDLE, 2=SELECT_METAIRQ_PREEMPTED
+    pub action: u8,
+}
+
+/// Full decision for next_up (uniprocessor): decides which thread to run.
+///
+/// Mirrors sched.c:next_up (uniprocessor path):
+///   1. If metairq preempted thread exists and is ready, and runq best is
+///      not a metairq, return to the preempted cooperative thread.
+///   2. If runq has a ready thread, select it.
+///   3. Otherwise select idle.
+///
+/// Arguments:
+///   has_runq_thread:              1 if run queue has a best thread
+///   runq_best_is_metairq:        1 if the runq best thread is a MetaIRQ
+///   has_metairq_preempted:       1 if a cooperative thread was preempted by MetaIRQ
+///   metairq_preempted_is_ready:  1 if the preempted thread is still ready
+///
+/// Verified: SC5 (highest-priority), SC6 (cooperative protection), SC7 (idle fallback).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_sched_next_up_decide(
+    has_runq_thread: u32,
+    runq_best_is_metairq: u32,
+    has_metairq_preempted: u32,
+    metairq_preempted_is_ready: u32,
+) -> GaleSchedNextUpDecision {
+    // MetaIRQ preemption return: if a cooperative thread was preempted by a
+    // MetaIRQ and the runq best is NOT a metairq, return to the preempted thread.
+    if has_metairq_preempted != 0
+        && (has_runq_thread == 0 || runq_best_is_metairq == 0)
+    {
+        if metairq_preempted_is_ready != 0 {
+            return GaleSchedNextUpDecision {
+                action: GALE_SCHED_SELECT_METAIRQ_PREEMPTED,
+            };
+        }
+        // Preempted thread is no longer ready — fall through
+        // (C shim clears metairq_preempted pointer)
+    }
+
+    if has_runq_thread != 0 {
+        GaleSchedNextUpDecision {
+            action: GALE_SCHED_SELECT_RUNQ,
+        }
+    } else {
+        GaleSchedNextUpDecision {
+            action: GALE_SCHED_SELECT_IDLE,
+        }
+    }
+}
+
+/// Action codes for `GaleSchedPreemptDecision`.
+pub const GALE_SCHED_PREEMPT: u8 = 1;
+pub const GALE_SCHED_NO_PREEMPT: u8 = 0;
+
+/// Decision struct for should_preempt — tells C shim whether to preempt.
+#[repr(C)]
+pub struct GaleSchedPreemptDecision {
+    /// 1=should preempt, 0=should not preempt
+    pub should_preempt: u8,
+}
+
+/// Full decision for should_preempt: decides whether the candidate thread
+/// should preempt the current thread.
+///
+/// Mirrors kthread.h:should_preempt:
+///   1. swap_ok (explicit yield) -> always preempt
+///   2. current is prevented from running -> preempt
+///   3. current is preemptible OR candidate is MetaIRQ -> preempt
+///   4. otherwise -> no preempt (cooperative protection)
+///
+/// Arguments:
+///   is_cooperative:           1 if current thread is cooperative (not preemptible)
+///   candidate_is_metairq:    1 if candidate thread is a MetaIRQ
+///   swap_ok:                 1 if explicit yield allows swap
+///   current_is_prevented:    1 if current thread is prevented from running
+///                            (pended/suspended/dummy)
+///
+/// Verified: SC6 (cooperative not preempted by non-MetaIRQ).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_sched_preempt_decide(
+    is_cooperative: u32,
+    candidate_is_metairq: u32,
+    swap_ok: u32,
+    current_is_prevented: u32,
+) -> GaleSchedPreemptDecision {
+    // swap_ok (k_yield) always allows preemption
+    if swap_ok != 0 {
+        return GaleSchedPreemptDecision {
+            should_preempt: GALE_SCHED_PREEMPT,
+        };
+    }
+
+    // If current is pended/suspended/dummy, preempt
+    if current_is_prevented != 0 {
+        return GaleSchedPreemptDecision {
+            should_preempt: GALE_SCHED_PREEMPT,
+        };
+    }
+
+    // Preemptible current or MetaIRQ candidate -> preempt
+    if is_cooperative == 0 || candidate_is_metairq != 0 {
+        return GaleSchedPreemptDecision {
+            should_preempt: GALE_SCHED_PREEMPT,
+        };
+    }
+
+    // Cooperative current + non-MetaIRQ candidate -> no preemption
+    GaleSchedPreemptDecision {
+        should_preempt: GALE_SCHED_NO_PREEMPT,
+    }
+}
+
 // Panic handler for no_std
 #[cfg(not(any(test, kani)))]
 #[panic_handler]
