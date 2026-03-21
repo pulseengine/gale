@@ -39,6 +39,8 @@
 
 #include "gale_poll.h"
 
+#ifdef CONFIG_POLL
+
 /* Single subsystem lock — matches upstream poll.c. */
 static struct k_spinlock lock;
 
@@ -760,3 +762,5 @@ int k_work_poll_cancel(struct k_work_poll *work)
 
 	return retval;
 }
+
+#endif /* CONFIG_POLL */

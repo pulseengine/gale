@@ -29,6 +29,8 @@
 
 LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
 
+#ifdef CONFIG_DYNAMIC_THREAD
+
 #if CONFIG_DYNAMIC_THREAD_POOL_SIZE > 0
 #define BA_SIZE CONFIG_DYNAMIC_THREAD_POOL_SIZE
 #else
@@ -212,3 +214,5 @@ static inline int z_vrfy_k_thread_stack_free(k_thread_stack_t *stack)
 }
 #include <zephyr/syscalls/k_thread_stack_free_mrsh.c>
 #endif /* CONFIG_USERSPACE */
+
+#endif /* CONFIG_DYNAMIC_THREAD */

@@ -25,6 +25,8 @@
 
 #include "gale_futex.h"
 
+#ifdef CONFIG_USERSPACE
+
 static struct z_futex_data *k_futex_find_data(struct k_futex *futex)
 {
 	struct k_object *obj;
@@ -136,3 +138,5 @@ static inline int z_vrfy_k_futex_wait(struct k_futex *futex, int expected,
 	return z_impl_k_futex_wait(futex, expected, timeout);
 }
 #include <zephyr/syscalls/k_futex_wait_mrsh.c>
+
+#endif /* CONFIG_USERSPACE */
