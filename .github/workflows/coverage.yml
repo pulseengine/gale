@@ -12,6 +12,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ── Rust source coverage (cargo-llvm-cov) ─────────────────────────
   rust-coverage:

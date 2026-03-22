@@ -13,6 +13,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: zephyr-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   HOME: /root
   DOCKER_CONFIG: /tmp/.docker
