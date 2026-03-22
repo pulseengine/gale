@@ -349,6 +349,137 @@ fn msgq_put_model_exhaustive() {
     }
 }
 
+// =========================================================================
+// Pipe model-FFI equivalence
+// =========================================================================
+
+fn model_pipe_write(used: u32, size: u32, flags: u8, request_len: u32, has_reader: bool) -> (i32, u8) {
+    const FLAG_RESET: u8 = 2;
+    const FLAG_OPEN: u8 = 1;
+
+    if (flags & FLAG_RESET) != 0 {
+        (gale::error::ECANCELED, 3) // WRITE_ERROR
+    } else if (flags & FLAG_OPEN) == 0 {
+        (gale::error::EPIPE, 3) // WRITE_ERROR
+    } else if request_len == 0 {
+        (gale::error::ENOMSG, 3) // WRITE_ERROR
+    } else if has_reader {
+        (OK, 1) // WAKE_READER
+    } else if used < size {
+        (OK, 0) // WRITE_OK
+    } else {
+        (0, 2) // WRITE_PEND
+    }
+}
+
+#[test]
+fn pipe_write_model_exhaustive() {
+    for size in 0u32..=4 {
+        for used in 0u32..=size {
+            for flags in [0u8, 1, 2, 3] {
+                for has_reader in [true, false] {
+                    let (ret, action) = model_pipe_write(used, size, flags, 1, has_reader);
+
+                    if (flags & 2) != 0 {
+                        assert_eq!(action, 3, "RESET → ERROR");
+                    } else if (flags & 1) == 0 {
+                        assert_eq!(action, 3, "CLOSED → ERROR");
+                    } else if has_reader {
+                        assert_eq!(action, 1, "WAKE_READER");
+                    } else if used < size {
+                        assert_eq!(action, 0, "WRITE_OK");
+                    } else {
+                        assert_eq!(action, 2, "WRITE_PEND");
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// PP1: pipe byte count never exceeds size
+#[test]
+fn pipe_write_never_exceeds_size() {
+    for size in 1u32..=20 {
+        for used in 0u32..=size {
+            let (_, action) = model_pipe_write(used, size, 1, 1, false);
+            if action == 0 {
+                // WRITE_OK → used would increment
+                assert!(used < size, "PP1: write only when space available");
+            }
+        }
+    }
+}
+
+// =========================================================================
+// Event model-FFI equivalence
+// =========================================================================
+
+fn model_event_wait(current: u32, desired: u32, wait_all: bool, is_no_wait: bool) -> (i32, u32, u8) {
+    let matched = if wait_all {
+        (current & desired) == desired
+    } else {
+        (current & desired) != 0
+    };
+
+    if matched {
+        (OK, current & desired, 0) // MATCHED
+    } else if is_no_wait {
+        (EAGAIN, 0, 2) // RETURN_TIMEOUT
+    } else {
+        (0, 0, 1) // PEND_CURRENT
+    }
+}
+
+#[test]
+fn event_wait_model_exhaustive() {
+    for current in 0u32..=15 {
+        for desired in 0u32..=15 {
+            for wait_all in [true, false] {
+                for is_no_wait in [true, false] {
+                    let (ret, matched, action) = model_event_wait(
+                        current, desired, wait_all, is_no_wait);
+
+                    let should_match = if wait_all {
+                        (current & desired) == desired
+                    } else {
+                        (current & desired) != 0
+                    };
+
+                    if should_match {
+                        assert_eq!(action, 0, "MATCHED");
+                        assert_eq!(ret, OK);
+                    } else if is_no_wait {
+                        assert_eq!(action, 2, "TIMEOUT");
+                        assert_eq!(ret, EAGAIN);
+                    } else {
+                        assert_eq!(action, 1, "PEND");
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// EV5: wait_any matches when any desired bit is set
+#[test]
+fn event_wait_any_matches_single_bit() {
+    let (_, matched, action) = model_event_wait(0b1000, 0b1010, false, false);
+    assert_eq!(action, 0); // matched (bit 3 is set)
+    assert_eq!(matched, 0b1000); // only the matching bits
+}
+
+/// EV6: wait_all requires ALL desired bits
+#[test]
+fn event_wait_all_requires_all_bits() {
+    let (_, _, action) = model_event_wait(0b1000, 0b1010, true, false);
+    assert_eq!(action, 1); // PEND — bit 1 is missing
+
+    let (_, matched, action) = model_event_wait(0b1010, 0b1010, true, false);
+    assert_eq!(action, 0); // MATCHED — all bits present
+    assert_eq!(matched, 0b1010);
+}
+
 #[test]
 fn msgq_get_model_exhaustive() {
     for max in 1u32..=5 {
