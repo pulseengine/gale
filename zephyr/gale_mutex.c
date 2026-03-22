@@ -237,6 +237,11 @@ int z_impl_k_mutex_unlock(struct k_mutex *mutex)
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_mutex, unlock, mutex);
 
+	/* STPA GAP-3 fix: acquire spinlock BEFORE reading state and
+	 * calling Rust decide. On SMP, another CPU could modify
+	 * lock_count/owner between our read and the decision. */
+	k_spinlock_key_t key = k_spin_lock(&lock);
+
 	/* Decide: Rust determines action based on ownership */
 	struct gale_mutex_unlock_decision d = gale_k_mutex_unlock_decide(
 		mutex->lock_count,
@@ -246,6 +251,7 @@ int z_impl_k_mutex_unlock(struct k_mutex *mutex)
 	/* Apply: execute Rust's decision */
 	if (d.action == GALE_MUTEX_UNLOCK_ERROR) {
 		/* -EINVAL or -EPERM */
+		k_spin_unlock(&lock, key);
 		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mutex, unlock, mutex, d.ret);
 		return d.ret;
 	}
@@ -258,12 +264,12 @@ int z_impl_k_mutex_unlock(struct k_mutex *mutex)
 		 * Validated by Gale — no underflow.
 		 */
 		mutex->lock_count = d.new_lock_count;
+		k_spin_unlock(&lock, key);
 		goto k_mutex_unlock_return;
 	}
 
-	/* GALE_MUTEX_UNLOCK_UNLOCKED: final unlock — handle waiters. */
-
-	k_spinlock_key_t key = k_spin_lock(&lock);
+	/* GALE_MUTEX_UNLOCK_UNLOCKED: final unlock — handle waiters.
+	 * Spinlock already held from above. */
 
 #if (CONFIG_PRIORITY_CEILING < K_LOWEST_THREAD_PRIO)
 	adjust_owner_prio(mutex, mutex->owner_orig_prio);
