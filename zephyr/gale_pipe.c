@@ -184,7 +184,16 @@ int z_impl_k_pipe_write(struct k_pipe *pipe, const uint8_t *data, size_t len, k_
 								 K_POLL_STATE_PIPE_DATA_AVAILABLE);
 #endif /* CONFIG_POLL */
 
-			written += ring_buf_put(&pipe->buf, &data[written], len - written);
+			{
+				uint32_t rb_wrote = ring_buf_put(&pipe->buf,
+								&data[written],
+								len - written);
+				/* STPA GAP-7: verify ring_buf agrees with
+				 * Rust decision's byte count model */
+				__ASSERT(rb_wrote <= d.actual_bytes,
+					 "ring_buf wrote more than Rust decided");
+				written += rb_wrote;
+			}
 			if (likely(written == len)) {
 				rc = written;
 				break;

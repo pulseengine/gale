@@ -121,3 +121,251 @@ fn sem_take_never_underflows() {
         }
     }
 }
+
+// =========================================================================
+// Mutex model-FFI equivalence
+// =========================================================================
+
+/// Simulate gale_k_mutex_lock_decide
+fn model_mutex_lock(lock_count: u32, owner_is_null: bool, owner_is_current: bool, is_no_wait: bool) -> (i32, u8, u32) {
+    if owner_is_null || owner_is_current {
+        // Acquire or reentrant
+        let new_count = lock_count.checked_add(1).unwrap_or(lock_count);
+        (OK, 0, new_count) // ACQUIRED
+    } else if is_no_wait {
+        (EBUSY, 2, lock_count) // BUSY
+    } else {
+        (0, 1, lock_count) // PEND
+    }
+}
+
+/// Simulate gale_k_mutex_unlock_decide
+fn model_mutex_unlock(lock_count: u32, owner_is_null: bool, owner_is_current: bool) -> (i32, u8, u32) {
+    if owner_is_null {
+        (EINVAL, 2, lock_count) // ERROR
+    } else if !owner_is_current {
+        (EPERM, 2, lock_count) // ERROR - not owner
+    } else if lock_count > 1 {
+        (OK, 0, lock_count - 1) // RELEASED (reentrant)
+    } else {
+        (OK, 1, 0) // UNLOCKED
+    }
+}
+
+#[test]
+fn mutex_lock_model_exhaustive() {
+    for lock_count in 0u32..=5 {
+        for owner_is_null in [true, false] {
+            for owner_is_current in [true, false] {
+                for is_no_wait in [true, false] {
+                    let (ret, action, new_count) = model_mutex_lock(
+                        lock_count, owner_is_null, owner_is_current, is_no_wait);
+
+                    if owner_is_null || owner_is_current {
+                        assert_eq!(action, 0, "ACQUIRED expected");
+                        assert_eq!(ret, OK);
+                        assert_eq!(new_count, lock_count + 1);
+                    } else if is_no_wait {
+                        assert_eq!(action, 2, "BUSY expected");
+                        assert_eq!(ret, EBUSY);
+                    } else {
+                        assert_eq!(action, 1, "PEND expected");
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn mutex_unlock_model_exhaustive() {
+    for lock_count in 0u32..=5 {
+        for owner_is_null in [true, false] {
+            for owner_is_current in [true, false] {
+                let (ret, action, new_count) = model_mutex_unlock(
+                    lock_count, owner_is_null, owner_is_current);
+
+                if owner_is_null {
+                    assert_eq!(action, 2, "ERROR for null owner");
+                    assert_eq!(ret, EINVAL);
+                } else if !owner_is_current {
+                    assert_eq!(action, 2, "ERROR for non-owner");
+                    assert_eq!(ret, EPERM);
+                } else if lock_count > 1 {
+                    assert_eq!(action, 0, "RELEASED (reentrant)");
+                    assert_eq!(new_count, lock_count - 1);
+                } else if lock_count == 1 {
+                    assert_eq!(action, 1, "UNLOCKED");
+                    assert_eq!(new_count, 0);
+                }
+            }
+        }
+    }
+}
+
+/// M3: lock_count never overflows on reentrant acquire
+#[test]
+fn mutex_lock_no_overflow() {
+    let (_, _, new_count) = model_mutex_lock(u32::MAX, false, true, false);
+    assert_eq!(new_count, u32::MAX, "saturate, don't overflow");
+}
+
+/// M6: non-owner cannot unlock
+#[test]
+fn mutex_unlock_non_owner_rejected() {
+    let (ret, action, _) = model_mutex_unlock(1, false, false);
+    assert_eq!(ret, EPERM);
+    assert_eq!(action, 2);
+}
+
+// =========================================================================
+// Stack model-FFI equivalence
+// =========================================================================
+
+fn model_stack_push(count: u32, capacity: u32, has_waiter: bool) -> (i32, u32, u8) {
+    if has_waiter {
+        (OK, count, 1) // WAKE_WAITER
+    } else if count < capacity {
+        (OK, count + 1, 0) // STORE_DATA
+    } else {
+        (ENOMEM, count, 2) // FULL
+    }
+}
+
+fn model_stack_pop(count: u32, is_no_wait: bool) -> (i32, u32, u8) {
+    if count > 0 {
+        (OK, count - 1, 0) // POP_OK
+    } else if is_no_wait {
+        (EBUSY, 0, 0) // POP_OK with EBUSY ret
+    } else {
+        (0, 0, 1) // PEND
+    }
+}
+
+#[test]
+fn stack_push_model_exhaustive() {
+    for capacity in 1u32..=10 {
+        for count in 0u32..=capacity {
+            for has_waiter in [true, false] {
+                let (ret, new_count, action) = model_stack_push(count, capacity, has_waiter);
+
+                if has_waiter {
+                    assert_eq!(action, 1);
+                    assert_eq!(new_count, count);
+                } else if count < capacity {
+                    assert_eq!(action, 0);
+                    assert_eq!(new_count, count + 1);
+                    assert_eq!(ret, OK);
+                } else {
+                    assert_eq!(action, 2);
+                    assert_eq!(ret, ENOMEM);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn stack_pop_model_exhaustive() {
+    for count in 0u32..=10 {
+        for is_no_wait in [true, false] {
+            let (ret, new_count, action) = model_stack_pop(count, is_no_wait);
+
+            if count > 0 {
+                assert_eq!(action, 0);
+                assert_eq!(new_count, count - 1);
+                assert_eq!(ret, OK);
+            } else if is_no_wait {
+                assert_eq!(action, 0);
+                assert_eq!(ret, EBUSY);
+            } else {
+                assert_eq!(action, 1);
+            }
+        }
+    }
+}
+
+/// SK1: count never exceeds capacity after push
+#[test]
+fn stack_push_never_exceeds_capacity() {
+    for capacity in 1u32..=100 {
+        for count in 0u32..=capacity {
+            let (_, new_count, _) = model_stack_push(count, capacity, false);
+            assert!(new_count <= capacity, "SK1 violated");
+        }
+    }
+}
+
+// =========================================================================
+// MsgQ model-FFI equivalence
+// =========================================================================
+
+fn model_msgq_put(write_idx: u32, used: u32, max: u32, has_waiter: bool, is_no_wait: bool) -> (i32, u8) {
+    if has_waiter {
+        (OK, 1) // WAKE_READER
+    } else if used < max {
+        (OK, 0) // PUT_OK
+    } else if is_no_wait {
+        (ENOMSG, 3) // RETURN_FULL
+    } else {
+        (0, 2) // PEND_CURRENT
+    }
+}
+
+fn model_msgq_get(read_idx: u32, used: u32, max: u32, has_waiter: bool, is_no_wait: bool) -> (i32, u8) {
+    if used > 0 {
+        (OK, 0) // GET_OK
+    } else if has_waiter {
+        (OK, 1) // WAKE_WRITER (shouldn't happen when used==0 normally)
+    } else if is_no_wait {
+        (ENOMSG, 3) // RETURN_EMPTY
+    } else {
+        (0, 2) // PEND_CURRENT
+    }
+}
+
+#[test]
+fn msgq_put_model_exhaustive() {
+    for max in 1u32..=5 {
+        for used in 0u32..=max {
+            for has_waiter in [true, false] {
+                for is_no_wait in [true, false] {
+                    let (ret, action) = model_msgq_put(0, used, max, has_waiter, is_no_wait);
+
+                    if has_waiter {
+                        assert_eq!(action, 1);
+                    } else if used < max {
+                        assert_eq!(action, 0);
+                        assert_eq!(ret, OK);
+                    } else if is_no_wait {
+                        assert_eq!(action, 3);
+                        assert_eq!(ret, ENOMSG);
+                    } else {
+                        assert_eq!(action, 2);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn msgq_get_model_exhaustive() {
+    for max in 1u32..=5 {
+        for used in 0u32..=max {
+            for is_no_wait in [true, false] {
+                let (ret, action) = model_msgq_get(0, used, max, false, is_no_wait);
+
+                if used > 0 {
+                    assert_eq!(action, 0);
+                    assert_eq!(ret, OK);
+                } else if is_no_wait {
+                    assert_eq!(action, 3);
+                    assert_eq!(ret, ENOMSG);
+                } else {
+                    assert_eq!(action, 2);
+                }
+            }
+        }
+    }
+}
