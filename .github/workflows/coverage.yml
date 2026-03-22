@@ -1,0 +1,119 @@
+# Code coverage for Gale — Rust (cargo-llvm-cov) + Zephyr C (twister + gcov)
+#
+# Generates LCOV reports and uploads to Codecov.
+# Rust coverage covers the verified kernel models + FFI crate.
+# Zephyr coverage covers the C shims running on QEMU targets.
+
+name: Coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Rust source coverage (cargo-llvm-cov) ─────────────────────────
+  rust-coverage:
+    name: Rust Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Generate coverage (LCOV + HTML)
+        run: |
+          cargo llvm-cov --workspace --lcov --output-path lcov-rust.info
+          cargo llvm-cov --workspace --html --output-dir coverage-rust
+
+      - name: Upload LCOV to Codecov
+        if: env.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov-rust.info
+          flags: rust
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload HTML coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-rust
+          path: coverage-rust/
+          retention-days: 14
+
+  # ── Zephyr C coverage (twister + gcov on QEMU) ───────────────────
+  zephyr-coverage:
+    name: Zephyr C Coverage
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      options: --user root
+    env:
+      HOME: /root
+      DOCKER_CONFIG: /tmp/.docker
+    steps:
+      - name: Checkout Gale
+        uses: actions/checkout@v4
+        with:
+          path: gale
+
+      - name: Install Rust + ARM target
+        run: |
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          . /root/.cargo/env
+          rustup target add thumbv7m-none-eabi
+
+      - name: Initialize west workspace
+        run: |
+          pip3 install west gcovr
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
+          cd zephyr-workspace
+          west update --narrow -o=--depth=1
+          west sdk install
+
+      - name: Run twister with coverage
+        run: |
+          . /root/.cargo/env
+          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
+          cd zephyr-workspace
+          # Run kernel tests on qemu_cortex_m3 with coverage enabled
+          "${ZEPHYR_BASE}/scripts/twister" \
+            --platform qemu_cortex_m3 \
+            --tag kernel \
+            --enable-coverage \
+            --coverage-tool gcovr \
+            --coverage-formats lcov \
+            --outdir "${GITHUB_WORKSPACE}/twister-out" \
+            --enable-slow \
+            -v \
+            || true
+
+      - name: Upload LCOV to Codecov
+        if: env.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@v4
+        with:
+          directory: twister-out/coverage/
+          flags: zephyr
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload twister results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: twister-results
+          path: |
+            twister-out/twister.json
+            twister-out/coverage/
+          retention-days: 14
