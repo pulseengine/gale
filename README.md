@@ -1,5 +1,10 @@
 # Gale
 
+[![Rust CI](https://github.com/pulseengine/gale/actions/workflows/bazel-tests.yml/badge.svg)](https://github.com/pulseengine/gale/actions/workflows/bazel-tests.yml)
+[![Zephyr Tests](https://github.com/pulseengine/gale/actions/workflows/zephyr-tests.yml/badge.svg)](https://github.com/pulseengine/gale/actions/workflows/zephyr-tests.yml)
+[![Renode Tests](https://github.com/pulseengine/gale/actions/workflows/renode-tests.yml/badge.svg)](https://github.com/pulseengine/gale/actions/workflows/renode-tests.yml)
+[![codecov](https://codecov.io/gh/pulseengine/gale/graph/badge.svg)](https://codecov.io/gh/pulseengine/gale)
+
 Formally verified Rust replacement for Zephyr RTOS kernel primitives. ASIL-D targeted, triple-track verification: Verus (SMT/Z3) + Rocq (theorem proving) + Lean (scheduler/priority proofs).
 
 Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
