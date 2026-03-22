@@ -130,14 +130,8 @@ jobs:
           - primitive: common
             test_path: tests/kernel/common
 
-          # NOT added (hardware requirements not met on qemu_cortex_m3):
-          #   futex          - needs CONFIG_ARCH_HAS_USERSPACE (MPU)
-          #   fatal          - needs fault injection / stack protection (MPU)
-          #   dynamic_thread - needs CONFIG_ARCH_HAS_USERSPACE (MPU)
-          #   smp/*          - needs CONFIG_MP_MAX_NUM_CPUS > 1
-          #   mem_protect/*  - needs MPU
-          #   sched/wraparound - timer wraparound edge cases
-          #   spinlock       - CONFIG_SPIN_VALIDATE specific
+          # Tests requiring MPU run on mps2/an385 job below.
+          # SMP tests need multi-core board (not available in QEMU).
 
     steps:
       - name: Checkout Gale
@@ -169,6 +163,84 @@ jobs:
           export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
           cd zephyr-workspace
           west build -b qemu_cortex_m3 \
+            -s "zephyr/${TEST_PATH}" \
+            -- \
+            -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
+            -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf"
+          timeout 120 west build -t run 2>&1 | tee test.log
+          if grep -q "PROJECT EXECUTION SUCCESSFUL" test.log; then
+            echo "PASS"
+          else
+            echo "::error::Test suite failed"
+            exit 1
+          fi
+
+  # =========================================================================
+  # MPU tests — run on mps2/an385 (Cortex-M3 with MPU, QEMU)
+  # These tests require CONFIG_ARCH_HAS_USERSPACE / MPU which
+  # qemu_cortex_m3 does not provide.
+  # =========================================================================
+  zephyr-mpu-test:
+    name: "${{ matrix.primitive }} (mps2/an385)"
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      options: --user root
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - primitive: mutex_error_case
+            test_path: tests/kernel/mutex/mutex_error_case
+          - primitive: futex
+            test_path: tests/kernel/mem_protect/futex
+          - primitive: mem_protect
+            test_path: tests/kernel/mem_protect/mem_protect
+          - primitive: stackprot
+            test_path: tests/kernel/mem_protect/stackprot
+          - primitive: userspace
+            test_path: tests/kernel/mem_protect/userspace
+          - primitive: syscalls
+            test_path: tests/kernel/mem_protect/syscalls
+          - primitive: obj_validation
+            test_path: tests/kernel/mem_protect/obj_validation
+          - primitive: fatal_exception
+            test_path: tests/kernel/fatal/exception
+
+    env:
+      HOME: /root
+      DOCKER_CONFIG: /tmp/.docker
+
+    steps:
+      - name: Checkout Gale
+        uses: actions/checkout@v4
+        with:
+          path: gale
+
+      - name: Install Rust + ARM target
+        run: |
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          . /root/.cargo/env
+          rustup target add thumbv7m-none-eabi
+
+      - name: Initialize west workspace
+        run: |
+          pip3 install west
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
+          cd zephyr-workspace
+          west update --narrow -o=--depth=1
+          west sdk install
+
+      - name: Build and run test
+        env:
+          TEST_PATH: ${{ matrix.test_path }}
+        run: |
+          . /root/.cargo/env
+          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
+          cd zephyr-workspace
+          west build -b mps2/an385 \
             -s "zephyr/${TEST_PATH}" \
             -- \
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
