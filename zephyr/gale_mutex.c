@@ -102,6 +102,11 @@ int z_impl_k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout)
 
 	__ASSERT(!arch_is_in_isr(), "mutexes cannot be used inside ISRs");
 
+	/* STPA GAP-8: runtime ISR guard */
+	CHECKIF(arch_is_in_isr()) {
+		return -ENOTSUP;
+	}
+
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_mutex, lock, mutex, timeout);
 
 	key = k_spin_lock(&lock);
@@ -234,6 +239,11 @@ int z_impl_k_mutex_unlock(struct k_mutex *mutex)
 	struct k_thread *new_owner;
 
 	__ASSERT(!arch_is_in_isr(), "mutexes cannot be used inside ISRs");
+
+	/* STPA GAP-8: runtime ISR guard */
+	CHECKIF(arch_is_in_isr()) {
+		return -ENOTSUP;
+	}
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_mutex, unlock, mutex);
 
