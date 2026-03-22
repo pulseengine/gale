@@ -90,6 +90,36 @@ Use `rivet validate --format json` for machine-readable output.
 | `traces-to` | General traceability link between any two artifacts | `traced-from` |
 | `verifies` | Source verifies or validates the target | `verified-by` |
 
+## Formal Verification
+
+This project uses triple-track formal verification. Follow the
+[PulseEngine Formal Verification Guide](https://pulseengine.eu/guides/VERIFICATION-GUIDE.md)
+for all proof work.
+
+Key rules:
+- Code must satisfy all verification tracks simultaneously (Verus, Rocq, Kani)
+- Write to the intersection: no trait objects, no closures, no async in verified code
+- `verus-strip` bridges Verus-annotated source to plain Rust for other tools
+- Get the spec right before attempting proofs
+- Try the simple thing first — let the solver attempt it before adding manual steps
+- Bazel rules: `rules_verus`, `rules_rocq_rust`, `rules_lean`
+
+### Running verification locally
+
+```bash
+# Verus SMT (requires Nix)
+nix develop --command bazel test //:verus_test
+
+# Kani BMC
+nix develop --command bazel test //:kani_test //:kani_ffi_test
+
+# Rocq proofs
+nix develop --command bazel test //proofs:all
+
+# Lean proofs
+nix develop --command bazel test //proofs/lean:all
+```
+
 ## Conventions
 
 - Artifact IDs follow the pattern: PREFIX-NNN (e.g., REQ-001, FEAT-042)
