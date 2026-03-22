@@ -39,19 +39,12 @@ use crate::error::*;
 
 verus! {
 
-} // end verus! — assume_specification must be outside verus! block
+// Verus needs specs for derived PartialEq impls used in this module.
+pub assume_specification [<crate::thread::ThreadId as core::cmp::PartialEq>::eq]
+    (_0: &crate::thread::ThreadId, _1: &crate::thread::ThreadId) -> bool;
 
-// Verus needs specs for derived PartialEq impls used in this module
-#[cfg(verus_keep_ghost)]
-::builtin_macros::verus! {
-    pub assume_specification [<crate::thread::ThreadId as core::cmp::PartialEq>::eq]
-        (_0: &crate::thread::ThreadId, _1: &crate::thread::ThreadId) -> bool;
-
-    pub assume_specification [<crate::thread::ThreadState as core::cmp::PartialEq>::eq]
-        (_0: &crate::thread::ThreadState, _1: &crate::thread::ThreadState) -> bool;
-}
-
-verus! {
+pub assume_specification [<crate::thread::ThreadState as core::cmp::PartialEq>::eq]
+    (_0: &crate::thread::ThreadState, _1: &crate::thread::ThreadState) -> bool;
 
 /// Maximum threads in the run queue.
 pub const MAX_RUNQ_SIZE: u32 = 64;

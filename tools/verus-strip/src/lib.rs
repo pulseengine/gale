@@ -250,6 +250,33 @@ fn strip_body(body: &str) -> String {
             }
         }
 
+        // Check for `assume_specification` — Verus-only syntax.
+        // Strip: `pub assume_specification [...] (...) -> type;`
+        // Pattern: skip from "assume_specification" to the next semicolon.
+        if let TokenTree::Ident(id) = &trees[i] {
+            if id.to_string() == "assume_specification" {
+                // Skip everything up to and including the semicolon
+                let mut j = i + 1;
+                while j < trees.len() {
+                    if let TokenTree::Punct(p) = &trees[j] {
+                        if p.as_char() == ';' {
+                            j += 1;
+                            break;
+                        }
+                    }
+                    j += 1;
+                }
+                // Also remove the preceding `pub` if present
+                trim_trailing_whitespace(&mut out);
+                if out.ends_with("pub") {
+                    out.truncate(out.len() - 3);
+                    trim_trailing_whitespace(&mut out);
+                }
+                i = j;
+                continue;
+            }
+        }
+
         // Check for named return type: -> (name: Type)
         if is_arrow_at(&trees, i) {
             if let Some((replacement, skip_to)) = try_strip_named_return(&trees, i) {
