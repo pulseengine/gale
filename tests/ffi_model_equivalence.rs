@@ -3,6 +3,10 @@
 //! These tests verify that the FFI decision functions in ffi/src/lib.rs
 //! produce the same results as the Verus-verified model functions in
 //! src/*.rs for all reachable inputs.
+
+// Model functions intentionally use unchecked arithmetic to match
+// the Verus-verified logic (which proves no overflow).
+#![allow(clippy::arithmetic_side_effects)]
 //!
 //! This closes the gap between "the model is verified" and "the running
 //! code matches the model."
