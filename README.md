@@ -12,7 +12,7 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 
 ## Modules
 
-39 Rust modules covering the full Zephyr kernel surface. 37 have Verus SMT contracts verified by Z3 (2 excluded, 1 trivial):
+39 Rust modules covering the full Zephyr kernel surface. All 39 pass Verus SMT verification (805 verified, 0 errors):
 
 **Synchronization**
 
@@ -37,7 +37,7 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 | lifo | kernel/lifo | LI01-LI06 | Verified |
 | queue | kernel/queue.c | QU01-QU06 | Verified |
 | ring_buf | sys/ring_buffer | RB01-RB08 | Verified |
-| poll | kernel/poll.c | PL01-PL08 | Annotated (excluded from Verus via cfg) |
+| poll | kernel/poll.c | PL01-PL08 | Verified (external_body for array mutation) |
 
 **Timing**
 
@@ -64,7 +64,7 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 
 | Module | Zephyr Source | Properties | Status |
 |--------|---------------|------------|--------|
-| sched | kernel/sched.c | SC01-SC16 | Annotated (excluded from Verus via cfg) + Lean proofs |
+| sched | kernel/sched.c | SC01-SC16 | Verified (external_body for array mutation) + Lean proofs |
 | thread | kernel/thread.c | TH01-TH06 | Verified |
 | thread_lifecycle | kernel/thread.c | TL01-TL06 | Verified |
 | priority | kernel/priority | - | Verified + Lean proofs |
@@ -87,7 +87,7 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 ```
 src/*.rs          Verus-annotated Rust (39 modules, single source of truth)
     |
-    +---> Verus verification (37/39 modules, SMT/Z3)
+    +---> Verus verification (39/39 modules, 805 verified, SMT/Z3)
     |
     +---> verus-strip ---> plain/src/*.rs (auto-generated plain Rust)
     |       |                |
@@ -106,7 +106,7 @@ src/*.rs          Verus-annotated Rust (39 modules, single source of truth)
 
 ### Formal verification (via Bazel + Nix, CI-gated on source changes):
 
-- **Verus (SMT/Z3):** 37 modules with requires/ensures contracts verified by Z3. 2 excluded (poll, sched — `cfg(not(verus_keep_ghost))`). 1 trivial (error — constants only, no specs).
+- **Verus (SMT/Z3):** 39/39 modules, 805 properties verified by Z3 (0 errors). Includes poll and sched with `external_body` trusted array helpers.
 - **Rocq:** 9 abstract invariant proofs over Z-valued math (0 Admitted). NOT connected to the Rust code — proofs reason about hand-written mathematical models, not the rocq-of-rust translation.
 - **Lean 4:** 3 mathematical proofs — RMA bound, priority ceiling protocol, priority queue ordering. Pure scheduling theory, not implementation proofs.
 - **Kani BMC:** 185 bounded model checking harnesses (87 model + 98 FFI). Not in CI until Bazel workflow is confirmed working.
