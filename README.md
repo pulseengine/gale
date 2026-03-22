@@ -12,7 +12,7 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 
 ## Modules
 
-39 Rust modules covering the full Zephyr kernel surface. All 39 pass Verus SMT verification:
+39 Rust modules covering the full Zephyr kernel surface. 37 have Verus SMT contracts verified by Z3 (2 excluded, 1 trivial):
 
 **Synchronization**
 
@@ -37,7 +37,7 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 | lifo | kernel/lifo | LI01-LI06 | Verified |
 | queue | kernel/queue.c | QU01-QU06 | Verified |
 | ring_buf | sys/ring_buffer | RB01-RB08 | Verified |
-| poll | kernel/poll.c | PL01-PL08 | Verified |
+| poll | kernel/poll.c | PL01-PL08 | Annotated (excluded from Verus via cfg) |
 
 **Timing**
 
@@ -64,7 +64,7 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 
 | Module | Zephyr Source | Properties | Status |
 |--------|---------------|------------|--------|
-| sched | kernel/sched.c | SC01-SC16 | Verified + Lean proofs |
+| sched | kernel/sched.c | SC01-SC16 | Annotated (excluded from Verus via cfg) + Lean proofs |
 | thread | kernel/thread.c | TH01-TH06 | Verified |
 | thread_lifecycle | kernel/thread.c | TL01-TL06 | Verified |
 | priority | kernel/priority | - | Verified + Lean proofs |
@@ -87,12 +87,12 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 ```
 src/*.rs          Verus-annotated Rust (39 modules, single source of truth)
     |
-    +---> Verus verification (38/39 modules, SMT/Z3)
+    +---> Verus verification (37/39 modules, SMT/Z3)
     |
     +---> verus-strip ---> plain/src/*.rs (auto-generated plain Rust)
     |       |                |
     |       |                +---> cargo test (unit + integration + proptest)
-    |       |                +---> Kani BMC (87 harnesses)
+    |       |                +---> Kani BMC (185 harnesses)
     |       |                +---> clippy ASIL-D lint profile
     |       |
     |       +--standalone--> plain/*.rs ---> Rocq proofs (9 modules)
@@ -104,17 +104,24 @@ src/*.rs          Verus-annotated Rust (39 modules, single source of truth)
 
 ## Verification
 
-Triple-track formal verification (via Bazel, CI-gated on source changes):
+### Formal verification (via Bazel + Nix, CI-gated on source changes):
 
-- **Verus (SMT/Z3):** 39/39 modules with requires/ensures contracts verified by Z3
-- **Rocq (theorem proving):** 9/9 abstract invariant proofs (0 Admitted)
-- **Lean 4:** 3/3 mathematical proofs — RMA bound, priority ceiling protocol, priority queue ordering
-- **Kani BMC:** 185 bounded model checking harnesses across model + FFI
+- **Verus (SMT/Z3):** 37 modules with requires/ensures contracts verified by Z3. 2 excluded (poll, sched — `cfg(not(verus_keep_ghost))`). 1 trivial (error — constants only, no specs).
+- **Rocq:** 9 abstract invariant proofs over Z-valued math (0 Admitted). NOT connected to the Rust code — proofs reason about hand-written mathematical models, not the rocq-of-rust translation.
+- **Lean 4:** 3 mathematical proofs — RMA bound, priority ceiling protocol, priority queue ordering. Pure scheduling theory, not implementation proofs.
+- **Kani BMC:** 185 bounded model checking harnesses (87 model + 98 FFI). Not in CI until Bazel workflow is confirmed working.
 
-> **Note:** Formal verification runs via `bazel test` (requires Nix). CI runs Verus/Kani/Rocq/Lean
-> on source changes to `src/`, `proofs/`, `ffi/`. Functional tests (cargo test, Zephyr integration)
-> run on every commit. See [verification honesty assessment](docs/safety/verification-honesty.md).
-- **Kani BMC:** 87/87 bounded model checking harnesses pass across 9 modules
+### Functional testing (CI-enforced on every commit):
+
+- **cargo test:** ~1015 runtime tests on stripped (non-Verus) code
+- **Zephyr integration:** 36 upstream test suites on QEMU (M3 + MPS2/AN385 with MPU)
+- **Renode emulation:** 3 boards (Cortex-M4F, M33, R5)
+- **Coverage:** Rust + Zephyr C line coverage → Codecov
+
+> **Honesty note:** Formal verification requires Bazel + Nix and runs via the Formal Verification
+> workflow (triggered on src/proofs/ffi changes + weekly cron). Functional tests run on every commit.
+> See [verification honesty assessment](docs/safety/verification-honesty.md) for the full gap analysis.
+- **Kani BMC:** 185 bounded model checking harnesses (87 model + 98 FFI, Bazel-only)
 - **Differential testing:** POSIX/FreeRTOS reference models validate spec independence
 - **Property-based testing:** Proptest with random operation sequences
 - **Fuzz testing:** Coverage-guided mutation via cargo-fuzz
