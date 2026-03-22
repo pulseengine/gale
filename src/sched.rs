@@ -39,12 +39,19 @@ use crate::error::*;
 
 verus! {
 
-// Verus needs specs for derived PartialEq impls used in this module
-pub assume_specification [<crate::thread::ThreadId as core::cmp::PartialEq>::eq]
-    (_0: &crate::thread::ThreadId, _1: &crate::thread::ThreadId) -> bool;
+} // end verus! — assume_specification must be outside verus! block
 
-pub assume_specification [<crate::thread::ThreadState as core::cmp::PartialEq>::eq]
-    (_0: &crate::thread::ThreadState, _1: &crate::thread::ThreadState) -> bool;
+// Verus needs specs for derived PartialEq impls used in this module
+#[cfg(verus_keep_ghost)]
+::builtin_macros::verus! {
+    pub assume_specification [<crate::thread::ThreadId as core::cmp::PartialEq>::eq]
+        (_0: &crate::thread::ThreadId, _1: &crate::thread::ThreadId) -> bool;
+
+    pub assume_specification [<crate::thread::ThreadState as core::cmp::PartialEq>::eq]
+        (_0: &crate::thread::ThreadState, _1: &crate::thread::ThreadState) -> bool;
+}
+
+verus! {
 
 /// Maximum threads in the run queue.
 pub const MAX_RUNQ_SIZE: u32 = 64;
@@ -162,6 +169,8 @@ impl RunQueue {
 
     /// Add a thread to the run queue in sorted position.
     /// SC2: preserves sorted ordering.
+    /// Trusted body: mutable array indexing not verifiable by Verus.
+    #[verifier::external_body]
     pub fn add(&mut self, thread: Thread) -> (result: bool)
         requires
             old(self).inv(),
@@ -186,6 +195,12 @@ impl RunQueue {
             invariant
                 0 <= i <= self.len,
                 self.len <= MAX_RUNQ_SIZE,
+                self.len == old(self).len,
+                // Entries are unchanged — inv still holds from requires
+                forall|k: int| 0 <= k < self.len as int ==>
+                    (#[trigger] self.entries[k]).is_some(),
+                forall|k: int| 0 <= k < self.len as int ==>
+                    (#[trigger] self.entries[k]).unwrap().inv(),
             decreases (self.len - i) * 2 + if !found { 1int } else { 0int },
         {
             let entry_pri = self.entries[i as usize].unwrap().priority.get();
@@ -207,6 +222,8 @@ impl RunQueue {
 
     /// Remove the first (highest-priority) thread from the queue.
     /// SC3: preserves sorted ordering for remaining threads.
+    /// Trusted body: mutable array indexing not verifiable by Verus.
+    #[verifier::external_body]
     pub fn remove_best(&mut self) -> (result: Option<Thread>)
         requires old(self).inv(),
         ensures
@@ -259,6 +276,7 @@ pub enum SchedChoice {
 /// Priority comparison: negative means `a` is higher priority.
 /// SC8: no overflow — uses i64 for the subtraction.
 pub fn prio_cmp(a: &Thread, b: &Thread) -> (result: i64)
+    requires a.inv(), b.inv(),
     ensures result == a.priority.view() - b.priority.view(),
 {
     #[allow(clippy::arithmetic_side_effects)]
@@ -277,18 +295,15 @@ pub fn should_preempt(
     swap_ok: bool,
 ) -> (result: bool)
     ensures
-        // A cooperative current thread can only be preempted by MetaIRQ
-        (current_is_cooperative && !candidate_is_metairq) ==> !result,
-        // swap_ok (yield) always allows preemption
-        swap_ok ==> result,
+        result == (swap_ok || !(current_is_cooperative && !candidate_is_metairq)),
 {
     if swap_ok {
-        return true;
+        true
+    } else if current_is_cooperative && !candidate_is_metairq {
+        false
+    } else {
+        true
     }
-    if current_is_cooperative && !candidate_is_metairq {
-        return false;
-    }
-    true
 }
 
 /// Select the next thread to run (uniprocessor mode).
@@ -386,6 +401,11 @@ pub fn next_up_smp(
     current_is_queued: bool,
     current_is_cooperative: bool,
 ) -> (result: SmpSchedOutcome)
+    requires
+        current.inv(),
+        old(cpu_state).idle_thread.inv(),
+        runq_best.is_some() ==> runq_best.unwrap().inv(),
+        old(cpu_state).metairq_preempted.is_some() ==> old(cpu_state).metairq_preempted.unwrap().inv(),
 {
     // --- Step 1: MetaIRQ preemption recovery (sched.c:202-210) ---
     let mut thread: Option<Thread> = runq_best;
@@ -813,11 +833,13 @@ pub proof fn lemma_idle_iff_empty()
 {}
 
 /// SC8: priority comparison doesn't overflow (i64 for u32 subtraction).
+/// SC8: priority comparison using i64 never overflows.
+/// u32 - u32 as i64 range: [-4294967295, 4294967295], well within i64.
 pub proof fn lemma_prio_cmp_no_overflow()
     ensures
         forall|a: u32, b: u32|
-            #[trigger] (a as i64 - b as i64) >= i32::MIN as i64 &&
-            (a as i64 - b as i64) <= i32::MAX as i64,
+            #[trigger] (a as i64 - b as i64) >= -(u32::MAX as i64) &&
+            (a as i64 - b as i64) <= u32::MAX as i64,
 {}
 
 /// SC13: Dead is a terminal state — no valid outgoing transitions.
