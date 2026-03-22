@@ -118,7 +118,7 @@ pub open spec fn is_valid_state(s: u32) -> bool {
 ///
 /// We model only the type/state/tag fields. Linked-list node,
 /// poller pointer, and object union remain in C.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct PollEvent {
     /// Bitfield of event types (K_POLL_TYPE_xxx).
     pub event_type: u32,
@@ -341,7 +341,7 @@ impl PollEvent {
 ///
 /// We model only the signaled flag and result value.
 /// The poll_events linked list stays in C.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct PollSignal {
     /// 1 if the signal has been raised, 0 otherwise.
     pub signaled: u32,
@@ -453,12 +453,24 @@ pub const MAX_POLL_EVENTS: u32 = 16;
 ///
 /// Models the array of k_poll_event passed to k_poll().
 /// We use a fixed-size array to avoid heap allocation (no_std).
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PollEvents {
     /// Events array.
     pub events: [PollEvent; 16],
     /// Number of active events (0..=MAX_POLL_EVENTS).
     pub num_events: u32,
+}
+
+// Verus limitation: mutable array indexing not supported.
+// These helpers wrap the array mutation with external_body.
+#[verifier::external_body]
+fn poll_events_set(events: &mut [PollEvent; 16], idx: usize, event: PollEvent) {
+    events[idx] = event;
+}
+
+#[verifier::external_body]
+fn poll_events_set_state(events: &mut [PollEvent; 16], idx: usize, state: u32) {
+    events[idx].state = state;
 }
 
 impl PollEvents {
@@ -523,7 +535,7 @@ impl PollEvents {
         if self.num_events >= MAX_POLL_EVENTS {
             return false;
         }
-        self.events[self.num_events as usize] = event;
+        poll_events_set(&mut self.events, self.num_events as usize, event);
         self.num_events = self.num_events + 1;
         true
     }
@@ -545,7 +557,7 @@ impl PollEvents {
                 self.num_events <= MAX_POLL_EVENTS,
             decreases self.num_events - i,
         {
-            self.events[i as usize].state = STATE_NOT_READY;
+            poll_events_set_state(&mut self.events, i as usize, STATE_NOT_READY);
             i = i + 1;
         }
     }

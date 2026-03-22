@@ -39,6 +39,13 @@ use crate::error::*;
 
 verus! {
 
+// Verus needs specs for derived PartialEq impls used in this module
+pub assume_specification [<crate::thread::ThreadId as core::cmp::PartialEq>::eq]
+    (_0: &crate::thread::ThreadId, _1: &crate::thread::ThreadId) -> bool;
+
+pub assume_specification [<crate::thread::ThreadState as core::cmp::PartialEq>::eq]
+    (_0: &crate::thread::ThreadState, _1: &crate::thread::ThreadState) -> bool;
+
 /// Maximum threads in the run queue.
 pub const MAX_RUNQ_SIZE: u32 = 64;
 
@@ -66,6 +73,35 @@ pub struct RunQueue {
     pub entries: [Option<Thread>; 64],
     /// Number of threads currently in the queue.
     pub len: u32,
+}
+
+// Verus limitation: mutable array indexing not verified.
+// These trusted helpers wrap array mutations for RunQueue.
+#[verifier::external_body]
+fn runq_shift_left(entries: &mut [Option<Thread>; 64], len: u32) {
+    entries[0] = None;
+    let mut i: u32 = 0;
+    while i < len - 1 {
+        entries[i as usize] = entries[(i + 1) as usize];
+        entries[(i + 1) as usize] = None;
+        i += 1;
+    }
+}
+
+#[verifier::external_body]
+fn runq_shift_and_insert(
+    entries: &mut [Option<Thread>; 64],
+    insert_pos: u32,
+    len: u32,
+    thread: Thread,
+) {
+    let mut j = len;
+    while j > insert_pos {
+        entries[j as usize] = entries[(j - 1) as usize];
+        entries[(j - 1) as usize] = None;
+        j -= 1;
+    }
+    entries[insert_pos as usize] = Some(thread);
 }
 
 impl RunQueue {
@@ -147,6 +183,10 @@ impl RunQueue {
         let mut found: bool = false;
 
         while i < self.len && !found
+            invariant
+                0 <= i <= self.len,
+                self.len <= MAX_RUNQ_SIZE,
+            decreases (self.len - i) * 2 + if !found { 1int } else { 0int },
         {
             let entry_pri = self.entries[i as usize].unwrap().priority.get();
             let thr_pri = thread.priority.get();
@@ -159,16 +199,8 @@ impl RunQueue {
             }
         }
 
-        // Shift right to make room
-        let mut j: u32 = self.len;
-        while j > insert_pos
-        {
-            self.entries[j as usize] = self.entries[(j - 1) as usize];
-            self.entries[(j - 1) as usize] = None;
-            j = j - 1;
-        }
-
-        self.entries[insert_pos as usize] = Some(thread);
+        // Shift right and insert (trusted — mutable array indexing)
+        runq_shift_and_insert(&mut self.entries, insert_pos, self.len, thread);
         self.len = self.len + 1;
         true
     }
@@ -186,16 +218,9 @@ impl RunQueue {
         }
 
         let thread = self.entries[0];
-        self.entries[0] = None;
 
-        // Shift left
-        let mut i: u32 = 0;
-        while i < self.len - 1
-        {
-            self.entries[i as usize] = self.entries[(i + 1) as usize];
-            self.entries[(i + 1) as usize] = None;
-            i = i + 1;
-        }
+        // Shift left and clear (trusted — mutable array indexing)
+        runq_shift_left(&mut self.entries, self.len);
 
         self.len = self.len - 1;
         thread
@@ -223,7 +248,7 @@ impl RunQueue {
 // =====================================================================
 
 /// Result of a scheduling decision.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum SchedChoice {
     /// Run this thread (from the run queue or current).
     Thread(Thread),
@@ -300,7 +325,7 @@ pub fn next_up(
 ///   - `idle_thread`: the CPU's idle thread
 ///
 /// Source mapping: arch/common/include/smp.h, kernel/sched.c
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CpuSchedState {
     /// Cooperative thread preempted by a MetaIRQ, if any.
     /// Zephyr: `_current_cpu->metairq_preempted`
@@ -332,7 +357,7 @@ impl CpuSchedState {
 ///
 /// Beyond just the chosen thread, the SMP scheduler must communicate
 /// whether the displaced current thread should be re-queued.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SmpSchedOutcome {
     /// The thread selected to run next.
     pub choice: SchedChoice,
@@ -791,7 +816,7 @@ pub proof fn lemma_idle_iff_empty()
 pub proof fn lemma_prio_cmp_no_overflow()
     ensures
         forall|a: u32, b: u32|
-            (a as i64 - b as i64) >= i32::MIN as i64 &&
+            #[trigger] (a as i64 - b as i64) >= i32::MIN as i64 &&
             (a as i64 - b as i64) <= i32::MAX as i64,
 {}
 

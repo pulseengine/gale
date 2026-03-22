@@ -70,18 +70,9 @@ lean.toolchain(version = "4.27.0")
 use_repo(lean, "lean_toolchains", "mathlib")
 register_toolchains("@lean_toolchains//:all")
 
-# Renode emulation test rules — multi-arch Robot Framework tests
-bazel_dep(name = "rules_renode", version = "0.1.1")
-git_override(
-    module_name = "rules_renode",
-    remote = "https://github.com/pulseengine/renode-bazel-rules.git",
-    commit = "5fc76ad535034add5be5faead26820a53f8d0d23",
-)
-
-renode = use_extension("@rules_renode//renode:extensions.bzl", "renode")
-renode.download_portable(name = "renode_default_toolchain")
-use_repo(renode, "renode_default_toolchain")
-register_toolchains("@renode_default_toolchain//:toolchain_impl")
+# Renode emulation — handled by GitHub Actions (renode-tests.yml), not Bazel.
+# rules_renode removed: download_portable URL was broken, blocking all Bazel targets.
+# Re-add when renode-bazel-rules has a working default URL.
 
 # Nix integration for Rocq toolchain
 bazel_dep(name = "rules_nixpkgs_core", version = "0.13.0")
