@@ -16,7 +16,13 @@
 use crate::thread::{Thread, ThreadId, ThreadState};
 use crate::priority::MAX_PRIORITY;
 /// Maximum threads that can be waiting on a single kernel object.
-/// Bounded for verification tractability.
+///
+/// STPA SC-14 / GAP-9: This bounds the Verus verification model.
+/// The actual Zephyr wait queue is an unbounded linked list.
+/// Systems with more than 64 threads blocking on a single object
+/// exceed the model bounds. Ensure CONFIG_NUM_THREADS <= 64 or
+/// adjust this constant. The Verus proofs guarantee correctness
+/// for up to MAX_WAITERS concurrent waiters per object.
 pub const MAX_WAITERS: u32 = 64;
 /// A priority-ordered wait queue.
 ///
