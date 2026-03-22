@@ -1,0 +1,105 @@
+# Formal verification CI — Verus, Kani, Rocq, Lean
+#
+# Runs the Bazel-based verification pipeline that proves
+# formal properties about Gale's kernel primitives.
+# This is the CI-enforced regression gate for proofs.
+#
+# Frequency: on push to main (path-filtered) + weekly cron
+# Runtime: ~30-60 minutes for full verification suite
+
+name: Formal Verification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'ffi/**'
+      - 'proofs/**'
+      - 'BUILD.bazel'
+      - 'MODULE.bazel'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'ffi/**'
+      - 'proofs/**'
+  schedule:
+    - cron: '0 2 * * 0'
+
+concurrency:
+  group: formal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verus:
+    name: Verus SMT Verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v30
+      - uses: cachix/cachix-action@v15
+        with:
+          name: pulseengine
+          skipPush: true
+        continue-on-error: true
+
+      - name: Run Verus verification (39 modules)
+        run: |
+          nix develop --command bash -c \
+            "bazel test //:verus_test --test_output=errors"
+        timeout-minutes: 30
+
+  kani:
+    name: Kani BMC
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v30
+      - uses: cachix/cachix-action@v15
+        with:
+          name: pulseengine
+          skipPush: true
+        continue-on-error: true
+
+      - name: Run Kani bounded model checking (185 harnesses)
+        run: |
+          nix develop --command bash -c \
+            "bazel test //:kani_test //:kani_ffi_test --test_output=errors --test_timeout=900"
+        timeout-minutes: 45
+
+  rocq:
+    name: Rocq Theorem Proofs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v30
+      - uses: cachix/cachix-action@v15
+        with:
+          name: pulseengine
+          skipPush: true
+        continue-on-error: true
+
+      - name: Run Rocq proofs (9 modules)
+        run: |
+          nix develop --command bash -c \
+            "bazel test //proofs:all --test_output=errors"
+        timeout-minutes: 20
+
+  lean:
+    name: Lean 4 Proofs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v30
+      - uses: cachix/cachix-action@v15
+        with:
+          name: pulseengine
+          skipPush: true
+        continue-on-error: true
+
+      - name: Run Lean proofs (3 files)
+        run: |
+          nix develop --command bash -c \
+            "bazel test //proofs/lean:all --test_output=errors"
+        timeout-minutes: 30

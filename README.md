@@ -4,6 +4,7 @@
 [![Zephyr Tests](https://github.com/pulseengine/gale/actions/workflows/zephyr-tests.yml/badge.svg)](https://github.com/pulseengine/gale/actions/workflows/zephyr-tests.yml)
 [![Renode Tests](https://github.com/pulseengine/gale/actions/workflows/renode-tests.yml/badge.svg)](https://github.com/pulseengine/gale/actions/workflows/renode-tests.yml)
 [![codecov](https://codecov.io/gh/pulseengine/gale/graph/badge.svg)](https://codecov.io/gh/pulseengine/gale)
+[![Formal Verification](https://github.com/pulseengine/gale/actions/workflows/formal-verification.yml/badge.svg)](https://github.com/pulseengine/gale/actions/workflows/formal-verification.yml)
 
 Formally verified Rust replacement for Zephyr RTOS kernel primitives. ASIL-D targeted, triple-track verification: Verus (SMT/Z3) + Rocq (theorem proving) + Lean (scheduler/priority proofs).
 
@@ -103,11 +104,16 @@ src/*.rs          Verus-annotated Rust (39 modules, single source of truth)
 
 ## Verification
 
-Triple-track formal verification:
+Triple-track formal verification (via Bazel, CI-gated on source changes):
 
-- **Verus (SMT/Z3):** 39/39 modules verified via requires/ensures contracts
-- **Rocq (theorem proving):** 9/9 proof files pass across kernel primitives (sem, mutex, condvar, event, mem_slab, msgq, pipe, stack, timer)
-- **Lean 4:** 3/3 proof files pass — scheduler correctness (RMA bound), priority ceiling protocol, priority queue ordering
+- **Verus (SMT/Z3):** 39/39 modules with requires/ensures contracts verified by Z3
+- **Rocq (theorem proving):** 9/9 abstract invariant proofs (0 Admitted)
+- **Lean 4:** 3/3 mathematical proofs — RMA bound, priority ceiling protocol, priority queue ordering
+- **Kani BMC:** 185 bounded model checking harnesses across model + FFI
+
+> **Note:** Formal verification runs via `bazel test` (requires Nix). CI runs Verus/Kani/Rocq/Lean
+> on source changes to `src/`, `proofs/`, `ffi/`. Functional tests (cargo test, Zephyr integration)
+> run on every commit. See [verification honesty assessment](docs/safety/verification-honesty.md).
 - **Kani BMC:** 87/87 bounded model checking harnesses pass across 9 modules
 - **Differential testing:** POSIX/FreeRTOS reference models validate spec independence
 - **Property-based testing:** Proptest with random operation sequences
