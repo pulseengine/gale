@@ -78,9 +78,9 @@ jobs:
             test_path: tests/kernel/mutex/sys_mutex
 
           # Semaphore variants
-          # sys_sem: excluded — test_multiple_thread_sem_usage fails due to
-          # Phase 3 thread_lifecycle shim affecting priority scheduling order.
-          # Core semaphore tests (24/24) pass in the primary suite above.
+          # sys_sem: re-enabled — testing if Verus fixes resolved the issue
+          - primitive: sys_sem
+            test_path: tests/kernel/semaphore/sys_sem
 
           # Message queue depth
           - primitive: msgq_usage
@@ -123,12 +123,16 @@ jobs:
             test_path: tests/kernel/threads/thread_init
 
           # Core kernel tests
-          # pending: excluded — depends on Phase 3 work queue shim
+          # pending: re-enabled for testing
+          - primitive: pending
+            test_path: tests/kernel/pending
           - primitive: sleep
             test_path: tests/kernel/sleep
           - primitive: context
             test_path: tests/kernel/context
-          # common: excluded — test_timeout_order depends on Phase 3 timer shim
+          # common: re-enabled for testing
+          - primitive: common
+            test_path: tests/kernel/common
 
           # Tests requiring MPU run on mps2/an385 job below.
           # SMP tests need multi-core board (not available in QEMU).
