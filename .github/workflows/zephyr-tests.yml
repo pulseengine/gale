@@ -69,13 +69,75 @@ jobs:
             test_path: tests/kernel/sched/preempt
           - primitive: thread_lifecycle
             test_path: tests/kernel/threads/thread_apis
-          # NOT added (no compatible test suite for qemu_cortex_m3):
-          #   futex       - tests/kernel/mem_protect/futex requires CONFIG_ARCH_HAS_USERSPACE (needs MPU)
-          #   fatal       - tests/kernel/fatal/exception requires CONFIG_ARCH_HAS_STACK_PROTECTION (needs MPU);
-          #                 fatal/message_capture uses console harness (regex), not PROJECT EXECUTION SUCCESSFUL
-          #   mempool     - no dedicated kernel test suite exists (only CMSIS RTOS portability layer)
-          #   dynamic     - tests/kernel/threads/dynamic_thread requires CONFIG_ARCH_HAS_USERSPACE (needs MPU)
-          #   smp_state   - tests/kernel/smp requires CONFIG_MP_MAX_NUM_CPUS > 1 (M3 is single-core)
+
+          # --- Extended test coverage: additional suites for deeper regression testing ---
+
+          # Mutex variants
+          - primitive: sys_mutex
+            test_path: tests/kernel/mutex/sys_mutex
+
+          # Semaphore variants
+          - primitive: sys_sem
+            test_path: tests/kernel/semaphore/sys_sem
+
+          # Message queue depth
+          - primitive: msgq_usage
+            test_path: tests/kernel/msgq/msgq_usage
+
+          # FIFO depth
+          - primitive: fifo_timeout
+            test_path: tests/kernel/fifo/fifo_timeout
+          - primitive: fifo_usage
+            test_path: tests/kernel/fifo/fifo_usage
+
+          # LIFO depth
+          - primitive: lifo_usage
+            test_path: tests/kernel/lifo/lifo_usage
+
+          # Mailbox depth
+          - primitive: mbox_usage
+            test_path: tests/kernel/mbox/mbox_usage
+
+          # Memory slab depth
+          - primitive: mslab_api
+            test_path: tests/kernel/mem_slab/mslab_api
+          - primitive: mslab_concept
+            test_path: tests/kernel/mem_slab/mslab_concept
+          - primitive: mslab_threadsafe
+            test_path: tests/kernel/mem_slab/mslab_threadsafe
+
+          # Event variants
+          - primitive: sys_event
+            test_path: tests/kernel/events/sys_event
+
+          # Scheduler depth
+          - primitive: sched_deadline
+            test_path: tests/kernel/sched/deadline
+          - primitive: sched_metairq
+            test_path: tests/kernel/sched/metairq
+
+          # Thread depth
+          - primitive: thread_init
+            test_path: tests/kernel/threads/thread_init
+
+          # Core kernel tests
+          - primitive: pending
+            test_path: tests/kernel/pending
+          - primitive: sleep
+            test_path: tests/kernel/sleep
+          - primitive: context
+            test_path: tests/kernel/context
+          - primitive: common
+            test_path: tests/kernel/common
+
+          # NOT added (hardware requirements not met on qemu_cortex_m3):
+          #   futex          - needs CONFIG_ARCH_HAS_USERSPACE (MPU)
+          #   fatal          - needs fault injection / stack protection (MPU)
+          #   dynamic_thread - needs CONFIG_ARCH_HAS_USERSPACE (MPU)
+          #   smp/*          - needs CONFIG_MP_MAX_NUM_CPUS > 1
+          #   mem_protect/*  - needs MPU
+          #   sched/wraparound - timer wraparound edge cases
+          #   spinlock       - CONFIG_SPIN_VALIDATE specific
 
     steps:
       - name: Checkout Gale
