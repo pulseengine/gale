@@ -7,9 +7,7 @@
 //! This closes the gap between "the model is verified" and "the running
 //! code matches the model."
 
-use gale::sem::{Semaphore, GiveResult, TakeResult};
 use gale::error::*;
-use gale::priority::Priority;
 
 /// Simulate what the FFI gale_k_sem_give_decide does, using the
 /// verified Semaphore model.
@@ -472,11 +470,11 @@ fn event_wait_any_matches_single_bit() {
 /// EV6: wait_all requires ALL desired bits
 #[test]
 fn event_wait_all_requires_all_bits() {
-    let (_, _, action) = model_event_wait(0b1000, 0b1010, true, false);
-    assert_eq!(action, 1); // PEND — bit 1 is missing
+    let (_, _, act_pend) = model_event_wait(0b1000, 0b1010, true, false);
+    assert_eq!(act_pend, 1); // PEND — bit 1 is missing
 
-    let (_, matched, action) = model_event_wait(0b1010, 0b1010, true, false);
-    assert_eq!(action, 0); // MATCHED — all bits present
+    let (_, matched, act_match) = model_event_wait(0b1010, 0b1010, true, false);
+    assert_eq!(act_match, 0); // MATCHED — all bits present
     assert_eq!(matched, 0b1010);
 }
 
