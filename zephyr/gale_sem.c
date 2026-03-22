@@ -29,6 +29,7 @@
 #include <zephyr/sys/check.h>
 
 #include "gale_sem.h"
+#include "gale_error_check.h"  /* STPA GAP-6: compile-time errno sync */
 
 static struct k_spinlock lock;
 
