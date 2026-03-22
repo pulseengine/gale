@@ -115,6 +115,9 @@ int z_impl_k_stack_push(struct k_stack *stack, stack_data_t data)
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_stack, push, stack);
 
 	/* Extract: read state, peek at wait queue head (no side effect) */
+	/* STPA GAP-10: ptrdiff_t fits in uint32_t on 32-bit ARM */
+	BUILD_ASSERT(sizeof(stack_data_t *) <= 4,
+		     "Gale stack shim assumes 32-bit pointers");
 	uint32_t count = (uint32_t)(stack->next - stack->base);
 	uint32_t capacity = (uint32_t)(stack->top - stack->base);
 	uint32_t has_waiter = (z_waitq_head(&stack->wait_q) != NULL) ? 1U : 0U;
