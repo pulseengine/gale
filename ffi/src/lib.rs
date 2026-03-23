@@ -685,6 +685,8 @@ pub const GALE_MUTEX_UNLOCK_ERROR: u8 = 2;
 /// Priority inheritance restoration stays in C — Rust decides the action,
 /// C applies it including any priority adjustments.
 ///
+/// STPA GAP-2 closure: delegates to Mutex::unlock() from verified model.
+///
 /// Verified: M6a (EINVAL), M6b (EPERM), M7 (reentrant), M10 (no underflow).
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mutex_unlock_decide(
@@ -692,40 +694,41 @@ pub extern "C" fn gale_k_mutex_unlock_decide(
     owner_is_null: u32,
     owner_is_current: u32,
 ) -> GaleMutexUnlockDecision {
-    // M6a: not locked
-    if owner_is_null != 0 {
-        return GaleMutexUnlockDecision {
-            ret: EINVAL,
-            action: GALE_MUTEX_UNLOCK_ERROR,
-            new_lock_count: 0,
-        };
-    }
+    use gale::mutex::{Mutex, UnlockResult};
+    use gale::thread::ThreadId;
 
-    // M6b: not owner
-    if owner_is_current == 0 {
-        return GaleMutexUnlockDecision {
-            ret: EPERM,
+    let current_id = ThreadId { id: 1 };
+    let owner = if owner_is_null != 0 {
+        None
+    } else if owner_is_current != 0 {
+        Some(current_id)
+    } else {
+        Some(ThreadId { id: 2 })
+    };
+
+    let mut mtx = Mutex {
+        wait_q: gale::wait_queue::WaitQueue::new(),
+        owner,
+        lock_count,
+    };
+
+    match mtx.unlock(current_id) {
+        Err(e) => GaleMutexUnlockDecision {
+            ret: e,
             action: GALE_MUTEX_UNLOCK_ERROR,
             new_lock_count: lock_count,
-        };
-    }
-
-    // M7: reentrant release (lock_count > 1)
-    if lock_count > 1 {
-        // Verified: lock_count > 1, so lock_count - 1 >= 1, no underflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        let new_count = lock_count - 1;
-        GaleMutexUnlockDecision {
+        },
+        Ok(UnlockResult::Released) => GaleMutexUnlockDecision {
             ret: OK,
             action: GALE_MUTEX_UNLOCK_RELEASED,
-            new_lock_count: new_count,
-        }
-    } else {
-        // Fully unlocked — caller handles waiter transfer.
-        GaleMutexUnlockDecision {
-            ret: OK,
-            action: GALE_MUTEX_UNLOCK_UNLOCKED,
-            new_lock_count: 0,
+            new_lock_count: mtx.lock_count,
+        },
+        Ok(UnlockResult::Unlocked) | Ok(UnlockResult::Transferred(_)) => {
+            GaleMutexUnlockDecision {
+                ret: OK,
+                action: GALE_MUTEX_UNLOCK_UNLOCKED,
+                new_lock_count: 0,
+            }
         }
     }
 }
