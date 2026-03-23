@@ -29,8 +29,8 @@ Require Import Stdlib.Init.Logic.
 Open Scope Z_scope.
 
 (* Import the translated semaphore module.
-   This will be available after rocq-of-rust translates plain/sem.rs *)
-(* From plain Require Import sem. *)
+   rocq-of-rust translates plain/sem.rs → sem.v, compiled by Bazel. *)
+From plain Require Import sem.
 
 (* ========================================================================= *)
 (** * Section 1: Abstract Invariant Definitions *)
@@ -234,3 +234,22 @@ Proof.
   intros cnt lim [Hlim [Hge Hle]].
   repeat split; intros; unfold sem_inv; lia.
 Qed.
+
+(* ========================================================================= *)
+(** * Section 7: Connection to rocq-of-rust Translated Code *)
+(* ========================================================================= *)
+
+(** The Semaphore type in the generated code matches the expected path. *)
+Theorem translated_semaphore_type :
+  Impl_sem_Semaphore.Self = Ty.path "sem::Semaphore".
+Proof. reflexivity. Qed.
+
+(** The WaitQueue type in the generated code matches. *)
+Theorem translated_waitqueue_type :
+  Impl_sem_WaitQueue.Self = Ty.path "sem::WaitQueue".
+Proof. reflexivity. Qed.
+
+(** The Thread type in the generated code matches. *)
+Theorem translated_thread_type :
+  Impl_sem_Thread.Self = Ty.path "sem::Thread".
+Proof. reflexivity. Qed.
