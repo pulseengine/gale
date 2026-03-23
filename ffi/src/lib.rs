@@ -218,6 +218,10 @@ use gale::error::{
     EAGAIN, EBUSY, ECANCELED, EDEADLK, EINVAL, ENOMEM, ENOMSG, EOVERFLOW, EPERM, EPIPE,
     ETIMEDOUT, OK,
 };
+use gale::sem::{GiveResult, Semaphore};
+use gale::thread::{Thread, ThreadState};
+use gale::priority::Priority;
+use gale::wait_queue::WaitQueue;
 
 // ---------------------------------------------------------------------------
 // FFI exports — pure count arithmetic
@@ -302,30 +306,81 @@ pub const GALE_SEM_ACTION_WAKE: u8 = 1;
 /// whether a waiter was found. Rust decides the action.
 ///
 /// Verified: P3 (count capped at limit), P9 (no overflow).
+///
+/// STPA closure: delegates to `Semaphore::give()` from the Verus-verified
+/// model (via verus-strip → plain/src/sem.rs). The count arithmetic is
+/// executed by the verified function, not reimplemented here.
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_sem_give_decide(
     count: u32,
     limit: u32,
     has_waiter: u32,
 ) -> GaleSemGiveDecision {
+    // Build a Semaphore that mirrors the C-side state.
+    // The wait queue is configured to make give() take the correct branch:
+    //   has_waiter != 0 → wait_q.len = 1 (unpend_first returns Some)
+    //   has_waiter == 0 → wait_q.len = 0 (unpend_first returns None)
+    //
+    // NOTE: This allocates a 64-slot WaitQueue on the stack (~2.6 KiB).
+    // Acceptable for a proof-of-concept; a production version should add a
+    // dedicated `give_decide(count, limit, has_waiter)` method to the model
+    // so the Verus proofs cover it directly without the WaitQueue overhead.
+    let mut wq = WaitQueue::new();
     if has_waiter != 0 {
-        GaleSemGiveDecision {
+        // Place a dummy blocked thread so unpend_first() returns Some.
+        wq.entries[0] = Some(Thread {
+            id: gale::thread::ThreadId { id: 0 },
+            priority: Priority { value: 0 },
+            state: ThreadState::Blocked,
+            return_value: 0,
+            is_metairq: false,
+        });
+        wq.len = 1;
+    }
+
+    let mut sem = Semaphore { wait_q: wq, count, limit };
+    let result = sem.give();
+
+    match result {
+        GiveResult::WokeThread(_) => GaleSemGiveDecision {
             action: GALE_SEM_ACTION_WAKE,
-            new_count: count,
-        }
-    } else {
-        let new_count = if count < limit {
-            #[allow(clippy::arithmetic_side_effects)]
-            { count + 1 }
-        } else {
-            count
-        };
-        GaleSemGiveDecision {
+            new_count: sem.count,
+        },
+        GiveResult::Incremented => GaleSemGiveDecision {
             action: GALE_SEM_ACTION_INCREMENT,
-            new_count,
-        }
+            new_count: sem.count,
+        },
+        GiveResult::Saturated => GaleSemGiveDecision {
+            action: GALE_SEM_ACTION_INCREMENT,
+            new_count: sem.count,
+        },
     }
 }
+
+// --- Old reimplementation (kept for comparison) ---
+// pub extern "C" fn gale_k_sem_give_decide(
+//     count: u32,
+//     limit: u32,
+//     has_waiter: u32,
+// ) -> GaleSemGiveDecision {
+//     if has_waiter != 0 {
+//         GaleSemGiveDecision {
+//             action: GALE_SEM_ACTION_WAKE,
+//             new_count: count,
+//         }
+//     } else {
+//         let new_count = if count < limit {
+//             #[allow(clippy::arithmetic_side_effects)]
+//             { count + 1 }
+//         } else {
+//             count
+//         };
+//         GaleSemGiveDecision {
+//             action: GALE_SEM_ACTION_INCREMENT,
+//             new_count,
+//         }
+//     }
+// }
 
 /// Decision struct for k_sem_take.
 #[repr(C)]
@@ -343,31 +398,50 @@ pub const GALE_SEM_ACTION_PEND: u8 = 1;
 
 /// Full decision for k_sem_take: decides whether to acquire, return busy, or pend.
 ///
+/// STPA GAP-2 closure: delegates to Semaphore::try_take() from the
+/// Verus-verified model. The take logic is executed by the verified
+/// function, not reimplemented here.
+///
 /// Verified: P5 (decrement), P6 (-EBUSY), P9 (no underflow).
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_sem_take_decide(
     count: u32,
     is_no_wait: u32,
 ) -> GaleSemTakeDecision {
-    if count > 0 {
-        #[allow(clippy::arithmetic_side_effects)]
-        let new_count = count - 1;
-        GaleSemTakeDecision {
+    use gale::sem::{Semaphore, TakeResult};
+    use gale::priority::Priority;
+    use gale::wait_queue::WaitQueue;
+
+    // Construct model semaphore from C-side scalars.
+    // limit doesn't matter for try_take (only count does).
+    let limit = if count > 0 { count } else { 1 };
+    let mut sem = Semaphore {
+        wait_q: WaitQueue::new(),
+        count,
+        limit,
+    };
+
+    // Call the verified model function
+    match sem.try_take() {
+        TakeResult::Acquired => GaleSemTakeDecision {
             ret: OK,
-            new_count,
+            new_count: sem.count,
             action: GALE_SEM_ACTION_RETURN,
-        }
-    } else if is_no_wait != 0 {
-        GaleSemTakeDecision {
-            ret: EBUSY,
-            new_count: 0,
-            action: GALE_SEM_ACTION_RETURN,
-        }
-    } else {
-        GaleSemTakeDecision {
-            ret: 0,
-            new_count: 0,
-            action: GALE_SEM_ACTION_PEND,
+        },
+        TakeResult::WouldBlock | TakeResult::Blocked => {
+            if is_no_wait != 0 {
+                GaleSemTakeDecision {
+                    ret: EBUSY,
+                    new_count: 0,
+                    action: GALE_SEM_ACTION_RETURN,
+                }
+            } else {
+                GaleSemTakeDecision {
+                    ret: 0,
+                    new_count: 0,
+                    action: GALE_SEM_ACTION_PEND,
+                }
+            }
         }
     }
 }
