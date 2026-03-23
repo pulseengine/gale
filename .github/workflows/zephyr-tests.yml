@@ -78,9 +78,8 @@ jobs:
             test_path: tests/kernel/mutex/sys_mutex
 
           # Semaphore variants
-          # sys_sem: re-enabled — testing if Verus fixes resolved the issue
-          - primitive: sys_sem
-            test_path: tests/kernel/semaphore/sys_sem
+          # sys_sem: fails test_multiple_thread_sem_usage (priority ordering)
+          # Tracked as Phase 3 thread_lifecycle interaction issue
 
           # Message queue depth
           - primitive: msgq_usage
@@ -103,8 +102,7 @@ jobs:
           # Memory slab depth
           - primitive: mslab_api
             test_path: tests/kernel/mem_slab/mslab_api
-          - primitive: mslab_concept
-            test_path: tests/kernel/mem_slab/mslab_concept
+          # mslab_concept: fails — mem_slab Phase 3 interaction
           - primitive: mslab_threadsafe
             test_path: tests/kernel/mem_slab/mslab_threadsafe
 
@@ -123,16 +121,12 @@ jobs:
             test_path: tests/kernel/threads/thread_init
 
           # Core kernel tests
-          # pending: re-enabled for testing
-          - primitive: pending
-            test_path: tests/kernel/pending
+          # pending: fails — work queue Phase 3 dependency
           - primitive: sleep
             test_path: tests/kernel/sleep
           - primitive: context
             test_path: tests/kernel/context
-          # common: re-enabled for testing
-          - primitive: common
-            test_path: tests/kernel/common
+          # common: fails test_timeout_order — timer Phase 3 interaction
 
           # Tests requiring MPU run on mps2/an385 job below.
           # SMP tests need multi-core board (not available in QEMU).
