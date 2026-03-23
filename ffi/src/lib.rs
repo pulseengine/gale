@@ -609,6 +609,9 @@ pub const GALE_MUTEX_ACTION_BUSY: u8 = 2;
 /// Priority inheritance logic stays in C — Rust decides the action,
 /// C applies it including any priority adjustments.
 ///
+/// STPA GAP-2 closure: delegates to Mutex::try_lock() from the
+/// Verus-verified model. Lock logic executed by verified function.
+///
 /// Verified: M3 (acquire), M4 (reentrant), M5 (contended), M10 (no overflow).
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mutex_lock_decide(
@@ -617,43 +620,46 @@ pub extern "C" fn gale_k_mutex_lock_decide(
     owner_is_current: u32,
     is_no_wait: u32,
 ) -> GaleMutexLockDecision {
-    if owner_is_null != 0 {
-        // Mutex unlocked — acquire (M3).
-        GaleMutexLockDecision {
+    use gale::mutex::{Mutex, LockResult};
+    use gale::thread::ThreadId;
+
+    // Construct model mutex from C-side scalars.
+    let current_id = ThreadId { id: 1 };
+    let owner = if owner_is_null != 0 {
+        None
+    } else if owner_is_current != 0 {
+        Some(current_id)
+    } else {
+        Some(ThreadId { id: 2 }) // different thread
+    };
+
+    let mut mtx = Mutex {
+        wait_q: gale::wait_queue::WaitQueue::new(),
+        owner,
+        lock_count,
+    };
+
+    // Call the verified model function
+    match mtx.try_lock(current_id) {
+        LockResult::Acquired => GaleMutexLockDecision {
             ret: OK,
             action: GALE_MUTEX_ACTION_ACQUIRED,
-            new_lock_count: 1,
-        }
-    } else if owner_is_current != 0 {
-        // Reentrant lock — same owner (M4, M10).
-        match lock_count.checked_add(1) {
-            Some(n) => GaleMutexLockDecision {
-                ret: OK,
-                action: GALE_MUTEX_ACTION_ACQUIRED,
-                new_lock_count: n,
-            },
-            None => {
-                // Overflow would violate M10.
+            new_lock_count: mtx.lock_count,
+        },
+        LockResult::WouldBlock => {
+            if is_no_wait != 0 {
                 GaleMutexLockDecision {
-                    ret: EINVAL,
+                    ret: EBUSY,
                     action: GALE_MUTEX_ACTION_BUSY,
                     new_lock_count: lock_count,
                 }
+            } else {
+                GaleMutexLockDecision {
+                    ret: 0,
+                    action: GALE_MUTEX_ACTION_PEND,
+                    new_lock_count: lock_count,
+                }
             }
-        }
-    } else if is_no_wait != 0 {
-        // Different owner, no-wait — return busy (M5).
-        GaleMutexLockDecision {
-            ret: EBUSY,
-            action: GALE_MUTEX_ACTION_BUSY,
-            new_lock_count: lock_count,
-        }
-    } else {
-        // Different owner, willing to wait — pend (M5).
-        GaleMutexLockDecision {
-            ret: 0,
-            action: GALE_MUTEX_ACTION_PEND,
-            new_lock_count: lock_count,
         }
     }
 }
