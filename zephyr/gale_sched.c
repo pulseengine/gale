@@ -33,27 +33,16 @@
 
 LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
 
-/*
- * Gale integration: replace C should_preempt with Rust decision.
+/* Gale integration: should_preempt decision delegation is available
+ * via gale_k_sched_preempt_decide() but NOT active in the C shim.
+ * The upstream should_preempt() in kthread.h handles edge cases
+ * (CONFIG_SWAP_NONATOMIC, z_is_thread_timeout_active) that the
+ * Rust model doesn't cover yet. Enabling the delegation caused
+ * spinlock assertion failures in CI tests.
  *
- * The upstream should_preempt() in kthread.h is a static inline.
- * We shadow it here with a version that delegates to Rust.
- * This is the first scheduling decision point migrated to Rust.
+ * TODO: Add CONFIG_SWAP_NONATOMIC handling to Rust model, then
+ * re-enable: #define should_preempt gale_should_preempt
  */
-static ALWAYS_INLINE bool gale_should_preempt(const struct k_thread *thread,
-					      int preempt_ok)
-{
-	struct gale_sched_preempt_decision d = gale_k_sched_preempt_decide(
-		thread_is_preemptible(_current) ? 0U : 1U,  /* is_cooperative */
-		thread_is_metairq(thread) ? 1U : 0U,        /* candidate_is_metairq */
-		(uint32_t)preempt_ok,                        /* swap_ok */
-		z_is_thread_prevented_from_running(_current) ? 1U : 0U /* current_is_prevented */
-	);
-	return d.should_preempt == GALE_SCHED_PREEMPT;
-}
-
-/* Shadow the upstream should_preempt with our Gale version */
-#define should_preempt gale_should_preempt
 
 #if defined(CONFIG_SWAP_NONATOMIC) && defined(CONFIG_TIMESLICING)
 extern struct k_thread *pending_current;
