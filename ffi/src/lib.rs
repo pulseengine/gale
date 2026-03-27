@@ -218,10 +218,6 @@ use gale::error::{
     EAGAIN, EBUSY, ECANCELED, EDEADLK, EINVAL, ENOMEM, ENOMSG, EOVERFLOW, EPERM, EPIPE,
     ETIMEDOUT, OK,
 };
-use gale::sem::{GiveResult, Semaphore};
-use gale::thread::{Thread, ThreadState};
-use gale::priority::Priority;
-use gale::wait_queue::WaitQueue;
 
 // ---------------------------------------------------------------------------
 // FFI exports — pure count arithmetic
@@ -306,81 +302,30 @@ pub const GALE_SEM_ACTION_WAKE: u8 = 1;
 /// whether a waiter was found. Rust decides the action.
 ///
 /// Verified: P3 (count capped at limit), P9 (no overflow).
-///
-/// STPA closure: delegates to `Semaphore::give()` from the Verus-verified
-/// model (via verus-strip → plain/src/sem.rs). The count arithmetic is
-/// executed by the verified function, not reimplemented here.
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_sem_give_decide(
     count: u32,
     limit: u32,
     has_waiter: u32,
 ) -> GaleSemGiveDecision {
-    // Build a Semaphore that mirrors the C-side state.
-    // The wait queue is configured to make give() take the correct branch:
-    //   has_waiter != 0 → wait_q.len = 1 (unpend_first returns Some)
-    //   has_waiter == 0 → wait_q.len = 0 (unpend_first returns None)
-    //
-    // NOTE: This allocates a 64-slot WaitQueue on the stack (~2.6 KiB).
-    // Acceptable for a proof-of-concept; a production version should add a
-    // dedicated `give_decide(count, limit, has_waiter)` method to the model
-    // so the Verus proofs cover it directly without the WaitQueue overhead.
-    let mut wq = WaitQueue::new();
     if has_waiter != 0 {
-        // Place a dummy blocked thread so unpend_first() returns Some.
-        wq.entries[0] = Some(Thread {
-            id: gale::thread::ThreadId { id: 0 },
-            priority: Priority { value: 0 },
-            state: ThreadState::Blocked,
-            return_value: 0,
-            is_metairq: false,
-        });
-        wq.len = 1;
-    }
-
-    let mut sem = Semaphore { wait_q: wq, count, limit };
-    let result = sem.give();
-
-    match result {
-        GiveResult::WokeThread(_) => GaleSemGiveDecision {
+        GaleSemGiveDecision {
             action: GALE_SEM_ACTION_WAKE,
-            new_count: sem.count,
-        },
-        GiveResult::Incremented => GaleSemGiveDecision {
+            new_count: count,
+        }
+    } else {
+        let new_count = if count < limit {
+            #[allow(clippy::arithmetic_side_effects)]
+            { count + 1 }
+        } else {
+            count
+        };
+        GaleSemGiveDecision {
             action: GALE_SEM_ACTION_INCREMENT,
-            new_count: sem.count,
-        },
-        GiveResult::Saturated => GaleSemGiveDecision {
-            action: GALE_SEM_ACTION_INCREMENT,
-            new_count: sem.count,
-        },
+            new_count,
+        }
     }
 }
-
-// --- Old reimplementation (kept for comparison) ---
-// pub extern "C" fn gale_k_sem_give_decide(
-//     count: u32,
-//     limit: u32,
-//     has_waiter: u32,
-// ) -> GaleSemGiveDecision {
-//     if has_waiter != 0 {
-//         GaleSemGiveDecision {
-//             action: GALE_SEM_ACTION_WAKE,
-//             new_count: count,
-//         }
-//     } else {
-//         let new_count = if count < limit {
-//             #[allow(clippy::arithmetic_side_effects)]
-//             { count + 1 }
-//         } else {
-//             count
-//         };
-//         GaleSemGiveDecision {
-//             action: GALE_SEM_ACTION_INCREMENT,
-//             new_count,
-//         }
-//     }
-// }
 
 /// Decision struct for k_sem_take.
 #[repr(C)]
@@ -398,50 +343,31 @@ pub const GALE_SEM_ACTION_PEND: u8 = 1;
 
 /// Full decision for k_sem_take: decides whether to acquire, return busy, or pend.
 ///
-/// STPA GAP-2 closure: delegates to Semaphore::try_take() from the
-/// Verus-verified model. The take logic is executed by the verified
-/// function, not reimplemented here.
-///
 /// Verified: P5 (decrement), P6 (-EBUSY), P9 (no underflow).
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_sem_take_decide(
     count: u32,
     is_no_wait: u32,
 ) -> GaleSemTakeDecision {
-    use gale::sem::{Semaphore, TakeResult};
-    use gale::priority::Priority;
-    use gale::wait_queue::WaitQueue;
-
-    // Construct model semaphore from C-side scalars.
-    // limit doesn't matter for try_take (only count does).
-    let limit = if count > 0 { count } else { 1 };
-    let mut sem = Semaphore {
-        wait_q: WaitQueue::new(),
-        count,
-        limit,
-    };
-
-    // Call the verified model function
-    match sem.try_take() {
-        TakeResult::Acquired => GaleSemTakeDecision {
+    if count > 0 {
+        #[allow(clippy::arithmetic_side_effects)]
+        let new_count = count - 1;
+        GaleSemTakeDecision {
             ret: OK,
-            new_count: sem.count,
+            new_count,
             action: GALE_SEM_ACTION_RETURN,
-        },
-        TakeResult::WouldBlock | TakeResult::Blocked => {
-            if is_no_wait != 0 {
-                GaleSemTakeDecision {
-                    ret: EBUSY,
-                    new_count: 0,
-                    action: GALE_SEM_ACTION_RETURN,
-                }
-            } else {
-                GaleSemTakeDecision {
-                    ret: 0,
-                    new_count: 0,
-                    action: GALE_SEM_ACTION_PEND,
-                }
-            }
+        }
+    } else if is_no_wait != 0 {
+        GaleSemTakeDecision {
+            ret: EBUSY,
+            new_count: 0,
+            action: GALE_SEM_ACTION_RETURN,
+        }
+    } else {
+        GaleSemTakeDecision {
+            ret: 0,
+            new_count: 0,
+            action: GALE_SEM_ACTION_PEND,
         }
     }
 }
@@ -609,9 +535,6 @@ pub const GALE_MUTEX_ACTION_BUSY: u8 = 2;
 /// Priority inheritance logic stays in C — Rust decides the action,
 /// C applies it including any priority adjustments.
 ///
-/// STPA GAP-2 closure: delegates to Mutex::try_lock() from the
-/// Verus-verified model. Lock logic executed by verified function.
-///
 /// Verified: M3 (acquire), M4 (reentrant), M5 (contended), M10 (no overflow).
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mutex_lock_decide(
@@ -620,46 +543,43 @@ pub extern "C" fn gale_k_mutex_lock_decide(
     owner_is_current: u32,
     is_no_wait: u32,
 ) -> GaleMutexLockDecision {
-    use gale::mutex::{Mutex, LockResult};
-    use gale::thread::ThreadId;
-
-    // Construct model mutex from C-side scalars.
-    let current_id = ThreadId { id: 1 };
-    let owner = if owner_is_null != 0 {
-        None
-    } else if owner_is_current != 0 {
-        Some(current_id)
-    } else {
-        Some(ThreadId { id: 2 }) // different thread
-    };
-
-    let mut mtx = Mutex {
-        wait_q: gale::wait_queue::WaitQueue::new(),
-        owner,
-        lock_count,
-    };
-
-    // Call the verified model function
-    match mtx.try_lock(current_id) {
-        LockResult::Acquired => GaleMutexLockDecision {
+    if owner_is_null != 0 {
+        // Mutex unlocked — acquire (M3).
+        GaleMutexLockDecision {
             ret: OK,
             action: GALE_MUTEX_ACTION_ACQUIRED,
-            new_lock_count: mtx.lock_count,
-        },
-        LockResult::WouldBlock => {
-            if is_no_wait != 0 {
+            new_lock_count: 1,
+        }
+    } else if owner_is_current != 0 {
+        // Reentrant lock — same owner (M4, M10).
+        match lock_count.checked_add(1) {
+            Some(n) => GaleMutexLockDecision {
+                ret: OK,
+                action: GALE_MUTEX_ACTION_ACQUIRED,
+                new_lock_count: n,
+            },
+            None => {
+                // Overflow would violate M10.
                 GaleMutexLockDecision {
-                    ret: EBUSY,
+                    ret: EINVAL,
                     action: GALE_MUTEX_ACTION_BUSY,
                     new_lock_count: lock_count,
                 }
-            } else {
-                GaleMutexLockDecision {
-                    ret: 0,
-                    action: GALE_MUTEX_ACTION_PEND,
-                    new_lock_count: lock_count,
-                }
             }
+        }
+    } else if is_no_wait != 0 {
+        // Different owner, no-wait — return busy (M5).
+        GaleMutexLockDecision {
+            ret: EBUSY,
+            action: GALE_MUTEX_ACTION_BUSY,
+            new_lock_count: lock_count,
+        }
+    } else {
+        // Different owner, willing to wait — pend (M5).
+        GaleMutexLockDecision {
+            ret: 0,
+            action: GALE_MUTEX_ACTION_PEND,
+            new_lock_count: lock_count,
         }
     }
 }
@@ -685,8 +605,6 @@ pub const GALE_MUTEX_UNLOCK_ERROR: u8 = 2;
 /// Priority inheritance restoration stays in C — Rust decides the action,
 /// C applies it including any priority adjustments.
 ///
-/// STPA GAP-2 closure: delegates to Mutex::unlock() from verified model.
-///
 /// Verified: M6a (EINVAL), M6b (EPERM), M7 (reentrant), M10 (no underflow).
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mutex_unlock_decide(
@@ -694,41 +612,40 @@ pub extern "C" fn gale_k_mutex_unlock_decide(
     owner_is_null: u32,
     owner_is_current: u32,
 ) -> GaleMutexUnlockDecision {
-    use gale::mutex::{Mutex, UnlockResult};
-    use gale::thread::ThreadId;
+    // M6a: not locked
+    if owner_is_null != 0 {
+        return GaleMutexUnlockDecision {
+            ret: EINVAL,
+            action: GALE_MUTEX_UNLOCK_ERROR,
+            new_lock_count: 0,
+        };
+    }
 
-    let current_id = ThreadId { id: 1 };
-    let owner = if owner_is_null != 0 {
-        None
-    } else if owner_is_current != 0 {
-        Some(current_id)
-    } else {
-        Some(ThreadId { id: 2 })
-    };
-
-    let mut mtx = Mutex {
-        wait_q: gale::wait_queue::WaitQueue::new(),
-        owner,
-        lock_count,
-    };
-
-    match mtx.unlock(current_id) {
-        Err(e) => GaleMutexUnlockDecision {
-            ret: e,
+    // M6b: not owner
+    if owner_is_current == 0 {
+        return GaleMutexUnlockDecision {
+            ret: EPERM,
             action: GALE_MUTEX_UNLOCK_ERROR,
             new_lock_count: lock_count,
-        },
-        Ok(UnlockResult::Released) => GaleMutexUnlockDecision {
+        };
+    }
+
+    // M7: reentrant release (lock_count > 1)
+    if lock_count > 1 {
+        // Verified: lock_count > 1, so lock_count - 1 >= 1, no underflow.
+        #[allow(clippy::arithmetic_side_effects)]
+        let new_count = lock_count - 1;
+        GaleMutexUnlockDecision {
             ret: OK,
             action: GALE_MUTEX_UNLOCK_RELEASED,
-            new_lock_count: mtx.lock_count,
-        },
-        Ok(UnlockResult::Unlocked) | Ok(UnlockResult::Transferred(_)) => {
-            GaleMutexUnlockDecision {
-                ret: OK,
-                action: GALE_MUTEX_UNLOCK_UNLOCKED,
-                new_lock_count: 0,
-            }
+            new_lock_count: new_count,
+        }
+    } else {
+        // Fully unlocked — caller handles waiter transfer.
+        GaleMutexUnlockDecision {
+            ret: OK,
+            action: GALE_MUTEX_UNLOCK_UNLOCKED,
+            new_lock_count: 0,
         }
     }
 }
