@@ -6177,7 +6177,8 @@ mod kani_event_proofs {
         let desired: u32 = kani::any();
         let wait_type: u8 = kani::any();
         kani::assume(wait_type <= 1);
-        kani::assume((current & desired) == 0);
+        kani::assume(desired > 0); // desired=0 with WAIT_ALL always matches (0&x==0)
+        kani::assume((current & desired) == 0); // no matching bits
         let d = gale_k_event_wait_decide(current, desired, wait_type, 1);
         assert!(d.action == GALE_EVENT_ACTION_TIMEOUT);
         assert!(d.matched_events == 0);
