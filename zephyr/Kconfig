@@ -270,3 +270,40 @@ config GALE_KERNEL_SCHED
 	  data structures, thread state transitions, wait queues, and
 	  SMP IPI remain native Zephyr C.
 	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_MEM_DOMAIN
+	bool "Use Gale formally verified memory domain"
+	depends on USERSPACE
+	help
+	  Replace kernel/mem_domain.c with the Gale formally verified
+	  Rust implementation. Partition validation (size > 0, no
+	  overflow), non-overlap checking, and slot management are
+	  handled by verified Rust code. Thread list management,
+	  arch domain init/sync, W^X policy, spinlock, and SYS_INIT
+	  remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_USERSPACE
+	bool "Use Gale formally verified userspace"
+	depends on USERSPACE
+	help
+	  Replace kernel/userspace.c with the Gale formally verified
+	  Rust implementation. Object permission checking, type
+	  validation, initialization flag management, object recycling,
+	  and public access control are handled by verified Rust code.
+	  Dynamic objects, gperf lookup, memory copy helpers, spinlock
+	  serialization, and debug logging remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_HEAP
+	bool "Use Gale formally verified sys_heap"
+	help
+	  Replace lib/heap/heap.c with the Gale formally verified
+	  implementation. Chunk allocation decisions (split/whole),
+	  free validation (double-free detection, bounds checking),
+	  coalescing strategy (left/right merge), alignment padding
+	  overflow checks, and realloc strategy (shrink/grow/copy)
+	  are handled by verified Rust code. Free-list traversal,
+	  bucket management, pointer arithmetic, and memory layout
+	  remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.

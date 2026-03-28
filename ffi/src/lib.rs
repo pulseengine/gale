@@ -207,6 +207,16 @@
 //!   sched.c:should_preempt   cooperative protection
 //!
 //! Verified: SC1-SC16 (priority ordering, preemption, state FSM).
+//!
+//! ## Memory Domain (gale_mem_domain_*)
+//!
+//! Pure functions replacing partition validation and slot management
+//! in kernel/mem_domain.c:
+//!   mem_domain.c:24-86    check_add_partition (validate + overlap)
+//!   mem_domain.c:208-259  k_mem_domain_add_partition (find slot, add)
+//!   mem_domain.c:261-306  k_mem_domain_remove_partition (find match, clear)
+//!
+//! Verified: MD1-MD6 (non-overlap, size > 0, bounds, no overflow).
 
 #![cfg_attr(not(any(test, kani)), no_std)]
 // FFI boundary crate — unsafe is inherent (no_mangle, raw pointers).
@@ -215,8 +225,8 @@
 pub mod coarse;
 
 use gale::error::{
-    EAGAIN, EBUSY, ECANCELED, EDEADLK, EINVAL, ENOMEM, ENOMSG, EOVERFLOW, EPERM, EPIPE,
-    ETIMEDOUT, OK,
+    EADDRINUSE, EAGAIN, EBADF, EBUSY, ECANCELED, EDEADLK, EINVAL, ENOMEM, ENOMSG, ENOENT,
+    ENOSPC, EOVERFLOW, EPERM, EPIPE, ETIMEDOUT, OK,
 };
 
 // ---------------------------------------------------------------------------
@@ -5043,6 +5053,545 @@ pub extern "C" fn gale_k_sched_preempt_decide(
     }
 }
 
+// ---------------------------------------------------------------------------
+// FFI exports — memory domain partition management
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the partition validation and slot management
+// from kernel/mem_domain.c:
+//
+//   mem_domain.c:24-86    check_add_partition — validate + non-overlap check
+//   mem_domain.c:88-160   k_mem_domain_init — zero-init + bulk add
+//   mem_domain.c:208-259  k_mem_domain_add_partition — find free slot, add
+//   mem_domain.c:261-306  k_mem_domain_remove_partition — find match, clear
+//
+// All other mem_domain logic (spinlock, thread list, arch sync, W^X policy,
+// SYS_INIT, deinit, add/remove thread) remains native Zephyr C in
+// gale_mem_domain.c.
+//
+// Verified by Verus (SMT/Z3):
+//   MD1: partitions don't overlap (no address collision)
+//   MD2: partition alignment constraints satisfied (size > 0)
+//   MD3: partition size > 0 for all active partitions
+//   MD4: num_partitions <= MAX_PARTITIONS
+//   MD5: add/remove preserve non-overlap invariant
+//   MD6: no overflow in address arithmetic (start + size <= u32::MAX)
+
+/// Maximum partitions per domain (matches CONFIG_MAX_DOMAIN_PARTITIONS).
+const MEM_DOMAIN_MAX_PARTITIONS: u32 = 16;
+
+/// Decision struct for check_add_partition — validates a single partition.
+///
+/// Used by both k_mem_domain_init (bulk validation) and
+/// k_mem_domain_add_partition (single add).
+#[repr(C)]
+pub struct GaleMemDomainCheckPartitionDecision {
+    /// 0 = valid, -EINVAL = invalid
+    pub ret: i32,
+}
+
+/// Check whether a partition is valid and non-overlapping with all existing
+/// active partitions in the domain.
+///
+/// Mirrors check_add_partition (mem_domain.c:24-86).
+///
+/// Arguments:
+///   part_start:    start address of the candidate partition
+///   part_size:     size of the candidate partition
+///   domain_starts: array of 16 start addresses (existing partitions)
+///   domain_sizes:  array of 16 sizes (existing partitions; 0 = free slot)
+///   num_partitions: current active partition count (for bounds info only)
+///
+/// Returns: GaleMemDomainCheckPartitionDecision with ret = 0 or -EINVAL.
+///
+/// Verified: MD1, MD3, MD6 (non-overlap, size > 0, no overflow).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_mem_domain_check_partition(
+    part_start: u32,
+    part_size: u32,
+    domain_starts: *const u32,
+    domain_sizes: *const u32,
+    _num_partitions: u32,
+) -> GaleMemDomainCheckPartitionDecision {
+    // MD3: size must be > 0
+    if part_size == 0 {
+        return GaleMemDomainCheckPartitionDecision { ret: EINVAL };
+    }
+
+    // MD6: start + size must not overflow
+    #[allow(clippy::arithmetic_side_effects)]
+    let pend: u64 = part_start as u64 + part_size as u64;
+    if pend > u32::MAX as u64 {
+        return GaleMemDomainCheckPartitionDecision { ret: EINVAL };
+    }
+
+    // NULL pointer guard (defensive — C shim should never pass NULL)
+    if domain_starts.is_null() || domain_sizes.is_null() {
+        return GaleMemDomainCheckPartitionDecision { ret: EINVAL };
+    }
+
+    // MD1: check non-overlap with all existing active partitions
+    let mut i: u32 = 0;
+    while i < MEM_DOMAIN_MAX_PARTITIONS {
+        unsafe {
+            let dsize = *domain_sizes.add(i as usize);
+            if dsize > 0 {
+                let dstart = *domain_starts.add(i as usize);
+                #[allow(clippy::arithmetic_side_effects)]
+                let dend: u64 = dstart as u64 + dsize as u64;
+                // Overlap: pend > dstart && dend > pstart
+                if pend > dstart as u64 && dend > part_start as u64 {
+                    return GaleMemDomainCheckPartitionDecision { ret: EINVAL };
+                }
+            }
+        }
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            i += 1;
+        }
+    }
+
+    GaleMemDomainCheckPartitionDecision { ret: OK }
+}
+
+// ---- Phase 2: Memory Domain Decision API ----
+
+/// Decision struct for k_mem_domain_add_partition.
+#[repr(C)]
+pub struct GaleMemDomainAddDecision {
+    /// Return code: 0=OK, -EINVAL=invalid partition, -ENOSPC=no free slot
+    pub ret: i32,
+    /// Slot index where partition was placed (valid only when ret==0)
+    pub slot: u32,
+    /// New num_partitions value (incremented on success)
+    pub new_num_partitions: u32,
+    /// Action: 0=ADD_OK, 1=RETURN_ERROR
+    pub action: u8,
+}
+
+pub const GALE_MEM_DOMAIN_ACTION_ADD_OK: u8 = 0;
+pub const GALE_MEM_DOMAIN_ACTION_ADD_ERROR: u8 = 1;
+
+/// Full decision for k_mem_domain_add_partition: validates the partition,
+/// checks non-overlap, finds a free slot, and returns the slot index.
+///
+/// Arguments:
+///   part_start:      start address of new partition
+///   part_size:       size of new partition
+///   part_attr:       attributes of new partition (passed through)
+///   domain_starts:   array of 16 start addresses
+///   domain_sizes:    array of 16 sizes (0 = free slot)
+///   num_partitions:  current active partition count
+///
+/// Verified: MD1-MD6.
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_mem_domain_add_partition_decide(
+    part_start: u32,
+    part_size: u32,
+    _part_attr: u32,
+    domain_starts: *const u32,
+    domain_sizes: *const u32,
+    num_partitions: u32,
+) -> GaleMemDomainAddDecision {
+    // Validate partition (MD1, MD3, MD6)
+    let check = gale_mem_domain_check_partition(
+        part_start, part_size, domain_starts, domain_sizes, num_partitions,
+    );
+    if check.ret != OK {
+        return GaleMemDomainAddDecision {
+            ret: EINVAL,
+            slot: 0,
+            new_num_partitions: num_partitions,
+            action: GALE_MEM_DOMAIN_ACTION_ADD_ERROR,
+        };
+    }
+
+    // Find a free slot (size == 0)
+    if domain_sizes.is_null() {
+        return GaleMemDomainAddDecision {
+            ret: EINVAL,
+            slot: 0,
+            new_num_partitions: num_partitions,
+            action: GALE_MEM_DOMAIN_ACTION_ADD_ERROR,
+        };
+    }
+
+    let mut p_idx: u32 = 0;
+    while p_idx < MEM_DOMAIN_MAX_PARTITIONS {
+        unsafe {
+            if *domain_sizes.add(p_idx as usize) == 0 {
+                // Found free slot
+                #[allow(clippy::arithmetic_side_effects)]
+                let new_num = num_partitions + 1;
+                return GaleMemDomainAddDecision {
+                    ret: OK,
+                    slot: p_idx,
+                    new_num_partitions: new_num,
+                    action: GALE_MEM_DOMAIN_ACTION_ADD_OK,
+                };
+            }
+        }
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            p_idx += 1;
+        }
+    }
+
+    // No free slot
+    GaleMemDomainAddDecision {
+        ret: ENOSPC,
+        slot: 0,
+        new_num_partitions: num_partitions,
+        action: GALE_MEM_DOMAIN_ACTION_ADD_ERROR,
+    }
+}
+
+/// Decision struct for k_mem_domain_remove_partition.
+#[repr(C)]
+pub struct GaleMemDomainRemoveDecision {
+    /// Return code: 0=OK, -ENOENT=not found
+    pub ret: i32,
+    /// Slot index where partition was found (valid only when ret==0)
+    pub slot: u32,
+    /// New num_partitions value (decremented on success)
+    pub new_num_partitions: u32,
+    /// Action: 0=REMOVE_OK, 1=RETURN_ERROR
+    pub action: u8,
+}
+
+pub const GALE_MEM_DOMAIN_ACTION_REMOVE_OK: u8 = 0;
+pub const GALE_MEM_DOMAIN_ACTION_REMOVE_ERROR: u8 = 1;
+
+/// Full decision for k_mem_domain_remove_partition: finds the matching
+/// partition by start+size and returns the slot index.
+///
+/// Arguments:
+///   part_start:      start address to match
+///   part_size:       size to match
+///   domain_starts:   array of 16 start addresses
+///   domain_sizes:    array of 16 sizes
+///   num_partitions:  current active partition count
+///
+/// Verified: MD5 (remove preserves invariant).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_mem_domain_remove_partition_decide(
+    part_start: u32,
+    part_size: u32,
+    domain_starts: *const u32,
+    domain_sizes: *const u32,
+    num_partitions: u32,
+) -> GaleMemDomainRemoveDecision {
+    if domain_starts.is_null() || domain_sizes.is_null() {
+        return GaleMemDomainRemoveDecision {
+            ret: EINVAL,
+            slot: 0,
+            new_num_partitions: num_partitions,
+            action: GALE_MEM_DOMAIN_ACTION_REMOVE_ERROR,
+        };
+    }
+
+    let mut p_idx: u32 = 0;
+    while p_idx < MEM_DOMAIN_MAX_PARTITIONS {
+        unsafe {
+            if *domain_starts.add(p_idx as usize) == part_start
+                && *domain_sizes.add(p_idx as usize) == part_size
+            {
+                // Found matching partition
+                #[allow(clippy::arithmetic_side_effects)]
+                let new_num = if num_partitions > 0 {
+                    num_partitions - 1
+                } else {
+                    0
+                };
+                return GaleMemDomainRemoveDecision {
+                    ret: OK,
+                    slot: p_idx,
+                    new_num_partitions: new_num,
+                    action: GALE_MEM_DOMAIN_ACTION_REMOVE_OK,
+                };
+            }
+        }
+        #[allow(clippy::arithmetic_side_effects)]
+        {
+            p_idx += 1;
+        }
+    }
+
+    // No matching partition
+    GaleMemDomainRemoveDecision {
+        ret: ENOENT,
+        slot: 0,
+        new_num_partitions: num_partitions,
+        action: GALE_MEM_DOMAIN_ACTION_REMOVE_ERROR,
+    }
+}
+
+/// Decision struct for k_mem_domain_init partition validation.
+///
+/// During init, we validate each partition in the parts[] array one at a
+/// time, building up the domain incrementally.  This struct carries the
+/// per-partition verdict.
+#[repr(C)]
+pub struct GaleMemDomainInitPartDecision {
+    /// 0 = partition valid, -EINVAL = invalid (reject whole init)
+    pub ret: i32,
+}
+
+/// Validate one partition during k_mem_domain_init bulk insertion.
+///
+/// This is called for each partition in the parts[] array.  The domain_*
+/// arrays reflect the partitions already added (slots 0..idx-1).
+///
+/// Verified: MD1, MD3, MD6.
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_mem_domain_init_validate_partition(
+    part_start: u32,
+    part_size: u32,
+    domain_starts: *const u32,
+    domain_sizes: *const u32,
+    num_partitions: u32,
+) -> GaleMemDomainInitPartDecision {
+    let check = gale_mem_domain_check_partition(
+        part_start, part_size, domain_starts, domain_sizes, num_partitions,
+    );
+    GaleMemDomainInitPartDecision { ret: check.ret }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — userspace (kernel object permission/type/init validation)
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the safety-critical validation logic from
+// kernel/userspace.c:
+//
+//   userspace.c:670-683  thread_perms_test (access check)
+//   userspace.c:754-785  k_object_validate (type + permission + init check)
+//   userspace.c:787-810  k_object_init (set initialized flag)
+//   userspace.c:823-834  k_object_uninit (clear initialized flag)
+//   userspace.c:812-821  k_object_recycle (clear perms + grant + init)
+//   userspace.c:745-752  k_object_access_all_grant (make public)
+//
+// Verified by Verus (SMT/Z3):
+//   US1: object access requires permission bit set for calling thread
+//   US2: grant_access sets the permission bit
+//   US3: revoke_access clears the permission bit
+//   US4: object type validation (type must match expected type for syscall)
+//   US5: supervisor mode bypasses permission checks
+//   US7: K_OBJ_FLAG_INITIALIZED required for access (when init_check == MustBeInit)
+//   US8: thread ID must be valid (< MAX_THREADS)
+
+// Flag constants — must match Zephyr's <zephyr/sys/kobject.h>
+const K_OBJ_FLAG_INITIALIZED: u8 = 0x01;
+const K_OBJ_FLAG_PUBLIC: u8 = 0x02;
+
+// Init check constants — must match Zephyr's _obj_init_check enum
+const OBJ_INIT_TRUE: i8 = 0;   // _OBJ_INIT_TRUE
+const OBJ_INIT_FALSE: i8 = -1; // _OBJ_INIT_FALSE
+// OBJ_INIT_ANY = 1 — the "don't care" case
+
+// ---- Phase 2: Full Decision API for userspace ----
+
+/// Decision struct for thread_perms_test — access granted or denied.
+///
+/// C extracts the PUBLIC flag and per-thread permission bit,
+/// Rust decides whether access is granted.
+///
+/// Verified: US1 (permission required), US5 (public bypass).
+#[repr(C)]
+pub struct GaleUserspaceAccessDecision {
+    /// 1 = access granted, 0 = denied
+    pub granted: u8,
+}
+
+/// Decide whether a thread has access to a kernel object.
+///
+/// This replaces thread_perms_test() (userspace.c:670-683):
+///   if (ko->flags & K_OBJ_FLAG_PUBLIC) return 1;
+///   return sys_bitfield_test_bit(&ko->perms, index);
+///
+/// Arguments:
+///   flags:        ko->flags
+///   has_perm_bit: 1 if sys_bitfield_test_bit passed, 0 otherwise
+///
+/// Verified: US1 (permission bit required), US5 (public bypass).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_object_access_decide(
+    flags: u8,
+    has_perm_bit: u8,
+) -> GaleUserspaceAccessDecision {
+    if (flags & K_OBJ_FLAG_PUBLIC) != 0 {
+        // US5: public objects grant access to everyone
+        GaleUserspaceAccessDecision { granted: 1 }
+    } else if has_perm_bit != 0 {
+        // US1: thread has the permission bit set
+        GaleUserspaceAccessDecision { granted: 1 }
+    } else {
+        // US1: no permission
+        GaleUserspaceAccessDecision { granted: 0 }
+    }
+}
+
+/// Decision struct for k_object_validate — pass/fail with error code.
+///
+/// C extracts object type, flags, and access result, Rust decides the
+/// validation outcome.
+///
+/// Verified: US1 (permission), US4 (type), US5 (supervisor), US7 (init).
+#[repr(C)]
+pub struct GaleUserspaceValidateDecision {
+    /// 0 = OK, negative = error code (-EBADF, -EPERM, -EINVAL, -EADDRINUSE)
+    pub ret: i32,
+}
+
+/// Decide whether a kernel object passes validation for a syscall.
+///
+/// This replaces k_object_validate() (userspace.c:754-785):
+///   1. Type check: if otype != K_OBJ_ANY, ko->type must match
+///   2. Permission check: thread must have access
+///   3. Init check: based on init_check parameter
+///
+/// Arguments:
+///   obj_type:      ko->type (enum k_objects)
+///   expected_type: otype argument (0 = K_OBJ_ANY)
+///   flags:         ko->flags
+///   has_access:    1 if thread_perms_test() passed
+///   init_check:    _OBJ_INIT_TRUE(0), _OBJ_INIT_FALSE(-1), _OBJ_INIT_ANY(1)
+///
+/// Returns decision with:
+///   ret = 0     : validation passed
+///   ret = -EBADF : type mismatch (US4)
+///   ret = -EPERM : no permission (US1)
+///   ret = -EINVAL     : not initialized when required (US7)
+///   ret = -EADDRINUSE : already initialized when must-not-be (US7)
+///
+/// Verified: US1, US4, US5, US7.
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_object_validate_decide(
+    obj_type: u8,
+    expected_type: u8,
+    flags: u8,
+    has_access: u8,
+    init_check: i8,
+) -> GaleUserspaceValidateDecision {
+    // US4: type check — K_OBJ_ANY (0) matches everything
+    if expected_type != 0 && obj_type != expected_type {
+        return GaleUserspaceValidateDecision { ret: EBADF };
+    }
+
+    // US1/US5: permission check
+    if has_access == 0 {
+        return GaleUserspaceValidateDecision { ret: EPERM };
+    }
+
+    // US7: initialization state check
+    let is_initialized = (flags & K_OBJ_FLAG_INITIALIZED) != 0;
+
+    if init_check == OBJ_INIT_TRUE {
+        // Object MUST be initialized
+        if !is_initialized {
+            return GaleUserspaceValidateDecision { ret: EINVAL };
+        }
+    } else if init_check == OBJ_INIT_FALSE {
+        // Object MUST NOT be initialized
+        if is_initialized {
+            return GaleUserspaceValidateDecision { ret: EADDRINUSE };
+        }
+    }
+    // OBJ_INIT_ANY: don't care
+
+    GaleUserspaceValidateDecision { ret: OK }
+}
+
+/// Decision for k_object_init — compute new flags with INITIALIZED set.
+///
+/// Verified: US7 (init flag management).
+#[repr(C)]
+pub struct GaleUserspaceInitDecision {
+    /// New flags value with K_OBJ_FLAG_INITIALIZED set
+    pub new_flags: u8,
+}
+
+/// Decide new flags for k_object_init.
+///
+/// userspace.c:809: ko->flags |= K_OBJ_FLAG_INITIALIZED;
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_object_init_decide(
+    current_flags: u8,
+) -> GaleUserspaceInitDecision {
+    GaleUserspaceInitDecision {
+        new_flags: current_flags | K_OBJ_FLAG_INITIALIZED,
+    }
+}
+
+/// Decision for k_object_uninit — compute new flags with INITIALIZED cleared.
+///
+/// Verified: US7 (init flag management).
+#[repr(C)]
+pub struct GaleUserspaceUninitDecision {
+    /// New flags value with K_OBJ_FLAG_INITIALIZED cleared
+    pub new_flags: u8,
+}
+
+/// Decide new flags for k_object_uninit.
+///
+/// userspace.c:833: ko->flags &= ~K_OBJ_FLAG_INITIALIZED;
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_object_uninit_decide(
+    current_flags: u8,
+) -> GaleUserspaceUninitDecision {
+    GaleUserspaceUninitDecision {
+        new_flags: current_flags & !K_OBJ_FLAG_INITIALIZED,
+    }
+}
+
+/// Decision for k_object_recycle — clear perms, grant caller, init.
+///
+/// Verified: US2 (grant), US6 (clear perms), US7 (init).
+#[repr(C)]
+pub struct GaleUserspaceRecycleDecision {
+    /// New flags value with K_OBJ_FLAG_INITIALIZED set
+    pub new_flags: u8,
+    /// 1 = must clear perms and set caller's bit
+    pub clear_perms: u8,
+}
+
+/// Decide new flags for k_object_recycle.
+///
+/// userspace.c:817-819:
+///   memset(ko->perms, 0, sizeof(ko->perms));
+///   k_thread_perms_set(ko, _current);
+///   ko->flags |= K_OBJ_FLAG_INITIALIZED;
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_object_recycle_decide(
+    current_flags: u8,
+) -> GaleUserspaceRecycleDecision {
+    GaleUserspaceRecycleDecision {
+        new_flags: current_flags | K_OBJ_FLAG_INITIALIZED,
+        clear_perms: 1,
+    }
+}
+
+/// Decision for k_object_access_all_grant — make object public.
+///
+/// Verified: US5 (public flag grants universal access).
+#[repr(C)]
+pub struct GaleUserspacePublicDecision {
+    /// New flags value with K_OBJ_FLAG_PUBLIC set
+    pub new_flags: u8,
+}
+
+/// Decide new flags for k_object_access_all_grant.
+///
+/// userspace.c:750: ko->flags |= K_OBJ_FLAG_PUBLIC;
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_object_make_public_decide(
+    current_flags: u8,
+) -> GaleUserspacePublicDecision {
+    GaleUserspacePublicDecision {
+        new_flags: current_flags | K_OBJ_FLAG_PUBLIC,
+    }
+}
+
 // Panic handler for no_std
 #[cfg(not(any(test, kani)))]
 #[panic_handler]
@@ -6439,5 +6988,225 @@ mod kani_mbox_proofs {
     fn mbox_data_exchange_symmetric() {
         let size: u32 = kani::any();
         assert!(gale_mbox_data_exchange(size, size) == size);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — mem_domain
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_mem_domain_proofs {
+    use super::*;
+
+    /// MD3: check_partition rejects zero-size partition.
+    #[kani::proof]
+    fn mem_domain_check_rejects_zero_size() {
+        let starts = [0u32; 16];
+        let sizes = [0u32; 16];
+        let d = gale_mem_domain_check_partition(
+            0x1000, 0, starts.as_ptr(), sizes.as_ptr(), 0,
+        );
+        assert!(d.ret == EINVAL);
+    }
+
+    /// MD6: check_partition rejects overflow (start + size wraps).
+    #[kani::proof]
+    fn mem_domain_check_rejects_overflow() {
+        let starts = [0u32; 16];
+        let sizes = [0u32; 16];
+        let d = gale_mem_domain_check_partition(
+            u32::MAX, 2, starts.as_ptr(), sizes.as_ptr(), 0,
+        );
+        assert!(d.ret == EINVAL);
+    }
+
+    /// MD1: check_partition rejects overlapping partition.
+    #[kani::proof]
+    fn mem_domain_check_rejects_overlap() {
+        let starts = [0x1000u32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let sizes = [0x100u32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        // New partition overlaps existing [0x1000, 0x1100)
+        let d = gale_mem_domain_check_partition(
+            0x1050, 0x100, starts.as_ptr(), sizes.as_ptr(), 1,
+        );
+        assert!(d.ret == EINVAL);
+    }
+
+    /// MD1: check_partition accepts non-overlapping partition.
+    #[kani::proof]
+    fn mem_domain_check_accepts_valid() {
+        let starts = [0x1000u32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let sizes = [0x100u32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        // New partition at [0x2000, 0x2100) — no overlap
+        let d = gale_mem_domain_check_partition(
+            0x2000, 0x100, starts.as_ptr(), sizes.as_ptr(), 1,
+        );
+        assert!(d.ret == OK);
+    }
+
+    /// Add decision finds free slot and increments count.
+    #[kani::proof]
+    fn mem_domain_add_finds_slot() {
+        let starts = [0x1000u32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let sizes = [0x100u32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let d = gale_k_mem_domain_add_partition_decide(
+            0x2000, 0x100, 0, starts.as_ptr(), sizes.as_ptr(), 1,
+        );
+        assert!(d.ret == OK);
+        assert!(d.slot == 1); // first free slot
+        assert!(d.new_num_partitions == 2);
+        assert!(d.action == GALE_MEM_DOMAIN_ACTION_ADD_OK);
+    }
+
+    /// Remove decision finds matching partition.
+    #[kani::proof]
+    fn mem_domain_remove_finds_match() {
+        let starts = [0x1000u32, 0x2000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let sizes = [0x100u32, 0x200, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let d = gale_k_mem_domain_remove_partition_decide(
+            0x2000, 0x200, starts.as_ptr(), sizes.as_ptr(), 2,
+        );
+        assert!(d.ret == OK);
+        assert!(d.slot == 1);
+        assert!(d.new_num_partitions == 1);
+        assert!(d.action == GALE_MEM_DOMAIN_ACTION_REMOVE_OK);
+    }
+
+    /// Remove decision returns ENOENT when no match.
+    #[kani::proof]
+    fn mem_domain_remove_no_match() {
+        let starts = [0x1000u32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let sizes = [0x100u32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let d = gale_k_mem_domain_remove_partition_decide(
+            0x9999, 0x100, starts.as_ptr(), sizes.as_ptr(), 1,
+        );
+        assert!(d.ret == ENOENT);
+        assert!(d.action == GALE_MEM_DOMAIN_ACTION_REMOVE_ERROR);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — userspace
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_userspace_proofs {
+    use super::*;
+
+    /// US1: access denied when not public and no perm bit.
+    #[kani::proof]
+    fn userspace_access_denied_no_perm() {
+        let flags: u8 = kani::any();
+        // Ensure not public
+        kani::assume((flags & K_OBJ_FLAG_PUBLIC) == 0);
+        let d = gale_k_object_access_decide(flags, 0);
+        assert!(d.granted == 0);
+    }
+
+    /// US1: access granted when perm bit is set.
+    #[kani::proof]
+    fn userspace_access_granted_perm_bit() {
+        let flags: u8 = kani::any();
+        kani::assume((flags & K_OBJ_FLAG_PUBLIC) == 0);
+        let d = gale_k_object_access_decide(flags, 1);
+        assert!(d.granted == 1);
+    }
+
+    /// US5: access granted when public flag is set.
+    #[kani::proof]
+    fn userspace_access_granted_public() {
+        let flags: u8 = kani::any();
+        kani::assume((flags & K_OBJ_FLAG_PUBLIC) != 0);
+        let has_perm: u8 = kani::any();
+        let d = gale_k_object_access_decide(flags, has_perm);
+        assert!(d.granted == 1);
+    }
+
+    /// US4: type mismatch returns EBADF.
+    #[kani::proof]
+    fn userspace_validate_type_mismatch() {
+        let obj_type: u8 = kani::any();
+        let expected: u8 = kani::any();
+        kani::assume(expected != 0 && obj_type != expected);
+        let flags: u8 = kani::any();
+        let has_access: u8 = kani::any();
+        let init_check: i8 = kani::any();
+        let d = gale_k_object_validate_decide(
+            obj_type, expected, flags, has_access, init_check,
+        );
+        assert!(d.ret == EBADF);
+    }
+
+    /// US1: no access returns EPERM (when type matches).
+    #[kani::proof]
+    fn userspace_validate_no_access() {
+        let obj_type: u8 = kani::any();
+        let flags: u8 = kani::any();
+        let init_check: i8 = kani::any();
+        // K_OBJ_ANY matches any type
+        let d = gale_k_object_validate_decide(
+            obj_type, 0, flags, 0, init_check,
+        );
+        assert!(d.ret == EPERM);
+    }
+
+    /// US7: uninitialized + MustBeInit returns EINVAL.
+    #[kani::proof]
+    fn userspace_validate_uninit_must_be_init() {
+        let obj_type: u8 = kani::any();
+        let flags: u8 = kani::any();
+        // Not initialized
+        kani::assume((flags & K_OBJ_FLAG_INITIALIZED) == 0);
+        let d = gale_k_object_validate_decide(
+            obj_type, 0, flags, 1, OBJ_INIT_TRUE,
+        );
+        assert!(d.ret == EINVAL);
+    }
+
+    /// US7: initialized + MustNotBeInit returns EADDRINUSE.
+    #[kani::proof]
+    fn userspace_validate_init_must_not_be_init() {
+        let obj_type: u8 = kani::any();
+        let flags: u8 = kani::any();
+        // Is initialized
+        kani::assume((flags & K_OBJ_FLAG_INITIALIZED) != 0);
+        let d = gale_k_object_validate_decide(
+            obj_type, 0, flags, 1, OBJ_INIT_FALSE,
+        );
+        assert!(d.ret == EADDRINUSE);
+    }
+
+    /// US7: init_decide always sets INITIALIZED bit.
+    #[kani::proof]
+    fn userspace_init_sets_flag() {
+        let flags: u8 = kani::any();
+        let d = gale_k_object_init_decide(flags);
+        assert!((d.new_flags & K_OBJ_FLAG_INITIALIZED) != 0);
+    }
+
+    /// US7: uninit_decide always clears INITIALIZED bit.
+    #[kani::proof]
+    fn userspace_uninit_clears_flag() {
+        let flags: u8 = kani::any();
+        let d = gale_k_object_uninit_decide(flags);
+        assert!((d.new_flags & K_OBJ_FLAG_INITIALIZED) == 0);
+    }
+
+    /// US5: make_public sets PUBLIC flag.
+    #[kani::proof]
+    fn userspace_make_public_sets_flag() {
+        let flags: u8 = kani::any();
+        let d = gale_k_object_make_public_decide(flags);
+        assert!((d.new_flags & K_OBJ_FLAG_PUBLIC) != 0);
+    }
+
+    /// Recycle always sets INITIALIZED and requests perm clear.
+    #[kani::proof]
+    fn userspace_recycle_sets_init_and_clears() {
+        let flags: u8 = kani::any();
+        let d = gale_k_object_recycle_decide(flags);
+        assert!((d.new_flags & K_OBJ_FLAG_INITIALIZED) != 0);
+        assert!(d.clear_perms == 1);
     }
 }
