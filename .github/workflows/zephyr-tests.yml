@@ -121,12 +121,14 @@ jobs:
             test_path: tests/kernel/threads/thread_init
 
           # Core kernel tests
-          # pending: fails — work queue Phase 3 dependency
+          - primitive: pending
+            test_path: tests/kernel/pending
           - primitive: sleep
             test_path: tests/kernel/sleep
           - primitive: context
             test_path: tests/kernel/context
-          # common: fails test_timeout_order — timer Phase 3 interaction
+          - primitive: common
+            test_path: tests/kernel/common
 
           # Tests requiring MPU run on mps2/an385 job below.
           # SMP tests need multi-core board (not available in QEMU).
