@@ -35,6 +35,79 @@ use crate::wait_queue::WaitQueue;
 
 verus! {
 
+/// Lightweight give decision — no WaitQueue allocation.
+/// Used by FFI to avoid constructing full Semaphore objects.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum GiveDecision {
+    /// A waiting thread should be woken (count unchanged).
+    WakeThread = 0,
+    /// Count should be incremented by 1.
+    Increment = 1,
+    /// Count is at limit — no-op (saturation).
+    Saturated = 2,
+}
+
+/// Lightweight take decision — no WaitQueue allocation.
+/// Used by FFI to avoid constructing full Semaphore objects.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum TakeDecision {
+    /// Count > 0: caller acquires, count decremented by 1.
+    Acquired = 0,
+    /// Count == 0, no-wait: return -EBUSY immediately.
+    WouldBlock = 1,
+    /// Count == 0, willing to wait: caller should pend on wait queue.
+    Pend = 2,
+}
+
+/// Lightweight give decision — takes scalars, no WaitQueue allocation.
+///
+/// Verified properties (P3, P9):
+/// - has_waiter ==> WakeThread (count unchanged)
+/// - !has_waiter && count < limit ==> Increment
+/// - !has_waiter && count >= limit ==> Saturated
+pub fn give_decide(count: u32, limit: u32, has_waiter: bool) -> (result: GiveDecision)
+    requires
+        limit > 0,
+        count <= limit,
+    ensures
+        has_waiter ==> result === GiveDecision::WakeThread,
+        !has_waiter && count < limit ==> result === GiveDecision::Increment,
+        !has_waiter && count >= limit ==> result === GiveDecision::Saturated,
+{
+    if has_waiter {
+        GiveDecision::WakeThread
+    } else if count < limit {
+        GiveDecision::Increment
+    } else {
+        GiveDecision::Saturated
+    }
+}
+
+/// Lightweight take decision — takes scalars, no WaitQueue allocation.
+///
+/// Verified properties (P5, P6):
+/// - count > 0 ==> Acquired
+/// - count == 0 && is_no_wait ==> WouldBlock
+/// - count == 0 && !is_no_wait ==> Pend
+pub fn take_decide(count: u32, is_no_wait: bool) -> (result: TakeDecision)
+    requires
+        true,
+    ensures
+        count > 0 ==> result === TakeDecision::Acquired,
+        count == 0 && is_no_wait ==> result === TakeDecision::WouldBlock,
+        count == 0 && !is_no_wait ==> result === TakeDecision::Pend,
+{
+    if count > 0 {
+        TakeDecision::Acquired
+    } else if is_no_wait {
+        TakeDecision::WouldBlock
+    } else {
+        TakeDecision::Pend
+    }
+}
+
 /// Result of a give operation.
 #[derive(Debug)]
 pub enum GiveResult {

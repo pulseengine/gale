@@ -301,29 +301,33 @@ pub const GALE_SEM_ACTION_WAKE: u8 = 1;
 /// The C shim calls z_unpend_first_thread first (side effect), then passes
 /// whether a waiter was found. Rust decides the action.
 ///
-/// Verified: P3 (count capped at limit), P9 (no overflow).
+/// Delegates to `gale::sem::give_decide` (Verus-verified).
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_sem_give_decide(
     count: u32,
     limit: u32,
     has_waiter: u32,
 ) -> GaleSemGiveDecision {
-    if has_waiter != 0 {
-        GaleSemGiveDecision {
+    use gale::sem::{GiveDecision, give_decide};
+
+    let decision = give_decide(count, limit, has_waiter != 0);
+    match decision {
+        GiveDecision::WakeThread => GaleSemGiveDecision {
             action: GALE_SEM_ACTION_WAKE,
             new_count: count,
-        }
-    } else {
-        let new_count = if count < limit {
+        },
+        GiveDecision::Increment => {
             #[allow(clippy::arithmetic_side_effects)]
-            { count + 1 }
-        } else {
-            count
-        };
-        GaleSemGiveDecision {
-            action: GALE_SEM_ACTION_INCREMENT,
-            new_count,
+            let new_count = count + 1;
+            GaleSemGiveDecision {
+                action: GALE_SEM_ACTION_INCREMENT,
+                new_count,
+            }
         }
+        GiveDecision::Saturated => GaleSemGiveDecision {
+            action: GALE_SEM_ACTION_INCREMENT,
+            new_count: count,
+        },
     }
 }
 
@@ -343,32 +347,35 @@ pub const GALE_SEM_ACTION_PEND: u8 = 1;
 
 /// Full decision for k_sem_take: decides whether to acquire, return busy, or pend.
 ///
-/// Verified: P5 (decrement), P6 (-EBUSY), P9 (no underflow).
+/// Delegates to `gale::sem::take_decide` (Verus-verified).
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_sem_take_decide(
     count: u32,
     is_no_wait: u32,
 ) -> GaleSemTakeDecision {
-    if count > 0 {
-        #[allow(clippy::arithmetic_side_effects)]
-        let new_count = count - 1;
-        GaleSemTakeDecision {
-            ret: OK,
-            new_count,
-            action: GALE_SEM_ACTION_RETURN,
+    use gale::sem::{TakeDecision, take_decide};
+
+    let decision = take_decide(count, is_no_wait != 0);
+    match decision {
+        TakeDecision::Acquired => {
+            #[allow(clippy::arithmetic_side_effects)]
+            let new_count = count - 1;
+            GaleSemTakeDecision {
+                ret: OK,
+                new_count,
+                action: GALE_SEM_ACTION_RETURN,
+            }
         }
-    } else if is_no_wait != 0 {
-        GaleSemTakeDecision {
+        TakeDecision::WouldBlock => GaleSemTakeDecision {
             ret: EBUSY,
             new_count: 0,
             action: GALE_SEM_ACTION_RETURN,
-        }
-    } else {
-        GaleSemTakeDecision {
+        },
+        TakeDecision::Pend => GaleSemTakeDecision {
             ret: 0,
             new_count: 0,
             action: GALE_SEM_ACTION_PEND,
-        }
+        },
     }
 }
 
