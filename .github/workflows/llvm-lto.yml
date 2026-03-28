@@ -108,8 +108,18 @@ jobs:
       # without the Zephyr SDK's GCC library directory.
       - name: "Find GCC lib path"
         run: |
-          GCC_LIB_DIR=$(dirname $(arm-zephyr-eabi-gcc -print-libgcc-file-name -mcpu=cortex-m3 -mthumb))
+          # The Zephyr SDK installs arm-zephyr-eabi-gcc but it's not always in PATH.
+          # Find it from the SDK install location.
+          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          if [ -z "${SDK_DIR}" ]; then
+            SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          fi
+          GCC="${SDK_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+          GCC_LIB_DIR=$(dirname $("${GCC}" -print-libgcc-file-name -mcpu=cortex-m3 -mthumb))
           echo "GCC_LIB_DIR=${GCC_LIB_DIR}" >> "$GITHUB_ENV"
+          echo "SDK_DIR=${SDK_DIR}" >> "$GITHUB_ENV"
+          export PATH="${SDK_DIR}/arm-zephyr-eabi/bin:${PATH}"
+          echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
           echo "GCC library path: ${GCC_LIB_DIR}"
 
       # --- Build 3: LLVM + Gale (no LTO) ---
@@ -315,8 +325,14 @@ jobs:
 
       - name: Find GCC lib path
         run: |
-          GCC_LIB_DIR=$(dirname $(arm-zephyr-eabi-gcc -print-libgcc-file-name -mcpu=cortex-m3 -mthumb))
+          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          if [ -z "${SDK_DIR}" ]; then
+            SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          fi
+          GCC="${SDK_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+          GCC_LIB_DIR=$(dirname $("${GCC}" -print-libgcc-file-name -mcpu=cortex-m3 -mthumb))
           echo "GCC_LIB_DIR=${GCC_LIB_DIR}" >> "$GITHUB_ENV"
+          echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
 
       - name: Build and run test (LLVM+LTO)
         run: |
