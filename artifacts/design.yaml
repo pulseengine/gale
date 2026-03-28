@@ -3716,3 +3716,52 @@ artifacts:
         target: SYSREQ-SEM-001
       - type: enables
         target: SWREQ-KILN-003
+
+  # ── Monitoring exclusion architecture decision ───────────────────────
+
+  - id: SWARCH-MON-001
+    type: sw-arch-component
+    title: Monitoring exclusion architecture
+    status: approved
+    description: >
+      Monitoring subsystems (thread_monitor, usage, obj_core,
+      spinlock_validate) are excluded from the Gale safety perimeter.
+      This follows industry practice (AUTOSAR, seL4, RTEMS safety
+      profiles) where diagnostic code is not part of the certified
+      kernel.  The exclusion is enforced by Kconfig: disabling
+      CONFIG_THREAD_MONITOR, CONFIG_SCHED_THREAD_USAGE, CONFIG_OBJ_CORE,
+      CONFIG_SPIN_VALIDATE removes the code entirely.  These 4 files
+      (933 lines) are purely observational — they read kernel state but
+      never modify synchronization or scheduling decisions.
+    tags: [monitoring, exclusion, architecture]
+    fields:
+      excluded-modules:
+        - "kernel/thread_monitor.c (CONFIG_THREAD_MONITOR)"
+        - "kernel/usage.c (CONFIG_SCHED_THREAD_USAGE)"
+        - "kernel/obj_core.c (CONFIG_OBJ_CORE)"
+        - "kernel/spinlock_validate.c (CONFIG_SPIN_VALIDATE)"
+      rationale: >
+        Monitoring code is read-only with respect to kernel state.
+        It instruments scheduling and locking for debugging/profiling
+        but does not affect correctness.  Industry standards (AUTOSAR
+        CP, seL4 verification scope, RTEMS qualification) exclude
+        diagnostic instrumentation from the certified/verified path.
+      trivial-modules:
+        - "kernel/banner.c — prints boot banner string, no state"
+        - "kernel/version.c — returns compile-time version constants"
+        - "kernel/main_weak.c — weak main() stub, replaced by application"
+        - "kernel/errno.c — per-thread errno storage, single variable"
+        - "kernel/nothread.c — stub for threadless builds"
+        - "kernel/float.c — FPU context save/restore, hardware-specific"
+        - "kernel/busy_wait.c — spin loop using cycle counter"
+        - "kernel/boot_args.c — stores boot arguments, no logic"
+        - "kernel/compiler_stack_protect.c — stack canary init, compiler feature"
+        - "kernel/irq_offload.c — test-only IRQ simulation"
+        - "kernel/sys_clock.c — tick announcement, delegates to timer driver"
+    links:
+      - type: allocated-from
+        target: SWREQ-MON-M01
+      - type: allocated-from
+        target: SWREQ-MON-M02
+      - type: allocated-from
+        target: SWREQ-TRIV-T01

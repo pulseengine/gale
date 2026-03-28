@@ -36,6 +36,10 @@
 #     → SYSREQ-MP-001  (system) → SWREQ-MP-MP01..MP06 (software)
 #     → SYSREQ-DY-001  (system) → SWREQ-DY-DY01..DY04 (software)
 #     → SYSREQ-SM-001  (system) → SWREQ-SM-SM01..SM04 (software)
+#     → SYSREQ-PERF-001..003 (system, non-functional) → SWREQ-PERF-P01 (software)
+#     → SYSREQ-MON-001 (system) → SWREQ-MON-M01..M02 (software)
+#     → SYSREQ-TRIV-001 (system) → SWREQ-TRIV-T01 (software)
+#     → SYSREQ-COV-001 (system, scope)
 #
 # The verified properties are the ASIL-D formal specifications.
 # Each maps directly to a property in the Verus/Rocq specs.
@@ -5151,3 +5155,221 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SM-001
+
+  # ── Performance: System requirements ───────────────────────────────────
+
+  - id: SYSREQ-PERF-001
+    type: system-req
+    title: Binary size overhead within 10%
+    status: approved
+    description: >
+      Gale shall not increase FLASH usage by more than 10% compared to the
+      equivalent Zephyr-only build for the same test application.
+    tags: [performance, binary-size]
+    fields:
+      req-type: performance
+      priority: must
+      verification-criteria: >
+        Size comparison of .text section between Gale-enabled and
+        Zephyr-only builds for the semaphore test application on
+        qemu_cortex_m3.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SYSREQ-PERF-002
+    type: system-req
+    title: FFI stack usage bounded to 256 bytes
+    status: approved
+    description: >
+      No Gale FFI function shall allocate more than 256 bytes of stack.
+    tags: [performance, stack]
+    fields:
+      req-type: performance
+      priority: must
+      verification-criteria: >
+        Static stack analysis of compiled FFI shim functions.
+        Manual inspection of generated assembly for each C-to-Rust
+        entry point.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  - id: SYSREQ-PERF-003
+    type: system-req
+    title: No heap allocation in verified code
+    status: approved
+    description: >
+      Gale's verified Rust code shall perform zero dynamic memory
+      allocation (no_std, no alloc).
+    tags: [performance, no-alloc, safety]
+    fields:
+      req-type: constraint
+      priority: must
+      verification-criteria: >
+        Crate is no_std with no alloc dependency. Compilation fails
+        if alloc is used. Miri confirms zero allocations during test runs.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Performance: Software requirements ─────────────────────────────────
+
+  - id: SWREQ-PERF-P01
+    type: sw-req
+    title: "PERF1: FFI call overhead is bounded (no loops or recursion)"
+    status: approved
+    description: >
+      Each C-to-Rust FFI decision call shall complete in bounded time
+      with no loops or recursion.  The Rust side performs a fixed
+      sequence of comparisons and field updates, then returns a decision
+      enum to the C shim.
+    tags: [performance, ffi, bounded-time]
+    fields:
+      req-type: performance
+      priority: must
+      verification-criteria: >
+        Code review confirms no loops or recursion in FFI entry points.
+        Verus decreases clauses prove termination where applicable.
+    links:
+      - type: derives-from
+        target: SYSREQ-PERF-001
+      - type: derives-from
+        target: SYSREQ-PERF-002
+
+  # ── Monitoring exclusion: System requirement ───────────────────────────
+
+  - id: SYSREQ-MON-001
+    type: system-req
+    title: Monitoring subsystems excluded from safety path
+    status: approved
+    description: >
+      Diagnostic and monitoring subsystems (thread_monitor, usage
+      statistics, obj_core, spinlock_validate) shall be excluded from
+      the Gale-verified kernel path.  These subsystems are optional
+      and not required for safety-critical operation.
+    tags: [monitoring, scope, exclusion]
+    fields:
+      req-type: constraint
+      priority: must
+      verification-criteria: >
+        Monitoring code is conditionally compiled via Kconfig.
+        Disabling CONFIG_THREAD_MONITOR, CONFIG_SCHED_THREAD_USAGE,
+        CONFIG_OBJ_CORE, CONFIG_SPIN_VALIDATE removes the code entirely
+        with no functional impact on Gale primitives.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Monitoring exclusion: Software requirements ────────────────────────
+
+  - id: SWREQ-MON-M01
+    type: sw-req
+    title: "MON1: CONFIG guards for each monitoring subsystem"
+    status: approved
+    description: >
+      Each monitoring subsystem shall be independently disableable via
+      Kconfig (CONFIG_THREAD_MONITOR, CONFIG_SCHED_THREAD_USAGE,
+      CONFIG_OBJ_CORE, CONFIG_SPIN_VALIDATE).  When disabled, the
+      corresponding source files are excluded from the build.
+    tags: [monitoring, kconfig]
+    fields:
+      req-type: constraint
+      priority: must
+      verification-criteria: >
+        Zephyr Kconfig guards verified in kernel/CMakeLists.txt.
+        Build with each CONFIG disabled confirms removal.
+    links:
+      - type: derives-from
+        target: SYSREQ-MON-001
+
+  - id: SWREQ-MON-M02
+    type: sw-req
+    title: "MON2: No monitoring dependency in safety path"
+    status: approved
+    description: >
+      No Gale-verified kernel primitive shall depend on monitoring
+      subsystem code for correct operation.  Monitoring hooks are
+      purely observational and may be removed without affecting
+      functional behavior.
+    tags: [monitoring, independence, safety]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Code review confirms no Gale Rust module imports or calls
+        monitoring subsystem functions.  All Gale tests pass with
+        monitoring configs disabled.
+    links:
+      - type: derives-from
+        target: SYSREQ-MON-001
+
+  # ── Trivial module passthrough: System requirement ─────────────────────
+
+  - id: SYSREQ-TRIV-001
+    type: system-req
+    title: Trivial infrastructure modules left as upstream C
+    status: approved
+    description: >
+      Kernel infrastructure modules with no safety-critical logic
+      (banner, version, errno, float context, busy_wait, boot_args,
+      compiler_stack_protect, irq_offload, sys_clock, main_weak,
+      nothread) shall be left as upstream Zephyr C.  These modules
+      contain no state machine logic, no arithmetic that could overflow,
+      and no synchronization — they are pure infrastructure.
+    tags: [trivial, scope, exclusion]
+    fields:
+      req-type: constraint
+      priority: should
+      verification-criteria: >
+        Documented rationale for each excluded module in design
+        artifacts.  No safety-relevant logic identified by code review.
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── Trivial module passthrough: Software requirement ───────────────────
+
+  - id: SWREQ-TRIV-T01
+    type: sw-req
+    title: "TRIV1: Documented exclusion rationale for each trivial module"
+    status: approved
+    description: >
+      Each excluded module shall have a documented rationale in the
+      design artifacts explaining why it is not safety-relevant.
+      The rationale must confirm: no state machines, no arithmetic
+      that could overflow, and no synchronization primitives.
+    tags: [trivial, documentation]
+    fields:
+      req-type: constraint
+      priority: should
+      verification-criteria: >
+        SWARCH-MON-001 design artifact documents the exclusion
+        rationale.  Code review of each module confirms no
+        safety-relevant logic.
+    links:
+      - type: derives-from
+        target: SYSREQ-TRIV-001
+
+  # ── Coverage extension target: System requirement ──────────────────────
+
+  - id: SYSREQ-COV-001
+    type: system-req
+    title: Kernel replacement scope — safety-critical logic only
+    status: approved
+    description: >
+      Gale shall replace all safety-critical kernel logic:
+      synchronization primitives, IPC, scheduling decisions, memory
+      allocation tracking, and timeout/timer management.
+      Infrastructure and monitoring modules are explicitly out of scope.
+    tags: [coverage, scope]
+    fields:
+      req-type: constraint
+      priority: must
+      verification-criteria: >
+        Module-by-module coverage matrix showing replaced vs. excluded
+        modules with rationale.  All safety-critical modules have
+        corresponding Gale implementations with Verus proofs.
+    links:
+      - type: derives-from
+        target: STKH-001

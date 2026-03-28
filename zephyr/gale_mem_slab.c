@@ -325,10 +325,14 @@ void k_mem_slab_free(struct k_mem_slab *slab, void *mem)
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_mem_slab, free, slab);
 
-	/* Extract: try to unpend first waiter (side effect: removes from queue) */
+	/* Extract: only try to unpend a waiter when the slab was completely
+	 * full (free_list == NULL).  Upstream mem_slab.c gates the unpend on
+	 * this condition — calling z_unpend_first_thread unconditionally
+	 * removes a thread from the wait queue even when there are free
+	 * blocks, corrupting the wait queue state. */
 	struct k_thread *pending_thread = NULL;
 
-	if (IS_ENABLED(CONFIG_MULTITHREADING)) {
+	if (unlikely(slab->free_list == NULL) && IS_ENABLED(CONFIG_MULTITHREADING)) {
 		pending_thread = z_unpend_first_thread(&slab->wait_q);
 	}
 
@@ -347,11 +351,9 @@ void k_mem_slab_free(struct k_mem_slab *slab, void *mem)
 	}
 
 	/* FREE_OK: return block to free list */
-	if (slab->info.num_used > 0) {
-		*(char **) mem = slab->free_list;
-		slab->free_list = (char *) mem;
-		slab->info.num_used = d.new_num_used;
-	}
+	*(char **) mem = slab->free_list;
+	slab->free_list = (char *) mem;
+	slab->info.num_used = d.new_num_used;
 
 	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_mem_slab, free, slab);
 

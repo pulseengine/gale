@@ -78,8 +78,8 @@ jobs:
             test_path: tests/kernel/mutex/sys_mutex
 
           # Semaphore variants
-          # sys_sem: fails test_multiple_thread_sem_usage (priority ordering)
-          # Tracked as Phase 3 thread_lifecycle interaction issue
+          - primitive: sys_sem
+            test_path: tests/kernel/semaphore/sys_sem
 
           # Message queue depth
           - primitive: msgq_usage
@@ -102,7 +102,8 @@ jobs:
           # Memory slab depth
           - primitive: mslab_api
             test_path: tests/kernel/mem_slab/mslab_api
-          # mslab_concept: fails — mem_slab Phase 3 interaction
+          - primitive: mslab_concept
+            test_path: tests/kernel/mem_slab/mslab_concept
           - primitive: mslab_threadsafe
             test_path: tests/kernel/mem_slab/mslab_threadsafe
 
@@ -248,3 +249,106 @@ jobs:
             echo "::error::Test suite failed"
             exit 1
           fi
+
+  # =========================================================================
+  # Binary size comparison — baseline vs Gale for the semaphore test suite
+  # =========================================================================
+  size-comparison:
+    name: "Binary size comparison"
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      options: --user root
+    env:
+      HOME: /root
+      DOCKER_CONFIG: /tmp/.docker
+
+    steps:
+      - name: Checkout Gale
+        uses: actions/checkout@v4
+        with:
+          path: gale
+
+      - name: Install Rust + ARM target
+        run: |
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          . /root/.cargo/env
+          rustup target add thumbv7m-none-eabi
+
+      - name: Initialize west workspace
+        run: |
+          pip3 install west
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
+          cd zephyr-workspace
+          west update --narrow -o=--depth=1
+          west sdk install
+
+      - name: Build baseline (stock Zephyr)
+        run: |
+          . /root/.cargo/env
+          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          cd zephyr-workspace
+          west build -b qemu_cortex_m3 \
+            -s zephyr/tests/kernel/semaphore/semaphore \
+            -d build-baseline
+          arm-zephyr-eabi-size build-baseline/zephyr/zephyr.elf | tee baseline-size.txt
+
+      - name: Build with Gale
+        run: |
+          . /root/.cargo/env
+          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
+          cd zephyr-workspace
+          west build -b qemu_cortex_m3 \
+            -s zephyr/tests/kernel/semaphore/semaphore \
+            -d build-gale \
+            -- \
+            -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
+            -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf"
+          arm-zephyr-eabi-size build-gale/zephyr/zephyr.elf | tee gale-size.txt
+
+      - name: Compare sizes
+        run: |
+          echo "=== Binary Size Comparison ==="
+          echo ""
+          echo "--- Baseline (stock Zephyr) ---"
+          cat zephyr-workspace/baseline-size.txt
+          echo ""
+          echo "--- With Gale ---"
+          cat zephyr-workspace/gale-size.txt
+          echo ""
+
+          BASELINE_TEXT=$(tail -1 zephyr-workspace/baseline-size.txt | awk '{print $1}')
+          BASELINE_DATA=$(tail -1 zephyr-workspace/baseline-size.txt | awk '{print $2}')
+          BASELINE_BSS=$(tail -1 zephyr-workspace/baseline-size.txt | awk '{print $3}')
+          BASELINE_TOTAL=$(tail -1 zephyr-workspace/baseline-size.txt | awk '{print $4}')
+
+          GALE_TEXT=$(tail -1 zephyr-workspace/gale-size.txt | awk '{print $1}')
+          GALE_DATA=$(tail -1 zephyr-workspace/gale-size.txt | awk '{print $2}')
+          GALE_BSS=$(tail -1 zephyr-workspace/gale-size.txt | awk '{print $3}')
+          GALE_TOTAL=$(tail -1 zephyr-workspace/gale-size.txt | awk '{print $4}')
+
+          DELTA_TEXT=$((GALE_TEXT - BASELINE_TEXT))
+          DELTA_DATA=$((GALE_DATA - BASELINE_DATA))
+          DELTA_BSS=$((GALE_BSS - BASELINE_BSS))
+          DELTA_TOTAL=$((GALE_TOTAL - BASELINE_TOTAL))
+
+          echo "--- Delta (Gale - Baseline) ---"
+          printf "  .text:  %+d bytes\n" "$DELTA_TEXT"
+          printf "  .data:  %+d bytes\n" "$DELTA_DATA"
+          printf "  .bss:   %+d bytes\n" "$DELTA_BSS"
+          printf "  total:  %+d bytes\n" "$DELTA_TOTAL"
+          echo ""
+
+          # Write summary to GitHub step summary
+          {
+            echo "## Binary Size Comparison (semaphore test)"
+            echo ""
+            echo "| Section | Baseline | Gale | Delta |"
+            echo "|---------|----------|------|-------|"
+            printf "| .text | %d | %d | %+d |\n" "$BASELINE_TEXT" "$GALE_TEXT" "$DELTA_TEXT"
+            printf "| .data | %d | %d | %+d |\n" "$BASELINE_DATA" "$GALE_DATA" "$DELTA_DATA"
+            printf "| .bss | %d | %d | %+d |\n" "$BASELINE_BSS" "$GALE_BSS" "$DELTA_BSS"
+            printf "| **total** | **%d** | **%d** | **%+d** |\n" "$BASELINE_TOTAL" "$GALE_TOTAL" "$DELTA_TOTAL"
+          } >> "$GITHUB_STEP_SUMMARY"

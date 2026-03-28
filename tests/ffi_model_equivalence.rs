@@ -12,28 +12,25 @@
 //! code matches the model."
 
 use gale::error::*;
+use gale::sem::{GiveDecision, TakeDecision, give_decide, take_decide};
 
-/// Simulate what the FFI gale_k_sem_give_decide does, using the
-/// verified Semaphore model.
+/// Map the Verus-verified give_decide to the FFI (action, new_count) tuple,
+/// exactly as the FFI gale_k_sem_give_decide does.
 fn model_sem_give(count: u32, limit: u32, has_waiter: bool) -> (u8, u32) {
-    if has_waiter {
-        // WAKE: count unchanged
-        (1, count)
-    } else {
-        // INCREMENT: count + 1, saturating at limit
-        let new_count = if count < limit { count + 1 } else { count };
-        (0, new_count)
+    match give_decide(count, limit, has_waiter) {
+        GiveDecision::WakeThread => (1, count),
+        GiveDecision::Increment  => (0, count + 1),
+        GiveDecision::Saturated  => (0, count),
     }
 }
 
-/// Simulate what the FFI gale_k_sem_take_decide does.
+/// Map the Verus-verified take_decide to the FFI (ret, new_count, action) tuple,
+/// exactly as the FFI gale_k_sem_take_decide does.
 fn model_sem_take(count: u32, is_no_wait: bool) -> (i32, u32, u8) {
-    if count > 0 {
-        (OK, count - 1, 0) // RETURN with decremented count
-    } else if is_no_wait {
-        (EBUSY, 0, 0) // RETURN with EBUSY
-    } else {
-        (0, 0, 1) // PEND
+    match take_decide(count, is_no_wait) {
+        TakeDecision::Acquired    => (OK, count - 1, 0),
+        TakeDecision::WouldBlock  => (EBUSY, 0, 0),
+        TakeDecision::Pend        => (0, 0, 1),
     }
 }
 
