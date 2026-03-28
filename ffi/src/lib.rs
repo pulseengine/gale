@@ -7902,12 +7902,21 @@ pub extern "C" fn gale_ring_buf_claim_decide(
         };
     }
 
-    // head_offset = head - base, with wraparound adjustment
-    let head_offset: u64 = head as u64 - base as u64;
-    let head_offset = if head_offset >= buf_size as u64 {
-        (head_offset - buf_size as u64) as u32
+    // head_offset = head - base, with wraparound adjustment.
+    // C uses unsigned subtraction (wraps at u16/u32 boundary).
+    // We use wrapping_sub to match, then mod buf_size for safety.
+    let raw_offset = head.wrapping_sub(base);
+    let head_offset = if raw_offset >= buf_size {
+        raw_offset - buf_size
     } else {
-        head_offset as u32
+        raw_offset
+    };
+    // Clamp: if still >= buf_size (shouldn't happen with valid state),
+    // use modulo to guarantee bounds.
+    let head_offset = if head_offset >= buf_size {
+        head_offset % buf_size
+    } else {
+        head_offset
     };
 
     // wrap_size = bytes until end of physical buffer
