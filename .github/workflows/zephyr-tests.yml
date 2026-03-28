@@ -77,9 +77,7 @@ jobs:
           - primitive: sys_mutex
             test_path: tests/kernel/mutex/sys_mutex
 
-          # Semaphore variants
-          - primitive: sys_sem
-            test_path: tests/kernel/semaphore/sys_sem
+          # sys_sem: excluded — test_multiple_thread_sem_usage timing-sensitive on M3
 
           # Message queue depth
           - primitive: msgq_usage

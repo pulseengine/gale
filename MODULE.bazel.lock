@@ -80,8 +80,6 @@
     "https://bcr.bazel.build/modules/platforms/1.0.0/MODULE.bazel": "f05feb42b48f1b3c225e4ccf351f367be0371411a803198ec34a389fb22aa580",
     "https://bcr.bazel.build/modules/platforms/1.0.0/source.json": "f4ff1fd412e0246fd38c82328eb209130ead81d62dcd5a9e40910f867f733d96",
     "https://bcr.bazel.build/modules/protobuf/21.7/MODULE.bazel": "a5a29bb89544f9b97edce05642fac225a808b5b7be74038ea3640fae2f8e66a7",
-    "https://bcr.bazel.build/modules/protobuf/23.1/MODULE.bazel": "88b393b3eb4101d18129e5db51847cd40a5517a53e81216144a8c32dfeeca52a",
-    "https://bcr.bazel.build/modules/protobuf/24.4/MODULE.bazel": "7bc7ce5f2abf36b3b7b7c8218d3acdebb9426aeb35c2257c96445756f970eb12",
     "https://bcr.bazel.build/modules/protobuf/27.0/MODULE.bazel": "7873b60be88844a0a1d8f80b9d5d20cfbd8495a689b8763e76c6372998d3f64c",
     "https://bcr.bazel.build/modules/protobuf/29.0-rc2/MODULE.bazel": "6241d35983510143049943fc0d57937937122baf1b287862f9dc8590fc4c37df",
     "https://bcr.bazel.build/modules/protobuf/29.0-rc3/MODULE.bazel": "33c2dfa286578573afc55a7acaea3cada4122b9631007c594bf0729f41c8de92",
@@ -126,7 +124,6 @@
     "https://bcr.bazel.build/modules/rules_java/4.0.0/MODULE.bazel": "5a78a7ae82cd1a33cef56dc578c7d2a46ed0dca12643ee45edbb8417899e6f74",
     "https://bcr.bazel.build/modules/rules_java/5.3.5/MODULE.bazel": "a4ec4f2db570171e3e5eb753276ee4b389bae16b96207e9d3230895c99644b86",
     "https://bcr.bazel.build/modules/rules_java/6.5.2/MODULE.bazel": "1d440d262d0e08453fa0c4d8f699ba81609ed0e9a9a0f02cd10b3e7942e61e31",
-    "https://bcr.bazel.build/modules/rules_java/7.1.0/MODULE.bazel": "30d9135a2b6561c761bd67bd4990da591e6bdc128790ce3e7afd6a3558b2fb64",
     "https://bcr.bazel.build/modules/rules_java/7.10.0/MODULE.bazel": "530c3beb3067e870561739f1144329a21c851ff771cd752a49e06e3dc9c2e71a",
     "https://bcr.bazel.build/modules/rules_java/7.12.2/MODULE.bazel": "579c505165ee757a4280ef83cda0150eea193eed3bef50b1004ba88b99da6de6",
     "https://bcr.bazel.build/modules/rules_java/7.2.0/MODULE.bazel": "06c0334c9be61e6cef2c8c84a7800cef502063269a5af25ceb100b192453d4ab",
@@ -165,7 +162,6 @@
     "https://bcr.bazel.build/modules/rules_python/0.28.0/MODULE.bazel": "cba2573d870babc976664a912539b320cbaa7114cd3e8f053c720171cde331ed",
     "https://bcr.bazel.build/modules/rules_python/0.31.0/MODULE.bazel": "93a43dc47ee570e6ec9f5779b2e64c1476a6ce921c48cc9a1678a91dd5f8fd58",
     "https://bcr.bazel.build/modules/rules_python/0.33.2/MODULE.bazel": "3e036c4ad8d804a4dad897d333d8dce200d943df4827cb849840055be8d2e937",
-    "https://bcr.bazel.build/modules/rules_python/0.36.0/MODULE.bazel": "a4ce1ccea92b9106c7d16ab9ee51c6183107e78ba4a37aa65055227b80cd480c",
     "https://bcr.bazel.build/modules/rules_python/0.4.0/MODULE.bazel": "9208ee05fd48bf09ac60ed269791cf17fb343db56c8226a720fbb1cdf467166c",
     "https://bcr.bazel.build/modules/rules_python/1.3.0/MODULE.bazel": "8361d57eafb67c09b75bf4bbe6be360e1b8f4f18118ab48037f2bd50aa2ccb13",
     "https://bcr.bazel.build/modules/rules_python/1.4.1/MODULE.bazel": "8991ad45bdc25018301d6b7e1d3626afc3c8af8aaf4bc04f23d0b99c938b73a6",
@@ -192,7 +188,6 @@
     "https://bcr.bazel.build/modules/swift_argument_parser/1.3.1.2/MODULE.bazel": "75aab2373a4bbe2a1260b9bf2a1ebbdbf872d3bd36f80bff058dccd82e89422f",
     "https://bcr.bazel.build/modules/swift_argument_parser/1.3.1.2/source.json": "5fba48bbe0ba48761f9e9f75f92876cafb5d07c0ce059cc7a8027416de94a05b",
     "https://bcr.bazel.build/modules/upb/0.0.0-20220923-a547704/MODULE.bazel": "7298990c00040a0e2f121f6c32544bab27d4452f80d9ce51349b1a28f3005c43",
-    "https://bcr.bazel.build/modules/upb/0.0.0-20230516-61a97ef/MODULE.bazel": "c0df5e35ad55e264160417fd0875932ee3c9dda63d9fccace35ac62f45e1b6f9",
     "https://bcr.bazel.build/modules/zlib/1.2.11/MODULE.bazel": "07b389abc85fdbca459b69e2ec656ae5622873af3f845e1c9d80fe179f3effa0",
     "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.5/MODULE.bazel": "eec517b5bbe5492629466e11dae908d043364302283de25581e3eb944326c4ca",
     "https://bcr.bazel.build/modules/zlib/1.3.1.bcr.5/source.json": "22bc55c47af97246cfc093d0acf683a7869377de362b5d1c552c2c2e16b7a806",
@@ -510,34 +505,6 @@
                 ]
               },
               "toolchain_target_settings": {}
-            }
-          }
-        }
-      }
-    },
-    "@@rules_renode+//renode:extensions.bzl%renode": {
-      "general": {
-        "bzlTransitiveDigest": "wXtuDEGHmSJq+IV5N1OL2PETT6K+Lsm1UOls08dfGQg=",
-        "usagesDigest": "NhGvFaecrhqJVNVzKOHGuB2KwZFMYShO/9M0WyKLwI4=",
-        "recordedInputs": [
-          "REPO_MAPPING:rules_renode+,bazel_tools bazel_tools",
-          "FILE:@@rules_renode+//renode/renode.BUILD.bazel 92dbf0d95a2e56bfda1a31891f4d0b5f262d30b6546afb1b60cc48fdc09effac"
-        ],
-        "generatedRepoSpecs": {
-          "renode_default_toolchain": {
-            "repoRuleId": "@@rules_renode+//renode:extensions.bzl%portable_renode_repository",
-            "attributes": {
-              "url": "",
-              "sha256": "",
-              "build_file_content": "_RENODE_DIRECTORY = \"renode_*/\"\n_COSIMULATION_DIRECTORY = \"renode_*/plugins/**/IntegrationLibrary/\"\nload(\"@rules_renode//renode:toolchain.bzl\", \"renode_toolchain\")\n\npackage(default_visibility = [\"//visibility:public\"])\n\nfilegroup(\n    name = \"runtime\",\n    srcs = glob([_RENODE_DIRECTORY + \"*\"], allow_empty=False),\n)\nrenode_toolchain(\n    name = \"toolchain_impl\",\n    runtime = [\":runtime\"],\n)\n\nfilegroup(\n    name = \"python_requirements\",\n    srcs = glob([_RENODE_DIRECTORY + \"tests/requirements.txt\"], allow_empty=False),\n)\nfilegroup(\n    name = \"python_requirements_dependencies\",\n    srcs = glob([_RENODE_DIRECTORY + \"tools/**/requirements.txt\"], allow_empty=False),\n)\n\nfilegroup(\n    name = \"renode_dpi_cc_library_srcs\",\n    srcs =\n        glob([\n            _COSIMULATION_DIRECTORY + p\n            for p in [\n                \"libs/socket-cpp/**/*.cpp\",\n                \"src/communication/socket_channel.cpp\",\n                \"src/renode_dpi.cpp\",\n                \"libs/socket-cpp/**/*.h\",\n                \"src/communication/*.h\",\n                \"src/*.h\",\n            ]\n        ], allow_empty=False),\n)\nfilegroup(\n    name = \"renode_dpi_cc_library_hdrs\",\n    srcs =\n        glob([\n            _COSIMULATION_DIRECTORY + p\n            for p in [\n                \"src/renode_dpi.h\",\n                \"hdl/includes/*\",\n            ]\n        ], allow_empty=False),\n)\n\n# There are no Verilog rules that supports bzlmod.\n# These filegroups below can be used to create a relevant target in your project.\nfilegroup(\n    name = \"renode_dpi_verilog_library_srcs\",\n    srcs = glob([_COSIMULATION_DIRECTORY + \"hdl/renode_pkg.sv\"], allow_empty=False) +\n           glob([_COSIMULATION_DIRECTORY + \"hdl/imports/*.sv\"], allow_empty=False) +\n           glob([_COSIMULATION_DIRECTORY + \"hdl/modules/**/*.sv\"], allow_empty=False),\n)\nfilegroup(\n    name = \"renode_dpi_verilog_library_hdrs\",\n    srcs = glob([_COSIMULATION_DIRECTORY + \"hdl/includes/*.svh\"], allow_empty=False),\n)\n"
-            }
-          },
-          "renode_toolchains": {
-            "repoRuleId": "@@rules_renode+//renode:extensions.bzl%renode_toolchains_repository",
-            "attributes": {
-              "toolchains": [
-                "renode_default_toolchain"
-              ]
             }
           }
         }
