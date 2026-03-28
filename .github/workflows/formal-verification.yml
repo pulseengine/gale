@@ -1,9 +1,11 @@
-# Formal verification CI — Verus (SMT/Z3)
+# Formal verification CI — Verus (SMT/Z3) + Kani (bounded model checking)
 #
-# Runs Verus verification via Bazel. rules_verus downloads the Verus
-# binary automatically. Nix is installed because rules_rocq_rust
-# (in MODULE.bazel) requires nix-build for toolchain resolution,
-# even when only running Verus.
+# Verus: runs via Bazel. rules_verus downloads the Verus binary automatically.
+#   Nix is installed because rules_rocq_rust (in MODULE.bazel) requires
+#   nix-build for toolchain resolution, even when only running Verus.
+#
+# Kani: runs via cargo kani. Two invocations — main crate (87 harnesses)
+#   and FFI crate (98 harnesses), 185 total.
 
 name: Formal Verification
 
@@ -12,14 +14,18 @@ on:
     branches: [main]
     paths:
       - 'src/**'
+      - 'plain/**'
       - 'ffi/**'
+      - 'tests/**'
       - 'BUILD.bazel'
       - 'MODULE.bazel'
   pull_request:
     branches: [main]
     paths:
       - 'src/**'
+      - 'plain/**'
       - 'ffi/**'
+      - 'tests/**'
   schedule:
     - cron: '0 2 * * 0'
 
@@ -43,3 +49,25 @@ jobs:
         run: |
           bazel test //:verus_test --test_output=errors
         timeout-minutes: 30
+
+  kani:
+    name: Kani BMC (185 harnesses)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install Kani
+        run: |
+          cargo install --locked kani-verifier
+          cargo kani setup
+
+      - name: Run Kani model harnesses (main crate)
+        run: cargo kani --tests
+        timeout-minutes: 45
+
+      - name: Run Kani FFI harnesses
+        run: cargo kani --tests
+        working-directory: ffi
+        timeout-minutes: 45
