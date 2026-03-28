@@ -53,16 +53,10 @@ int z_impl_k_futex_wake(struct k_futex *futex, bool wake_all)
 
 	key = k_spin_lock(&futex_data->lock);
 
-	/* Decide: Rust determines wake limit based on wake_all flag */
-	struct gale_futex_wake_decision d = gale_k_futex_wake_decide(
-		0U, /* num_waiters not yet known; C iterates the queue */
-		wake_all ? 1U : 0U);
-
 	/*
 	 * Apply: wake threads from the wait queue.
-	 * If wake_all, wake_limit == num_waiters (but since we don't know the
-	 * count up front, wake_all means iterate until queue is empty).
-	 * If !wake_all, wake_limit == 1 (or 0 if no waiters).
+	 * If wake_all, iterate until queue is empty.
+	 * If !wake_all, wake one thread.
 	 */
 	do {
 		thread = z_unpend_first_thread(&futex_data->wait_q);

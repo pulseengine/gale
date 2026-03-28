@@ -221,7 +221,7 @@ int k_mem_domain_add_partition(struct k_mem_domain *domain,
 		gale_k_mem_domain_add_partition_decide(
 			(uint32_t)part->start,
 			(uint32_t)part->size,
-			(uint32_t)part->attr,
+			0U, /* attr: unused by Rust decision, stays in C Apply step */
 			starts, sizes,
 			domain->num_partitions);
 

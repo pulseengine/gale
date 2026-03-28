@@ -48,15 +48,26 @@ jobs:
           . /root/.cargo/env
           rustup target add thumbv7m-none-eabi
 
-      - name: Install LLVM toolchain
+      - name: Install matching LLVM toolchain
         run: |
-          # The Zephyr CI image may have clang pre-installed; check first.
-          if ! command -v clang &>/dev/null; then
-            apt-get update -qq
-            apt-get install -y -qq lld clang llvm > /dev/null 2>&1
-          fi
+          # Rust stable uses LLVM 21. Cross-language LTO requires matching
+          # LLVM versions between the Rust compiler and the C linker (lld).
+          # The Zephyr CI image ships LLVM 18 which is incompatible.
+          . /root/.cargo/env
+          RUST_LLVM=$(rustc -vV | grep 'LLVM version' | grep -o '[0-9]*' | head -1)
+          echo "Rust LLVM major version: ${RUST_LLVM}"
+          apt-get update -qq
+          apt-get install -y -qq wget lsb-release software-properties-common gnupg > /dev/null 2>&1
+          wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- "${RUST_LLVM}" all
+          # Use versioned binaries
+          update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${RUST_LLVM} 100
+          update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${RUST_LLVM} 100
+          update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/ld.lld-${RUST_LLVM} 100
+          update-alternatives --install /usr/bin/llvm-size llvm-size /usr/bin/llvm-size-${RUST_LLVM} 100
+          update-alternatives --install /usr/bin/llvm-nm llvm-nm /usr/bin/llvm-nm-${RUST_LLVM} 100
+          update-alternatives --install /usr/bin/llvm-objdump llvm-objdump /usr/bin/llvm-objdump-${RUST_LLVM} 100
           clang --version
-          lld --version || ld.lld --version
+          ld.lld --version
 
       - name: Initialize west workspace
         run: |
@@ -270,12 +281,17 @@ jobs:
           . /root/.cargo/env
           rustup target add thumbv7m-none-eabi
 
-      - name: Install LLVM toolchain
+      - name: Install matching LLVM toolchain
         run: |
-          if ! command -v clang &>/dev/null; then
-            apt-get update -qq
-            apt-get install -y -qq lld clang llvm > /dev/null 2>&1
-          fi
+          . /root/.cargo/env
+          RUST_LLVM=$(rustc -vV | grep 'LLVM version' | grep -o '[0-9]*' | head -1)
+          echo "Rust LLVM major version: ${RUST_LLVM}"
+          apt-get update -qq
+          apt-get install -y -qq wget lsb-release software-properties-common gnupg > /dev/null 2>&1
+          wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- "${RUST_LLVM}" all
+          update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${RUST_LLVM} 100
+          update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${RUST_LLVM} 100
+          update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/ld.lld-${RUST_LLVM} 100
           clang --version
 
       - name: Initialize west workspace
