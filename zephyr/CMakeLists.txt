@@ -1725,3 +1725,59 @@ zephyr_library_link_libraries(${GALE_FFI_LIB})
 add_dependencies(gale_userspace gale_ffi_build)
 
 endif() # CONFIG_GALE_KERNEL_USERSPACE
+
+# ==========================================================================
+# Gale sys_heap — formally verified chunk-level allocation invariants
+# ==========================================================================
+#
+# NOTE: heap.c lives in lib/heap/, not kernel/.
+# ZEPHYR_EXTRA_MODULES cannot selectively exclude lib/ source files.
+#
+# Integration options:
+#   1. Patch lib/heap/CMakeLists.txt:
+#        zephyr_sources_ifndef(CONFIG_GALE_KERNEL_HEAP heap.c)
+#      Then this module's gale_heap.c replaces it entirely.
+#   2. Link alongside upstream heap.c — decision functions act as
+#      runtime guards (lower coverage but zero fork needed).
+#
+# For option 1, add to zephyr/lib/heap/CMakeLists.txt:
+#   if(NOT CONFIG_GALE_KERNEL_HEAP)
+#     zephyr_sources(heap.c)
+#   endif()
+
+if(CONFIG_GALE_KERNEL_HEAP)
+
+set(GALE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
+set(GALE_FFI_DIR ${GALE_DIR}/ffi)
+
+if(RUST_TARGET)
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/${RUST_TARGET}/release/libgale_ffi.a)
+else()
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/release/libgale_ffi.a)
+endif()
+
+if(NOT TARGET gale_ffi_build)
+  add_custom_command(
+    OUTPUT ${GALE_FFI_LIB}
+    COMMAND ${CMAKE_COMMAND} -E env
+      cargo build --release ${CARGO_TARGET_ARGS}
+      --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
+    COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
+    VERBATIM
+  )
+  add_custom_target(gale_ffi_build DEPENDS ${GALE_FFI_LIB})
+endif()
+
+zephyr_library_named(gale_heap)
+zephyr_library_sources(gale_heap.c)
+zephyr_library_include_directories(${GALE_DIR}/ffi/include)
+zephyr_library_include_directories(
+  ${ZEPHYR_BASE}/lib/heap
+  ${ZEPHYR_BASE}/kernel/include
+  ${ARCH_DIR}/${ARCH}/include
+)
+zephyr_library_link_libraries(${GALE_FFI_LIB})
+add_dependencies(gale_heap gale_ffi_build)
+
+endif() # CONFIG_GALE_KERNEL_HEAP
