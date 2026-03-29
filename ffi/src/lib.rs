@@ -8102,3 +8102,462 @@ mod kani_ring_buf_proofs {
         assert!(gale_ring_buf_space_get(put_head, get_tail, 0) == 0);
     }
 }
+
+// ---------------------------------------------------------------------------
+// FFI exports — bitarray (bounds validation)
+// ---------------------------------------------------------------------------
+//
+// These pure functions validate bitarray index and region bounds from
+// lib/utils/bitarray.c:
+//
+//   sys_bitarray_set_bit   — bit < num_bits check (line 331)
+//   sys_bitarray_alloc     — num_bits == 0 || num_bits > ba->num_bits (line 511)
+//   region operations      — offset + num_bits <= ba->num_bits (line 226)
+//   bundle indexing        — bit / 32 for bundle index, bit % 32 for offset
+//
+// The actual bitarray memory and spinlock stay in C. We model only the
+// bounds checks that prevent:
+//   - Out-of-bounds bit access (BA1)
+//   - Out-of-bounds region access (BA2)
+//   - Bundle array overrun (BA3)
+//   - Arithmetic overflow in offset + nbits (BA4)
+//
+// Verified properties:
+//   BA1: bit < num_bits (single bit bounds)
+//   BA2: offset + nbits <= num_bits (region bounds, overflow-safe)
+//   BA3: bundle_index < num_bundles (array bounds)
+//   BA4: no overflow in offset + nbits computation
+
+/// Validate a bitarray allocation request.
+///
+/// bitarray.c:511:
+///   if ((num_bits == 0) || (num_bits > bitarray->num_bits)) { return -EINVAL; }
+///
+/// This validates that an allocation of `alloc_nbits` bits is feasible
+/// and that a candidate region [offset, offset+alloc_nbits) is within bounds.
+///
+/// Arguments:
+///   num_bits:    total bits in the bitarray (bitarray->num_bits)
+///   offset:      candidate start position for allocation
+///   alloc_nbits: number of bits to allocate
+///
+/// Returns:
+///   0 (OK)     — valid allocation parameters
+///   -EINVAL    — alloc_nbits == 0 or alloc_nbits > num_bits or
+///                offset + alloc_nbits overflows or exceeds num_bits
+///
+/// Verified: BA2 (region bounds), BA4 (no overflow).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_bitarray_alloc_validate(
+    num_bits: u32,
+    offset: u32,
+    alloc_nbits: u32,
+) -> i32 {
+    if alloc_nbits == 0 || alloc_nbits > num_bits {
+        return EINVAL;
+    }
+    // Overflow-safe region bounds check
+    match offset.checked_add(alloc_nbits) {
+        Some(end) if end <= num_bits => OK,
+        _ => EINVAL,
+    }
+}
+
+/// Validate region parameters for bitarray operations.
+///
+/// bitarray.c:226:
+///   if (num_bits == 0 || offset + num_bits > bitarray->num_bits) { return -EINVAL; }
+///
+/// Used by set_region, clear_region, is_region_set, popcount_region, etc.
+///
+/// Arguments:
+///   num_bits:    total bits in the bitarray
+///   offset:      starting bit position of the region
+///   region_nbits: number of bits in the region
+///
+/// Returns:
+///   0 (OK)     — valid region
+///   -EINVAL    — region_nbits == 0 or region exceeds bitarray bounds
+///
+/// Verified: BA2 (region bounds), BA4 (no overflow).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_bitarray_region_check(
+    num_bits: u32,
+    offset: u32,
+    region_nbits: u32,
+) -> i32 {
+    if region_nbits == 0 {
+        return EINVAL;
+    }
+    // Overflow-safe: offset + region_nbits <= num_bits
+    match offset.checked_add(region_nbits) {
+        Some(end) if end <= num_bits => OK,
+        _ => EINVAL,
+    }
+}
+
+/// Validate a single bit index for set_bit / clear_bit / test_bit.
+///
+/// bitarray.c:331:
+///   if (bit >= bitarray->num_bits) { ret = -EINVAL; }
+///
+/// Arguments:
+///   num_bits: total bits in the bitarray
+///   bit:      bit index to validate
+///
+/// Returns:
+///   0 (OK)     — bit < num_bits
+///   -EINVAL    — bit >= num_bits
+///
+/// Verified: BA1 (bit bounds).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_bitarray_set_bit_validate(
+    num_bits: u32,
+    bit: u32,
+) -> i32 {
+    if bit >= num_bits {
+        EINVAL
+    } else {
+        OK
+    }
+}
+
+/// Compute bundle index and bit offset for a given bit position.
+///
+/// bitarray.c:336-337:
+///   idx = bit / bundle_bitness(bitarray);   // bundle_bitness = 32
+///   off = bit % bundle_bitness(bitarray);
+///
+/// Arguments:
+///   bit: bit index
+///
+/// Returns:
+///   GaleBitarrayBundleIndex with bundle_index (bit / 32) and
+///   bit_offset (bit % 32).
+///
+/// Verified: BA3 (bundle_index < num_bundles when bit < num_bits).
+#[repr(C)]
+pub struct GaleBitarrayBundleIndex {
+    /// Bundle array index: bit / 32.
+    pub bundle_index: u32,
+    /// Bit offset within the bundle: bit % 32.
+    pub bit_offset: u32,
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_bitarray_bundle_index(
+    bit: u32,
+) -> GaleBitarrayBundleIndex {
+    GaleBitarrayBundleIndex {
+        bundle_index: bit / 32,
+        bit_offset: bit % 32,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — bitarray
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_bitarray_proofs {
+    use super::*;
+
+    /// BA1: set_bit_validate accepts valid bit index.
+    #[kani::proof]
+    fn bitarray_set_bit_valid() {
+        let num_bits: u32 = kani::any();
+        let bit: u32 = kani::any();
+        kani::assume(num_bits > 0);
+        kani::assume(bit < num_bits);
+        assert!(gale_bitarray_set_bit_validate(num_bits, bit) == OK);
+    }
+
+    /// BA1: set_bit_validate rejects out-of-bounds bit.
+    #[kani::proof]
+    fn bitarray_set_bit_rejects_oob() {
+        let num_bits: u32 = kani::any();
+        let bit: u32 = kani::any();
+        kani::assume(bit >= num_bits);
+        assert!(gale_bitarray_set_bit_validate(num_bits, bit) == EINVAL);
+    }
+
+    /// BA2: alloc_validate accepts valid allocation.
+    #[kani::proof]
+    fn bitarray_alloc_valid() {
+        let num_bits: u32 = kani::any();
+        let offset: u32 = kani::any();
+        let alloc_nbits: u32 = kani::any();
+        kani::assume(num_bits > 0 && num_bits <= 1024);
+        kani::assume(alloc_nbits > 0 && alloc_nbits <= num_bits);
+        kani::assume(offset <= num_bits - alloc_nbits);
+        let rc = gale_bitarray_alloc_validate(num_bits, offset, alloc_nbits);
+        assert!(rc == OK);
+    }
+
+    /// BA2: alloc_validate rejects zero alloc_nbits.
+    #[kani::proof]
+    fn bitarray_alloc_rejects_zero() {
+        let num_bits: u32 = kani::any();
+        let offset: u32 = kani::any();
+        assert!(gale_bitarray_alloc_validate(num_bits, offset, 0) == EINVAL);
+    }
+
+    /// BA2: alloc_validate rejects oversized allocation.
+    #[kani::proof]
+    fn bitarray_alloc_rejects_oversized() {
+        let num_bits: u32 = kani::any();
+        let offset: u32 = kani::any();
+        let alloc_nbits: u32 = kani::any();
+        kani::assume(num_bits > 0);
+        kani::assume(alloc_nbits > num_bits);
+        assert!(gale_bitarray_alloc_validate(num_bits, offset, alloc_nbits) == EINVAL);
+    }
+
+    /// BA2: region_check accepts valid region.
+    #[kani::proof]
+    fn bitarray_region_valid() {
+        let num_bits: u32 = kani::any();
+        let offset: u32 = kani::any();
+        let region_nbits: u32 = kani::any();
+        kani::assume(num_bits > 0 && num_bits <= 1024);
+        kani::assume(region_nbits > 0 && region_nbits <= num_bits);
+        kani::assume(offset <= num_bits - region_nbits);
+        let rc = gale_bitarray_region_check(num_bits, offset, region_nbits);
+        assert!(rc == OK);
+    }
+
+    /// BA2: region_check rejects out-of-bounds region.
+    #[kani::proof]
+    fn bitarray_region_rejects_oob() {
+        let num_bits: u32 = kani::any();
+        let offset: u32 = kani::any();
+        let region_nbits: u32 = kani::any();
+        kani::assume(num_bits > 0 && num_bits <= 1024);
+        kani::assume(region_nbits > 0);
+        // Ensure offset + region_nbits > num_bits (either by overflow or exceeding)
+        kani::assume(
+            offset.checked_add(region_nbits).is_none()
+                || offset + region_nbits > num_bits,
+        );
+        assert!(gale_bitarray_region_check(num_bits, offset, region_nbits) == EINVAL);
+    }
+
+    /// BA3: bundle_index < ceil(num_bits / 32) when bit < num_bits.
+    #[kani::proof]
+    fn bitarray_bundle_index_bounded() {
+        let num_bits: u32 = kani::any();
+        let bit: u32 = kani::any();
+        kani::assume(num_bits > 0 && num_bits <= 4096);
+        kani::assume(bit < num_bits);
+        let num_bundles = (num_bits + 31) / 32;
+        let idx = gale_bitarray_bundle_index(bit);
+        assert!(idx.bundle_index < num_bundles);
+        assert!(idx.bit_offset < 32);
+    }
+
+    /// BA3: bundle_index reconstructs to original bit.
+    #[kani::proof]
+    fn bitarray_bundle_index_roundtrip() {
+        let bit: u32 = kani::any();
+        kani::assume(bit <= 65535); // bound for tractability
+        let idx = gale_bitarray_bundle_index(bit);
+        assert!(idx.bundle_index * 32 + idx.bit_offset == bit);
+    }
+
+    /// BA4: alloc_validate detects overflow in offset + alloc_nbits.
+    #[kani::proof]
+    fn bitarray_alloc_detects_overflow() {
+        let num_bits: u32 = kani::any();
+        let offset: u32 = kani::any();
+        let alloc_nbits: u32 = kani::any();
+        kani::assume(num_bits > 0);
+        kani::assume(alloc_nbits > 0 && alloc_nbits <= num_bits);
+        // Force overflow
+        kani::assume(offset.checked_add(alloc_nbits).is_none());
+        assert!(gale_bitarray_alloc_validate(num_bits, offset, alloc_nbits) == EINVAL);
+    }
+
+    /// BA4: region_check detects overflow in offset + region_nbits.
+    #[kani::proof]
+    fn bitarray_region_detects_overflow() {
+        let num_bits: u32 = kani::any();
+        let offset: u32 = kani::any();
+        let region_nbits: u32 = kani::any();
+        kani::assume(num_bits > 0);
+        kani::assume(region_nbits > 0);
+        // Force overflow
+        kani::assume(offset.checked_add(region_nbits).is_none());
+        assert!(gale_bitarray_region_check(num_bits, offset, region_nbits) == EINVAL);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — red-black tree (color invariant validation)
+// ---------------------------------------------------------------------------
+//
+// These pure functions validate red-black tree color invariants from
+// lib/utils/rb.c:
+//
+//   fix_extra_red (line 157)   — no two consecutive red nodes
+//   rotate + set_color (line 206-209) — color swap after rotation
+//
+// The actual tree structure and pointers stay in C. We model only the
+// color invariant checks that prevent:
+//   - Red-red violation on insert (RBT1)
+//   - Incorrect color assignment after rotation (RBT2)
+//
+// Verified properties:
+//   RBT1: no two consecutive red nodes (red-black property 4)
+//   RBT2: rotation color swap correctness (parent→BLACK, grandparent→RED)
+
+/// Validate that an insert operation does not create a red-red violation.
+///
+/// rb.c:169:
+///   if (is_black(parent)) { return; }
+///
+/// Given the colors of a node and its parent, returns whether the
+/// configuration is valid (no red-red violation). This models the
+/// check in fix_extra_red that determines if fixup is needed.
+///
+/// Arguments:
+///   is_black:        1 if the node is black, 0 if red
+///   parent_is_black: 1 if the parent is black, 0 if red
+///   has_left:        1 if the node has a left child (informational)
+///   has_right:       1 if the node has a right child (informational)
+///
+/// Returns:
+///   0 (OK)     — no red-red violation (node is black, or parent is black)
+///   -EINVAL    — red-red violation (both node and parent are red)
+///
+/// Verified: RBT1 (no consecutive red nodes).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_rb_validate_insert(
+    is_black: u8,
+    parent_is_black: u8,
+    _has_left: u8,
+    _has_right: u8,
+) -> i32 {
+    let node_is_red = is_black == 0;
+    let parent_is_red = parent_is_black == 0;
+
+    if node_is_red && parent_is_red {
+        // Red-red violation: fixup required
+        EINVAL
+    } else {
+        OK
+    }
+}
+
+/// Validate color assignment after a rotation.
+///
+/// rb.c:208-209:
+///   set_color(stack[stacksz - 3], BLACK);
+///   set_color(stack[stacksz - 2], RED);
+///
+/// After rotation, the new parent must be black and the demoted node
+/// must be red. This validates that the color swap is correct.
+///
+/// Arguments:
+///   node_color:  proposed color for the promoted node (1=BLACK, 0=RED)
+///   child_color: proposed color for the demoted node (1=BLACK, 0=RED)
+///
+/// Returns:
+///   0 (OK)     — correct: promoted=BLACK, demoted=RED
+///   -EINVAL    — incorrect color assignment
+///
+/// Verified: RBT2 (rotation preserves red-black properties via color swap).
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_rb_validate_color_after_rotation(
+    node_color: u8,
+    child_color: u8,
+) -> i32 {
+    // After rotation: promoted node must be BLACK (1), demoted must be RED (0)
+    let promoted_is_black = node_color == 1;
+    let demoted_is_red = child_color == 0;
+
+    if promoted_is_black && demoted_is_red {
+        OK
+    } else {
+        EINVAL
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — red-black tree
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod kani_rb_proofs {
+    use super::*;
+
+    /// RBT1: validate_insert accepts black node.
+    #[kani::proof]
+    fn rb_insert_black_node_ok() {
+        let parent_is_black: u8 = kani::any();
+        let has_left: u8 = kani::any();
+        let has_right: u8 = kani::any();
+        kani::assume(parent_is_black <= 1);
+        kani::assume(has_left <= 1);
+        kani::assume(has_right <= 1);
+        // Black node (is_black=1) never causes red-red violation
+        assert!(gale_rb_validate_insert(1, parent_is_black, has_left, has_right) == OK);
+    }
+
+    /// RBT1: validate_insert accepts red node with black parent.
+    #[kani::proof]
+    fn rb_insert_red_node_black_parent_ok() {
+        let has_left: u8 = kani::any();
+        let has_right: u8 = kani::any();
+        kani::assume(has_left <= 1);
+        kani::assume(has_right <= 1);
+        // Red node (is_black=0) with black parent (parent_is_black=1) is valid
+        assert!(gale_rb_validate_insert(0, 1, has_left, has_right) == OK);
+    }
+
+    /// RBT1: validate_insert detects red-red violation.
+    #[kani::proof]
+    fn rb_insert_red_red_violation() {
+        let has_left: u8 = kani::any();
+        let has_right: u8 = kani::any();
+        kani::assume(has_left <= 1);
+        kani::assume(has_right <= 1);
+        // Red node (is_black=0) with red parent (parent_is_black=0) is violation
+        assert!(gale_rb_validate_insert(0, 0, has_left, has_right) == EINVAL);
+    }
+
+    /// RBT2: validate_color_after_rotation accepts correct swap.
+    #[kani::proof]
+    fn rb_rotation_correct_colors() {
+        // Promoted=BLACK (1), demoted=RED (0) — the only valid post-rotation state
+        assert!(gale_rb_validate_color_after_rotation(1, 0) == OK);
+    }
+
+    /// RBT2: validate_color_after_rotation rejects all incorrect swaps.
+    #[kani::proof]
+    fn rb_rotation_rejects_wrong_colors() {
+        let node_color: u8 = kani::any();
+        let child_color: u8 = kani::any();
+        kani::assume(node_color <= 1);
+        kani::assume(child_color <= 1);
+        // Any combination other than (BLACK=1, RED=0) is invalid
+        kani::assume(!(node_color == 1 && child_color == 0));
+        assert!(gale_rb_validate_color_after_rotation(node_color, child_color) == EINVAL);
+    }
+
+    /// RBT1: exhaustive check — exactly one of {OK, EINVAL} for all valid inputs.
+    #[kani::proof]
+    fn rb_insert_validate_exhaustive() {
+        let is_black: u8 = kani::any();
+        let parent_is_black: u8 = kani::any();
+        kani::assume(is_black <= 1);
+        kani::assume(parent_is_black <= 1);
+        let rc = gale_rb_validate_insert(is_black, parent_is_black, 0, 0);
+        assert!(rc == OK || rc == EINVAL);
+        // Red-red is the only violation case
+        if is_black == 0 && parent_is_black == 0 {
+            assert!(rc == EINVAL);
+        } else {
+            assert!(rc == OK);
+        }
+    }
+}
