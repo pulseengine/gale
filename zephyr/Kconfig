@@ -307,3 +307,27 @@ config GALE_KERNEL_HEAP
 	  bucket management, pointer arithmetic, and memory layout
 	  remain native Zephyr C.
 	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_BITARRAY
+	bool "Use Gale formally verified bitarray validation"
+	help
+	  Add Gale formally verified bounds validation for
+	  lib/utils/bitarray.c. This does NOT replace bitarray.c —
+	  it provides validated wrapper functions that call Rust-verified
+	  bounds and overflow checks before delegating to the upstream
+	  implementation. Single-bit bounds, region bounds, allocation
+	  parameter validation, and bundle index computation are handled
+	  by verified Rust code.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_RB
+	bool "Use Gale formally verified red-black tree validation"
+	help
+	  Add Gale formally verified color invariant validation for
+	  lib/utils/rb.c. This does NOT replace rb.c — it provides
+	  assertion helpers that verify red-black tree invariants via
+	  Rust FFI. Red-red violation detection after insert and color
+	  swap validation after rotation are handled by verified Rust
+	  code. Tree structure, pointers, and all mutations remain
+	  native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.

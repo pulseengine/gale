@@ -1791,3 +1791,92 @@ zephyr_library_link_libraries(${GALE_FFI_LIB})
 add_dependencies(gale_heap gale_ffi_build)
 
 endif() # CONFIG_GALE_KERNEL_HEAP
+
+# ==========================================================================
+# Gale bitarray — formally verified bounds validation
+# ==========================================================================
+#
+# NOTE: This does NOT replace lib/utils/bitarray.c. It provides validated
+# wrapper functions with Rust-verified bounds / overflow checks that
+# delegate to the upstream implementation after validation passes.
+
+if(CONFIG_GALE_KERNEL_BITARRAY)
+
+set(GALE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
+set(GALE_FFI_DIR ${GALE_DIR}/ffi)
+
+if(RUST_TARGET)
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/${RUST_TARGET}/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+else()
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+endif()
+
+if(NOT TARGET gale_ffi_build)
+  add_custom_command(
+    OUTPUT ${GALE_FFI_LIB}
+    COMMAND ${CMAKE_COMMAND} -E env
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
+    COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
+    VERBATIM
+  )
+  add_custom_target(gale_ffi_build DEPENDS ${GALE_FFI_LIB})
+endif()
+
+zephyr_library_named(gale_bitarray)
+zephyr_library_sources(gale_bitarray.c)
+zephyr_library_include_directories(${GALE_DIR}/ffi/include)
+zephyr_library_include_directories(
+  ${ZEPHYR_BASE}/kernel/include
+  ${ARCH_DIR}/${ARCH}/include
+)
+zephyr_library_link_libraries(${GALE_FFI_LIB})
+add_dependencies(gale_bitarray gale_ffi_build)
+
+endif() # CONFIG_GALE_KERNEL_BITARRAY
+
+# ==========================================================================
+# Gale red-black tree — formally verified color invariant validation
+# ==========================================================================
+#
+# NOTE: This does NOT replace lib/utils/rb.c. It provides assertion
+# helpers that verify RB-tree invariants (no red-red violation, correct
+# color swap after rotation) via Rust FFI. The actual tree structure
+# and all mutations remain in Zephyr's rb.c.
+
+if(CONFIG_GALE_KERNEL_RB)
+
+set(GALE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
+set(GALE_FFI_DIR ${GALE_DIR}/ffi)
+
+if(RUST_TARGET)
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/${RUST_TARGET}/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+else()
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+endif()
+
+if(NOT TARGET gale_ffi_build)
+  add_custom_command(
+    OUTPUT ${GALE_FFI_LIB}
+    COMMAND ${CMAKE_COMMAND} -E env
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
+    COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
+    VERBATIM
+  )
+  add_custom_target(gale_ffi_build DEPENDS ${GALE_FFI_LIB})
+endif()
+
+zephyr_library_named(gale_rb)
+zephyr_library_sources(gale_rb.c)
+zephyr_library_include_directories(${GALE_DIR}/ffi/include)
+zephyr_library_include_directories(
+  ${ZEPHYR_BASE}/kernel/include
+  ${ARCH_DIR}/${ARCH}/include
+)
+zephyr_library_link_libraries(${GALE_FFI_LIB})
+add_dependencies(gale_rb gale_ffi_build)
+
+endif() # CONFIG_GALE_KERNEL_RB
