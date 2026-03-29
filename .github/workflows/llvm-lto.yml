@@ -1,12 +1,12 @@
 # LLVM cross-language LTO: build Zephyr+Gale with Clang+lld, enabling
 # link-time optimization across C and Rust boundaries.
 #
-# Strategy: Use Rust 1.78.0 (LLVM 18) to match the Zephyr CI image's
-# built-in Clang 18 / LLD 18. Both C and Rust emit LLVM 18 bitcode,
-# LLD merges and optimizes across the boundary.
-#
-# When Zephyr SDK 1.0 ships with native LLVM, upgrade both to the
-# SDK's version for LLVM 21+ optimizations.
+# Strategy: Use Rust stable (LLVM 21) + install matching Clang 21 from
+# apt.llvm.org. Picolibc fork (pulseengine/picolibc@gale/lld-lto-fix)
+# adds -L to the build dir so ld.lld can re-resolve libc symbols after
+# LTO codegen. CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY skips the
+# link step in CMake's toolchain detection (Clang 21 can compile ARM
+# but can't link without the full sysroot).
 
 name: LLVM Cross-Language LTO
 
@@ -23,8 +23,6 @@ concurrency:
 env:
   HOME: /root
   DOCKER_CONFIG: /tmp/.docker
-  # Rust 1.78.0 uses LLVM 18, matching the CI image's Clang 18.
-  RUST_TOOLCHAIN: "1.78.0"
 
 jobs:
   llvm-lto-build:
@@ -44,14 +42,27 @@ jobs:
         with:
           path: gale
 
-      - name: Install Rust 1.78 (LLVM 18) + ARM target
+      - name: Install Rust stable + ARM target
         run: |
           apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "${RUST_TOOLCHAIN}"
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           . /root/.cargo/env
           rustup target add thumbv7m-none-eabi
-          echo "Rust: $(rustc -vV | grep 'LLVM version')"
+
+      - name: Install matching Clang + LLD
+        run: |
+          . /root/.cargo/env
+          RUST_LLVM=$(rustc -vV | grep 'LLVM version' | grep -o '[0-9]*' | head -1)
+          echo "Rust LLVM: ${RUST_LLVM}"
+          apt-get install -y -qq wget lsb-release software-properties-common gnupg > /dev/null 2>&1
+          wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- "${RUST_LLVM}" all
+          update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${RUST_LLVM} 200
+          update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${RUST_LLVM} 200
+          update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/ld.lld-${RUST_LLVM} 200
+          update-alternatives --install /usr/bin/llvm-size llvm-size /usr/bin/llvm-size-${RUST_LLVM} 200
+          update-alternatives --install /usr/bin/llvm-nm llvm-nm /usr/bin/llvm-nm-${RUST_LLVM} 200
           echo "Clang: $(clang --version | head -1)"
+          echo "LLD: $(ld.lld --version | head -1)"
 
       - name: Initialize west workspace
         run: |
@@ -60,6 +71,18 @@ jobs:
           cd zephyr-workspace
           west update --narrow -o=--depth=1
           west sdk install
+
+      - name: Setup SDK paths
+        run: |
+          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          GCC="${SDK_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+          GCC_LIB_DIR=$(dirname $("${GCC}" -print-libgcc-file-name -mcpu=cortex-m3 -mthumb))
+          PICOLIBC_DIR="${SDK_DIR}/arm-zephyr-eabi/arm-zephyr-eabi/lib/thumb/v7-m/nofp"
+          echo "LLD_LIBS=-L${GCC_LIB_DIR} -L${PICOLIBC_DIR}" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=${GCC_LIB_DIR}:${PICOLIBC_DIR}" >> "$GITHUB_ENV"
+          echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
+          echo "SDK: ${SDK_DIR}, GCC: ${GCC_LIB_DIR}"
 
       # --- Build 1: Baseline (GCC, stock Zephyr, no Gale) ---
       - name: "Build baseline (GCC, no Gale)"
@@ -72,7 +95,7 @@ jobs:
             -d build-gcc-baseline
           arm-zephyr-eabi-size build-gcc-baseline/zephyr/zephyr.elf | tee gcc-baseline-size.txt
 
-      # --- Build 2: GCC + Gale (current default) ---
+      # --- Build 2: GCC + Gale ---
       - name: "Build GCC + Gale"
         run: |
           . /root/.cargo/env
@@ -99,8 +122,10 @@ jobs:
             -d build-llvm-gale \
             -- \
             -DZEPHYR_TOOLCHAIN_VARIANT=llvm \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
-            -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf"
+            -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf" \
+            -DCMAKE_EXE_LINKER_FLAGS="${LLD_LIBS}"
           llvm-size build-llvm-gale/zephyr/zephyr.elf 2>/dev/null \
             || arm-zephyr-eabi-size build-llvm-gale/zephyr/zephyr.elf \
             | tee llvm-gale-size.txt
@@ -117,8 +142,10 @@ jobs:
             -d build-llvm-lto \
             -- \
             -DZEPHYR_TOOLCHAIN_VARIANT=llvm \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
-            -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf;${GALE_ROOT}/zephyr/gale_lto_overlay.conf"
+            -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf;${GALE_ROOT}/zephyr/gale_lto_overlay.conf" \
+            -DCMAKE_EXE_LINKER_FLAGS="${LLD_LIBS}"
           llvm-size build-llvm-lto/zephyr/zephyr.elf 2>/dev/null \
             || arm-zephyr-eabi-size build-llvm-lto/zephyr/zephyr.elf \
             | tee llvm-lto-size.txt
@@ -136,23 +163,16 @@ jobs:
             exit 1
           fi
 
-      - name: "Check for Rust function inlining"
+      - name: "Check inlining + compare sizes"
         run: |
           cd zephyr-workspace
           echo "=== Symbol check ==="
-          echo "--- GCC+Gale (should have gale_ symbols) ---"
-          arm-zephyr-eabi-nm build-gcc-gale/zephyr/zephyr.elf 2>/dev/null \
-            | grep -i gale_ | head -20 || echo "(none)"
-          echo "--- LLVM+LTO (inlined = fewer/no gale_ symbols) ---"
-          llvm-nm build-llvm-lto/zephyr/zephyr.elf 2>/dev/null \
-            | grep -i gale_ | head -20 \
-            || arm-zephyr-eabi-nm build-llvm-lto/zephyr/zephyr.elf 2>/dev/null \
-              | grep -i gale_ | head -20 \
-            || echo "(fully inlined)"
+          echo "--- GCC+Gale ---"
+          arm-zephyr-eabi-nm build-gcc-gale/zephyr/zephyr.elf | grep -c gale_ || echo "0"
+          echo "--- LLVM+LTO ---"
+          (llvm-nm build-llvm-lto/zephyr/zephyr.elf 2>/dev/null || arm-zephyr-eabi-nm build-llvm-lto/zephyr/zephyr.elf) | grep -c gale_ || echo "0 (fully inlined)"
 
-      - name: "Compare sizes"
-        run: |
-          cd zephyr-workspace
+          echo ""
           parse_size() { tail -1 "$1" | awk '{print $1, $2, $3, $4}'; }
           read GCC_BL_TEXT GCC_BL_DATA GCC_BL_BSS GCC_BL_TOTAL <<< $(parse_size gcc-baseline-size.txt)
           read GCC_G_TEXT GCC_G_DATA GCC_G_BSS GCC_G_TOTAL <<< $(parse_size gcc-gale-size.txt)
@@ -170,14 +190,14 @@ jobs:
           printf "LTO savings vs GCC+Gale: %+d bytes\n" "$LTO_VS_GCC"
           printf "LTO vs baseline (net): %+d bytes\n" "$LTO_VS_BASELINE"
           {
-            echo "## LLVM Cross-Language LTO"
-            echo "| Build | .text | .data | .bss | total |"
-            echo "|-------|-------|-------|------|-------|"
-            printf "| GCC baseline | %d | %d | %d | %d |\n" "$GCC_BL_TEXT" "$GCC_BL_DATA" "$GCC_BL_BSS" "$GCC_BL_TOTAL"
-            printf "| GCC + Gale | %d | %d | %d | %d |\n" "$GCC_G_TEXT" "$GCC_G_DATA" "$GCC_G_BSS" "$GCC_G_TOTAL"
-            printf "| LLVM + Gale | %d | %d | %d | %d |\n" "$LLVM_G_TEXT" "$LLVM_G_DATA" "$LLVM_G_BSS" "$LLVM_G_TOTAL"
-            printf "| LLVM+LTO | %d | %d | %d | %d |\n" "$LTO_TEXT" "$LTO_DATA" "$LTO_BSS" "$LTO_TOTAL"
-            printf "| Net vs baseline | | | | %+d |\n" "$LTO_VS_BASELINE"
+            echo "## LLVM Cross-Language LTO (LLVM 21)"
+            echo "| Build | total |"
+            echo "|-------|-------|"
+            printf "| GCC baseline | %d |\n" "$GCC_BL_TOTAL"
+            printf "| GCC + Gale | %d |\n" "$GCC_G_TOTAL"
+            printf "| LLVM + Gale | %d |\n" "$LLVM_G_TOTAL"
+            printf "| LLVM+LTO | %d |\n" "$LTO_TOTAL"
+            printf "| **Net vs baseline** | **%+d** |\n" "$LTO_VS_BASELINE"
           } >> "$GITHUB_STEP_SUMMARY"
 
   llvm-lto-test:
@@ -218,12 +238,22 @@ jobs:
           echo "PRIMITIVE=${{ matrix.primitive }}" >> "$GITHUB_ENV"
           echo "TEST_PATH=${{ matrix.test_path }}" >> "$GITHUB_ENV"
 
-      - name: Install Rust 1.78 (LLVM 18) + ARM target
+      - name: Install Rust stable + ARM target
         run: |
           apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "${RUST_TOOLCHAIN}"
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           . /root/.cargo/env
           rustup target add thumbv7m-none-eabi
+
+      - name: Install matching Clang + LLD
+        run: |
+          . /root/.cargo/env
+          RUST_LLVM=$(rustc -vV | grep 'LLVM version' | grep -o '[0-9]*' | head -1)
+          apt-get install -y -qq wget lsb-release software-properties-common gnupg > /dev/null 2>&1
+          wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- "${RUST_LLVM}" all
+          update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${RUST_LLVM} 200
+          update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${RUST_LLVM} 200
+          update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/ld.lld-${RUST_LLVM} 200
 
       - name: Initialize west workspace
         run: |
@@ -232,6 +262,17 @@ jobs:
           cd zephyr-workspace
           west update --narrow -o=--depth=1
           west sdk install
+
+      - name: Setup SDK paths
+        run: |
+          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          GCC="${SDK_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+          GCC_LIB_DIR=$(dirname $("${GCC}" -print-libgcc-file-name -mcpu=cortex-m3 -mthumb))
+          PICOLIBC_DIR="${SDK_DIR}/arm-zephyr-eabi/arm-zephyr-eabi/lib/thumb/v7-m/nofp"
+          echo "LLD_LIBS=-L${GCC_LIB_DIR} -L${PICOLIBC_DIR}" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=${GCC_LIB_DIR}:${PICOLIBC_DIR}" >> "$GITHUB_ENV"
+          echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
 
       - name: Build and run test (LLVM+LTO)
         run: |
@@ -243,8 +284,10 @@ jobs:
             -s "zephyr/${TEST_PATH}" \
             -- \
             -DZEPHYR_TOOLCHAIN_VARIANT=llvm \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
-            -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf;${GALE_ROOT}/zephyr/gale_lto_overlay.conf"
+            -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf;${GALE_ROOT}/zephyr/gale_lto_overlay.conf" \
+            -DCMAKE_EXE_LINKER_FLAGS="${LLD_LIBS}"
           timeout 120 west build -t run 2>&1 | tee test.log
           if grep -q "PROJECT EXECUTION SUCCESSFUL" test.log; then
             echo "PASS: ${PRIMITIVE}"
