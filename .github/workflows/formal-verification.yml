@@ -1,4 +1,4 @@
-# Formal verification CI — Verus (SMT/Z3) + Kani (bounded model checking)
+# Formal verification CI — Verus (SMT/Z3) + Kani (BMC) + Rocq (theorem proving)
 #
 # Verus: runs via Bazel. rules_verus downloads the Verus binary automatically.
 #   Nix is installed because rules_rocq_rust (in MODULE.bazel) requires
@@ -6,6 +6,10 @@
 #
 # Kani: runs via cargo kani. Two invocations — main crate (87 harnesses)
 #   and FFI crate (98 harnesses), 185 total.
+#
+# Rocq: compiles 149 theorems across 9 proof files.
+#   Uses Bazel (rules_rocq_rust) to translate plain/*.rs to Rocq via
+#   coq-of-rust, then checks all proofs. Nix provides the Rocq toolchain.
 
 name: Formal Verification
 
@@ -17,6 +21,7 @@ on:
       - 'plain/**'
       - 'ffi/**'
       - 'tests/**'
+      - 'proofs/**'
       - 'BUILD.bazel'
       - 'MODULE.bazel'
   pull_request:
@@ -26,6 +31,7 @@ on:
       - 'plain/**'
       - 'ffi/**'
       - 'tests/**'
+      - 'proofs/**'
   schedule:
     - cron: '0 2 * * 0'
 
@@ -70,4 +76,30 @@ jobs:
       - name: Run Kani FFI harnesses
         run: cargo kani --tests
         working-directory: ffi
+        timeout-minutes: 45
+
+  rocq:
+    name: Rocq Proofs (149 theorems)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v30
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Rocq proof verification
+        run: |
+          bazel test \
+            //proofs:sem_proofs_test \
+            //proofs:mutex_proofs_test \
+            //proofs:condvar_proofs_test \
+            //proofs:msgq_proofs_test \
+            //proofs:stack_proofs_test \
+            //proofs:pipe_proofs_test \
+            //proofs:timer_proofs_test \
+            //proofs:event_proofs_test \
+            //proofs:mem_slab_proofs_test \
+            --test_output=errors
         timeout-minutes: 45
