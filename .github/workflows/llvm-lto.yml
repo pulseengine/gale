@@ -86,18 +86,26 @@ jobs:
 
       - name: "Setup SDK paths"
         run: |
-          # Find Zephyr SDK and add to PATH + set GCC lib dir for ld.lld
+          # Find Zephyr SDK and set up library paths for ld.lld.
+          # ld.lld needs explicit -L paths for both GCC runtime (libgcc.a)
+          # and picolibc (libc.a) — GCC finds these via -specs but lld doesn't.
           SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
           if [ -z "${SDK_DIR}" ]; then
             SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
           fi
           GCC="${SDK_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
           GCC_LIB_DIR=$(dirname $("${GCC}" -print-libgcc-file-name -mcpu=cortex-m3 -mthumb))
-          echo "GCC_LIB_DIR=${GCC_LIB_DIR}" >> "$GITHUB_ENV"
+          # picolibc libc.a is in the sysroot lib dir (same arch subdir)
+          PICOLIBC_DIR="${SDK_DIR}/arm-zephyr-eabi/arm-zephyr-eabi/lib/thumb/v7-m/nofp"
+          # Combined linker flags for ld.lld
+          LLD_EXTRA_LIBS="-L${GCC_LIB_DIR} -L${PICOLIBC_DIR}"
+          echo "LLD_EXTRA_LIBS=${LLD_EXTRA_LIBS}" >> "$GITHUB_ENV"
           echo "SDK_DIR=${SDK_DIR}" >> "$GITHUB_ENV"
           echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
           echo "SDK: ${SDK_DIR}"
           echo "GCC lib: ${GCC_LIB_DIR}"
+          echo "picolibc: ${PICOLIBC_DIR}"
+          echo "LLD flags: ${LLD_EXTRA_LIBS}"
 
       # --- Build 1: Baseline (GCC, stock Zephyr, no Gale) ---
       - name: "Build baseline (GCC, no Gale)"
@@ -142,7 +150,7 @@ jobs:
             -DZEPHYR_TOOLCHAIN_VARIANT=llvm \
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf" \
-            -DCMAKE_EXE_LINKER_FLAGS="-L${GCC_LIB_DIR}"
+            -DCMAKE_EXE_LINKER_FLAGS="${LLD_EXTRA_LIBS}"
           llvm-size build-llvm-gale/zephyr/zephyr.elf 2>/dev/null \
             || arm-zephyr-eabi-size build-llvm-gale/zephyr/zephyr.elf \
             | tee llvm-gale-size.txt
@@ -163,7 +171,7 @@ jobs:
             -DZEPHYR_TOOLCHAIN_VARIANT=llvm \
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf;${GALE_ROOT}/zephyr/gale_lto_overlay.conf" \
-            -DCMAKE_EXE_LINKER_FLAGS="-L${GCC_LIB_DIR}"
+            -DCMAKE_EXE_LINKER_FLAGS="${LLD_EXTRA_LIBS}"
           llvm-size build-llvm-lto/zephyr/zephyr.elf 2>/dev/null \
             || arm-zephyr-eabi-size build-llvm-lto/zephyr/zephyr.elf \
             | tee llvm-lto-size.txt
@@ -336,7 +344,8 @@ jobs:
           fi
           GCC="${SDK_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
           GCC_LIB_DIR=$(dirname $("${GCC}" -print-libgcc-file-name -mcpu=cortex-m3 -mthumb))
-          echo "GCC_LIB_DIR=${GCC_LIB_DIR}" >> "$GITHUB_ENV"
+          PICOLIBC_DIR="${SDK_DIR}/arm-zephyr-eabi/arm-zephyr-eabi/lib/thumb/v7-m/nofp"
+          echo "LLD_EXTRA_LIBS=-L${GCC_LIB_DIR} -L${PICOLIBC_DIR}" >> "$GITHUB_ENV"
           echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
 
       - name: Build and run test (LLVM+LTO)
@@ -351,7 +360,7 @@ jobs:
             -DZEPHYR_TOOLCHAIN_VARIANT=llvm \
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf;${GALE_ROOT}/zephyr/gale_lto_overlay.conf" \
-            -DCMAKE_EXE_LINKER_FLAGS="-L${GCC_LIB_DIR}"
+            -DCMAKE_EXE_LINKER_FLAGS="${LLD_EXTRA_LIBS}"
           timeout 120 west build -t run 2>&1 | tee test.log
           if grep -q "PROJECT EXECUTION SUCCESSFUL" test.log; then
             echo "PASS: ${PRIMITIVE}"
