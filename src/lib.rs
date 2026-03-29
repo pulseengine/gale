@@ -76,3 +76,4 @@ pub mod spinlock;
 pub mod atomic;
 pub mod userspace;
 pub mod ring_buf;
+pub mod zms;

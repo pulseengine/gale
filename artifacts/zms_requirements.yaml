@@ -1,0 +1,431 @@
+# ZMS (Zephyr Memory Storage) Requirements — formally verified storage subsystem.
+#
+# ASPICE V-model traceability from stakeholder through SW level.
+# ZMS replaces Zephyr's NVS/ZMS flash storage with a formally verified Rust
+# implementation proving power-loss resilience, deterministic write latency,
+# and data integrity for ASIL-D automotive applications.
+#
+# Hierarchy:
+#   STKH-ZMS-001..003 (stakeholder)
+#     → SYSREQ-ZMS-001..006 (system)
+#       → SWREQ-ZMS-P01..P10 (software)
+#
+# The verified properties are the ASIL-D formal specifications.
+# Each maps directly to a property in the Verus/Rocq specs.
+
+artifacts:
+  # ── Stakeholder requirements ─────────────────────────────────────────────
+
+  - id: STKH-ZMS-001
+    type: stakeholder-req
+    title: Persistent key-value storage for ASIL-D automotive applications
+    status: approved
+    description: >
+      Provide a formally verified persistent key-value storage subsystem
+      for ASIL-D automotive ECU applications.  The subsystem stores
+      configuration, calibration, and safety-critical state in NOR flash
+      with formal proofs of data integrity and crash consistency.
+      Replaces Zephyr's ZMS (Zephyr Memory Storage) module with verified
+      Rust while preserving identical API semantics.
+    tags: [safety, asil-d, storage, zms]
+    fields:
+      priority: must
+      source: "ISO 26262 ASIL-D — persistent storage for safety-critical parameters"
+
+  - id: STKH-ZMS-002
+    type: stakeholder-req
+    title: Deterministic write latency (bounded WCET)
+    status: approved
+    description: >
+      Write operations to the storage subsystem shall have deterministic
+      worst-case execution time (WCET) that can be bounded at design time.
+      This is required for ASIL-D real-time automotive systems where
+      unbounded latency during a write could violate timing constraints
+      and compromise safety functions.
+    tags: [safety, asil-d, wcet, deterministic, storage]
+    fields:
+      priority: must
+      source: "ISO 26262 ASIL-D — WCET analysis for safety-critical software"
+
+  - id: STKH-ZMS-003
+    type: stakeholder-req
+    title: Power-loss resilience (no data corruption)
+    status: approved
+    description: >
+      The storage subsystem shall tolerate arbitrary power loss at any
+      point during operation without corrupting previously committed data.
+      After power is restored, the subsystem shall recover to a consistent
+      state containing all successfully committed writes.  This is
+      mandatory for automotive ECUs subject to uncontrolled power cycling
+      (e.g., battery disconnect, crash events, key-off during write).
+    tags: [safety, asil-d, power-loss, crash-consistency, storage]
+    fields:
+      priority: must
+      source: "ISO 26262 ASIL-D — fault tolerance for non-volatile storage"
+
+  # ── System requirements ──────────────────────────────────────────────────
+
+  - id: SYSREQ-ZMS-001
+    type: system-req
+    title: Write latency bounded — write never triggers GC when sufficient space
+    status: approved
+    description: >
+      When the active sector has sufficient free space for the requested
+      write (ATE header + data payload), the write operation shall complete
+      with a bounded number of flash operations (O(1) flash writes) and
+      shall not trigger garbage collection.  This guarantees deterministic
+      latency for the common-case write path.
+    tags: [storage, latency, deterministic, zms]
+    fields:
+      req-type: performance
+      priority: must
+      verification-criteria: >
+        Verus proof that write with free_space >= ate_size + data_size
+        completes without calling GC.  Runtime test confirms bounded
+        flash write count via flash operation counter.
+    links:
+      - type: derives-from
+        target: STKH-ZMS-002
+
+  - id: SYSREQ-ZMS-002
+    type: system-req
+    title: GC decoupled from write path — application controls GC timing
+    status: approved
+    description: >
+      Garbage collection (sector compaction) shall be a separate operation
+      that the application explicitly invokes, not implicitly triggered by
+      write operations.  This allows the application to schedule GC during
+      non-safety-critical windows (e.g., key-off, idle periods) and
+      ensures write latency is not affected by GC overhead.
+    tags: [storage, gc, deterministic, zms]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus proof that the write function never calls the GC function.
+        API review confirms GC is a separate public method.
+        Integration test verifies write completes without GC invocation.
+    links:
+      - type: derives-from
+        target: STKH-ZMS-002
+
+  - id: SYSREQ-ZMS-003
+    type: system-req
+    title: Power-loss recovery — consistent state after crash at any point
+    status: approved
+    description: >
+      After power loss at any point during any operation (write, delete,
+      GC), the storage subsystem shall recover to a consistent state upon
+      next initialization.  Recovery shall preserve all previously
+      committed data and discard any partially written entries.  No manual
+      intervention or external recovery tool is required.
+    tags: [storage, power-loss, crash-consistency, zms]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus proof that init after simulated crash at every write point
+        yields a valid state.  Proptest with random crash injection
+        confirms no data loss of committed entries.
+    links:
+      - type: derives-from
+        target: STKH-ZMS-003
+
+  - id: SYSREQ-ZMS-004
+    type: system-req
+    title: Data integrity — CRC on every stored value
+    status: approved
+    description: >
+      Every allocation table entry (ATE) stored in flash shall include
+      a CRC protecting the ATE header fields and the associated data
+      payload.  On read, the CRC shall be verified and corrupted entries
+      shall be rejected.  This detects bit-rot, partial writes, and
+      flash cell degradation.
+    tags: [storage, integrity, crc, zms]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus proof that CRC8 detects all single-bit errors in the
+        protected field range.  Unit tests for CRC computation and
+        verification round-trip.  Fault injection tests with flipped bits.
+    links:
+      - type: derives-from
+        target: STKH-ZMS-003
+
+  - id: SYSREQ-ZMS-005
+    type: system-req
+    title: Reserved capacity — safety data has guaranteed storage
+    status: approved
+    description: >
+      The storage subsystem shall support a reserved capacity mechanism
+      where a configurable portion of flash is reserved exclusively for
+      safety-critical writes.  Non-safety writes shall be rejected when
+      accepting them would reduce free space below the safety reserve
+      threshold.  Safety writes are always admitted if physical space
+      exists.
+    tags: [storage, reserved-capacity, safety, zms]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus proof that write admission control rejects non-safety
+        writes when free space is at or below the reserve threshold.
+        Integration tests verify safety writes succeed when non-safety
+        writes are rejected.
+    links:
+      - type: derives-from
+        target: STKH-ZMS-001
+
+  - id: SYSREQ-ZMS-006
+    type: system-req
+    title: Binary size overhead within 10%
+    status: approved
+    description: >
+      The formally verified ZMS implementation shall not increase FLASH
+      usage by more than 10% compared to the equivalent Zephyr C ZMS
+      implementation for the same test application.
+    tags: [storage, performance, binary-size, zms]
+    fields:
+      req-type: performance
+      priority: must
+      verification-criteria: >
+        Size comparison of .text section between Gale ZMS and Zephyr
+        ZMS builds for the ZMS test application on qemu_cortex_m3.
+    links:
+      - type: derives-from
+        target: STKH-ZMS-001
+
+  # ── Software requirements: the 10 ASIL-D verification targets ───────────
+  #
+  # Each traces to the parent SYSREQ-ZMS that it satisfies.
+  # These are the formal properties proven by Verus/Rocq.
+
+  - id: SWREQ-ZMS-P01
+    type: sw-req
+    title: "P1: Sector state machine transitions are valid"
+    status: approved
+    description: >
+      The sector state machine has exactly three states: EMPTY, OPEN,
+      and CLOSED.  Transitions are restricted to: EMPTY → OPEN (erase
+      then write header), OPEN → CLOSED (write close marker), and
+      CLOSED → EMPTY (erase).  No other transition is possible.  This
+      invariant ensures that sector lifecycle is well-defined and that
+      exactly one sector is OPEN at any time.
+    tags: [zms, state-machine, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus enum + transition function with exhaustive match.
+        Proof that invalid transitions are rejected at compile time.
+        Proptest random transition sequences never reach invalid state.
+    links:
+      - type: derives-from
+        target: SYSREQ-ZMS-003
+
+  - id: SWREQ-ZMS-P02
+    type: sw-req
+    title: "P2: ATE CRC8 detects all single-bit errors"
+    status: approved
+    description: >
+      The CRC8 polynomial used for ATE integrity checking detects all
+      single-bit errors in the protected byte range.  For any valid ATE
+      with correct CRC, flipping any single bit in the header or data
+      fields produces a CRC mismatch.
+    tags: [zms, crc, integrity, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus proof over all bit positions that XOR with single-bit mask
+        produces different CRC.  Exhaustive test for ATE sizes up to
+        maximum entry length.
+    links:
+      - type: derives-from
+        target: SYSREQ-ZMS-004
+
+  - id: SWREQ-ZMS-P03
+    type: sw-req
+    title: "P3: Pre-erased spare sector maintained at all times"
+    status: approved
+    description: >
+      At all times during normal operation (outside of GC), at least one
+      sector is in the EMPTY state, available as a spare for GC
+      compaction.  This invariant ensures that GC can always make progress
+      and that the system never enters a state where all sectors are full
+      with no compaction target.
+    tags: [zms, spare-sector, invariant, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus invariant that sector_count(EMPTY) >= 1 after every
+        non-GC operation.  Proptest with random write sequences confirms
+        spare sector is always available.
+    links:
+      - type: derives-from
+        target: SYSREQ-ZMS-003
+
+  - id: SWREQ-ZMS-P04
+    type: sw-req
+    title: "P4: GC preserves all live data (no data loss during compaction)"
+    status: approved
+    description: >
+      After garbage collection completes, every key-value pair that was
+      live (most recent, non-deleted entry for each key) before GC is
+      present in the compacted sector.  GC may discard superseded
+      entries and deleted entries but shall never discard the latest
+      version of a live key.
+    tags: [zms, gc, data-preservation, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus proof that the set of live keys before GC equals the set
+        of live keys after GC.  Integration test writes known data,
+        triggers GC, reads back all entries.
+    links:
+      - type: derives-from
+        target: SYSREQ-ZMS-003
+
+  - id: SWREQ-ZMS-P05
+    type: sw-req
+    title: "P5: Write with sufficient free space completes without GC (O(1) flash ops)"
+    status: approved
+    description: >
+      When the active sector has at least (ATE header size + data payload
+      size) bytes of free space, the write operation completes with
+      exactly two flash write operations (one for ATE header, one for
+      data) and does not invoke garbage collection.  This guarantees
+      O(1) flash operations for the common-case write path.
+    tags: [zms, write, bounded, deterministic, asil-d]
+    fields:
+      req-type: performance
+      priority: must
+      verification-criteria: >
+        Verus proof that write function returns without calling GC when
+        free_space >= required_size.  Flash operation counter test
+        confirms exactly 2 flash writes per entry write.
+    links:
+      - type: derives-from
+        target: SYSREQ-ZMS-001
+
+  - id: SWREQ-ZMS-P06
+    type: sw-req
+    title: "P6: Cycle counter correctly identifies sector generation"
+    status: approved
+    description: >
+      Each sector header contains a monotonically increasing cycle
+      counter.  The cycle counter uniquely identifies the sector's
+      generation (number of erase cycles).  After erase and re-open,
+      the new cycle counter is strictly greater than the previous value.
+      The cycle counter is used during recovery to determine the most
+      recent sector when multiple sectors are OPEN (crash during GC).
+    tags: [zms, cycle-counter, generation, asil-d]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        Verus proof that erase-then-open produces strictly increasing
+        cycle counter.  Proof that recovery selects the sector with
+        the highest cycle counter as the active sector.
+    links:
+      - type: derives-from
+        target: SYSREQ-ZMS-003
+
+  - id: SWREQ-ZMS-P07
+    type: sw-req
+    title: "P7: Power-loss during ATE write detected by CRC (partial write safe)"
+    status: approved
+    description: >
+      If power is lost during an ATE write (header or data partially
+      written to flash), the partial ATE will have an invalid CRC on
+      next read.  The recovery procedure detects this via CRC mismatch
+      and discards the partial entry.  Previously committed entries
+      remain intact because they occupy earlier flash addresses that
+      were not being written at the time of power loss.
+    tags: [zms, power-loss, partial-write, crc, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus proof that any prefix of a valid ATE byte sequence
+        (truncated at arbitrary byte boundary) produces CRC mismatch.
+        Crash injection test at every byte offset during write confirms
+        partial entry is discarded and prior data is intact.
+    links:
+      - type: derives-from
+        target: SYSREQ-ZMS-003
+      - type: derives-from
+        target: SYSREQ-ZMS-004
+
+  - id: SWREQ-ZMS-P08
+    type: sw-req
+    title: "P8: Power-loss during GC recoverable via GC-done marker"
+    status: approved
+    description: >
+      Garbage collection writes a GC-done marker as its final step.
+      If power is lost before the marker is written, the recovery
+      procedure detects the incomplete GC (source sector still CLOSED,
+      destination sector partially filled, no GC-done marker) and
+      either completes or rolls back the GC.  In either case, no live
+      data is lost.
+    tags: [zms, power-loss, gc, recovery, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus proof that recovery after crash during GC (at any point)
+        produces a state where all previously live keys are accessible.
+        Crash injection test at every flash operation during GC confirms
+        data integrity after recovery.
+    links:
+      - type: derives-from
+        target: SYSREQ-ZMS-003
+
+  - id: SWREQ-ZMS-P09
+    type: sw-req
+    title: "P9: Reserved capacity never consumed by non-safety writes"
+    status: approved
+    description: >
+      The write admission control function maintains the invariant that
+      non-safety writes are rejected when accepting them would reduce
+      available free space below the configured safety reserve threshold.
+      The reserved capacity is exclusively available for safety-flagged
+      writes.  This invariant holds across all write operations and
+      is preserved through GC.
+    tags: [zms, reserved-capacity, admission-control, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus invariant that after any non-safety write, free_space >=
+        reserve_threshold.  Proptest with mixed safety/non-safety writes
+        confirms reserve is never breached by non-safety writes.
+    links:
+      - type: derives-from
+        target: SYSREQ-ZMS-005
+
+  - id: SWREQ-ZMS-P10
+    type: sw-req
+    title: "P10: Write admission control rejects when below safety threshold"
+    status: approved
+    description: >
+      When free space is at or below the safety reserve threshold, the
+      write admission control function returns a rejection error code
+      for non-safety writes.  Safety-flagged writes are still admitted
+      as long as physical flash space exists.  The rejection is
+      deterministic and based solely on the current free space count
+      and the reserve threshold — no probabilistic or heuristic logic.
+    tags: [zms, admission-control, threshold, asil-d]
+    fields:
+      req-type: safety
+      priority: must
+      verification-criteria: >
+        Verus proof that admission_control(non_safety, free <= threshold)
+        returns Err.  Verus proof that admission_control(safety, free > 0)
+        returns Ok.  Unit tests for boundary conditions at threshold.
+    links:
+      - type: derives-from
+        target: SYSREQ-ZMS-005
