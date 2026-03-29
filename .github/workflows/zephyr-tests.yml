@@ -13,6 +13,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+  pull-requests: write
+
 concurrency:
   group: zephyr-${{ github.ref }}
   cancel-in-progress: true
@@ -350,3 +354,35 @@ jobs:
             printf "| .bss | %d | %d | %+d |\n" "$BASELINE_BSS" "$GALE_BSS" "$DELTA_BSS"
             printf "| **total** | **%d** | **%d** | **%+d** |\n" "$BASELINE_TOTAL" "$GALE_TOTAL" "$DELTA_TOTAL"
           } >> "$GITHUB_STEP_SUMMARY"
+
+          # Emit bencher-format output for tracking over time
+          {
+            printf "gale_overhead_text %d ns/iter (+/- 0)\n" "$DELTA_TEXT"
+            printf "gale_overhead_total %d ns/iter (+/- 0)\n" "$DELTA_TOTAL"
+            printf "gale_flash_bytes %d ns/iter (+/- 0)\n" "$GALE_TOTAL"
+            printf "baseline_flash_bytes %d ns/iter (+/- 0)\n" "$BASELINE_TOTAL"
+          } > zephyr-workspace/benchmark-output.txt
+
+          # Fail if total overhead exceeds 10% (SYSREQ-PERF-001)
+          PERCENT=$((DELTA_TOTAL * 100 / BASELINE_TOTAL))
+          echo "Overhead: ${PERCENT}%"
+          if [ "$PERCENT" -gt 10 ]; then
+            echo "::error::Binary size overhead ${PERCENT}% exceeds 10% threshold (SYSREQ-PERF-001)"
+            exit 1
+          fi
+
+      - name: Track binary size over time
+        if: always()
+        continue-on-error: true
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: Binary Size (semaphore test, qemu_cortex_m3)
+          tool: cargo
+          output-file-path: zephyr-workspace/benchmark-output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          comment-on-alert: true
+          alert-threshold: "110%"
+          fail-on-alert: false
+          max-items-in-chart: 50
+          save-data-file: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
