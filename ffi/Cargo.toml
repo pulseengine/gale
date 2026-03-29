@@ -25,3 +25,18 @@ lto = true        # fat LTO — maximum interprocedural optimization
 codegen-units = 1
 panic = "abort"
 overflow-checks = true
+
+# Cross-language LTO profile: emit LLVM bitcode instead of machine code.
+#
+# When building with LLVM/clang + CONFIG_LTO=y, the Rust static library
+# must contain LLVM bitcode so that lld can inline Rust functions into C
+# call sites. Setting lto=false here prevents rustc from consuming the
+# bitcode internally (fat LTO); instead, -Clinker-plugin-lto in RUSTFLAGS
+# tells rustc to emit .o files containing LLVM IR, which lld merges with
+# the C bitcode during the final link.
+#
+# codegen-units=1 ensures all Rust code lands in a single bitcode module,
+# giving the linker maximum visibility for cross-language inlining.
+[profile.release-lto]
+inherits = "release"
+lto = false       # do NOT do fat LTO — let the external linker (lld) handle it
