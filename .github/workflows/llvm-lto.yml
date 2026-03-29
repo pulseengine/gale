@@ -111,6 +111,7 @@ jobs:
           arm-zephyr-eabi-size build-gcc-gale/zephyr/zephyr.elf | tee gcc-gale-size.txt
 
       # --- Build 3: LLVM + Gale (no LTO) ---
+      # Uses LTO overlay just for CONFIG_LLVM_USE_LLD=y (lld instead of bfd)
       - name: "Build LLVM + Gale (no LTO)"
         run: |
           . /root/.cargo/env
@@ -124,7 +125,7 @@ jobs:
             -DZEPHYR_TOOLCHAIN_VARIANT=llvm \
             -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
-            -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf" \
+            -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf;${GALE_ROOT}/zephyr/gale_lto_overlay.conf" \
             -DCMAKE_EXE_LINKER_FLAGS="${LLD_LIBS}"
           llvm-size build-llvm-gale/zephyr/zephyr.elf 2>/dev/null \
             || arm-zephyr-eabi-size build-llvm-gale/zephyr/zephyr.elf \
