@@ -444,4 +444,117 @@ pub proof fn lemma_reentrancy_count_tracks_depth(n: nat)
 {
 }
 
+// =================================================================
+// Lightweight decision functions — scalar-only, no WaitQueue allocation.
+// Used by FFI to delegate safety-critical logic to the verified model.
+// =================================================================
+
+/// Lightweight lock decision — no WaitQueue allocation.
+/// Used by FFI to avoid constructing full Mutex objects.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum LockDecision {
+    /// Mutex unlocked — acquire it (M3). new_lock_count = 1.
+    Acquire = 0,
+    /// Reentrant lock — same owner (M4). new_lock_count = lock_count + 1.
+    Reentrant = 1,
+    /// Different owner, willing to wait — pend on wait queue.
+    Pend = 2,
+    /// Different owner, no-wait — return busy (M5).
+    Busy = 3,
+    /// Overflow — lock_count would exceed u32::MAX (M10).
+    Overflow = 4,
+}
+
+/// Lightweight unlock decision — no WaitQueue allocation.
+/// Used by FFI to avoid constructing full Mutex objects.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum UnlockDecisionKind {
+    /// Not locked — return -EINVAL (M6a).
+    NotLocked = 0,
+    /// Not owner — return -EPERM (M6b).
+    NotOwner = 1,
+    /// Reentrant release — lock_count decremented, still held (M7).
+    Released = 2,
+    /// Fully unlocked — caller handles waiter transfer (M8, M9).
+    FullyUnlocked = 3,
+}
+
+/// Lightweight lock decision — takes scalars, no WaitQueue allocation.
+///
+/// Verified properties (M3, M4, M5, M10):
+/// - owner_is_null ==> Acquire
+/// - owner_is_current && lock_count < u32::MAX ==> Reentrant
+/// - owner_is_current && lock_count == u32::MAX ==> Overflow
+/// - !owner_is_null && !owner_is_current && is_no_wait ==> Busy
+/// - !owner_is_null && !owner_is_current && !is_no_wait ==> Pend
+pub fn lock_decide(
+    lock_count: u32,
+    owner_is_null: bool,
+    owner_is_current: bool,
+    is_no_wait: bool,
+) -> (result: LockDecision)
+    requires
+        true,
+    ensures
+        owner_is_null ==> result === LockDecision::Acquire,
+        !owner_is_null && owner_is_current && lock_count < u32::MAX
+            ==> result === LockDecision::Reentrant,
+        !owner_is_null && owner_is_current && lock_count == u32::MAX
+            ==> result === LockDecision::Overflow,
+        !owner_is_null && !owner_is_current && is_no_wait
+            ==> result === LockDecision::Busy,
+        !owner_is_null && !owner_is_current && !is_no_wait
+            ==> result === LockDecision::Pend,
+{
+    if owner_is_null {
+        LockDecision::Acquire
+    } else if owner_is_current {
+        if lock_count < u32::MAX {
+            LockDecision::Reentrant
+        } else {
+            LockDecision::Overflow
+        }
+    } else if is_no_wait {
+        LockDecision::Busy
+    } else {
+        LockDecision::Pend
+    }
+}
+
+/// Lightweight unlock decision — takes scalars, no WaitQueue allocation.
+///
+/// Verified properties (M6a, M6b, M7, M8/M9):
+/// - owner_is_null ==> NotLocked
+/// - !owner_is_null && !owner_is_current ==> NotOwner
+/// - !owner_is_null && owner_is_current && lock_count > 1 ==> Released
+/// - !owner_is_null && owner_is_current && lock_count <= 1 ==> FullyUnlocked
+pub fn unlock_decide(
+    lock_count: u32,
+    owner_is_null: bool,
+    owner_is_current: bool,
+) -> (result: UnlockDecisionKind)
+    requires
+        true,
+    ensures
+        owner_is_null ==> result === UnlockDecisionKind::NotLocked,
+        !owner_is_null && !owner_is_current
+            ==> result === UnlockDecisionKind::NotOwner,
+        !owner_is_null && owner_is_current && lock_count > 1
+            ==> result === UnlockDecisionKind::Released,
+        !owner_is_null && owner_is_current && lock_count <= 1
+            ==> result === UnlockDecisionKind::FullyUnlocked,
+{
+    if owner_is_null {
+        UnlockDecisionKind::NotLocked
+    } else if !owner_is_current {
+        UnlockDecisionKind::NotOwner
+    } else if lock_count > 1 {
+        UnlockDecisionKind::Released
+    } else {
+        UnlockDecisionKind::FullyUnlocked
+    }
+}
+
 } // verus!

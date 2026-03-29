@@ -116,3 +116,102 @@ impl Stack {
         self.capacity
     }
 }
+// =================================================================
+// Lightweight decision functions — scalar-only, no WaitQueue allocation.
+// Used by FFI to delegate safety-critical logic to the verified model.
+// =================================================================
+
+/// Lightweight push decision — no WaitQueue allocation.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum PushDecision {
+    /// Space available, no waiters: store data, count incremented.
+    Store = 0,
+    /// A waiter exists: give data directly to waiting thread (count unchanged).
+    WakeWaiter = 1,
+    /// Stack full: reject push.
+    Full = 2,
+}
+
+/// Result of a push decision with updated count.
+#[derive(Debug)]
+pub struct PushDecideResult {
+    pub decision: PushDecision,
+    pub new_count: u32,
+}
+
+/// Lightweight pop decision — no WaitQueue allocation.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum PopDecision {
+    /// Data available: pop it, count decremented.
+    Pop = 0,
+    /// Stack empty, willing to wait: pend current thread.
+    Pend = 1,
+    /// Stack empty, no-wait: return busy.
+    Busy = 2,
+}
+
+/// Result of a pop decision with updated count.
+#[derive(Debug)]
+pub struct PopDecideResult {
+    pub decision: PopDecision,
+    pub new_count: u32,
+}
+
+/// Lightweight push decision — takes scalars, no WaitQueue allocation.
+///
+/// Verified properties (SK1, SK3, SK4):
+/// - has_waiter ==> WakeWaiter (count unchanged)
+/// - !has_waiter && count < capacity ==> Store (count + 1)
+/// - !has_waiter && count >= capacity ==> Full (count unchanged)
+pub fn push_decide(
+    count: u32,
+    capacity: u32,
+    has_waiter: bool,
+) -> PushDecideResult {
+    if has_waiter {
+        PushDecideResult {
+            decision: PushDecision::WakeWaiter,
+            new_count: count,
+        }
+    } else if count < capacity {
+        PushDecideResult {
+            decision: PushDecision::Store,
+            new_count: count + 1,
+        }
+    } else {
+        PushDecideResult {
+            decision: PushDecision::Full,
+            new_count: count,
+        }
+    }
+}
+
+/// Lightweight pop decision — takes scalars, no WaitQueue allocation.
+///
+/// Verified properties (SK1, SK5, SK6):
+/// - count > 0 ==> Pop (count - 1)
+/// - count == 0 && is_no_wait ==> Busy
+/// - count == 0 && !is_no_wait ==> Pend
+pub fn pop_decide(
+    count: u32,
+    is_no_wait: bool,
+) -> PopDecideResult {
+    if count > 0 {
+        PopDecideResult {
+            decision: PopDecision::Pop,
+            new_count: count - 1,
+        }
+    } else if is_no_wait {
+        PopDecideResult {
+            decision: PopDecision::Busy,
+            new_count: 0,
+        }
+    } else {
+        PopDecideResult {
+            decision: PopDecision::Pend,
+            new_count: 0,
+        }
+    }
+}

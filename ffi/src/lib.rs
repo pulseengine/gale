@@ -566,6 +566,7 @@ pub const GALE_MUTEX_ACTION_BUSY: u8 = 2;
 /// Priority inheritance logic stays in C — Rust decides the action,
 /// C applies it including any priority adjustments.
 ///
+/// Delegates to `gale::mutex::lock_decide` (Verus-verified).
 /// Verified: M3 (acquire), M4 (reentrant), M5 (contended), M10 (no overflow).
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mutex_lock_decide(
@@ -574,44 +575,39 @@ pub extern "C" fn gale_k_mutex_lock_decide(
     owner_is_current: u32,
     is_no_wait: u32,
 ) -> GaleMutexLockDecision {
-    if owner_is_null != 0 {
-        // Mutex unlocked — acquire (M3).
-        GaleMutexLockDecision {
+    use gale::mutex::{LockDecision, lock_decide};
+
+    let d = lock_decide(lock_count, owner_is_null != 0, owner_is_current != 0, is_no_wait != 0);
+    match d {
+        LockDecision::Acquire => GaleMutexLockDecision {
             ret: OK,
             action: GALE_MUTEX_ACTION_ACQUIRED,
             new_lock_count: 1,
-        }
-    } else if owner_is_current != 0 {
-        // Reentrant lock — same owner (M4, M10).
-        match lock_count.checked_add(1) {
-            Some(n) => GaleMutexLockDecision {
+        },
+        LockDecision::Reentrant => {
+            #[allow(clippy::arithmetic_side_effects)]
+            let n = lock_count + 1;
+            GaleMutexLockDecision {
                 ret: OK,
                 action: GALE_MUTEX_ACTION_ACQUIRED,
                 new_lock_count: n,
-            },
-            None => {
-                // Overflow would violate M10.
-                GaleMutexLockDecision {
-                    ret: EINVAL,
-                    action: GALE_MUTEX_ACTION_BUSY,
-                    new_lock_count: lock_count,
-                }
             }
         }
-    } else if is_no_wait != 0 {
-        // Different owner, no-wait — return busy (M5).
-        GaleMutexLockDecision {
+        LockDecision::Overflow => GaleMutexLockDecision {
+            ret: EINVAL,
+            action: GALE_MUTEX_ACTION_BUSY,
+            new_lock_count: lock_count,
+        },
+        LockDecision::Busy => GaleMutexLockDecision {
             ret: EBUSY,
             action: GALE_MUTEX_ACTION_BUSY,
             new_lock_count: lock_count,
-        }
-    } else {
-        // Different owner, willing to wait — pend (M5).
-        GaleMutexLockDecision {
+        },
+        LockDecision::Pend => GaleMutexLockDecision {
             ret: 0,
             action: GALE_MUTEX_ACTION_PEND,
             new_lock_count: lock_count,
-        }
+        },
     }
 }
 
@@ -636,6 +632,7 @@ pub const GALE_MUTEX_UNLOCK_ERROR: u8 = 2;
 /// Priority inheritance restoration stays in C — Rust decides the action,
 /// C applies it including any priority adjustments.
 ///
+/// Delegates to `gale::mutex::unlock_decide` (Verus-verified).
 /// Verified: M6a (EINVAL), M6b (EPERM), M7 (reentrant), M10 (no underflow).
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mutex_unlock_decide(
@@ -643,37 +640,30 @@ pub extern "C" fn gale_k_mutex_unlock_decide(
     owner_is_null: u32,
     owner_is_current: u32,
 ) -> GaleMutexUnlockDecision {
-    // M6a: not locked
-    if owner_is_null != 0 {
-        return GaleMutexUnlockDecision {
+    use gale::mutex::{UnlockDecisionKind, unlock_decide};
+
+    let d = unlock_decide(lock_count, owner_is_null != 0, owner_is_current != 0);
+    match d {
+        UnlockDecisionKind::NotLocked => GaleMutexUnlockDecision {
             ret: EINVAL,
             action: GALE_MUTEX_UNLOCK_ERROR,
             new_lock_count: 0,
-        };
-    }
-
-    // M6b: not owner
-    if owner_is_current == 0 {
-        return GaleMutexUnlockDecision {
+        },
+        UnlockDecisionKind::NotOwner => GaleMutexUnlockDecision {
             ret: EPERM,
             action: GALE_MUTEX_UNLOCK_ERROR,
             new_lock_count: lock_count,
-        };
-    }
-
-    // M7: reentrant release (lock_count > 1)
-    if lock_count > 1 {
-        // Verified: lock_count > 1, so lock_count - 1 >= 1, no underflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        let new_count = lock_count - 1;
-        GaleMutexUnlockDecision {
-            ret: OK,
-            action: GALE_MUTEX_UNLOCK_RELEASED,
-            new_lock_count: new_count,
+        },
+        UnlockDecisionKind::Released => {
+            #[allow(clippy::arithmetic_side_effects)]
+            let new_count = lock_count - 1;
+            GaleMutexUnlockDecision {
+                ret: OK,
+                action: GALE_MUTEX_UNLOCK_RELEASED,
+                new_lock_count: new_count,
+            }
         }
-    } else {
-        // Fully unlocked — caller handles waiter transfer.
-        GaleMutexUnlockDecision {
+        UnlockDecisionKind::FullyUnlocked => GaleMutexUnlockDecision {
             ret: OK,
             action: GALE_MUTEX_UNLOCK_UNLOCKED,
             new_lock_count: 0,
@@ -976,6 +966,8 @@ pub const GALE_MSGQ_ACTION_RETURN_FULL: u8 = 3;
 
 /// Full decision for k_msgq_put: decides whether to put, wake a reader, pend,
 /// or return full.
+///
+/// Delegates to `gale::msgq::put_decide` (Verus-verified).
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_msgq_put_decide(
     write_idx: u32,
@@ -984,44 +976,34 @@ pub extern "C" fn gale_k_msgq_put_decide(
     has_waiter: u32,
     is_no_wait: u32,
 ) -> GaleMsgqPutDecision {
-    if used_msgs < max_msgs {
-        if has_waiter != 0 {
-            GaleMsgqPutDecision {
-                ret: OK,
-                action: GALE_MSGQ_ACTION_WAKE_READER,
-                new_write_idx: write_idx,
-                new_used: used_msgs,
-            }
-        } else {
-            #[allow(clippy::arithmetic_side_effects)]
-            let next = if write_idx + 1 < max_msgs {
-                write_idx + 1
-            } else {
-                0
-            };
-            #[allow(clippy::arithmetic_side_effects)]
-            let new_used = used_msgs + 1;
-            GaleMsgqPutDecision {
-                ret: OK,
-                action: GALE_MSGQ_ACTION_PUT_OK,
-                new_write_idx: next,
-                new_used,
-            }
-        }
-    } else if is_no_wait != 0 {
-        GaleMsgqPutDecision {
+    use gale::msgq::{PutDecision, put_decide};
+
+    let r = put_decide(write_idx, used_msgs, max_msgs, has_waiter != 0, is_no_wait != 0);
+    match r.decision {
+        PutDecision::Store => GaleMsgqPutDecision {
+            ret: OK,
+            action: GALE_MSGQ_ACTION_PUT_OK,
+            new_write_idx: r.new_write_idx,
+            new_used: r.new_used,
+        },
+        PutDecision::WakeReader => GaleMsgqPutDecision {
+            ret: OK,
+            action: GALE_MSGQ_ACTION_WAKE_READER,
+            new_write_idx: r.new_write_idx,
+            new_used: r.new_used,
+        },
+        PutDecision::Full => GaleMsgqPutDecision {
             ret: ENOMSG,
             action: GALE_MSGQ_ACTION_RETURN_FULL,
-            new_write_idx: write_idx,
-            new_used: used_msgs,
-        }
-    } else {
-        GaleMsgqPutDecision {
+            new_write_idx: r.new_write_idx,
+            new_used: r.new_used,
+        },
+        PutDecision::Pend => GaleMsgqPutDecision {
             ret: 0,
             action: GALE_MSGQ_ACTION_PUT_PEND,
-            new_write_idx: write_idx,
-            new_used: used_msgs,
-        }
+            new_write_idx: r.new_write_idx,
+            new_used: r.new_used,
+        },
     }
 }
 
@@ -1045,6 +1027,8 @@ pub const GALE_MSGQ_ACTION_RETURN_EMPTY: u8 = 3;
 
 /// Full decision for k_msgq_get: decides whether to get, wake a writer, pend,
 /// or return empty.
+///
+/// Delegates to `gale::msgq::get_decide` (Verus-verified).
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_msgq_get_decide(
     read_idx: u32,
@@ -1053,45 +1037,34 @@ pub extern "C" fn gale_k_msgq_get_decide(
     has_waiter: u32,
     is_no_wait: u32,
 ) -> GaleMsgqGetDecision {
-    if used_msgs > 0 {
-        #[allow(clippy::arithmetic_side_effects)]
-        let next = if read_idx + 1 < max_msgs {
-            read_idx + 1
-        } else {
-            0
-        };
-        #[allow(clippy::arithmetic_side_effects)]
-        let new_used = used_msgs - 1;
+    use gale::msgq::{GetDecision, get_decide};
 
-        if has_waiter != 0 {
-            GaleMsgqGetDecision {
-                ret: OK,
-                action: GALE_MSGQ_ACTION_WAKE_WRITER,
-                new_read_idx: next,
-                new_used,
-            }
-        } else {
-            GaleMsgqGetDecision {
-                ret: OK,
-                action: GALE_MSGQ_ACTION_GET_OK,
-                new_read_idx: next,
-                new_used,
-            }
-        }
-    } else if is_no_wait != 0 {
-        GaleMsgqGetDecision {
+    let r = get_decide(read_idx, used_msgs, max_msgs, has_waiter != 0, is_no_wait != 0);
+    match r.decision {
+        GetDecision::Read => GaleMsgqGetDecision {
+            ret: OK,
+            action: GALE_MSGQ_ACTION_GET_OK,
+            new_read_idx: r.new_read_idx,
+            new_used: r.new_used,
+        },
+        GetDecision::WakeWriter => GaleMsgqGetDecision {
+            ret: OK,
+            action: GALE_MSGQ_ACTION_WAKE_WRITER,
+            new_read_idx: r.new_read_idx,
+            new_used: r.new_used,
+        },
+        GetDecision::Empty => GaleMsgqGetDecision {
             ret: ENOMSG,
             action: GALE_MSGQ_ACTION_RETURN_EMPTY,
-            new_read_idx: read_idx,
-            new_used: 0,
-        }
-    } else {
-        GaleMsgqGetDecision {
+            new_read_idx: r.new_read_idx,
+            new_used: r.new_used,
+        },
+        GetDecision::Pend => GaleMsgqGetDecision {
             ret: 0,
             action: GALE_MSGQ_ACTION_GET_PEND,
-            new_read_idx: read_idx,
-            new_used: 0,
-        }
+            new_read_idx: r.new_read_idx,
+            new_used: r.new_used,
+        },
     }
 }
 
@@ -1278,6 +1251,7 @@ pub const GALE_PIPE_ACTION_WRITE_ERROR: u8 = 3;
 
 /// Full decision for k_pipe_write: decides what the C shim should do.
 ///
+/// Delegates to `gale::pipe::write_decide` (Verus-verified).
 /// Verified: PP3-PP5, PP9-PP10
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_pipe_write_decide(
@@ -1287,53 +1261,34 @@ pub extern "C" fn gale_k_pipe_write_decide(
     request_len: u32,
     has_reader: u32,
 ) -> GalePipeWriteDecision {
-    if (flags & PIPE_FLAG_RESET) != 0 {
-        return GalePipeWriteDecision {
-            ret: ECANCELED,
-            action: GALE_PIPE_ACTION_WRITE_ERROR,
-            actual_bytes: 0,
-            new_used: used,
-        };
-    }
-    if (flags & PIPE_FLAG_OPEN) == 0 {
-        return GalePipeWriteDecision {
-            ret: EPIPE,
-            action: GALE_PIPE_ACTION_WRITE_ERROR,
-            actual_bytes: 0,
-            new_used: used,
-        };
-    }
-    if used == 0 && has_reader != 0 {
-        let actual = if size > 0 && request_len > 0 {
-            if request_len <= size { request_len } else { size }
-        } else {
-            0
-        };
-        return GalePipeWriteDecision {
-            ret: OK,
+    use gale::pipe::{WriteDecision, write_decide};
+
+    let r = write_decide(used, size, flags, request_len, has_reader != 0);
+    match r.decision {
+        WriteDecision::WriteOk => GalePipeWriteDecision {
+            ret: r.ret,
+            action: GALE_PIPE_ACTION_WRITE_OK,
+            actual_bytes: r.actual_bytes,
+            new_used: r.new_used,
+        },
+        WriteDecision::WakeReader => GalePipeWriteDecision {
+            ret: r.ret,
             action: GALE_PIPE_ACTION_WAKE_READER,
-            actual_bytes: actual,
-            new_used: 0,
-        };
-    }
-    if size == 0 || used >= size {
-        return GalePipeWriteDecision {
-            ret: OK,
+            actual_bytes: r.actual_bytes,
+            new_used: r.new_used,
+        },
+        WriteDecision::WritePend => GalePipeWriteDecision {
+            ret: r.ret,
             action: GALE_PIPE_ACTION_WRITE_PEND,
-            actual_bytes: 0,
-            new_used: used,
-        };
-    }
-    #[allow(clippy::arithmetic_side_effects)]
-    let free = size - used;
-    let n = if request_len <= free { request_len } else { free };
-    #[allow(clippy::arithmetic_side_effects)]
-    let nu = used + n;
-    GalePipeWriteDecision {
-        ret: OK,
-        action: GALE_PIPE_ACTION_WRITE_OK,
-        actual_bytes: n,
-        new_used: nu,
+            actual_bytes: r.actual_bytes,
+            new_used: r.new_used,
+        },
+        WriteDecision::WriteError => GalePipeWriteDecision {
+            ret: r.ret,
+            action: GALE_PIPE_ACTION_WRITE_ERROR,
+            actual_bytes: r.actual_bytes,
+            new_used: r.new_used,
+        },
     }
 }
 
@@ -1357,6 +1312,7 @@ pub const GALE_PIPE_ACTION_READ_ERROR: u8 = 3;
 
 /// Full decision for k_pipe_read: decides what the C shim should do.
 ///
+/// Delegates to `gale::pipe::read_decide` (Verus-verified).
 /// Verified: PP3-PP6, PP9-PP10
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_pipe_read_decide(
@@ -1366,52 +1322,34 @@ pub extern "C" fn gale_k_pipe_read_decide(
     request_len: u32,
     has_writer: u32,
 ) -> GalePipeReadDecision {
-    if (flags & PIPE_FLAG_RESET) != 0 {
-        return GalePipeReadDecision {
-            ret: ECANCELED,
-            action: GALE_PIPE_ACTION_READ_ERROR,
-            actual_bytes: 0,
-            new_used: used,
-        };
-    }
-    if used >= size && has_writer != 0 {
-        // Buffer full (or zero-size pipe): wake writers so they can
-        // copy data directly to us.  For zero-size pipes size==0 and
-        // used==0, so this path is the only way to trigger the writer.
-        let n = if request_len <= used { request_len } else { used };
-        #[allow(clippy::arithmetic_side_effects)]
-        let nu = used - n;
-        return GalePipeReadDecision {
-            ret: OK,
-            action: GALE_PIPE_ACTION_WAKE_WRITER,
-            actual_bytes: n,
-            new_used: nu,
-        };
-    }
-    if used > 0 {
-        let n = if request_len <= used { request_len } else { used };
-        #[allow(clippy::arithmetic_side_effects)]
-        let nu = used - n;
-        return GalePipeReadDecision {
-            ret: OK,
+    use gale::pipe::{ReadDecision, read_decide};
+
+    let r = read_decide(used, size, flags, request_len, has_writer != 0);
+    match r.decision {
+        ReadDecision::ReadOk => GalePipeReadDecision {
+            ret: r.ret,
             action: GALE_PIPE_ACTION_READ_OK,
-            actual_bytes: n,
-            new_used: nu,
-        };
-    }
-    if (flags & PIPE_FLAG_OPEN) == 0 {
-        return GalePipeReadDecision {
-            ret: EPIPE,
+            actual_bytes: r.actual_bytes,
+            new_used: r.new_used,
+        },
+        ReadDecision::WakeWriter => GalePipeReadDecision {
+            ret: r.ret,
+            action: GALE_PIPE_ACTION_WAKE_WRITER,
+            actual_bytes: r.actual_bytes,
+            new_used: r.new_used,
+        },
+        ReadDecision::ReadPend => GalePipeReadDecision {
+            ret: r.ret,
+            action: GALE_PIPE_ACTION_READ_PEND,
+            actual_bytes: r.actual_bytes,
+            new_used: r.new_used,
+        },
+        ReadDecision::ReadError => GalePipeReadDecision {
+            ret: r.ret,
             action: GALE_PIPE_ACTION_READ_ERROR,
-            actual_bytes: 0,
-            new_used: 0,
-        };
-    }
-    GalePipeReadDecision {
-        ret: OK,
-        action: GALE_PIPE_ACTION_READ_PEND,
-        actual_bytes: 0,
-        new_used: 0,
+            actual_bytes: r.actual_bytes,
+            new_used: r.new_used,
+        },
     }
 }
 
@@ -1533,6 +1471,7 @@ pub const GALE_STACK_PUSH_FULL: u8 = 2;
 /// The C shim calls z_unpend_first_thread first (side effect), then passes
 /// whether a waiter was found.  Rust decides the action.
 ///
+/// Delegates to `gale::stack::push_decide` (Verus-verified).
 /// Verified: SK1 (bounds), SK3 (increment), SK4 (-ENOMEM).
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_stack_push_decide(
@@ -1540,29 +1479,25 @@ pub extern "C" fn gale_k_stack_push_decide(
     capacity: u32,
     has_waiter: u32,
 ) -> GaleStackPushDecision {
-    if has_waiter != 0 {
-        // Waiter exists: give data directly to waiting thread (count unchanged)
-        GaleStackPushDecision {
+    use gale::stack::{PushDecision, push_decide};
+
+    let r = push_decide(count, capacity, has_waiter != 0);
+    match r.decision {
+        PushDecision::Store => GaleStackPushDecision {
             ret: OK,
-            new_count: count,
-            action: GALE_STACK_PUSH_WAKE,
-        }
-    } else if count < capacity {
-        // Space available: store data, increment count
-        #[allow(clippy::arithmetic_side_effects)]
-        let new_count = count + 1;
-        GaleStackPushDecision {
-            ret: OK,
-            new_count,
+            new_count: r.new_count,
             action: GALE_STACK_PUSH_STORE,
-        }
-    } else {
-        // Full: reject
-        GaleStackPushDecision {
+        },
+        PushDecision::WakeWaiter => GaleStackPushDecision {
+            ret: OK,
+            new_count: r.new_count,
+            action: GALE_STACK_PUSH_WAKE,
+        },
+        PushDecision::Full => GaleStackPushDecision {
             ret: ENOMEM,
-            new_count: count,
+            new_count: r.new_count,
             action: GALE_STACK_PUSH_FULL,
-        }
+        },
     }
 }
 
@@ -1582,32 +1517,32 @@ pub const GALE_STACK_POP_PEND: u8 = 1;
 
 /// Full decision for k_stack_pop: decides whether to pop data or pend/reject.
 ///
+/// Delegates to `gale::stack::pop_decide` (Verus-verified).
 /// Verified: SK1 (bounds), SK5 (decrement), SK6 (-EBUSY).
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_stack_pop_decide(
     count: u32,
     is_no_wait: u32,
 ) -> GaleStackPopDecision {
-    if count > 0 {
-        #[allow(clippy::arithmetic_side_effects)]
-        let new_count = count - 1;
-        GaleStackPopDecision {
+    use gale::stack::{PopDecision, pop_decide};
+
+    let r = pop_decide(count, is_no_wait != 0);
+    match r.decision {
+        PopDecision::Pop => GaleStackPopDecision {
             ret: OK,
-            new_count,
+            new_count: r.new_count,
             action: GALE_STACK_POP_OK,
-        }
-    } else if is_no_wait != 0 {
-        GaleStackPopDecision {
+        },
+        PopDecision::Busy => GaleStackPopDecision {
             ret: EBUSY,
-            new_count: 0,
+            new_count: r.new_count,
             action: GALE_STACK_POP_OK,
-        }
-    } else {
-        GaleStackPopDecision {
+        },
+        PopDecision::Pend => GaleStackPopDecision {
             ret: 0,
-            new_count: 0,
+            new_count: r.new_count,
             action: GALE_STACK_POP_PEND,
-        }
+        },
     }
 }
 
@@ -2161,6 +2096,7 @@ pub struct GaleEventPostDecision {
 /// Full decision for k_event_post_internal: computes the new bitmask after
 /// applying events through a mask.
 ///
+/// Delegates to `gale::event::post_decide` (Verus-verified).
 /// Verified: EV4 — set_masked computes (current & ~mask) | (new & mask)
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_event_post_decide(
@@ -2168,8 +2104,10 @@ pub extern "C" fn gale_k_event_post_decide(
     new_events: u32,
     mask: u32,
 ) -> GaleEventPostDecision {
+    use gale::event::post_decide;
+
     GaleEventPostDecision {
-        new_events: (current_events & !mask) | (new_events & mask),
+        new_events: post_decide(current_events, new_events, mask),
     }
 }
 
@@ -2190,6 +2128,7 @@ pub struct GaleEventWaitDecision {
 /// wait_type: 0=ANY (at least one desired bit set), 1=ALL (all desired bits set)
 /// is_no_wait: non-zero if K_NO_WAIT timeout (should not block)
 ///
+/// Delegates to `gale::event::wait_decide` (Verus-verified).
 /// Verified: EV5 (any-bit match), EV6 (all-bits match)
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_event_wait_decide(
@@ -2198,34 +2137,25 @@ pub extern "C" fn gale_k_event_wait_decide(
     wait_type: u8,
     is_no_wait: u32,
 ) -> GaleEventWaitDecision {
-    let matched = current_events & desired;
+    use gale::event::{WaitDecision, wait_decide};
 
-    let condition_met = if wait_type == GALE_EVENT_WAIT_ALL {
-        // ALL: every desired bit must be present
-        (current_events & desired) == desired
-    } else {
-        // ANY: at least one desired bit present
-        matched != 0
-    };
-
-    if condition_met {
-        GaleEventWaitDecision {
+    let r = wait_decide(current_events, desired, wait_type, is_no_wait != 0);
+    match r.decision {
+        WaitDecision::Matched => GaleEventWaitDecision {
             ret: 0,
-            matched_events: matched,
+            matched_events: r.matched_events,
             action: GALE_EVENT_ACTION_MATCHED,
-        }
-    } else if is_no_wait != 0 {
-        GaleEventWaitDecision {
+        },
+        WaitDecision::Timeout => GaleEventWaitDecision {
             ret: 0,
             matched_events: 0,
             action: GALE_EVENT_ACTION_TIMEOUT,
-        }
-    } else {
-        GaleEventWaitDecision {
+        },
+        WaitDecision::Pend => GaleEventWaitDecision {
             ret: 0,
             matched_events: 0,
             action: GALE_EVENT_ACTION_PEND,
-        }
+        },
     }
 }
 

@@ -258,4 +258,97 @@ pub proof fn lemma_set_masked_zero(events: u32, new_events: u32)
     assert((events & !0u32) | (new_events & 0u32) == events) by (bit_vector);
 }
 
+// =================================================================
+// Lightweight decision functions — scalar-only, no WaitQueue allocation.
+// Used by FFI to delegate safety-critical logic to the verified model.
+// =================================================================
+
+/// Lightweight event wait decision — no WaitQueue allocation.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum WaitDecision {
+    /// Wait condition met: matched events returned.
+    Matched = 0,
+    /// Condition not met, willing to wait: pend current thread.
+    Pend = 1,
+    /// Condition not met, no-wait: return immediately.
+    Timeout = 2,
+}
+
+/// Result of a wait decision with matched event bits.
+#[derive(Debug)]
+pub struct WaitDecideResult {
+    pub decision: WaitDecision,
+    pub matched_events: u32,
+}
+
+/// Wait type: ANY (at least one bit) or ALL (all bits).
+pub const WAIT_ANY: u8 = 0;
+pub const WAIT_ALL: u8 = 1;
+
+/// Lightweight event wait decision — takes scalars, no WaitQueue allocation.
+///
+/// Verified properties (EV5, EV6):
+/// - wait_type==ANY: matched when (events & desired) != 0
+/// - wait_type==ALL: matched when (events & desired) == desired
+/// - no match && is_no_wait ==> Timeout
+/// - no match && !is_no_wait ==> Pend
+pub fn wait_decide(
+    current_events: u32,
+    desired: u32,
+    wait_type: u8,
+    is_no_wait: bool,
+) -> (result: WaitDecideResult)
+    requires
+        true,
+    ensures
+        // When matched, matched_events == (current_events & desired)
+        result.decision === WaitDecision::Matched ==>
+            result.matched_events == (current_events & desired),
+        // When not matched, matched_events == 0
+        result.decision !== WaitDecision::Matched ==>
+            result.matched_events == 0u32,
+{
+    let matched = current_events & desired;
+
+    let condition_met = if wait_type == WAIT_ALL {
+        (current_events & desired) == desired
+    } else {
+        matched != 0
+    };
+
+    if condition_met {
+        WaitDecideResult {
+            decision: WaitDecision::Matched,
+            matched_events: matched,
+        }
+    } else if is_no_wait {
+        WaitDecideResult {
+            decision: WaitDecision::Timeout,
+            matched_events: 0,
+        }
+    } else {
+        WaitDecideResult {
+            decision: WaitDecision::Pend,
+            matched_events: 0,
+        }
+    }
+}
+
+/// Lightweight event post decision — takes scalars, no WaitQueue allocation.
+///
+/// Verified property (EV4): set_masked computes (current & ~mask) | (new & mask)
+pub fn post_decide(
+    current_events: u32,
+    new_events: u32,
+    mask: u32,
+) -> (result: u32)
+    requires
+        true,
+    ensures
+        result == ((current_events & !mask) | (new_events & mask)),
+{
+    (current_events & !mask) | (new_events & mask)
+}
+
 } // verus!

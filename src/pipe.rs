@@ -390,4 +390,207 @@ pub proof fn lemma_close_clears_flags()
 {
 }
 
+// =================================================================
+// Lightweight decision functions — scalar-only, no WaitQueue allocation.
+// Used by FFI to delegate safety-critical logic to the verified model.
+// =================================================================
+
+/// Lightweight write decision — no WaitQueue allocation.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum WriteDecision {
+    /// Write OK: n bytes can be written to ring buffer.
+    WriteOk = 0,
+    /// Wake a blocked reader (buffer was empty, reader is waiting).
+    WakeReader = 1,
+    /// Buffer full or zero-size pipe: pend current thread.
+    WritePend = 2,
+    /// Error: pipe closed or resetting.
+    WriteError = 3,
+}
+
+/// Result of a write decision with byte counts.
+#[derive(Debug)]
+pub struct WriteDecideResult {
+    pub decision: WriteDecision,
+    pub ret: i32,
+    pub actual_bytes: u32,
+    pub new_used: u32,
+}
+
+/// Lightweight read decision — no WaitQueue allocation.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ReadDecision {
+    /// Read OK: n bytes can be read from ring buffer.
+    ReadOk = 0,
+    /// Wake a blocked writer (buffer was full, writer is waiting).
+    WakeWriter = 1,
+    /// Buffer empty: pend current thread.
+    ReadPend = 2,
+    /// Error: pipe closed or resetting.
+    ReadError = 3,
+}
+
+/// Result of a read decision with byte counts.
+#[derive(Debug)]
+pub struct ReadDecideResult {
+    pub decision: ReadDecision,
+    pub ret: i32,
+    pub actual_bytes: u32,
+    pub new_used: u32,
+}
+
+/// Lightweight write decision — takes scalars, no WaitQueue allocation.
+///
+/// Verified properties (PP3, PP4, PP5, PP9, PP10):
+/// - resetting ==> WriteError(ECANCELED)
+/// - !open ==> WriteError(EPIPE)
+/// - empty && has_reader ==> WakeReader
+/// - full || size==0 ==> WritePend
+/// - otherwise ==> WriteOk with min(request, free) bytes
+pub fn write_decide(
+    used: u32,
+    size: u32,
+    flags: u8,
+    request_len: u32,
+    has_reader: bool,
+) -> (result: WriteDecideResult)
+    requires
+        true,
+    ensures
+        (flags & FLAG_RESET) != 0 ==> {
+            &&& result.decision === WriteDecision::WriteError
+            &&& result.ret == ECANCELED
+        },
+        (flags & FLAG_RESET) == 0 && (flags & FLAG_OPEN) == 0 ==> {
+            &&& result.decision === WriteDecision::WriteError
+            &&& result.ret == EPIPE
+        },
+{
+    // PP4: resetting check
+    if (flags & FLAG_RESET) != 0 {
+        return WriteDecideResult {
+            decision: WriteDecision::WriteError,
+            ret: ECANCELED,
+            actual_bytes: 0,
+            new_used: used,
+        };
+    }
+    // PP3: closed check
+    if (flags & FLAG_OPEN) == 0 {
+        return WriteDecideResult {
+            decision: WriteDecision::WriteError,
+            ret: EPIPE,
+            actual_bytes: 0,
+            new_used: used,
+        };
+    }
+    // Wake reader if buffer is empty and a reader is waiting
+    if used == 0 && has_reader {
+        let actual = if size > 0 && request_len > 0 {
+            if request_len <= size { request_len } else { size }
+        } else {
+            0u32
+        };
+        return WriteDecideResult {
+            decision: WriteDecision::WakeReader,
+            ret: OK,
+            actual_bytes: actual,
+            new_used: 0,
+        };
+    }
+    // Full or zero-size pipe: pend
+    if size == 0 || used >= size {
+        return WriteDecideResult {
+            decision: WriteDecision::WritePend,
+            ret: OK,
+            actual_bytes: 0,
+            new_used: used,
+        };
+    }
+    // PP5: compute writable bytes
+    let free = size - used;
+    let n = if request_len <= free { request_len } else { free };
+    let nu = used + n;
+    WriteDecideResult {
+        decision: WriteDecision::WriteOk,
+        ret: OK,
+        actual_bytes: n,
+        new_used: nu,
+    }
+}
+
+/// Lightweight read decision — takes scalars, no WaitQueue allocation.
+///
+/// Verified properties (PP3, PP4, PP6, PP9, PP10):
+/// - resetting ==> ReadError(ECANCELED)
+/// - full && has_writer ==> WakeWriter
+/// - data available ==> ReadOk with min(request, used) bytes
+/// - empty && closed ==> ReadError(EPIPE)
+/// - empty && open ==> ReadPend
+pub fn read_decide(
+    used: u32,
+    size: u32,
+    flags: u8,
+    request_len: u32,
+    has_writer: bool,
+) -> (result: ReadDecideResult)
+    requires
+        true,
+    ensures
+        (flags & FLAG_RESET) != 0 ==> {
+            &&& result.decision === ReadDecision::ReadError
+            &&& result.ret == ECANCELED
+        },
+{
+    // PP4: resetting check
+    if (flags & FLAG_RESET) != 0 {
+        return ReadDecideResult {
+            decision: ReadDecision::ReadError,
+            ret: ECANCELED,
+            actual_bytes: 0,
+            new_used: used,
+        };
+    }
+    // Full (or zero-size pipe) with writer waiting: wake writer
+    if used >= size && has_writer {
+        let n = if request_len <= used { request_len } else { used };
+        let nu = used - n;
+        return ReadDecideResult {
+            decision: ReadDecision::WakeWriter,
+            ret: OK,
+            actual_bytes: n,
+            new_used: nu,
+        };
+    }
+    // PP6: data available
+    if used > 0 {
+        let n = if request_len <= used { request_len } else { used };
+        let nu = used - n;
+        return ReadDecideResult {
+            decision: ReadDecision::ReadOk,
+            ret: OK,
+            actual_bytes: n,
+            new_used: nu,
+        };
+    }
+    // Empty and closed
+    if (flags & FLAG_OPEN) == 0 {
+        return ReadDecideResult {
+            decision: ReadDecision::ReadError,
+            ret: EPIPE,
+            actual_bytes: 0,
+            new_used: 0,
+        };
+    }
+    // Empty and open: pend
+    ReadDecideResult {
+        decision: ReadDecision::ReadPend,
+        ret: OK,
+        actual_bytes: 0,
+        new_used: 0,
+    }
+}
+
 } // verus!
