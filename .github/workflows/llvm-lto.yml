@@ -84,31 +84,36 @@ jobs:
           west update --narrow -o=--depth=1
           west sdk install
 
-      - name: "Setup SDK paths"
+      - name: "Setup SDK paths + patch picolibc for ld.lld"
         run: |
           # Find Zephyr SDK and set up library paths for ld.lld.
-          # ld.lld needs explicit -L paths for both GCC runtime (libgcc.a)
-          # and picolibc (libc.a) — GCC finds these via -specs but lld doesn't.
           SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
           if [ -z "${SDK_DIR}" ]; then
             SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
           fi
           GCC="${SDK_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
           GCC_LIB_DIR=$(dirname $("${GCC}" -print-libgcc-file-name -mcpu=cortex-m3 -mthumb))
-          # picolibc libc.a is in the sysroot lib dir (same arch subdir)
           PICOLIBC_DIR="${SDK_DIR}/arm-zephyr-eabi/arm-zephyr-eabi/lib/thumb/v7-m/nofp"
-          # Combined linker flags for ld.lld
           LLD_EXTRA_LIBS="-L${GCC_LIB_DIR} -L${PICOLIBC_DIR}"
           echo "LLD_EXTRA_LIBS=${LLD_EXTRA_LIBS}" >> "$GITHUB_ENV"
           echo "SDK_DIR=${SDK_DIR}" >> "$GITHUB_ENV"
           echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
-          echo "SDK: ${SDK_DIR}"
-          echo "GCC lib: ${GCC_LIB_DIR}"
-          echo "picolibc: ${PICOLIBC_DIR}"
-          echo "LLD flags: ${LLD_EXTRA_LIBS}"
-          # Also set LIBRARY_PATH so ld.lld finds libs during CMake
-          # toolchain detection (before CMAKE_EXE_LINKER_FLAGS applies).
           echo "LIBRARY_PATH=${GCC_LIB_DIR}:${PICOLIBC_DIR}" >> "$GITHUB_ENV"
+          #
+          # Patch picolibc cmake for ld.lld + LTO compatibility.
+          # Problem: picolibc sets c_library to an absolute path (libc.a).
+          # ld.lld processes archives once; after LTO codegen it can't
+          # re-scan. Fix: use -L + -lc so ld.lld can re-resolve via
+          # library search paths after LTO.
+          PICO_CMAKE="${GITHUB_WORKSPACE}/zephyr-workspace/modules/lib/picolibc/zephyr/zephyr.cmake"
+          if [ -f "${PICO_CMAKE}" ]; then
+            sed -i '/set_property(TARGET linker PROPERTY c_library/,/)/{
+              s|set_property(TARGET linker PROPERTY c_library|# [Gale LTO patch] Use -L + -lc for ld.lld post-LTO re-resolution\n  set_property(TARGET linker APPEND PROPERTY lib_include_dir\n      "-L${CMAKE_CURRENT_BINARY_DIR}"\n  )\n  set_property(TARGET linker PROPERTY c_library|
+              s|${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}c${CMAKE_STATIC_LIBRARY_SUFFIX}|"-lc"|
+            }' "${PICO_CMAKE}"
+            echo "Patched picolibc cmake for ld.lld LTO"
+            grep -A5 'Gale LTO patch' "${PICO_CMAKE}" || true
+          fi
 
       # --- Build 1: Baseline (GCC, stock Zephyr, no Gale) ---
       - name: "Build baseline (GCC, no Gale)"
@@ -339,7 +344,7 @@ jobs:
           west update --narrow -o=--depth=1
           west sdk install
 
-      - name: Setup SDK paths
+      - name: Setup SDK paths + patch picolibc
         run: |
           SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
           if [ -z "${SDK_DIR}" ]; then
@@ -351,6 +356,14 @@ jobs:
           echo "LLD_EXTRA_LIBS=-L${GCC_LIB_DIR} -L${PICOLIBC_DIR}" >> "$GITHUB_ENV"
           echo "LIBRARY_PATH=${GCC_LIB_DIR}:${PICOLIBC_DIR}" >> "$GITHUB_ENV"
           echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
+          # Patch picolibc for ld.lld + LTO (same as main job)
+          PICO_CMAKE="${GITHUB_WORKSPACE}/zephyr-workspace/modules/lib/picolibc/zephyr/zephyr.cmake"
+          if [ -f "${PICO_CMAKE}" ]; then
+            sed -i '/set_property(TARGET linker PROPERTY c_library/,/)/{
+              s|set_property(TARGET linker PROPERTY c_library|set_property(TARGET linker APPEND PROPERTY lib_include_dir\n      "-L${CMAKE_CURRENT_BINARY_DIR}"\n  )\n  set_property(TARGET linker PROPERTY c_library|
+              s|${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}c${CMAKE_STATIC_LIBRARY_SUFFIX}|"-lc"|
+            }' "${PICO_CMAKE}"
+          fi
 
       - name: Build and run test (LLVM+LTO)
         run: |
