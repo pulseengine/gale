@@ -106,6 +106,9 @@ jobs:
           echo "GCC lib: ${GCC_LIB_DIR}"
           echo "picolibc: ${PICOLIBC_DIR}"
           echo "LLD flags: ${LLD_EXTRA_LIBS}"
+          # Also set LIBRARY_PATH so ld.lld finds libs during CMake
+          # toolchain detection (before CMAKE_EXE_LINKER_FLAGS applies).
+          echo "LIBRARY_PATH=${GCC_LIB_DIR}:${PICOLIBC_DIR}" >> "$GITHUB_ENV"
 
       # --- Build 1: Baseline (GCC, stock Zephyr, no Gale) ---
       - name: "Build baseline (GCC, no Gale)"
@@ -346,6 +349,7 @@ jobs:
           GCC_LIB_DIR=$(dirname $("${GCC}" -print-libgcc-file-name -mcpu=cortex-m3 -mthumb))
           PICOLIBC_DIR="${SDK_DIR}/arm-zephyr-eabi/arm-zephyr-eabi/lib/thumb/v7-m/nofp"
           echo "LLD_EXTRA_LIBS=-L${GCC_LIB_DIR} -L${PICOLIBC_DIR}" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=${GCC_LIB_DIR}:${PICOLIBC_DIR}" >> "$GITHUB_ENV"
           echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
 
       - name: Build and run test (LLVM+LTO)
