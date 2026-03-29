@@ -6,10 +6,11 @@
 # formally verified kernel primitives.
 #
 # STATUS: Experimental. Cross-language LTO requires exact LLVM version
-# alignment between Rust's LLVM and the system Clang/LLD, plus a Clang
-# that can cross-compile for ARM with Zephyr's picolibc sysroot.
-# The Zephyr CI image ships LLVM 18 but Rust stable uses LLVM 21.
-# Marked continue-on-error until toolchain alignment is resolved.
+# alignment between Rust's LLVM and the system Clang/LLD.
+# Strategy: pin Rust 1.78.0 (LLVM 18) to match the CI image's built-in
+# Clang 18 / LLD 18. This avoids installing a separate LLVM and the
+# associated picolibc sysroot / ARM cross-compilation breakage.
+# Marked continue-on-error until fully validated.
 
 name: LLVM Cross-Language LTO
 
@@ -26,6 +27,10 @@ concurrency:
 env:
   HOME: /root
   DOCKER_CONFIG: /tmp/.docker
+  # Pin Rust to 1.78.0 which uses LLVM 18, matching the Zephyr CI image's
+  # built-in Clang 18. This is the key to making cross-language LTO work:
+  # both the Rust compiler and the C compiler/linker use the same LLVM version.
+  RUST_TOOLCHAIN: "1.78.0"
 
 jobs:
   # =========================================================================
@@ -51,28 +56,23 @@ jobs:
       - name: Install Rust + ARM target
         run: |
           apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "${RUST_TOOLCHAIN}"
           . /root/.cargo/env
           rustup target add thumbv7m-none-eabi
 
-      - name: Install matching LLVM toolchain
+      - name: Verify LLVM version alignment
         run: |
-          # Rust stable uses LLVM 21. Cross-language LTO requires matching
-          # LLVM versions between the Rust compiler and the C linker (lld).
-          # The Zephyr CI image ships LLVM 18 which is incompatible.
           . /root/.cargo/env
           RUST_LLVM=$(rustc -vV | grep 'LLVM version' | grep -o '[0-9]*' | head -1)
+          CLANG_LLVM=$(clang --version | grep -o 'version [0-9]*' | grep -o '[0-9]*')
           echo "Rust LLVM major version: ${RUST_LLVM}"
-          apt-get update -qq
-          apt-get install -y -qq wget lsb-release software-properties-common gnupg > /dev/null 2>&1
-          wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- "${RUST_LLVM}" all
-          # Use versioned binaries
-          update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${RUST_LLVM} 100
-          update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${RUST_LLVM} 100
-          update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/ld.lld-${RUST_LLVM} 100
-          update-alternatives --install /usr/bin/llvm-size llvm-size /usr/bin/llvm-size-${RUST_LLVM} 100
-          update-alternatives --install /usr/bin/llvm-nm llvm-nm /usr/bin/llvm-nm-${RUST_LLVM} 100
-          update-alternatives --install /usr/bin/llvm-objdump llvm-objdump /usr/bin/llvm-objdump-${RUST_LLVM} 100
+          echo "Clang LLVM major version: ${CLANG_LLVM}"
+          if [ "${RUST_LLVM}" != "${CLANG_LLVM}" ]; then
+            echo "::error::LLVM version mismatch: Rust uses LLVM ${RUST_LLVM}, Clang uses LLVM ${CLANG_LLVM}"
+            echo "Update RUST_TOOLCHAIN env var to a Rust version that uses LLVM ${CLANG_LLVM}"
+            exit 1
+          fi
+          echo "LLVM versions match (${RUST_LLVM}). Cross-language LTO should work."
           clang --version
           ld.lld --version
 
@@ -83,6 +83,24 @@ jobs:
           cd zephyr-workspace
           west update --narrow -o=--depth=1
           west sdk install
+
+      # --- Find GCC lib path for LLVM linker ---
+      # Zephyr's picolibc specs add -lgcc, which ld.lld can't find
+      # without the Zephyr SDK's GCC library directory.
+      - name: "Find GCC lib path"
+        run: |
+          # The Zephyr SDK installs arm-zephyr-eabi-gcc but it's not always in PATH.
+          # Find it from the SDK install location.
+          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          if [ -z "${SDK_DIR}" ]; then
+            SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          fi
+          GCC="${SDK_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+          GCC_LIB_DIR=$(dirname $("${GCC}" -print-libgcc-file-name -mcpu=cortex-m3 -mthumb))
+          echo "GCC_LIB_DIR=${GCC_LIB_DIR}" >> "$GITHUB_ENV"
+          echo "SDK_DIR=${SDK_DIR}" >> "$GITHUB_ENV"
+          echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
+          echo "GCC library path: ${GCC_LIB_DIR}"
 
       # --- Build 1: Baseline (GCC, stock Zephyr, no Gale) ---
       - name: "Build baseline (GCC, no Gale)"
@@ -109,25 +127,6 @@ jobs:
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf"
           arm-zephyr-eabi-size build-gcc-gale/zephyr/zephyr.elf | tee gcc-gale-size.txt
-
-      # --- Find GCC lib path for LLVM linker ---
-      # Zephyr's picolibc specs add -lgcc, which ld.lld can't find
-      # without the Zephyr SDK's GCC library directory.
-      - name: "Find GCC lib path"
-        run: |
-          # The Zephyr SDK installs arm-zephyr-eabi-gcc but it's not always in PATH.
-          # Find it from the SDK install location.
-          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
-          if [ -z "${SDK_DIR}" ]; then
-            SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
-          fi
-          GCC="${SDK_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
-          GCC_LIB_DIR=$(dirname $("${GCC}" -print-libgcc-file-name -mcpu=cortex-m3 -mthumb))
-          echo "GCC_LIB_DIR=${GCC_LIB_DIR}" >> "$GITHUB_ENV"
-          echo "SDK_DIR=${SDK_DIR}" >> "$GITHUB_ENV"
-          export PATH="${SDK_DIR}/arm-zephyr-eabi/bin:${PATH}"
-          echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
-          echo "GCC library path: ${GCC_LIB_DIR}"
 
       # --- Build 3: LLVM + Gale (no LTO) ---
       - name: "Build LLVM + Gale (no LTO)"
@@ -306,22 +305,23 @@ jobs:
       - name: Install Rust + ARM target
         run: |
           apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "${RUST_TOOLCHAIN}"
           . /root/.cargo/env
           rustup target add thumbv7m-none-eabi
 
-      - name: Install matching LLVM toolchain
+      - name: Verify LLVM version alignment
         run: |
           . /root/.cargo/env
           RUST_LLVM=$(rustc -vV | grep 'LLVM version' | grep -o '[0-9]*' | head -1)
+          CLANG_LLVM=$(clang --version | grep -o 'version [0-9]*' | grep -o '[0-9]*')
           echo "Rust LLVM major version: ${RUST_LLVM}"
-          apt-get update -qq
-          apt-get install -y -qq wget lsb-release software-properties-common gnupg > /dev/null 2>&1
-          wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- "${RUST_LLVM}" all
-          update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${RUST_LLVM} 100
-          update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${RUST_LLVM} 100
-          update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/ld.lld-${RUST_LLVM} 100
-          clang --version
+          echo "Clang LLVM major version: ${CLANG_LLVM}"
+          if [ "${RUST_LLVM}" != "${CLANG_LLVM}" ]; then
+            echo "::error::LLVM version mismatch: Rust uses LLVM ${RUST_LLVM}, Clang uses LLVM ${CLANG_LLVM}"
+            echo "Update RUST_TOOLCHAIN env var to a Rust version that uses LLVM ${CLANG_LLVM}"
+            exit 1
+          fi
+          echo "LLVM versions match (${RUST_LLVM}). Cross-language LTO should work."
 
       - name: Initialize west workspace
         run: |
