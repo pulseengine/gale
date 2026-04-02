@@ -62,6 +62,7 @@ const PIPE_FLAG_RESET: u8 = 2;
 /// Returns:
 ///   0 (OK)    — valid
 ///   -EINVAL   — null pointer, limit == 0, or count > limit
+#[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sem_validate_v2(state: *const GaleSemState) -> i32 {
     unsafe {
@@ -84,6 +85,7 @@ pub extern "C" fn gale_sem_validate_v2(state: *const GaleSemState) -> i32 {
 /// Returns:
 ///   0 (OK)    — count incremented (or already at limit, saturated)
 ///   -EINVAL   — null pointer
+#[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sem_give_v2(state: *mut GaleSemState) -> i32 {
     unsafe {
@@ -110,6 +112,7 @@ pub extern "C" fn gale_sem_give_v2(state: *mut GaleSemState) -> i32 {
 ///   0 (OK)    — count decremented
 ///   -EBUSY    — count is 0, nothing taken
 ///   -EINVAL   — null pointer
+#[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sem_take_v2(state: *mut GaleSemState) -> i32 {
     unsafe {
@@ -139,6 +142,7 @@ pub extern "C" fn gale_sem_take_v2(state: *mut GaleSemState) -> i32 {
 /// Returns:
 ///   0 (OK)    — valid capacity
 ///   -EINVAL   — null pointer or capacity == 0
+#[cfg(feature = "stack")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_stack_init_validate_v2(state: *const GaleStackState) -> i32 {
     unsafe {
@@ -163,6 +167,7 @@ pub extern "C" fn gale_stack_init_validate_v2(state: *const GaleStackState) -> i
 ///   0 (OK)    — space available, count incremented
 ///   -ENOMEM   — stack full
 ///   -EINVAL   — null pointer
+#[cfg(feature = "stack")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_stack_push_v2(state: *mut GaleStackState) -> i32 {
     unsafe {
@@ -191,6 +196,7 @@ pub extern "C" fn gale_stack_push_v2(state: *mut GaleStackState) -> i32 {
 ///   0 (OK)    — data available, count decremented
 ///   -EBUSY    — stack empty
 ///   -EINVAL   — null pointer
+#[cfg(feature = "stack")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_stack_pop_v2(state: *mut GaleStackState) -> i32 {
     unsafe {
@@ -227,6 +233,7 @@ pub extern "C" fn gale_stack_pop_v2(state: *mut GaleStackState) -> i32 {
 ///   -EAGAIN      — pipe full
 ///   -ENOMSG      — zero-length request
 ///   -EINVAL      — null pointer or zero-capacity pipe
+#[cfg(feature = "pipe")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_pipe_write_v2(
     state: *mut GalePipeState,
@@ -283,6 +290,7 @@ pub extern "C" fn gale_pipe_write_v2(
 ///   -EAGAIN      — pipe empty (but open)
 ///   -ENOMSG      — zero-length request
 ///   -EINVAL      — null pointer
+#[cfg(feature = "pipe")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_pipe_read_v2(
     state: *mut GalePipeState,

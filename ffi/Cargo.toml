@@ -9,6 +9,46 @@ license = "Apache-2.0"
 [lib]
 crate-type = ["staticlib"]
 
+[features]
+default = ["all"]
+all = [
+    "sem", "mutex", "msgq", "pipe", "stack", "timer", "mem_slab",
+    "event", "fifo", "lifo", "queue", "mbox", "timeout", "poll",
+    "futex", "timeslice", "kheap", "thread_lifecycle", "work",
+    "fatal", "mempool", "dynamic", "smp_state", "sched",
+    "mem_domain", "userspace", "heap", "ring_buf", "bitarray", "rbtree",
+]
+sem = []
+mutex = []
+msgq = []
+pipe = []
+stack = []
+timer = []
+mem_slab = []
+event = []
+fifo = []
+lifo = []
+queue = []
+mbox = []
+timeout = []
+poll = []
+futex = []
+timeslice = []
+kheap = []
+thread_lifecycle = []
+work = []
+fatal = []
+mempool = []
+dynamic = []
+smp_state = []
+sched = []
+mem_domain = []
+userspace = []
+heap = []
+ring_buf = []
+bitarray = []
+rbtree = []
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 

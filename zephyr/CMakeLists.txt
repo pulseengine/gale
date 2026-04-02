@@ -103,17 +103,71 @@ set(GALE_CARGO_ENV
   GALE_MAX_WAITERS=${CONFIG_GALE_MAX_WAITERS}
 )
 
+# Collect Cargo features from Kconfig — only compile FFI code for enabled modules
+set(GALE_CARGO_FEATURES "")
+set(GALE_FEATURE_MAP
+  CONFIG_GALE_KERNEL_SEM sem
+  CONFIG_GALE_KERNEL_MUTEX mutex
+  CONFIG_GALE_KERNEL_MSGQ msgq
+  CONFIG_GALE_KERNEL_PIPE pipe
+  CONFIG_GALE_KERNEL_STACK stack
+  CONFIG_GALE_KERNEL_TIMER timer
+  CONFIG_GALE_KERNEL_MEM_SLAB mem_slab
+  CONFIG_GALE_KERNEL_EVENT event
+  CONFIG_GALE_KERNEL_FIFO fifo
+  CONFIG_GALE_KERNEL_LIFO lifo
+  CONFIG_GALE_KERNEL_QUEUE queue
+  CONFIG_GALE_KERNEL_MBOX mbox
+  CONFIG_GALE_KERNEL_TIMEOUT timeout
+  CONFIG_GALE_KERNEL_POLL poll
+  CONFIG_GALE_KERNEL_FUTEX futex
+  CONFIG_GALE_KERNEL_TIMESLICE timeslice
+  CONFIG_GALE_KERNEL_KHEAP kheap
+  CONFIG_GALE_KERNEL_THREAD_LIFECYCLE thread_lifecycle
+  CONFIG_GALE_KERNEL_WORK work
+  CONFIG_GALE_KERNEL_FATAL fatal
+  CONFIG_GALE_KERNEL_MEMPOOL mempool
+  CONFIG_GALE_KERNEL_DYNAMIC dynamic
+  CONFIG_GALE_KERNEL_SMP_STATE smp_state
+  CONFIG_GALE_KERNEL_SCHED sched
+  CONFIG_GALE_KERNEL_MEM_DOMAIN mem_domain
+  CONFIG_GALE_KERNEL_USERSPACE userspace
+  CONFIG_GALE_KERNEL_HEAP heap
+)
+list(LENGTH GALE_FEATURE_MAP _map_len)
+math(EXPR _map_end "${_map_len} - 1")
+foreach(_i RANGE 0 ${_map_end} 2)
+  list(GET GALE_FEATURE_MAP ${_i} _config)
+  math(EXPR _j "${_i} + 1")
+  list(GET GALE_FEATURE_MAP ${_j} _feature)
+  if(${_config})
+    list(APPEND GALE_CARGO_FEATURES ${_feature})
+  else()
+    message(STATUS "Gale: feature '${_feature}' disabled (${_config} not set)")
+  endif()
+endforeach()
+
+# ring_buf, bitarray, rbtree are utility modules — always include when any module is active
+if(GALE_CARGO_FEATURES)
+  list(APPEND GALE_CARGO_FEATURES ring_buf bitarray rbtree)
+  list(JOIN GALE_CARGO_FEATURES "," GALE_CARGO_FEATURES_STR)
+  set(GALE_CARGO_FEATURE_ARGS --no-default-features --features ${GALE_CARGO_FEATURES_STR})
+else()
+  set(GALE_CARGO_FEATURE_ARGS --no-default-features)
+endif()
+
 add_custom_command(
   OUTPUT ${GALE_FFI_LIB}
   COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_ENV} ${GALE_CARGO_RUSTFLAGS_ENV}
     cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+    ${GALE_CARGO_FEATURE_ARGS}
     --manifest-path ${GALE_FFI_DIR}/Cargo.toml
   DEPENDS
     ${GALE_FFI_DIR}/Cargo.toml
     ${GALE_FFI_DIR}/src/lib.rs
     ${GALE_DIR}/plain/src/error.rs
     ${GALE_DIR}/plain/src/lib.rs
-  COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
+  COMMENT "Building Gale FFI static library for ${RUST_TARGET} [features: ${GALE_CARGO_FEATURES_STR}]"
   VERBATIM
 )
 

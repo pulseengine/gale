@@ -251,6 +251,7 @@ use gale::error::{
 ///
 /// sem.c:48-50:
 ///   CHECKIF(limit == 0U || initial_count > limit) { return -EINVAL; }
+#[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sem_count_init(initial_count: u32, limit: u32) -> i32 {
     if limit == 0 || initial_count > limit {
@@ -267,6 +268,7 @@ pub extern "C" fn gale_sem_count_init(initial_count: u32, limit: u32) -> i32 {
 ///
 /// Safe: count < limit <= u32::MAX when count != limit, so count+1
 /// cannot overflow.  Verified by Verus lemma_give_saturation.
+#[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sem_count_give(count: u32, limit: u32) -> u32 {
     if count != limit {
@@ -286,6 +288,7 @@ pub extern "C" fn gale_sem_count_give(count: u32, limit: u32) -> u32 {
 ///
 /// SAFETY: `count` must point to a valid `unsigned int` (Zephyr's
 /// sem->count).  Called under Zephyr's spinlock — no concurrent access.
+#[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sem_count_take(count: *mut u32) -> i32 {
     // SAFETY: Zephyr guarantees valid pointer under spinlock.
@@ -326,6 +329,7 @@ pub const GALE_SEM_ACTION_WAKE: u8 = 1;
 /// whether a waiter was found. Rust decides the action.
 ///
 /// Delegates to `gale::sem::give_decide` (Verus-verified).
+#[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_sem_give_decide(
     count: u32,
@@ -372,6 +376,7 @@ pub const GALE_SEM_ACTION_PEND: u8 = 1;
 /// Full decision for k_sem_take: decides whether to acquire, return busy, or pend.
 ///
 /// Delegates to `gale::sem::take_decide` (Verus-verified).
+#[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_sem_take_decide(
     count: u32,
@@ -443,6 +448,7 @@ pub extern "C" fn gale_k_sem_take_decide(
 /// Returns:
 ///   0 (OK)    — lock acquired, *new_lock_count set, caller sets owner
 ///   -EBUSY    — contended (different owner holds it)
+#[cfg(feature = "mutex")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mutex_lock_validate(
     lock_count: u32,
@@ -504,6 +510,7 @@ pub const GALE_MUTEX_UNLOCKED: i32 = 0;
 ///                             caller should check waiters
 ///   -EINVAL                 — not locked (no owner)
 ///   -EPERM                  — not the owner
+#[cfg(feature = "mutex")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mutex_unlock_validate(
     lock_count: u32,
@@ -568,6 +575,7 @@ pub const GALE_MUTEX_ACTION_BUSY: u8 = 2;
 ///
 /// Delegates to `gale::mutex::lock_decide` (Verus-verified).
 /// Verified: M3 (acquire), M4 (reentrant), M5 (contended), M10 (no overflow).
+#[cfg(feature = "mutex")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mutex_lock_decide(
     lock_count: u32,
@@ -634,6 +642,7 @@ pub const GALE_MUTEX_UNLOCK_ERROR: u8 = 2;
 ///
 /// Delegates to `gale::mutex::unlock_decide` (Verus-verified).
 /// Verified: M6a (EINVAL), M6b (EPERM), M7 (reentrant), M10 (no underflow).
+#[cfg(feature = "mutex")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mutex_unlock_decide(
     lock_count: u32,
@@ -710,6 +719,7 @@ pub extern "C" fn gale_k_mutex_unlock_decide(
 /// Returns:
 ///   0 (OK)   — valid parameters, *buffer_size set
 ///   -EINVAL  — invalid (zero msg_size/max_msgs, or overflow)
+#[cfg(feature = "msgq")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_msgq_init_validate(
     msg_size: u32,
@@ -753,6 +763,7 @@ pub extern "C" fn gale_msgq_init_validate(
 /// Returns:
 ///   0 (OK)    — queue had space, outputs set, caller does memcpy at write_idx
 ///   -ENOMSG   — queue full, outputs unchanged
+#[cfg(feature = "msgq")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_msgq_put(
     write_idx: u32,
@@ -806,6 +817,7 @@ pub extern "C" fn gale_msgq_put(
 /// Returns:
 ///   0 (OK)    — queue had space, outputs set, caller does memcpy at *new_read_idx
 ///   -ENOMSG   — queue full, outputs unchanged
+#[cfg(feature = "msgq")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_msgq_put_front(
     read_idx: u32,
@@ -859,6 +871,7 @@ pub extern "C" fn gale_msgq_put_front(
 /// Returns:
 ///   0 (OK)    — queue had messages, outputs set, caller does memcpy at read_idx
 ///   -ENOMSG   — queue empty, outputs unchanged
+#[cfg(feature = "msgq")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_msgq_get(
     read_idx: u32,
@@ -911,6 +924,7 @@ pub extern "C" fn gale_msgq_get(
 /// Returns:
 ///   0 (OK)    — valid index, *slot_idx set
 ///   -ENOMSG   — index out of bounds
+#[cfg(feature = "msgq")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_msgq_peek_at(
     read_idx: u32,
@@ -968,6 +982,7 @@ pub const GALE_MSGQ_ACTION_RETURN_FULL: u8 = 3;
 /// or return full.
 ///
 /// Delegates to `gale::msgq::put_decide` (Verus-verified).
+#[cfg(feature = "msgq")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_msgq_put_decide(
     write_idx: u32,
@@ -1029,6 +1044,7 @@ pub const GALE_MSGQ_ACTION_RETURN_EMPTY: u8 = 3;
 /// or return empty.
 ///
 /// Delegates to `gale::msgq::get_decide` (Verus-verified).
+#[cfg(feature = "msgq")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_msgq_get_decide(
     read_idx: u32,
@@ -1138,6 +1154,7 @@ const PIPE_FLAG_RESET: u8 = 2;
 ///   -ECANCELED   — pipe resetting
 ///   -EAGAIN      — pipe full
 ///   -ENOMSG      — zero-length request
+#[cfg(feature = "pipe")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_pipe_write_check(
     used: u32,
@@ -1193,6 +1210,7 @@ pub extern "C" fn gale_pipe_write_check(
 ///   -ECANCELED   — pipe resetting
 ///   -EAGAIN      — pipe empty
 ///   -ENOMSG      — zero-length request
+#[cfg(feature = "pipe")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_pipe_read_check(
     used: u32,
@@ -1253,6 +1271,7 @@ pub const GALE_PIPE_ACTION_WRITE_ERROR: u8 = 3;
 ///
 /// Delegates to `gale::pipe::write_decide` (Verus-verified).
 /// Verified: PP3-PP5, PP9-PP10
+#[cfg(feature = "pipe")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_pipe_write_decide(
     used: u32,
@@ -1314,6 +1333,7 @@ pub const GALE_PIPE_ACTION_READ_ERROR: u8 = 3;
 ///
 /// Delegates to `gale::pipe::read_decide` (Verus-verified).
 /// Verified: PP3-PP6, PP9-PP10
+#[cfg(feature = "pipe")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_pipe_read_decide(
     used: u32,
@@ -1362,6 +1382,7 @@ pub extern "C" fn gale_k_pipe_read_decide(
 /// Returns:
 ///   0 (OK)   — valid capacity
 ///   -EINVAL  — num_entries == 0
+#[cfg(feature = "stack")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_stack_init_validate(num_entries: u32) -> i32 {
     if num_entries == 0 {
@@ -1385,6 +1406,7 @@ pub extern "C" fn gale_stack_init_validate(num_entries: u32) -> i32 {
 /// Returns:
 ///   0 (OK)    — space available, *new_count set, caller stores data
 ///   -ENOMEM   — stack full, output unchanged
+#[cfg(feature = "stack")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_stack_push_validate(
     count: u32,
@@ -1423,6 +1445,7 @@ pub extern "C" fn gale_stack_push_validate(
 /// Returns:
 ///   0 (OK)    — data available, *new_count set, caller reads data
 ///   -EBUSY    — stack empty, output unchanged
+#[cfg(feature = "stack")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_stack_pop_validate(
     count: u32,
@@ -1473,6 +1496,7 @@ pub const GALE_STACK_PUSH_FULL: u8 = 2;
 ///
 /// Delegates to `gale::stack::push_decide` (Verus-verified).
 /// Verified: SK1 (bounds), SK3 (increment), SK4 (-ENOMEM).
+#[cfg(feature = "stack")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_stack_push_decide(
     count: u32,
@@ -1519,6 +1543,7 @@ pub const GALE_STACK_POP_PEND: u8 = 1;
 ///
 /// Delegates to `gale::stack::pop_decide` (Verus-verified).
 /// Verified: SK1 (bounds), SK5 (decrement), SK6 (-EBUSY).
+#[cfg(feature = "stack")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_stack_pop_decide(
     count: u32,
@@ -1554,6 +1579,7 @@ pub extern "C" fn gale_k_stack_pop_decide(
 ///
 /// Returns:
 ///   0 (OK) — always valid
+#[cfg(feature = "timer")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_timer_init_validate(period: u32) -> i32 {
     // Period 0 = one-shot, period > 0 = periodic.  Both are valid.
@@ -1574,6 +1600,7 @@ pub extern "C" fn gale_timer_init_validate(period: u32) -> i32 {
 ///   0 (OK)       — *new_status set to status + 1
 ///   -EOVERFLOW   — status == u32::MAX, output unchanged
 ///   -EINVAL      — new_status is null
+#[cfg(feature = "timer")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_timer_expire(
     status: u32,
@@ -1611,6 +1638,7 @@ pub extern "C" fn gale_timer_expire(
 /// Returns:
 ///   The old status value.
 ///   If new_status is non-null, *new_status is set to 0.
+#[cfg(feature = "timer")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_timer_status_get(
     status: u32,
@@ -1642,6 +1670,7 @@ pub struct GaleTimerExpireDecision {
 /// C applies new_status to timer->status.
 ///
 /// Verified: TM5 (increment), TM8 (no overflow — saturates at u32::MAX).
+#[cfg(feature = "timer")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_timer_expire_decide(
     status: u32,
@@ -1677,6 +1706,7 @@ pub struct GaleTimerStatusDecision {
 /// C applies new_status to timer->status and returns count.
 ///
 /// Verified: TM2 (read + reset to 0).
+#[cfg(feature = "timer")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_timer_status_decide(
     status: u32,
@@ -1699,6 +1729,7 @@ pub extern "C" fn gale_k_timer_status_decide(
 /// Returns:
 ///   0 (OK)   — valid parameters
 ///   -EINVAL  — block_size == 0 or num_blocks == 0
+#[cfg(feature = "mem_slab")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mem_slab_init_validate(block_size: u32, num_blocks: u32) -> i32 {
     if block_size == 0 || num_blocks == 0 {
@@ -1721,6 +1752,7 @@ pub extern "C" fn gale_mem_slab_init_validate(block_size: u32, num_blocks: u32) 
 /// Returns:
 ///   0 (OK)    — block available, *new_num_used set
 ///   -ENOMEM   — slab full, output unchanged
+#[cfg(feature = "mem_slab")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mem_slab_alloc_validate(
     num_used: u32,
@@ -1757,6 +1789,7 @@ pub extern "C" fn gale_mem_slab_alloc_validate(
 /// Returns:
 ///   0 (OK)    — block freed, *new_num_used set
 ///   -EINVAL   — all blocks already free, output unchanged
+#[cfg(feature = "mem_slab")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mem_slab_free_validate(
     num_used: u32,
@@ -1803,6 +1836,7 @@ pub const GALE_MEM_SLAB_ACTION_RETURN_NOMEM: u8 = 2;
 /// to wait.  Rust decides the action.
 ///
 /// Verified: MS4 (increment), MS5 (-ENOMEM), MS1 (bounds).
+#[cfg(feature = "mem_slab")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mem_slab_alloc_decide(
     num_used: u32,
@@ -1850,6 +1884,7 @@ pub const GALE_MEM_SLAB_ACTION_WAKE_THREAD: u8 = 1;
 /// list was empty).  Rust decides the action.
 ///
 /// Verified: MS6 (decrement), MS1 (bounds).
+#[cfg(feature = "mem_slab")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mem_slab_free_decide(
     num_used: u32,
@@ -1916,6 +1951,7 @@ pub extern "C" fn gale_k_mem_slab_free_decide(
 /// Returns:
 ///   0 (OK)    — *result set
 ///   -EINVAL   — result is null
+#[cfg(feature = "event")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_event_post(
     events: u32,
@@ -1945,6 +1981,7 @@ pub extern "C" fn gale_event_post(
 /// Returns:
 ///   0 (OK)    — *old_events set to current
 ///   -EINVAL   — old_events is null
+#[cfg(feature = "event")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_event_set(
     new_events: u32,
@@ -1976,6 +2013,7 @@ pub extern "C" fn gale_event_set(
 /// Returns:
 ///   0 (OK)    — *result set
 ///   -EINVAL   — result is null
+#[cfg(feature = "event")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_event_clear(
     events: u32,
@@ -2006,6 +2044,7 @@ pub extern "C" fn gale_event_clear(
 /// Returns:
 ///   0 (OK)    — *result set
 ///   -EINVAL   — result is null
+#[cfg(feature = "event")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_event_set_masked(
     events: u32,
@@ -2035,6 +2074,7 @@ pub extern "C" fn gale_event_set_masked(
 /// Returns:
 ///   1 — at least one desired bit is set
 ///   0 — no desired bits are set
+#[cfg(feature = "event")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_event_wait_check_any(
     events: u32,
@@ -2059,6 +2099,7 @@ pub extern "C" fn gale_event_wait_check_any(
 /// Returns:
 ///   1 — all desired bits are set
 ///   0 — not all desired bits are set
+#[cfg(feature = "event")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_event_wait_check_all(
     events: u32,
@@ -2098,6 +2139,7 @@ pub struct GaleEventPostDecision {
 ///
 /// Delegates to `gale::event::post_decide` (Verus-verified).
 /// Verified: EV4 — set_masked computes (current & ~mask) | (new & mask)
+#[cfg(feature = "event")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_event_post_decide(
     current_events: u32,
@@ -2130,6 +2172,7 @@ pub struct GaleEventWaitDecision {
 ///
 /// Delegates to `gale::event::wait_decide` (Verus-verified).
 /// Verified: EV5 (any-bit match), EV6 (all-bits match)
+#[cfg(feature = "event")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_event_wait_decide(
     current_events: u32,
@@ -2176,6 +2219,7 @@ pub extern "C" fn gale_k_event_wait_decide(
 /// Returns:
 ///   0 (OK)       — space available, *new_count set
 ///   -EOVERFLOW   — count would overflow u32
+#[cfg(feature = "fifo")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_fifo_put_validate(
     count: u32,
@@ -2211,6 +2255,7 @@ pub extern "C" fn gale_fifo_put_validate(
 /// Returns:
 ///   0 (OK)    — data available, *new_count set
 ///   -EAGAIN   — fifo empty
+#[cfg(feature = "fifo")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_fifo_get_validate(
     count: u32,
@@ -2254,6 +2299,7 @@ pub const GALE_FIFO_PUT_WAKE: u8 = 1;
 /// Fifo is unbounded, so put always succeeds (no capacity check needed).
 ///
 /// Verified: FI1 (no overflow), FI2 (increment via PUT_OK path).
+#[cfg(feature = "fifo")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_fifo_put_decide(
     _count: u32,
@@ -2291,6 +2337,7 @@ pub const GALE_FIFO_GET_NODATA: u8 = 2;
 /// If empty and willing to wait, return PEND_CURRENT.
 ///
 /// Verified: FI3 (no underflow), FI4 (decrement via GET_OK path).
+#[cfg(feature = "fifo")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_fifo_get_decide(
     count: u32,
@@ -2331,6 +2378,7 @@ pub extern "C" fn gale_k_fifo_get_decide(
 /// Returns:
 ///   0 (OK)       — space available, *new_count set
 ///   -EOVERFLOW   — count would overflow u32
+#[cfg(feature = "lifo")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_lifo_put_validate(
     count: u32,
@@ -2366,6 +2414,7 @@ pub extern "C" fn gale_lifo_put_validate(
 /// Returns:
 ///   0 (OK)    — data available, *new_count set
 ///   -EAGAIN   — lifo empty
+#[cfg(feature = "lifo")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_lifo_get_validate(
     count: u32,
@@ -2409,6 +2458,7 @@ pub const GALE_LIFO_PUT_WAKE: u8 = 1;
 /// Lifo is unbounded, so put always succeeds (no capacity check needed).
 ///
 /// Verified: LI1 (no overflow), LI2 (increment via PUT_OK path).
+#[cfg(feature = "lifo")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_lifo_put_decide(
     _count: u32,
@@ -2446,6 +2496,7 @@ pub const GALE_LIFO_GET_NODATA: u8 = 2;
 /// If empty and willing to wait, return PEND_CURRENT.
 ///
 /// Verified: LI3 (no underflow), LI4 (decrement via GET_OK path).
+#[cfg(feature = "lifo")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_lifo_get_decide(
     count: u32,
@@ -2485,6 +2536,7 @@ pub extern "C" fn gale_k_lifo_get_decide(
 /// Returns:
 ///   0 (OK)       — space available, *new_count set
 ///   -EOVERFLOW   — count would overflow u32
+#[cfg(feature = "queue")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_queue_append_validate(
     count: u32,
@@ -2520,6 +2572,7 @@ pub extern "C" fn gale_queue_append_validate(
 /// Returns:
 ///   0 (OK)       — space available, *new_count set
 ///   -EOVERFLOW   — count would overflow u32
+#[cfg(feature = "queue")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_queue_prepend_validate(
     count: u32,
@@ -2555,6 +2608,7 @@ pub extern "C" fn gale_queue_prepend_validate(
 /// Returns:
 ///   0 (OK)    — data available, *new_count set
 ///   -EAGAIN   — queue empty
+#[cfg(feature = "queue")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_queue_get_validate(
     count: u32,
@@ -2593,6 +2647,7 @@ pub extern "C" fn gale_queue_get_validate(
 /// Returns:
 ///   0 (OK)    — valid send
 ///   -EINVAL   — size == 0
+#[cfg(feature = "mbox")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mbox_validate_send(size: u32) -> i32 {
     if size == 0 {
@@ -2617,6 +2672,7 @@ pub extern "C" fn gale_mbox_validate_send(size: u32) -> i32 {
 /// Returns:
 ///   1 — IDs match (either is 0/K_ANY, or both are equal)
 ///   0 — IDs do not match
+#[cfg(feature = "mbox")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mbox_match_check(send_id: u32, recv_id: u32) -> i32 {
     if send_id == 0 || recv_id == 0 || send_id == recv_id {
@@ -2637,6 +2693,7 @@ pub extern "C" fn gale_mbox_match_check(send_id: u32, recv_id: u32) -> i32 {
 ///
 /// Returns:
 ///   min(tx_size, rx_buf_size)
+#[cfg(feature = "mbox")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mbox_data_exchange(tx_size: u32, rx_buf_size: u32) -> u32 {
     if tx_size < rx_buf_size {
@@ -2665,6 +2722,7 @@ pub const GALE_QUEUE_ACTION_WAKE: u8 = 1;
 /// whether a waiter was found. Rust decides the action.
 ///
 /// Verified: QU1/QU2 (append), QU3/QU4 (prepend) — state transition only.
+#[cfg(feature = "queue")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_queue_insert_decide(
     has_waiter: u32,
@@ -2698,6 +2756,7 @@ pub const GALE_QUEUE_ACTION_PEND: u8 = 2;
 /// Rust decides the action.
 ///
 /// Verified: QU5/QU6 — state transition only.
+#[cfg(feature = "queue")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_queue_get_decide(
     has_data: u32,
@@ -2738,6 +2797,7 @@ pub const GALE_MBOX_ACTION_PEND_TX: u8 = 2;
 /// Rust decides the action.
 ///
 /// Verified: MB2-MB4 (match check delegated), state transition decision.
+#[cfg(feature = "mbox")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mbox_put_decide(
     matched: u32,
@@ -2776,6 +2836,7 @@ pub const GALE_MBOX_ACTION_PEND_RX: u8 = 2;
 /// Rust decides the action.
 ///
 /// Verified: MB2-MB4 (match check delegated), state transition decision.
+#[cfg(feature = "mbox")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mbox_get_decide(
     matched: u32,
@@ -2839,6 +2900,7 @@ pub struct GaleTimeoutAddDecision {
 ///   C extracts current_tick and duration, Rust computes the deadline.
 ///
 /// Verified: TO2 (deadline = current_tick + duration), TO5 (no overflow).
+#[cfg(feature = "timeout")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_timeout_add_decide(
     current_tick: u64,
@@ -2885,6 +2947,7 @@ pub const GALE_TIMEOUT_ACTION_NOOP: u8 = 1;
 ///   Rust decides: remove or noop.
 ///
 /// Verified: TO3 (abort clears to inactive).
+#[cfg(feature = "timeout")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_timeout_abort_decide(
     is_linked: u32,
@@ -2922,6 +2985,7 @@ pub struct GaleTimeoutAnnounceDecision {
 ///
 /// Verified: TO4 (fires when deadline <= now), TO5 (no overflow),
 ///           TO7 (K_FOREVER never expires).
+#[cfg(feature = "timeout")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_timeout_announce_decide(
     current_tick: u64,
@@ -2961,6 +3025,7 @@ pub extern "C" fn gale_timeout_announce_decide(
 /// Schedule a timeout: compute absolute deadline from current tick + duration.
 ///
 /// Delegates to gale_timeout_add_decide.
+#[cfg(feature = "timeout")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_timeout_add(
     current_tick: u64,
@@ -2985,6 +3050,7 @@ pub extern "C" fn gale_timeout_add(
 /// Abort a pending timeout.
 ///
 /// Delegates to gale_timeout_abort_decide.
+#[cfg(feature = "timeout")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_timeout_abort(active: u32) -> i32 {
     gale_timeout_abort_decide(active).ret
@@ -2993,6 +3059,7 @@ pub extern "C" fn gale_timeout_abort(active: u32) -> i32 {
 /// Advance tick and check if a timeout has expired.
 ///
 /// Delegates to gale_timeout_announce_decide.
+#[cfg(feature = "timeout")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_timeout_announce(
     current_tick: u64,
@@ -3044,6 +3111,7 @@ pub extern "C" fn gale_timeout_announce(
 /// Returns:
 ///   0 (OK)   — valid type, *state set to 0
 ///   -EINVAL  — null pointer
+#[cfg(feature = "poll")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_poll_event_init(
     event_type: u32,
@@ -3072,6 +3140,7 @@ pub extern "C" fn gale_poll_event_init(
 /// Returns:
 ///   1 — condition met (type == SEM_AVAILABLE && count > 0)
 ///   0 — condition not met
+#[cfg(feature = "poll")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_poll_check_sem(
     event_type: u32,
@@ -3097,6 +3166,7 @@ pub extern "C" fn gale_poll_check_sem(
 /// Returns:
 ///   0 (OK)   — *signaled = 1, *result = result_val
 ///   -EINVAL  — null pointer
+#[cfg(feature = "poll")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_poll_signal_raise(
     signaled: *mut u32,
@@ -3124,6 +3194,7 @@ pub extern "C" fn gale_poll_signal_raise(
 /// Returns:
 ///   0 (OK)   — *signaled = 0
 ///   -EINVAL  — null pointer
+#[cfg(feature = "poll")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_poll_signal_reset(
     signaled: *mut u32,
@@ -3168,6 +3239,7 @@ pub const GALE_POLL_ACTION_SIGNAL_EVENT: u8 = 1;
 /// poll.c:522-545: z_impl_k_poll_signal_raise()
 ///
 /// Verified: PL7 (signal raise sets result + signaled).
+#[cfg(feature = "poll")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_poll_signal_raise_decide(
     signaled: u32,
@@ -3219,6 +3291,7 @@ pub extern "C" fn gale_k_poll_signal_raise_decide(
 /// Returns:
 ///   0 (OK)    — val == expected, caller should block
 ///   -EAGAIN   — val != expected, do not block
+#[cfg(feature = "futex")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_futex_wait_check(val: u32, expected: u32) -> i32 {
     if val == expected {
@@ -3242,6 +3315,7 @@ pub extern "C" fn gale_futex_wait_check(val: u32, expected: u32) -> i32 {
 /// Returns:
 ///   0 (OK)   — *woken and *remaining set
 ///   -EINVAL  — null pointer
+#[cfg(feature = "futex")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_futex_wake(
     num_waiters: u32,
@@ -3291,6 +3365,7 @@ pub const GALE_FUTEX_ACTION_RETURN_EAGAIN: u8 = 1;
 /// Full decision for k_futex_wait: decides whether to block or return -EAGAIN.
 ///
 /// Verified: FX1 (block when val == expected), FX2 (EAGAIN on mismatch).
+#[cfg(feature = "futex")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_futex_wait_decide(
     val: u32,
@@ -3329,6 +3404,7 @@ pub struct GaleFutexWakeDecision {
 /// Full decision for k_futex_wake: decides the wake limit.
 ///
 /// Verified: FX3 (wake count correct), FX4 (wake_all wakes all), FX5 (single wake).
+#[cfg(feature = "futex")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_futex_wake_decide(
     num_waiters: u32,
@@ -3378,6 +3454,7 @@ pub extern "C" fn gale_k_futex_wake_decide(
 /// Returns:
 ///   0 (OK) — *new_ticks set
 ///   -EINVAL — null pointer
+#[cfg(feature = "timeslice")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_timeslice_reset(
     slice_max_ticks: u32,
@@ -3407,6 +3484,7 @@ pub extern "C" fn gale_timeslice_reset(
 /// Returns:
 ///   0 (OK) — *new_ticks and *expired set
 ///   -EINVAL — null pointer
+#[cfg(feature = "timeslice")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_timeslice_tick(
     slice_ticks: u32,
@@ -3465,6 +3543,7 @@ pub const GALE_TIMESLICE_ACTION_YIELD: u8 = 1;
 ///   new_ticks: reset to slice_ticks on yield, else ticks_remaining
 ///
 /// Verified: TS4 (expire detection), TS6 (cooperative threads never yield).
+#[cfg(feature = "timeslice")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_timeslice_tick_decide(
     ticks_remaining: u32,
@@ -3530,6 +3609,7 @@ pub extern "C" fn gale_k_timeslice_tick_decide(
 ///   0 (OK)    — *new_allocated set
 ///   -ENOMEM   — would exceed capacity
 ///   -EINVAL   — null pointer or bytes == 0
+#[cfg(feature = "kheap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_kheap_alloc_validate(
     allocated_bytes: u32,
@@ -3566,6 +3646,7 @@ pub extern "C" fn gale_kheap_alloc_validate(
 /// Returns:
 ///   0 (OK)    — *new_allocated set
 ///   -EINVAL   — would underflow or null pointer or bytes == 0
+#[cfg(feature = "kheap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_kheap_free_validate(
     allocated_bytes: u32,
@@ -3619,6 +3700,7 @@ pub const GALE_KHEAP_ACTION_RETURN_NULL: u8 = 2;
 ///   is_no_wait:      1 if K_NO_WAIT or !MULTITHREADING, 0 otherwise
 ///
 /// Verified: KH2 (alloc), KH3 (full), KH6 (no overflow).
+#[cfg(feature = "kheap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_kheap_alloc_decide(
     alloc_succeeded: u32,
@@ -3661,6 +3743,7 @@ pub const GALE_KHEAP_ACTION_FREE_AND_RESCHEDULE: u8 = 1;
 ///   has_waiters: 1 if z_unpend_all returned > 0, 0 otherwise
 ///
 /// Verified: KH4 (free), KH5 (conservation).
+#[cfg(feature = "kheap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_kheap_free_decide(
     has_waiters: u32,
@@ -3705,6 +3788,7 @@ const MAX_PRIORITY: u32 = 32;
 ///   0 (OK)    — *new_count set
 ///   -EAGAIN   — at capacity
 ///   -EINVAL   — null pointer
+#[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_thread_create_validate(
     count: u32,
@@ -3736,6 +3820,7 @@ pub extern "C" fn gale_thread_create_validate(
 /// Returns:
 ///   0 (OK)    — *new_count set
 ///   -EINVAL   — no threads active (underflow protection) or null pointer
+#[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_thread_exit_validate(
     count: u32,
@@ -3769,6 +3854,7 @@ pub extern "C" fn gale_thread_exit_validate(
 /// Returns:
 ///   0 (OK)    — priority < MAX_PRIORITY
 ///   -EINVAL   — priority out of range
+#[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_thread_priority_validate(priority: u32) -> i32 {
     if priority < MAX_PRIORITY {
@@ -3813,6 +3899,7 @@ const MIN_STACK_SIZE: u32 = 64;
 ///   active_count:  current active thread count
 ///
 /// Verified: TH1 (priority range), TH3 (stack_size > 0), TH6 (no overflow).
+#[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_thread_create_decide(
     stack_size: u32,
@@ -3884,6 +3971,7 @@ const THREAD_STATE_DEAD: u8 = 0x08;
 ///   action=ABORT otherwise (proceed with halt)
 ///
 /// Verified: TH5 (no underflow — dead threads not re-aborted).
+#[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_thread_abort_decide(
     thread_state: u8,
@@ -3937,6 +4025,7 @@ pub const GALE_THREAD_JOIN_PEND: u8 = 1;
 ///   is_self_or_circular: 1 if target == _current or target is pended on our join queue
 ///
 /// Verified: deadlock detection, proper state transitions.
+#[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_thread_join_decide(
     is_dead: u32,
@@ -4033,6 +4122,7 @@ pub struct GaleWorkSubmitDecision {
 ///
 /// Verified: WK2 (submit sets QUEUED), WK3 (CANCELING rejects),
 ///           WK4 (already queued is no-op).
+#[cfg(feature = "work")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_work_submit_decide(
     flags: u8,
@@ -4107,6 +4197,7 @@ pub struct GaleWorkCancelDecision {
 /// C applies:  writes new_flags back, removes from queue if action==DEQUEUE.
 ///
 /// Verified: WK5 (cancel clears QUEUED, sets CANCELING if still busy).
+#[cfg(feature = "work")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_work_cancel_decide(
     flags: u8,
@@ -4163,6 +4254,7 @@ pub extern "C" fn gale_k_work_cancel_decide(
 ///   0          -- already queued (no-op)
 ///   -EBUSY     -- canceling, rejected
 ///   -EINVAL    -- null pointer
+#[cfg(feature = "work")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_work_submit_validate(
     flags: u8,
@@ -4186,6 +4278,7 @@ pub extern "C" fn gale_work_submit_validate(
 /// Returns:
 ///   0 (OK) -- *new_flags and *busy set
 ///   -EINVAL -- null pointer
+#[cfg(feature = "work")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_work_cancel_validate(
     flags: u8,
@@ -4252,6 +4345,7 @@ pub const GALE_FATAL_ACTION_IGNORE: u8 = 2;
 ///   1 — Halt (non-recoverable)
 ///   2 — Ignore (test mode ISR)
 ///   -EINVAL — unknown reason code
+#[cfg(feature = "fatal")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_fatal_classify(
     reason: u32,
@@ -4272,6 +4366,7 @@ pub extern "C" fn gale_fatal_classify(
 /// ignore.
 ///
 /// Verified: FT1 (reason mapping), FT2 (panic halts), FT3 (recovery).
+#[cfg(feature = "fatal")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_fatal_decide(
     reason: u32,
@@ -4344,6 +4439,7 @@ pub extern "C" fn gale_k_fatal_decide(
 ///   0 (OK)    — *new_allocated set
 ///   -ENOMEM   — pool full
 ///   -EINVAL   — null pointer
+#[cfg(feature = "mempool")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mempool_alloc_validate(
     allocated: u32,
@@ -4376,6 +4472,7 @@ pub extern "C" fn gale_mempool_alloc_validate(
 /// Returns:
 ///   0 (OK)    — *new_allocated set
 ///   -EINVAL   — no blocks allocated (underflow) or null pointer
+#[cfg(feature = "mempool")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mempool_free_validate(
     allocated: u32,
@@ -4425,6 +4522,7 @@ pub const GALE_MEMPOOL_ACTION_RETURN_NULL: u8 = 1;
 ///   alloc_succeeded: 1 if sys_heap returned non-NULL, 0 if NULL
 ///
 /// Verified: MP2 (alloc), MP3 (full).
+#[cfg(feature = "mempool")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mempool_alloc_decide(
     alloc_succeeded: u32,
@@ -4462,6 +4560,7 @@ pub const GALE_MEMPOOL_ACTION_FREE_AND_RESCHEDULE: u8 = 1;
 ///   has_waiters: 1 if z_unpend_all returned > 0, 0 otherwise
 ///
 /// Verified: MP4 (free), MP5 (conservation).
+#[cfg(feature = "mempool")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mempool_free_decide(
     has_waiters: u32,
@@ -4504,6 +4603,7 @@ pub extern "C" fn gale_k_mempool_free_decide(
 ///   0 (OK)    — *new_active set
 ///   -ENOMEM   — pool full
 ///   -EINVAL   — null pointer
+#[cfg(feature = "dynamic")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_dynamic_alloc_validate(
     active: u32,
@@ -4536,6 +4636,7 @@ pub extern "C" fn gale_dynamic_alloc_validate(
 /// Returns:
 ///   0 (OK)    — *new_active set
 ///   -EINVAL   — no stacks active (underflow) or null pointer
+#[cfg(feature = "dynamic")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_dynamic_free_validate(
     active: u32,
@@ -4584,6 +4685,7 @@ pub extern "C" fn gale_dynamic_free_validate(
 ///   0 (OK)    — *new_active set
 ///   -EBUSY    — all CPUs already active
 ///   -EINVAL   — null pointer
+#[cfg(feature = "smp_state")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_smp_start_cpu_validate(
     active_cpus: u32,
@@ -4616,6 +4718,7 @@ pub extern "C" fn gale_smp_start_cpu_validate(
 /// Returns:
 ///   0 (OK)    — *new_active set
 ///   -EINVAL   — only CPU 0 left (cannot stop) or null pointer
+#[cfg(feature = "smp_state")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_smp_stop_cpu_validate(
     active_cpus: u32,
@@ -4658,6 +4761,7 @@ pub const GALE_DYNAMIC_ACTION_POOL_FULL: u8 = 1;
 /// whether there is room for another allocation.
 ///
 /// Verified: DY2 (alloc: active += 1), DY3 (full: -ENOMEM).
+#[cfg(feature = "dynamic")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_dynamic_alloc_decide(
     active: u32,
@@ -4696,6 +4800,7 @@ pub const GALE_DYNAMIC_ACTION_UNDERFLOW: u8 = 1;
 /// free is valid (no underflow).
 ///
 /// Verified: DY4 (free: active -= 1, no underflow).
+#[cfg(feature = "dynamic")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_dynamic_free_decide(
     active: u32,
@@ -4735,6 +4840,7 @@ pub const GALE_SMP_ACTION_ALL_ACTIVE: u8 = 1;
 /// whether there is room to start another CPU.
 ///
 /// Verified: SM2 (start: active += 1).
+#[cfg(feature = "smp_state")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_smp_start_cpu_decide(
     active_cpus: u32,
@@ -4773,6 +4879,7 @@ pub const GALE_SMP_ACTION_LAST_CPU: u8 = 1;
 /// stopping is valid (CPU 0 must never stop).
 ///
 /// Verified: SM3 (stop: active -= 1, min 1).
+#[cfg(feature = "smp_state")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_smp_stop_cpu_decide(
     active_cpus: u32,
@@ -4820,6 +4927,7 @@ pub extern "C" fn gale_smp_stop_cpu_decide(
 ///   0 — selected the run queue best
 ///   1 — selected idle (run queue was empty)
 ///   -EINVAL — null pointer
+#[cfg(feature = "sched")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sched_next_up(
     runq_best_prio: u32,
@@ -4856,6 +4964,7 @@ pub extern "C" fn gale_sched_next_up(
 /// Returns:
 ///   1 — should preempt
 ///   0 — should not preempt
+#[cfg(feature = "sched")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sched_should_preempt(
     current_is_cooperative: u32,
@@ -4903,6 +5012,7 @@ pub struct GaleSchedNextUpDecision {
 ///   metairq_preempted_is_ready:  1 if the preempted thread is still ready
 ///
 /// Verified: SC5 (highest-priority), SC6 (cooperative protection), SC7 (idle fallback).
+#[cfg(feature = "sched")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_sched_next_up_decide(
     has_runq_thread: u32,
@@ -4963,6 +5073,7 @@ pub struct GaleSchedPreemptDecision {
 ///                            (pended/suspended/dummy)
 ///
 /// Verified: SC6 (cooperative not preempted by non-MetaIRQ).
+#[cfg(feature = "sched")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_sched_preempt_decide(
     is_cooperative: u32,
@@ -5049,6 +5160,7 @@ pub struct GaleMemDomainCheckPartitionDecision {
 /// Returns: GaleMemDomainCheckPartitionDecision with ret = 0 or -EINVAL.
 ///
 /// Verified: MD1, MD3, MD6 (non-overlap, size > 0, no overflow).
+#[cfg(feature = "mem_domain")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mem_domain_check_partition(
     part_start: u32,
@@ -5128,6 +5240,7 @@ pub const GALE_MEM_DOMAIN_ACTION_ADD_ERROR: u8 = 1;
 ///   num_partitions:  current active partition count
 ///
 /// Verified: MD1-MD6.
+#[cfg(feature = "mem_domain")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mem_domain_add_partition_decide(
     part_start: u32,
@@ -5217,6 +5330,7 @@ pub const GALE_MEM_DOMAIN_ACTION_REMOVE_ERROR: u8 = 1;
 ///   num_partitions:  current active partition count
 ///
 /// Verified: MD5 (remove preserves invariant).
+#[cfg(feature = "mem_domain")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mem_domain_remove_partition_decide(
     part_start: u32,
@@ -5287,6 +5401,7 @@ pub struct GaleMemDomainInitPartDecision {
 /// arrays reflect the partitions already added (slots 0..idx-1).
 ///
 /// Verified: MD1, MD3, MD6.
+#[cfg(feature = "mem_domain")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mem_domain_init_validate_partition(
     part_start: u32,
@@ -5358,6 +5473,7 @@ pub struct GaleUserspaceAccessDecision {
 ///   has_perm_bit: 1 if sys_bitfield_test_bit passed, 0 otherwise
 ///
 /// Verified: US1 (permission bit required), US5 (public bypass).
+#[cfg(feature = "userspace")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_object_access_decide(
     flags: u8,
@@ -5409,6 +5525,7 @@ pub struct GaleUserspaceValidateDecision {
 ///   ret = -EADDRINUSE : already initialized when must-not-be (US7)
 ///
 /// Verified: US1, US4, US5, US7.
+#[cfg(feature = "userspace")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_object_validate_decide(
     obj_type: u8,
@@ -5458,6 +5575,7 @@ pub struct GaleUserspaceInitDecision {
 /// Decide new flags for k_object_init.
 ///
 /// userspace.c:809: ko->flags |= K_OBJ_FLAG_INITIALIZED;
+#[cfg(feature = "userspace")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_object_init_decide(
     current_flags: u8,
@@ -5479,6 +5597,7 @@ pub struct GaleUserspaceUninitDecision {
 /// Decide new flags for k_object_uninit.
 ///
 /// userspace.c:833: ko->flags &= ~K_OBJ_FLAG_INITIALIZED;
+#[cfg(feature = "userspace")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_object_uninit_decide(
     current_flags: u8,
@@ -5505,6 +5624,7 @@ pub struct GaleUserspaceRecycleDecision {
 ///   memset(ko->perms, 0, sizeof(ko->perms));
 ///   k_thread_perms_set(ko, _current);
 ///   ko->flags |= K_OBJ_FLAG_INITIALIZED;
+#[cfg(feature = "userspace")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_object_recycle_decide(
     current_flags: u8,
@@ -5527,6 +5647,7 @@ pub struct GaleUserspacePublicDecision {
 /// Decide new flags for k_object_access_all_grant.
 ///
 /// userspace.c:750: ko->flags |= K_OBJ_FLAG_PUBLIC;
+#[cfg(feature = "userspace")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_object_make_public_decide(
     current_flags: u8,
@@ -5547,7 +5668,7 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 // Kani bounded model checking — semaphore
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "sem"))]
 mod kani_sem_proofs {
     use super::*;
 
@@ -5648,7 +5769,7 @@ mod kani_sem_proofs {
 // Kani bounded model checking — mutex
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "mutex"))]
 mod kani_mutex_proofs {
     use super::*;
 
@@ -5784,7 +5905,7 @@ mod kani_mutex_proofs {
 // Kani bounded model checking — mutex decision structs
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "mutex"))]
 mod kani_mutex_decide_proofs {
     use super::*;
 
@@ -5919,7 +6040,7 @@ mod kani_mutex_decide_proofs {
 // Kani bounded model checking — message queue
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "msgq"))]
 mod kani_msgq_proofs {
     use super::*;
 
@@ -6098,7 +6219,7 @@ mod kani_msgq_proofs {
 // Kani bounded model checking — pipe
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "pipe"))]
 mod kani_pipe_proofs {
     use super::*;
 
@@ -6204,7 +6325,7 @@ mod kani_pipe_proofs {
 // Kani bounded model checking — stack
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "stack"))]
 mod kani_stack_proofs {
     use super::*;
 
@@ -6287,7 +6408,7 @@ mod kani_stack_proofs {
 // Kani bounded model checking — timer
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "timer"))]
 mod kani_timer_proofs {
     use super::*;
 
@@ -6402,7 +6523,7 @@ mod kani_timer_proofs {
 // Kani bounded model checking — memory slab
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "mem_slab"))]
 mod kani_mem_slab_proofs {
     use super::*;
 
@@ -6486,7 +6607,7 @@ mod kani_mem_slab_proofs {
 // Kani bounded model checking — event
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "event"))]
 mod kani_event_proofs {
     use super::*;
 
@@ -6682,7 +6803,7 @@ mod kani_event_proofs {
 // Kani bounded model checking — fifo
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "fifo"))]
 mod kani_fifo_proofs {
     use super::*;
 
@@ -6740,7 +6861,7 @@ mod kani_fifo_proofs {
 // Kani bounded model checking — lifo
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "lifo"))]
 mod kani_lifo_proofs {
     use super::*;
 
@@ -6798,7 +6919,7 @@ mod kani_lifo_proofs {
 // Kani bounded model checking — queue
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "queue"))]
 mod kani_queue_proofs {
     use super::*;
 
@@ -6871,7 +6992,7 @@ mod kani_queue_proofs {
 // Kani bounded model checking — mbox
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "mbox"))]
 mod kani_mbox_proofs {
     use super::*;
 
@@ -6939,7 +7060,7 @@ mod kani_mbox_proofs {
 // Kani bounded model checking — mem_domain
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "mem_domain"))]
 mod kani_mem_domain_proofs {
     use super::*;
 
@@ -7034,7 +7155,7 @@ mod kani_mem_domain_proofs {
 // Kani bounded model checking — userspace
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "userspace"))]
 mod kani_userspace_proofs {
     use super::*;
 
@@ -7221,6 +7342,7 @@ pub const GALE_HEAP_ACTION_ALLOC_FAILED: u8 = 2;
 ///
 /// Verified: HP1 (bounds), HP2 (conservation), HP3 (alloc gating),
 ///           HP7 (no overflow).
+#[cfg(feature = "heap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sys_heap_alloc_decide(
     found_chunk: u32,
@@ -7296,6 +7418,7 @@ pub const GALE_HEAP_ACTION_FREE_REJECTED: u8 = 1;
 ///   bounds_check_passed:   1 if left_chunk(right_chunk(c)) == c
 ///
 /// Verified: HP4 (exact free), HP5 (double-free), HP8 (coalesce).
+#[cfg(feature = "heap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sys_heap_free_decide(
     chunk_is_used: u32,
@@ -7352,6 +7475,7 @@ pub const GALE_HEAP_ALIGN_REJECT: u8 = 2;
 ///   chunk_header_bytes:  chunk header size (4 or 8 depending on heap)
 ///
 /// Verified: HP6 (alignment), HP7 (overflow in padding computation).
+#[cfg(feature = "heap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sys_heap_aligned_alloc_decide(
     bytes: u32,
@@ -7423,6 +7547,7 @@ pub const GALE_HEAP_REALLOC_REJECT: u8 = 3;
 ///   right_neighbor_sz:    size of right neighbor (in chunk units, 0 if N/A)
 ///
 /// Verified: HP1 (bounds), HP7 (overflow), HP8 (split/merge).
+#[cfg(feature = "heap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sys_heap_realloc_decide(
     current_chunk_sz: u32,
@@ -7467,6 +7592,7 @@ pub extern "C" fn gale_sys_heap_realloc_decide(
 ///   0 (OK) if valid, -EINVAL if too small.
 ///
 /// Verified: HP1 (capacity > 0 after overhead).
+#[cfg(feature = "heap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sys_heap_init_validate(
     total_bytes: u32,
@@ -7492,6 +7618,7 @@ pub extern "C" fn gale_sys_heap_init_validate(
 ///   right_sz on success (> 0), 0 on invalid parameters.
 ///
 /// Verified: HP2 (conservation), HP8 (split invariant).
+#[cfg(feature = "heap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sys_heap_split_validate(
     original_sz: u32,
@@ -7521,6 +7648,7 @@ pub extern "C" fn gale_sys_heap_split_validate(
 ///   0 (OK) if valid, -EINVAL if not.
 ///
 /// Verified: HP2 (conservation), HP7 (no overflow), HP8 (merge invariant).
+#[cfg(feature = "heap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sys_heap_merge_validate(
     left_sz: u32,
@@ -7559,7 +7687,7 @@ pub extern "C" fn gale_sys_heap_merge_validate(
 // Kani bounded model checking — sys_heap
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "heap"))]
 mod kani_sys_heap_proofs {
     use super::*;
 
@@ -7818,6 +7946,7 @@ pub struct GaleRingBufClaimDecision {
 ///   requested:   number of bytes the caller wants
 ///
 /// Verified: RB1 (offset < buf_size), RB8 (no overflow).
+#[cfg(feature = "ring_buf")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_ring_buf_claim_decide(
     head: u32,
@@ -7878,6 +8007,7 @@ pub extern "C" fn gale_ring_buf_claim_decide(
 ///   0 on success, -EINVAL if size > claimed.
 ///
 /// Verified: RB3/RB4 (correct advancement), RB8 (no overflow).
+#[cfg(feature = "ring_buf")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_ring_buf_finish_validate(
     head: u32,
@@ -7909,6 +8039,7 @@ pub extern "C" fn gale_ring_buf_finish_validate(
 ///   Free space in bytes.
 ///
 /// Verified: RB1 (result <= buf_size), RB7 (consistency), RB8 (no overflow).
+#[cfg(feature = "ring_buf")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_ring_buf_space_get(
     put_head: u32,
@@ -7939,6 +8070,7 @@ pub extern "C" fn gale_ring_buf_space_get(
 ///   Available data in bytes.
 ///
 /// Verified: RB7 (consistency).
+#[cfg(feature = "ring_buf")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_ring_buf_size_get(
     put_tail: u32,
@@ -7951,7 +8083,7 @@ pub extern "C" fn gale_ring_buf_size_get(
 // Kani bounded model checking — ring_buffer
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "ring_buf"))]
 mod kani_ring_buf_proofs {
     use super::*;
 
@@ -8077,6 +8209,7 @@ mod kani_ring_buf_proofs {
 ///                offset + alloc_nbits overflows or exceeds num_bits
 ///
 /// Verified: BA2 (region bounds), BA4 (no overflow).
+#[cfg(feature = "bitarray")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_bitarray_alloc_validate(
     num_bits: u32,
@@ -8110,6 +8243,7 @@ pub extern "C" fn gale_bitarray_alloc_validate(
 ///   -EINVAL    — region_nbits == 0 or region exceeds bitarray bounds
 ///
 /// Verified: BA2 (region bounds), BA4 (no overflow).
+#[cfg(feature = "bitarray")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_bitarray_region_check(
     num_bits: u32,
@@ -8140,6 +8274,7 @@ pub extern "C" fn gale_bitarray_region_check(
 ///   -EINVAL    — bit >= num_bits
 ///
 /// Verified: BA1 (bit bounds).
+#[cfg(feature = "bitarray")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_bitarray_set_bit_validate(
     num_bits: u32,
@@ -8174,6 +8309,7 @@ pub struct GaleBitarrayBundleIndex {
     pub bit_offset: u32,
 }
 
+#[cfg(feature = "bitarray")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_bitarray_bundle_index(
     bit: u32,
@@ -8188,7 +8324,7 @@ pub extern "C" fn gale_bitarray_bundle_index(
 // Kani bounded model checking — bitarray
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "bitarray"))]
 mod kani_bitarray_proofs {
     use super::*;
 
@@ -8360,6 +8496,7 @@ mod kani_bitarray_proofs {
 ///   -EINVAL    — red-red violation (both node and parent are red)
 ///
 /// Verified: RBT1 (no consecutive red nodes).
+#[cfg(feature = "rbtree")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_rb_validate_insert(
     is_black: u8,
@@ -8396,6 +8533,7 @@ pub extern "C" fn gale_rb_validate_insert(
 ///   -EINVAL    — incorrect color assignment
 ///
 /// Verified: RBT2 (rotation preserves red-black properties via color swap).
+#[cfg(feature = "rbtree")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_rb_validate_color_after_rotation(
     node_color: u8,
@@ -8416,7 +8554,7 @@ pub extern "C" fn gale_rb_validate_color_after_rotation(
 // Kani bounded model checking — red-black tree
 // ---------------------------------------------------------------------------
 
-#[cfg(kani)]
+#[cfg(all(kani, feature = "rbtree"))]
 mod kani_rb_proofs {
     use super::*;
 
