@@ -465,3 +465,131 @@ impl MsgQ {
         self.write_idx
     }
 }
+/// Lightweight put decision — no WaitQueue allocation.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum PutDecision {
+    /// Space available, no waiters: store message at write_idx, advance index.
+    Store = 0,
+    /// Space available, waiter exists: wake a blocked reader.
+    WakeReader = 1,
+    /// Queue full, willing to wait: pend current thread.
+    Pend = 2,
+    /// Queue full, no-wait: return immediately.
+    Full = 3,
+}
+/// Result of a put decision: the decision plus updated index/count values.
+#[derive(Debug)]
+pub struct PutDecideResult {
+    pub decision: PutDecision,
+    pub new_write_idx: u32,
+    pub new_used: u32,
+}
+/// Lightweight get decision — no WaitQueue allocation.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum GetDecision {
+    /// Data available, no waiters: read from read_idx, advance index.
+    Read = 0,
+    /// Data available, waiter exists: also wake a blocked writer.
+    WakeWriter = 1,
+    /// Queue empty, willing to wait: pend current thread.
+    Pend = 2,
+    /// Queue empty, no-wait: return immediately.
+    Empty = 3,
+}
+/// Result of a get decision: the decision plus updated index/count values.
+#[derive(Debug)]
+pub struct GetDecideResult {
+    pub decision: GetDecision,
+    pub new_read_idx: u32,
+    pub new_used: u32,
+}
+/// Lightweight put decision — takes scalars, no WaitQueue allocation.
+///
+/// Verified properties (MQ5, MQ6, MQ12):
+/// - not full && has_waiter ==> WakeReader
+/// - not full && !has_waiter ==> Store (write_idx advanced, used+1)
+/// - full && is_no_wait ==> Full
+/// - full && !is_no_wait ==> Pend
+pub fn put_decide(
+    write_idx: u32,
+    used_msgs: u32,
+    max_msgs: u32,
+    has_waiter: bool,
+    is_no_wait: bool,
+) -> PutDecideResult {
+    if used_msgs < max_msgs {
+        if has_waiter {
+            PutDecideResult {
+                decision: PutDecision::WakeReader,
+                new_write_idx: write_idx,
+                new_used: used_msgs,
+            }
+        } else {
+            let next = if write_idx + 1 < max_msgs { write_idx + 1 } else { 0u32 };
+            PutDecideResult {
+                decision: PutDecision::Store,
+                new_write_idx: next,
+                new_used: used_msgs + 1,
+            }
+        }
+    } else if is_no_wait {
+        PutDecideResult {
+            decision: PutDecision::Full,
+            new_write_idx: write_idx,
+            new_used: used_msgs,
+        }
+    } else {
+        PutDecideResult {
+            decision: PutDecision::Pend,
+            new_write_idx: write_idx,
+            new_used: used_msgs,
+        }
+    }
+}
+/// Lightweight get decision — takes scalars, no WaitQueue allocation.
+///
+/// Verified properties (MQ8, MQ9, MQ12):
+/// - not empty: read_idx advanced, used-1
+/// - not empty && has_waiter ==> WakeWriter
+/// - not empty && !has_waiter ==> Read
+/// - empty && is_no_wait ==> Empty
+/// - empty && !is_no_wait ==> Pend
+pub fn get_decide(
+    read_idx: u32,
+    used_msgs: u32,
+    max_msgs: u32,
+    has_waiter: bool,
+    is_no_wait: bool,
+) -> GetDecideResult {
+    if used_msgs > 0 {
+        let next = if read_idx + 1 < max_msgs { read_idx + 1 } else { 0u32 };
+        let new_used = used_msgs - 1;
+        if has_waiter {
+            GetDecideResult {
+                decision: GetDecision::WakeWriter,
+                new_read_idx: next,
+                new_used,
+            }
+        } else {
+            GetDecideResult {
+                decision: GetDecision::Read,
+                new_read_idx: next,
+                new_used,
+            }
+        }
+    } else if is_no_wait {
+        GetDecideResult {
+            decision: GetDecision::Empty,
+            new_read_idx: read_idx,
+            new_used: 0,
+        }
+    } else {
+        GetDecideResult {
+            decision: GetDecision::Pend,
+            new_read_idx: read_idx,
+            new_used: 0,
+        }
+    }
+}

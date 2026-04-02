@@ -290,11 +290,6 @@ impl MsgQ {
         self.write_idx
     }
 }
-// =================================================================
-// Lightweight decision functions — scalar-only, no WaitQueue allocation.
-// Used by FFI to delegate safety-critical logic to the verified model.
-// =================================================================
-
 /// Lightweight put decision — no WaitQueue allocation.
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -308,7 +303,6 @@ pub enum PutDecision {
     /// Queue full, no-wait: return immediately.
     Full = 3,
 }
-
 /// Result of a put decision: the decision plus updated index/count values.
 #[derive(Debug)]
 pub struct PutDecideResult {
@@ -316,7 +310,6 @@ pub struct PutDecideResult {
     pub new_write_idx: u32,
     pub new_used: u32,
 }
-
 /// Lightweight get decision — no WaitQueue allocation.
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -330,7 +323,6 @@ pub enum GetDecision {
     /// Queue empty, no-wait: return immediately.
     Empty = 3,
 }
-
 /// Result of a get decision: the decision plus updated index/count values.
 #[derive(Debug)]
 pub struct GetDecideResult {
@@ -338,7 +330,6 @@ pub struct GetDecideResult {
     pub new_read_idx: u32,
     pub new_used: u32,
 }
-
 /// Lightweight put decision — takes scalars, no WaitQueue allocation.
 ///
 /// Verified properties (MQ5, MQ6, MQ12):
@@ -361,11 +352,7 @@ pub fn put_decide(
                 new_used: used_msgs,
             }
         } else {
-            let next = if write_idx + 1 < max_msgs {
-                write_idx + 1
-            } else {
-                0u32
-            };
+            let next = if write_idx + 1 < max_msgs { write_idx + 1 } else { 0u32 };
             PutDecideResult {
                 decision: PutDecision::Store,
                 new_write_idx: next,
@@ -386,10 +373,10 @@ pub fn put_decide(
         }
     }
 }
-
 /// Lightweight get decision — takes scalars, no WaitQueue allocation.
 ///
 /// Verified properties (MQ8, MQ9, MQ12):
+/// - not empty: read_idx advanced, used-1
 /// - not empty && has_waiter ==> WakeWriter
 /// - not empty && !has_waiter ==> Read
 /// - empty && is_no_wait ==> Empty
@@ -402,11 +389,7 @@ pub fn get_decide(
     is_no_wait: bool,
 ) -> GetDecideResult {
     if used_msgs > 0 {
-        let next = if read_idx + 1 < max_msgs {
-            read_idx + 1
-        } else {
-            0u32
-        };
+        let next = if read_idx + 1 < max_msgs { read_idx + 1 } else { 0u32 };
         let new_used = used_msgs - 1;
         if has_waiter {
             GetDecideResult {

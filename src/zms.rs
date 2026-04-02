@@ -448,15 +448,15 @@ impl ZmsFs {
             self.inv(),
         ensures
             // ZMS3: if free_space >= data_len + ate_size, write proceeds
-            (self.free_space as int >= data_len as int + self.ate_size as int) ==> {
-                &&& result.action == WriteAction::WriteOk as u8
-                &&& result.needs_gc == false
-            },
-            // Insufficient space => GC needed
-            (self.free_space as int < data_len as int + self.ate_size as int) ==> {
-                &&& result.action == WriteAction::NeedsGc as u8
-                &&& result.needs_gc == true
-            },
+            self.free_space as int >= (data_len as int) + (self.ate_size as int) ==>
+                result.action == WriteAction::WriteOk as u8,
+            self.free_space as int >= (data_len as int) + (self.ate_size as int) ==>
+                result.needs_gc == false,
+            // Insufficient space: GC needed
+            (data_len as int) + (self.ate_size as int) > self.free_space as int ==>
+                result.action == WriteAction::NeedsGc as u8,
+            (data_len as int) + (self.ate_size as int) > self.free_space as int ==>
+                result.needs_gc == true,
     {
         // Compute required_space, guarding against overflow with u64
         let required: u64 = data_len as u64 + self.ate_size as u64;
@@ -489,14 +489,14 @@ impl ZmsFs {
         requires
             ate_wra >= data_wra,
         ensures
-            (ate_wra as int >= data_wra as int + needed as int) ==> {
-                &&& result.action == 0
-                &&& result.sectors_to_gc == 0
-            },
-            (ate_wra as int < data_wra as int + needed as int) ==> {
-                &&& result.action == 1
-                &&& result.sectors_to_gc == 1
-            },
+            ate_wra as int >= (data_wra as int) + (needed as int) ==>
+                result.action == 0,
+            ate_wra as int >= (data_wra as int) + (needed as int) ==>
+                result.sectors_to_gc == 0,
+            (data_wra as int) + (needed as int) > ate_wra as int ==>
+                result.action == 1,
+            (data_wra as int) + (needed as int) > ate_wra as int ==>
+                result.sectors_to_gc == 1,
     {
         let available: u64 = ate_wra as u64 - data_wra as u64;
         if available >= needed as u64 {

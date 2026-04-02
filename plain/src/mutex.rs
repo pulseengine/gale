@@ -207,12 +207,8 @@ impl Mutex {
         self.owner
     }
 }
-// =================================================================
-// Lightweight decision functions — scalar-only, no WaitQueue allocation.
-// Used by FFI to delegate safety-critical logic to the verified model.
-// =================================================================
-
 /// Lightweight lock decision — no WaitQueue allocation.
+/// Used by FFI to avoid constructing full Mutex objects.
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum LockDecision {
@@ -227,8 +223,8 @@ pub enum LockDecision {
     /// Overflow — lock_count would exceed u32::MAX (M10).
     Overflow = 4,
 }
-
 /// Lightweight unlock decision — no WaitQueue allocation.
+/// Used by FFI to avoid constructing full Mutex objects.
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum UnlockDecisionKind {
@@ -241,7 +237,6 @@ pub enum UnlockDecisionKind {
     /// Fully unlocked — caller handles waiter transfer (M8, M9).
     FullyUnlocked = 3,
 }
-
 /// Lightweight lock decision — takes scalars, no WaitQueue allocation.
 ///
 /// Verified properties (M3, M4, M5, M10):
@@ -270,7 +265,6 @@ pub fn lock_decide(
         LockDecision::Pend
     }
 }
-
 /// Lightweight unlock decision — takes scalars, no WaitQueue allocation.
 ///
 /// Verified properties (M6a, M6b, M7, M8/M9):

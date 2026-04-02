@@ -116,11 +116,6 @@ impl Stack {
         self.capacity
     }
 }
-// =================================================================
-// Lightweight decision functions — scalar-only, no WaitQueue allocation.
-// Used by FFI to delegate safety-critical logic to the verified model.
-// =================================================================
-
 /// Lightweight push decision — no WaitQueue allocation.
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -132,14 +127,12 @@ pub enum PushDecision {
     /// Stack full: reject push.
     Full = 2,
 }
-
 /// Result of a push decision with updated count.
 #[derive(Debug)]
 pub struct PushDecideResult {
     pub decision: PushDecision,
     pub new_count: u32,
 }
-
 /// Lightweight pop decision — no WaitQueue allocation.
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -151,25 +144,19 @@ pub enum PopDecision {
     /// Stack empty, no-wait: return busy.
     Busy = 2,
 }
-
 /// Result of a pop decision with updated count.
 #[derive(Debug)]
 pub struct PopDecideResult {
     pub decision: PopDecision,
     pub new_count: u32,
 }
-
 /// Lightweight push decision — takes scalars, no WaitQueue allocation.
 ///
 /// Verified properties (SK1, SK3, SK4):
 /// - has_waiter ==> WakeWaiter (count unchanged)
 /// - !has_waiter && count < capacity ==> Store (count + 1)
 /// - !has_waiter && count >= capacity ==> Full (count unchanged)
-pub fn push_decide(
-    count: u32,
-    capacity: u32,
-    has_waiter: bool,
-) -> PushDecideResult {
+pub fn push_decide(count: u32, capacity: u32, has_waiter: bool) -> PushDecideResult {
     if has_waiter {
         PushDecideResult {
             decision: PushDecision::WakeWaiter,
@@ -187,17 +174,13 @@ pub fn push_decide(
         }
     }
 }
-
 /// Lightweight pop decision — takes scalars, no WaitQueue allocation.
 ///
 /// Verified properties (SK1, SK5, SK6):
 /// - count > 0 ==> Pop (count - 1)
 /// - count == 0 && is_no_wait ==> Busy
 /// - count == 0 && !is_no_wait ==> Pend
-pub fn pop_decide(
-    count: u32,
-    is_no_wait: bool,
-) -> PopDecideResult {
+pub fn pop_decide(count: u32, is_no_wait: bool) -> PopDecideResult {
     if count > 0 {
         PopDecideResult {
             decision: PopDecision::Pop,

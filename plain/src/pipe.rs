@@ -185,11 +185,6 @@ impl Pipe {
         self.flags = self.flags & !FLAG_RESET;
     }
 }
-// =================================================================
-// Lightweight decision functions — scalar-only, no WaitQueue allocation.
-// Used by FFI to delegate safety-critical logic to the verified model.
-// =================================================================
-
 /// Lightweight write decision — no WaitQueue allocation.
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -203,7 +198,6 @@ pub enum WriteDecision {
     /// Error: pipe closed or resetting.
     WriteError = 3,
 }
-
 /// Result of a write decision with byte counts.
 #[derive(Debug)]
 pub struct WriteDecideResult {
@@ -212,7 +206,6 @@ pub struct WriteDecideResult {
     pub actual_bytes: u32,
     pub new_used: u32,
 }
-
 /// Lightweight read decision — no WaitQueue allocation.
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -226,7 +219,6 @@ pub enum ReadDecision {
     /// Error: pipe closed or resetting.
     ReadError = 3,
 }
-
 /// Result of a read decision with byte counts.
 #[derive(Debug)]
 pub struct ReadDecideResult {
@@ -235,7 +227,6 @@ pub struct ReadDecideResult {
     pub actual_bytes: u32,
     pub new_used: u32,
 }
-
 /// Lightweight write decision — takes scalars, no WaitQueue allocation.
 ///
 /// Verified properties (PP3, PP4, PP5, PP9, PP10):
@@ -298,7 +289,6 @@ pub fn write_decide(
         new_used: nu,
     }
 }
-
 /// Lightweight read decision — takes scalars, no WaitQueue allocation.
 ///
 /// Verified properties (PP3, PP4, PP6, PP9, PP10):

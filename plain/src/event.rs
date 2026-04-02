@@ -109,11 +109,6 @@ impl Event {
         self.events
     }
 }
-// =================================================================
-// Lightweight decision functions — scalar-only, no WaitQueue allocation.
-// Used by FFI to delegate safety-critical logic to the verified model.
-// =================================================================
-
 /// Lightweight event wait decision — no WaitQueue allocation.
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -125,18 +120,15 @@ pub enum WaitDecision {
     /// Condition not met, no-wait: return immediately.
     Timeout = 2,
 }
-
 /// Result of a wait decision with matched event bits.
 #[derive(Debug)]
 pub struct WaitDecideResult {
     pub decision: WaitDecision,
     pub matched_events: u32,
 }
-
 /// Wait type: ANY (at least one bit) or ALL (all bits).
 pub const WAIT_ANY: u8 = 0;
 pub const WAIT_ALL: u8 = 1;
-
 /// Lightweight event wait decision — takes scalars, no WaitQueue allocation.
 ///
 /// Verified properties (EV5, EV6):
@@ -151,13 +143,11 @@ pub fn wait_decide(
     is_no_wait: bool,
 ) -> WaitDecideResult {
     let matched = current_events & desired;
-
     let condition_met = if wait_type == WAIT_ALL {
         (current_events & desired) == desired
     } else {
         matched != 0
     };
-
     if condition_met {
         WaitDecideResult {
             decision: WaitDecision::Matched,
@@ -175,14 +165,9 @@ pub fn wait_decide(
         }
     }
 }
-
 /// Lightweight event post decision — takes scalars, no WaitQueue allocation.
 ///
 /// Verified property (EV4): set_masked computes (current & ~mask) | (new & mask)
-pub fn post_decide(
-    current_events: u32,
-    new_events: u32,
-    mask: u32,
-) -> u32 {
+pub fn post_decide(current_events: u32, new_events: u32, mask: u32) -> u32 {
     (current_events & !mask) | (new_events & mask)
 }
