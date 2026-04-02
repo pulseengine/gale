@@ -18,6 +18,7 @@
 //! - [`sem`] — Counting semaphore (port of kernel/sem.c)
 //! - [`mutex`] — Reentrant mutex (port of kernel/mutex.c)
 //! - [`condvar`] — Condition variable (port of kernel/condvar.c)
+//! - [`cpu_mask`] — CPU affinity mask (port of kernel/cpu_mask.c)
 #![no_std]
 #![allow(unused_imports)]
 #![allow(
@@ -39,6 +40,7 @@ pub mod wait_queue;
 pub mod sem;
 pub mod mutex;
 pub mod condvar;
+pub mod cpu_mask;
 pub mod msgq;
 pub mod pipe;
 pub mod stack;
@@ -63,10 +65,12 @@ pub mod fault_decode;
 pub mod mempool;
 pub mod dynamic;
 pub mod smp_state;
+pub mod ipi;
 pub mod stack_config;
 pub mod device_init;
 pub mod mem_domain;
 pub mod spinlock;
+pub mod spinlock_validate;
 pub mod atomic;
 pub mod userspace;
 pub mod ring_buf;

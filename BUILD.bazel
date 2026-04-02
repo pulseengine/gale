@@ -62,6 +62,9 @@ VERUS_SRCS = [
     "src/sched.rs",
     "src/poll.rs",
     "src/zms.rs",
+    "src/spinlock_validate.rs",
+    "src/cpu_mask.rs",
+    "src/ipi.rs",
 ]
 
 PLAIN_SRCS = ["//plain:srcs"]
