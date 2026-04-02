@@ -593,3 +593,73 @@ pub fn get_decide(
         }
     }
 }
+/// Result of a put_front decision: the decision plus updated index/count values.
+#[derive(Debug)]
+pub struct PutFrontDecideResult {
+    pub ok: bool,
+    pub new_read_idx: u32,
+    pub new_used: u32,
+}
+/// Lightweight put_front decision — takes scalars, no WaitQueue allocation.
+///
+/// Verified properties (MQ7, MQ12):
+/// - not full ==> ok, read_idx retreated, used+1
+/// - full ==> !ok, indices unchanged
+pub fn put_front_decide(
+    read_idx: u32,
+    used_msgs: u32,
+    max_msgs: u32,
+) -> PutFrontDecideResult {
+    if used_msgs < max_msgs {
+        let prev = if read_idx == 0 { max_msgs - 1 } else { read_idx - 1 };
+        PutFrontDecideResult {
+            ok: true,
+            new_read_idx: prev,
+            new_used: used_msgs + 1,
+        }
+    } else {
+        PutFrontDecideResult {
+            ok: false,
+            new_read_idx: read_idx,
+            new_used: used_msgs,
+        }
+    }
+}
+/// Result of a peek_at decision: whether the index is valid and the slot.
+#[derive(Debug)]
+pub struct PeekAtDecideResult {
+    pub ok: bool,
+    pub slot_idx: u32,
+}
+/// Lightweight peek_at decision — takes scalars, no WaitQueue allocation.
+///
+/// Verified properties (MQ10, MQ12):
+/// - valid index ==> ok, correct slot computed
+/// - invalid index ==> !ok
+pub fn peek_at_decide(
+    read_idx: u32,
+    used_msgs: u32,
+    max_msgs: u32,
+    idx: u32,
+) -> PeekAtDecideResult {
+    if idx >= used_msgs {
+        PeekAtDecideResult {
+            ok: false,
+            slot_idx: 0,
+        }
+    } else {
+        let sum: u64 = read_idx as u64 + idx as u64;
+        let max: u64 = max_msgs as u64;
+        if sum < max {
+            PeekAtDecideResult {
+                ok: true,
+                slot_idx: sum as u32,
+            }
+        } else {
+            PeekAtDecideResult {
+                ok: true,
+                slot_idx: (sum - max) as u32,
+            }
+        }
+    }
+}

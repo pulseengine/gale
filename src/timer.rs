@@ -280,4 +280,46 @@ pub proof fn lemma_period_classification(period: u32)
 {
 }
 
+// =================================================================
+// Lightweight decision functions — scalar-only, no Timer allocation.
+// Used by FFI to delegate safety-critical logic to the verified model.
+// =================================================================
+
+/// Result of an expire decision.
+#[derive(Debug)]
+pub struct ExpireDecideResult {
+    /// New status value (status + 1, or unchanged on saturation).
+    pub new_status: u32,
+    /// Whether the timer has a non-zero period (periodic vs one-shot).
+    pub is_periodic: bool,
+}
+
+/// Lightweight expire decision — takes scalars, no Timer allocation.
+///
+/// Verified properties (TM5, TM8):
+/// - status < u32::MAX ==> new_status == status + 1
+/// - status == u32::MAX ==> new_status == u32::MAX (saturated)
+/// - is_periodic == (period > 0)
+pub fn expire_decide(
+    status: u32,
+    period: u32,
+) -> (result: ExpireDecideResult)
+    requires
+        true,
+    ensures
+        status < u32::MAX ==> result.new_status == status + 1,
+        status == u32::MAX ==> result.new_status == u32::MAX,
+        result.is_periodic == (period > 0),
+{
+    let new_status = if status < u32::MAX {
+        status + 1
+    } else {
+        status
+    };
+    ExpireDecideResult {
+        new_status,
+        is_periodic: period > 0,
+    }
+}
+
 } // verus!

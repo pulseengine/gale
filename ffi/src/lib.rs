@@ -271,13 +271,18 @@ pub extern "C" fn gale_sem_count_init(initial_count: u32, limit: u32) -> i32 {
 #[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sem_count_give(count: u32, limit: u32) -> u32 {
-    if count != limit {
-        // Verified: count < limit <= u32::MAX, no overflow possible.
-        #[allow(clippy::arithmetic_side_effects)]
-        let new_count = count + 1;
-        new_count
-    } else {
-        count
+    use gale::sem::{GiveDecision, give_decide};
+
+    // Delegate to verified model (has_waiter=false: old API
+    // handles the no-waiter direct-increment path only).
+    let d = give_decide(count, limit, false);
+    match d {
+        GiveDecision::Increment => {
+            #[allow(clippy::arithmetic_side_effects)]
+            let new_count = count + 1;
+            new_count
+        }
+        GiveDecision::Saturated | GiveDecision::WakeThread => count,
     }
 }
 
@@ -291,20 +296,25 @@ pub extern "C" fn gale_sem_count_give(count: u32, limit: u32) -> u32 {
 #[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sem_count_take(count: *mut u32) -> i32 {
+    use gale::sem::{TakeDecision, take_decide};
+
     // SAFETY: Zephyr guarantees valid pointer under spinlock.
     unsafe {
         if count.is_null() {
             return EINVAL;
         }
-        if *count > 0 {
-            // Verified: count > 0, so count-1 >= 0, no underflow.
-            #[allow(clippy::arithmetic_side_effects)]
-            {
-                *count -= 1;
+
+        // Delegate to verified model (is_no_wait=true: old API never pends).
+        let d = take_decide(*count, true);
+        match d {
+            TakeDecision::Acquired => {
+                #[allow(clippy::arithmetic_side_effects)]
+                {
+                    *count -= 1;
+                }
+                OK
             }
-            OK
-        } else {
-            EBUSY
+            TakeDecision::WouldBlock | TakeDecision::Pend => EBUSY,
         }
     }
 }
@@ -456,31 +466,30 @@ pub extern "C" fn gale_mutex_lock_validate(
     owner_is_current: u32,
     new_lock_count: *mut u32,
 ) -> i32 {
+    use gale::mutex::{LockDecision, lock_decide};
+
     // SAFETY: Zephyr guarantees valid pointer under spinlock.
     unsafe {
         if new_lock_count.is_null() {
             return EINVAL;
         }
 
-        if lock_count == 0 || owner_is_null != 0 {
-            // Mutex unlocked — acquire (M3).
-            *new_lock_count = 1;
-            OK
-        } else if owner_is_current != 0 {
-            // Reentrant lock — same owner (M4, M10).
-            match lock_count.checked_add(1) {
-                Some(n) => {
-                    *new_lock_count = n;
-                    OK
-                }
-                None => {
-                    // Overflow would violate M10.
-                    EINVAL
-                }
+        // Delegate to verified model (is_no_wait=true: old API never pends).
+        let d = lock_decide(lock_count, owner_is_null != 0, owner_is_current != 0, true);
+        match d {
+            LockDecision::Acquire => {
+                *new_lock_count = 1;
+                OK
             }
-        } else {
-            // Different owner — contended (M5).
-            EBUSY
+            LockDecision::Reentrant => {
+                #[allow(clippy::arithmetic_side_effects)]
+                {
+                    *new_lock_count = lock_count + 1;
+                }
+                OK
+            }
+            LockDecision::Overflow => EINVAL,
+            LockDecision::Busy | LockDecision::Pend => EBUSY,
         }
     }
 }
@@ -518,34 +527,30 @@ pub extern "C" fn gale_mutex_unlock_validate(
     owner_is_current: u32,
     new_lock_count: *mut u32,
 ) -> i32 {
+    use gale::mutex::{UnlockDecisionKind, unlock_decide};
+
     // SAFETY: Zephyr guarantees valid pointer under spinlock.
     unsafe {
         if new_lock_count.is_null() {
             return EINVAL;
         }
 
-        // M6a: not locked
-        if owner_is_null != 0 {
-            return EINVAL;
-        }
-
-        // M6b: not owner
-        if owner_is_current == 0 {
-            return EPERM;
-        }
-
-        // M7: reentrant release (lock_count > 1)
-        if lock_count > 1 {
-            // Verified: lock_count > 1, so lock_count - 1 >= 1, no underflow.
-            #[allow(clippy::arithmetic_side_effects)]
-            {
-                *new_lock_count = lock_count - 1;
+        // Delegate to verified model.
+        let d = unlock_decide(lock_count, owner_is_null != 0, owner_is_current != 0);
+        match d {
+            UnlockDecisionKind::NotLocked => EINVAL,
+            UnlockDecisionKind::NotOwner => EPERM,
+            UnlockDecisionKind::Released => {
+                #[allow(clippy::arithmetic_side_effects)]
+                {
+                    *new_lock_count = lock_count - 1;
+                }
+                GALE_MUTEX_RELEASED
             }
-            GALE_MUTEX_RELEASED
-        } else {
-            // Fully unlocked — caller handles waiter transfer.
-            *new_lock_count = 0;
-            GALE_MUTEX_UNLOCKED
+            UnlockDecisionKind::FullyUnlocked => {
+                *new_lock_count = 0;
+                GALE_MUTEX_UNLOCKED
+            }
         }
     }
 }
@@ -772,30 +777,24 @@ pub extern "C" fn gale_msgq_put(
     new_write_idx: *mut u32,
     new_used: *mut u32,
 ) -> i32 {
+    use gale::msgq::{PutDecision, put_decide};
+
     unsafe {
         if new_write_idx.is_null() || new_used.is_null() || max_msgs == 0 {
             return EINVAL;
         }
 
-        if used_msgs >= max_msgs {
-            return ENOMSG;
+        // Delegate to verified model (has_waiter=false, is_no_wait=true:
+        // old API handles no-waiter direct-store path only).
+        let r = put_decide(write_idx, used_msgs, max_msgs, false, true);
+        match r.decision {
+            PutDecision::Store => {
+                *new_write_idx = r.new_write_idx;
+                *new_used = r.new_used;
+                OK
+            }
+            PutDecision::Full | PutDecision::WakeReader | PutDecision::Pend => ENOMSG,
         }
-
-        // Advance write index with wrap.
-        #[allow(clippy::arithmetic_side_effects)]
-        let next = if write_idx + 1 < max_msgs {
-            write_idx + 1
-        } else {
-            0
-        };
-        *new_write_idx = next;
-
-        // Increment used count.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_used = used_msgs + 1;
-        }
-        OK
     }
 }
 
@@ -826,30 +825,22 @@ pub extern "C" fn gale_msgq_put_front(
     new_read_idx: *mut u32,
     new_used: *mut u32,
 ) -> i32 {
+    use gale::msgq::put_front_decide;
+
     unsafe {
         if new_read_idx.is_null() || new_used.is_null() || max_msgs == 0 {
             return EINVAL;
         }
 
-        if used_msgs >= max_msgs {
-            return ENOMSG;
-        }
-
-        // Retreat read index with wrap.
-        #[allow(clippy::arithmetic_side_effects)]
-        let prev = if read_idx == 0 {
-            max_msgs - 1
+        // Delegate to verified model.
+        let r = put_front_decide(read_idx, used_msgs, max_msgs);
+        if r.ok {
+            *new_read_idx = r.new_read_idx;
+            *new_used = r.new_used;
+            OK
         } else {
-            read_idx - 1
-        };
-        *new_read_idx = prev;
-
-        // Increment used count.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_used = used_msgs + 1;
+            ENOMSG
         }
-        OK
     }
 }
 
@@ -880,30 +871,24 @@ pub extern "C" fn gale_msgq_get(
     new_read_idx: *mut u32,
     new_used: *mut u32,
 ) -> i32 {
+    use gale::msgq::{GetDecision, get_decide};
+
     unsafe {
         if new_read_idx.is_null() || new_used.is_null() || max_msgs == 0 {
             return EINVAL;
         }
 
-        if used_msgs == 0 {
-            return ENOMSG;
+        // Delegate to verified model (has_waiter=false, is_no_wait=true:
+        // old API handles no-waiter direct-read path only).
+        let r = get_decide(read_idx, used_msgs, max_msgs, false, true);
+        match r.decision {
+            GetDecision::Read => {
+                *new_read_idx = r.new_read_idx;
+                *new_used = r.new_used;
+                OK
+            }
+            GetDecision::Empty | GetDecision::WakeWriter | GetDecision::Pend => ENOMSG,
         }
-
-        // Advance read index with wrap.
-        #[allow(clippy::arithmetic_side_effects)]
-        let next = if read_idx + 1 < max_msgs {
-            read_idx + 1
-        } else {
-            0
-        };
-        *new_read_idx = next;
-
-        // Decrement used count.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_used = used_msgs - 1;
-        }
-        OK
     }
 }
 
@@ -933,28 +918,21 @@ pub extern "C" fn gale_msgq_peek_at(
     idx: u32,
     slot_idx: *mut u32,
 ) -> i32 {
+    use gale::msgq::peek_at_decide;
+
     unsafe {
         if slot_idx.is_null() || max_msgs == 0 {
             return EINVAL;
         }
 
-        if idx >= used_msgs {
-            return ENOMSG;
-        }
-
-        // Compute (read_idx + idx) % max_msgs.
-        // Both values < max_msgs, so sum < 2 * max_msgs.
-        #[allow(clippy::arithmetic_side_effects)]
-        let sum = read_idx + idx;
-        if sum < max_msgs {
-            *slot_idx = sum;
+        // Delegate to verified model.
+        let r = peek_at_decide(read_idx, used_msgs, max_msgs, idx);
+        if r.ok {
+            *slot_idx = r.slot_idx;
+            OK
         } else {
-            #[allow(clippy::arithmetic_side_effects)]
-            {
-                *slot_idx = sum - max_msgs;
-            }
+            ENOMSG
         }
-        OK
     }
 }
 
@@ -1164,34 +1142,34 @@ pub extern "C" fn gale_pipe_write_check(
     actual_len: *mut u32,
     new_used: *mut u32,
 ) -> i32 {
+    use gale::pipe::{WriteDecision, write_decide};
+
     unsafe {
         if actual_len.is_null() || new_used.is_null() || size == 0 {
             return EINVAL;
-        }
-
-        if (flags & PIPE_FLAG_RESET) != 0 {
-            return ECANCELED;
-        }
-        if (flags & PIPE_FLAG_OPEN) == 0 {
-            return EPIPE;
         }
         if request_len == 0 {
             return ENOMSG;
         }
 
-        if used >= size {
-            return EAGAIN;
+        // Delegate core logic to verified model (has_reader=false:
+        // old API doesn't handle waking).
+        let r = write_decide(used, size, flags, request_len, false);
+        match r.decision {
+            WriteDecision::WriteOk => {
+                *actual_len = r.actual_bytes;
+                *new_used = r.new_used;
+                OK
+            }
+            WriteDecision::WriteError => r.ret,
+            WriteDecision::WritePend => EAGAIN,
+            WriteDecision::WakeReader => {
+                // Should not occur with has_reader=false, but handle gracefully.
+                *actual_len = r.actual_bytes;
+                *new_used = r.new_used;
+                OK
+            }
         }
-
-        #[allow(clippy::arithmetic_side_effects)]
-        let free = size - used;
-        let n = if request_len <= free { request_len } else { free };
-        *actual_len = n;
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_used = used + n;
-        }
-        OK
     }
 }
 
@@ -1219,31 +1197,35 @@ pub extern "C" fn gale_pipe_read_check(
     actual_len: *mut u32,
     new_used: *mut u32,
 ) -> i32 {
+    use gale::pipe::{ReadDecision, read_decide};
+
     unsafe {
         if actual_len.is_null() || new_used.is_null() {
             return EINVAL;
         }
-
-        if (flags & PIPE_FLAG_RESET) != 0 {
-            return ECANCELED;
-        }
         if request_len == 0 {
             return ENOMSG;
         }
-        if used == 0 {
-            if (flags & PIPE_FLAG_OPEN) == 0 {
-                return EPIPE;
-            }
-            return EAGAIN;
-        }
 
-        let n = if request_len <= used { request_len } else { used };
-        *actual_len = n;
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_used = used - n;
+        // Delegate core logic to verified model (has_writer=false:
+        // old API doesn't handle waking). Size is irrelevant when
+        // has_writer=false; pass u32::MAX as safe placeholder.
+        let r = read_decide(used, u32::MAX, flags, request_len, false);
+        match r.decision {
+            ReadDecision::ReadOk => {
+                *actual_len = r.actual_bytes;
+                *new_used = r.new_used;
+                OK
+            }
+            ReadDecision::ReadError => r.ret,
+            ReadDecision::ReadPend => EAGAIN,
+            ReadDecision::WakeWriter => {
+                // Should not occur with has_writer=false, but handle gracefully.
+                *actual_len = r.actual_bytes;
+                *new_used = r.new_used;
+                OK
+            }
         }
-        OK
     }
 }
 
@@ -1413,21 +1395,23 @@ pub extern "C" fn gale_stack_push_validate(
     capacity: u32,
     new_count: *mut u32,
 ) -> i32 {
+    use gale::stack::{PushDecision, push_decide};
+
     unsafe {
         if new_count.is_null() {
             return EINVAL;
         }
 
-        if count >= capacity {
-            return ENOMEM;
+        // Delegate to verified model (has_waiter=false: old API
+        // doesn't handle waking).
+        let r = push_decide(count, capacity, false);
+        match r.decision {
+            PushDecision::Store => {
+                *new_count = r.new_count;
+                OK
+            }
+            PushDecision::Full | PushDecision::WakeWaiter => ENOMEM,
         }
-
-        // Verified: count < capacity <= u32::MAX, no overflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_count = count + 1;
-        }
-        OK
     }
 }
 
@@ -1451,21 +1435,23 @@ pub extern "C" fn gale_stack_pop_validate(
     count: u32,
     new_count: *mut u32,
 ) -> i32 {
+    use gale::stack::{PopDecision, pop_decide};
+
     unsafe {
         if new_count.is_null() {
             return EINVAL;
         }
 
-        if count == 0 {
-            return EBUSY;
+        // Delegate to verified model (is_no_wait=true: old API never pends).
+        let r = pop_decide(count, true);
+        match r.decision {
+            PopDecision::Pop => {
+                *new_count = r.new_count;
+                OK
+            }
+            PopDecision::Busy => EBUSY,
+            PopDecision::Pend => EBUSY,
         }
-
-        // Verified: count > 0, no underflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_count = count - 1;
-        }
-        OK
     }
 }
 
@@ -1606,21 +1592,22 @@ pub extern "C" fn gale_timer_expire(
     status: u32,
     new_status: *mut u32,
 ) -> i32 {
+    use gale::timer::expire_decide;
+
     unsafe {
         if new_status.is_null() {
             return EINVAL;
         }
 
-        if status == u32::MAX {
-            return EOVERFLOW;
+        // Delegate to verified model.
+        let r = expire_decide(status, 0);
+        if r.new_status != status {
+            *new_status = r.new_status;
+            OK
+        } else {
+            // Saturated at u32::MAX — model returns unchanged status.
+            EOVERFLOW
         }
-
-        // Verified: status < u32::MAX, no overflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_status = status + 1;
-        }
-        OK
     }
 }
 
@@ -1669,6 +1656,7 @@ pub struct GaleTimerExpireDecision {
 /// Rust decides the new status value and whether timer is periodic,
 /// C applies new_status to timer->status.
 ///
+/// Delegates to `gale::timer::expire_decide` (Verus-verified).
 /// Verified: TM5 (increment), TM8 (no overflow — saturates at u32::MAX).
 #[cfg(feature = "timer")]
 #[unsafe(no_mangle)]
@@ -1676,16 +1664,12 @@ pub extern "C" fn gale_k_timer_expire_decide(
     status: u32,
     period: u32,
 ) -> GaleTimerExpireDecision {
-    let new_status = if status < u32::MAX {
-        #[allow(clippy::arithmetic_side_effects)]
-        { status + 1 }
-    } else {
-        // Saturate at u32::MAX — no overflow.
-        status
-    };
+    use gale::timer::expire_decide;
+
+    let r = expire_decide(status, period);
     GaleTimerExpireDecision {
-        new_status,
-        is_periodic: if period > 0 { 1 } else { 0 },
+        new_status: r.new_status,
+        is_periodic: if r.is_periodic { 1 } else { 0 },
     }
 }
 
@@ -1759,21 +1743,22 @@ pub extern "C" fn gale_mem_slab_alloc_validate(
     num_blocks: u32,
     new_num_used: *mut u32,
 ) -> i32 {
+    use gale::mem_slab::{AllocDecision, alloc_decide};
+
     unsafe {
         if new_num_used.is_null() {
             return EINVAL;
         }
 
-        if num_used >= num_blocks {
-            return ENOMEM;
+        // Delegate to verified model (is_no_wait=true: old API never pends).
+        let r = alloc_decide(num_used, num_blocks, true);
+        match r.decision {
+            AllocDecision::Alloc => {
+                *new_num_used = r.new_num_used;
+                OK
+            }
+            AllocDecision::NoMem | AllocDecision::Pend => ENOMEM,
         }
-
-        // Verified: num_used < num_blocks <= u32::MAX, no overflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_num_used = num_used + 1;
-        }
-        OK
     }
 }
 
@@ -1795,6 +1780,8 @@ pub extern "C" fn gale_mem_slab_free_validate(
     num_used: u32,
     new_num_used: *mut u32,
 ) -> i32 {
+    use gale::mem_slab::{FreeDecision, free_decide};
+
     unsafe {
         if new_num_used.is_null() {
             return EINVAL;
@@ -1804,12 +1791,20 @@ pub extern "C" fn gale_mem_slab_free_validate(
             return EINVAL;
         }
 
-        // Verified: num_used > 0, no underflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_num_used = num_used - 1;
+        // Delegate to verified model (has_waiter=false: old API
+        // doesn't handle waking).
+        let r = free_decide(num_used, false);
+        match r.decision {
+            FreeDecision::Free => {
+                *new_num_used = r.new_num_used;
+                OK
+            }
+            FreeDecision::WakeThread => {
+                // Should not occur with has_waiter=false.
+                *new_num_used = r.new_num_used;
+                OK
+            }
         }
-        OK
     }
 }
 
@@ -1835,6 +1830,7 @@ pub const GALE_MEM_SLAB_ACTION_RETURN_NOMEM: u8 = 2;
 /// The C shim extracts num_used, num_blocks, and whether the caller is willing
 /// to wait.  Rust decides the action.
 ///
+/// Delegates to `gale::mem_slab::alloc_decide` (Verus-verified).
 /// Verified: MS4 (increment), MS5 (-ENOMEM), MS1 (bounds).
 #[cfg(feature = "mem_slab")]
 #[unsafe(no_mangle)]
@@ -1843,26 +1839,25 @@ pub extern "C" fn gale_k_mem_slab_alloc_decide(
     num_blocks: u32,
     is_no_wait: u32,
 ) -> GaleMemSlabAllocDecision {
-    if num_used < num_blocks {
-        #[allow(clippy::arithmetic_side_effects)]
-        let new_num_used = num_used + 1;
-        GaleMemSlabAllocDecision {
+    use gale::mem_slab::{AllocDecision, alloc_decide};
+
+    let r = alloc_decide(num_used, num_blocks, is_no_wait != 0);
+    match r.decision {
+        AllocDecision::Alloc => GaleMemSlabAllocDecision {
             ret: OK,
-            new_num_used,
+            new_num_used: r.new_num_used,
             action: GALE_MEM_SLAB_ACTION_ALLOC_OK,
-        }
-    } else if is_no_wait != 0 {
-        GaleMemSlabAllocDecision {
+        },
+        AllocDecision::NoMem => GaleMemSlabAllocDecision {
             ret: ENOMEM,
-            new_num_used: num_used,
+            new_num_used: r.new_num_used,
             action: GALE_MEM_SLAB_ACTION_RETURN_NOMEM,
-        }
-    } else {
-        GaleMemSlabAllocDecision {
+        },
+        AllocDecision::Pend => GaleMemSlabAllocDecision {
             ret: 0,
-            new_num_used: num_used,
+            new_num_used: r.new_num_used,
             action: GALE_MEM_SLAB_ACTION_PEND_CURRENT,
-        }
+        },
     }
 }
 
@@ -1883,6 +1878,7 @@ pub const GALE_MEM_SLAB_ACTION_WAKE_THREAD: u8 = 1;
 /// The C shim checks whether there is a waiting thread (and whether the free
 /// list was empty).  Rust decides the action.
 ///
+/// Delegates to `gale::mem_slab::free_decide` (Verus-verified).
 /// Verified: MS6 (decrement), MS1 (bounds).
 #[cfg(feature = "mem_slab")]
 #[unsafe(no_mangle)]
@@ -1890,27 +1886,18 @@ pub extern "C" fn gale_k_mem_slab_free_decide(
     num_used: u32,
     has_waiter: u32,
 ) -> GaleMemSlabFreeDecision {
-    if has_waiter != 0 {
-        // Don't decrement — the block goes directly to the woken thread,
-        // so the allocation count stays the same.
-        GaleMemSlabFreeDecision {
-            new_num_used: num_used,
+    use gale::mem_slab::{FreeDecision, free_decide};
+
+    let r = free_decide(num_used, has_waiter != 0);
+    match r.decision {
+        FreeDecision::Free => GaleMemSlabFreeDecision {
+            new_num_used: r.new_num_used,
+            action: GALE_MEM_SLAB_ACTION_FREE_OK,
+        },
+        FreeDecision::WakeThread => GaleMemSlabFreeDecision {
+            new_num_used: r.new_num_used,
             action: GALE_MEM_SLAB_ACTION_WAKE_THREAD,
-        }
-    } else if num_used > 0 {
-        #[allow(clippy::arithmetic_side_effects)]
-        let new_num_used = num_used - 1;
-        GaleMemSlabFreeDecision {
-            new_num_used,
-            action: GALE_MEM_SLAB_ACTION_FREE_OK,
-        }
-    } else {
-        // All blocks already free — should not happen with valid usage.
-        // Return unchanged count with FREE_OK action (no-op).
-        GaleMemSlabFreeDecision {
-            new_num_used: 0,
-            action: GALE_MEM_SLAB_ACTION_FREE_OK,
-        }
+        },
     }
 }
 

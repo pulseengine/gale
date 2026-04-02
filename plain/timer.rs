@@ -299,3 +299,24 @@ impl Timer {
         self.status
     }
 }
+/// Result of an expire decision.
+#[derive(Debug)]
+pub struct ExpireDecideResult {
+    /// New status value (status + 1, or unchanged on saturation).
+    pub new_status: u32,
+    /// Whether the timer has a non-zero period (periodic vs one-shot).
+    pub is_periodic: bool,
+}
+/// Lightweight expire decision — takes scalars, no Timer allocation.
+///
+/// Verified properties (TM5, TM8):
+/// - status < u32::MAX ==> new_status == status + 1
+/// - status == u32::MAX ==> new_status == u32::MAX (saturated)
+/// - is_periodic == (period > 0)
+pub fn expire_decide(status: u32, period: u32) -> ExpireDecideResult {
+    let new_status = if status < u32::MAX { status + 1 } else { status };
+    ExpireDecideResult {
+        new_status,
+        is_periodic: period > 0,
+    }
+}

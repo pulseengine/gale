@@ -292,4 +292,134 @@ pub proof fn lemma_free_alloc_roundtrip(num_used: u32, num_blocks: u32)
 {
 }
 
+// =================================================================
+// Lightweight decision functions — scalar-only, no MemSlab allocation.
+// Used by FFI to delegate safety-critical logic to the verified model.
+// =================================================================
+
+/// Lightweight alloc decision — no MemSlab allocation.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum AllocDecision {
+    /// Block available: num_used incremented.
+    Alloc = 0,
+    /// Slab full, willing to wait: pend current thread.
+    Pend = 1,
+    /// Slab full, no-wait: return immediately.
+    NoMem = 2,
+}
+
+/// Result of an alloc decision with updated count.
+#[derive(Debug)]
+pub struct AllocDecideResult {
+    pub decision: AllocDecision,
+    pub new_num_used: u32,
+}
+
+/// Lightweight free decision — no MemSlab allocation.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum FreeDecision {
+    /// Block returned to free list: num_used decremented.
+    Free = 0,
+    /// A waiter exists: give block directly to waiting thread (count unchanged).
+    WakeThread = 1,
+}
+
+/// Result of a free decision with updated count.
+#[derive(Debug)]
+pub struct FreeDecideResult {
+    pub decision: FreeDecision,
+    pub new_num_used: u32,
+}
+
+/// Lightweight alloc decision — takes scalars, no MemSlab allocation.
+///
+/// Verified properties (MS4, MS5, MS1):
+/// - num_used < num_blocks ==> Alloc (num_used + 1)
+/// - num_used >= num_blocks && is_no_wait ==> NoMem
+/// - num_used >= num_blocks && !is_no_wait ==> Pend
+pub fn alloc_decide(
+    num_used: u32,
+    num_blocks: u32,
+    is_no_wait: bool,
+) -> (result: AllocDecideResult)
+    requires
+        true,
+    ensures
+        num_used < num_blocks ==> {
+            &&& result.decision === AllocDecision::Alloc
+            &&& result.new_num_used == num_used + 1
+        },
+        num_used >= num_blocks && is_no_wait ==> {
+            &&& result.decision === AllocDecision::NoMem
+            &&& result.new_num_used == num_used
+        },
+        num_used >= num_blocks && !is_no_wait ==> {
+            &&& result.decision === AllocDecision::Pend
+            &&& result.new_num_used == num_used
+        },
+{
+    if num_used < num_blocks {
+        AllocDecideResult {
+            decision: AllocDecision::Alloc,
+            new_num_used: num_used + 1,
+        }
+    } else if is_no_wait {
+        AllocDecideResult {
+            decision: AllocDecision::NoMem,
+            new_num_used: num_used,
+        }
+    } else {
+        AllocDecideResult {
+            decision: AllocDecision::Pend,
+            new_num_used: num_used,
+        }
+    }
+}
+
+/// Lightweight free decision — takes scalars, no MemSlab allocation.
+///
+/// Verified properties (MS6, MS1):
+/// - has_waiter ==> WakeThread (count unchanged)
+/// - !has_waiter && num_used > 0 ==> Free (count - 1)
+/// - !has_waiter && num_used == 0 ==> Free (count unchanged, no-op)
+pub fn free_decide(
+    num_used: u32,
+    has_waiter: bool,
+) -> (result: FreeDecideResult)
+    requires
+        true,
+    ensures
+        has_waiter ==> {
+            &&& result.decision === FreeDecision::WakeThread
+            &&& result.new_num_used == num_used
+        },
+        !has_waiter && num_used > 0 ==> {
+            &&& result.decision === FreeDecision::Free
+            &&& result.new_num_used == (num_used - 1) as u32
+        },
+        !has_waiter && num_used == 0 ==> {
+            &&& result.decision === FreeDecision::Free
+            &&& result.new_num_used == 0
+        },
+{
+    if has_waiter {
+        FreeDecideResult {
+            decision: FreeDecision::WakeThread,
+            new_num_used: num_used,
+        }
+    } else if num_used > 0 {
+        FreeDecideResult {
+            decision: FreeDecision::Free,
+            new_num_used: num_used - 1,
+        }
+    } else {
+        FreeDecideResult {
+            decision: FreeDecision::Free,
+            new_num_used: 0,
+        }
+    }
+}
+
 } // verus!
