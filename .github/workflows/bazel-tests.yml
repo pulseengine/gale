@@ -64,3 +64,79 @@ jobs:
 
       - name: gate (plain/ matches stripped src/)
         run: cargo test --manifest-path tools/verus-strip/Cargo.toml --test gate
+
+  feature-sizes:
+    name: FFI Feature Sizes
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7m-none-eabi
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ffi/target
+          key: ffi-size-${{ runner.os }}-${{ hashFiles('ffi/Cargo.toml', 'ffi/Cargo.lock') }}
+          restore-keys: ffi-size-${{ runner.os }}-
+
+      - name: Measure per-feature sizes
+        run: |
+          TARGET="thumbv7m-none-eabi"
+          FEATURES="sem mutex msgq pipe stack timer mem_slab event fifo lifo queue mbox timeout poll futex timeslice kheap thread_lifecycle work fatal mempool dynamic smp_state sched mem_domain userspace heap ring_buf bitarray rbtree"
+          OUTPUT=""
+          BENCH_OUTPUT=""
+
+          for feat in $FEATURES; do
+            cargo build --manifest-path ffi/Cargo.toml --release \
+              --no-default-features --features "$feat" \
+              --target "$TARGET" 2>/dev/null
+            LIB="ffi/target/${TARGET}/release/libgale_ffi.a"
+            TEXT_SIZE=$(nm --print-size --size-sort "$LIB" 2>/dev/null \
+              | awk '{s += strtonum("0x"$2)} END {print s+0}')
+            SYMS=$(nm "$LIB" 2>/dev/null | grep -c ' T gale_' || echo 0)
+            OUTPUT="${OUTPUT}| ${feat} | ${TEXT_SIZE} | ${SYMS} |\n"
+            BENCH_OUTPUT="${BENCH_OUTPUT}ffi_${feat}_bytes ${TEXT_SIZE} ns/iter (+/- 0)\n"
+          done
+
+          # All features combined
+          cargo build --manifest-path ffi/Cargo.toml --release \
+            --target "$TARGET" 2>/dev/null
+          LIB="ffi/target/${TARGET}/release/libgale_ffi.a"
+          TOTAL=$(nm --print-size --size-sort "$LIB" 2>/dev/null \
+            | awk '{s += strtonum("0x"$2)} END {print s+0}')
+          TOTAL_SYMS=$(nm "$LIB" 2>/dev/null | grep -c ' T gale_' || echo 0)
+          OUTPUT="${OUTPUT}| **all** | **${TOTAL}** | **${TOTAL_SYMS}** |\n"
+          BENCH_OUTPUT="${BENCH_OUTPUT}ffi_all_bytes ${TOTAL} ns/iter (+/- 0)\n"
+
+          {
+            echo "## FFI Feature Sizes (thumbv7m-none-eabi, release)"
+            echo ""
+            echo "| Feature | Text (bytes) | Symbols |"
+            echo "|---------|-------------|---------|"
+            printf "$OUTPUT"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          printf "$BENCH_OUTPUT" > feature-sizes.txt
+          cat "$GITHUB_STEP_SUMMARY"
+
+      - name: Track feature sizes over time
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: FFI Feature Sizes (thumbv7m-none-eabi)
+          tool: cargo
+          output-file-path: feature-sizes.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          comment-on-alert: true
+          alert-threshold: "120%"
+          fail-on-alert: false
+          max-items-in-chart: 50
+          save-data-file: true
