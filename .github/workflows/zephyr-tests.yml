@@ -286,6 +286,12 @@ jobs:
           west update --narrow -o=--depth=1
           west sdk install
 
+      - name: Setup SDK paths
+        run: |
+          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
+
       - name: Build baseline (stock Zephyr)
         run: |
           . /root/.cargo/env

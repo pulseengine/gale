@@ -74,7 +74,7 @@ jobs:
         timeout-minutes: 45
 
       - name: Run Kani FFI harnesses
-        run: cargo kani --tests
+        run: cargo kani --tests --all-features
         working-directory: ffi
         timeout-minutes: 45
 
@@ -87,7 +87,13 @@ jobs:
       - uses: cachix/install-nix-action@v30
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Set LLVM library path for rocq_of_rust
+        run: |
+          SYSROOT=$(rustc +nightly --print sysroot)
+          echo "LIBRARY_PATH=${SYSROOT}/lib" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=${SYSROOT}/lib" >> "$GITHUB_ENV"
 
       - name: Run Rocq proof verification
         run: |

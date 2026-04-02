@@ -1,6 +1,7 @@
 load("@rules_verus//verus:defs.bzl", "verus_library", "verus_test")
 
 # Export src/*.rs for cross-package use (verus_strip in //plain)
+# Modules: 40 (39 kernel + zms)
 exports_files(glob(["src/*.rs"]), visibility = ["//visibility:public"])
 load("//bzl:defs.bzl",
     "cargo_bench_test",
@@ -60,6 +61,7 @@ VERUS_SRCS = [
     "src/mem_domain.rs",
     "src/sched.rs",
     "src/poll.rs",
+    "src/zms.rs",
 ]
 
 PLAIN_SRCS = ["//plain:srcs"]
