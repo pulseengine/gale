@@ -446,6 +446,8 @@ impl ZmsFs {
     pub fn write_decide(&self, data_len: u32) -> (result: ZmsWriteDecision)
         requires
             self.inv(),
+            // Guard against u64 overflow in required_space computation
+            (data_len as u64) + (self.ate_size as u64) <= u64::MAX,
         ensures
             // ZMS3: if free_space >= data_len + ate_size, write proceeds
             self.free_space as int >= (data_len as int) + (self.ate_size as int) ==>
