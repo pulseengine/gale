@@ -260,6 +260,18 @@ config GALE_KERNEL_SMP_STATE
 	  and arch CPU start remain native Zephyr C.
 	  Requires a Rust toolchain for the target architecture.
 
+config GALE_KERNEL_IPI
+	bool "Use Gale formally verified IPI mask creation"
+	depends on SMP
+	help
+	  Use Gale formally verified IPI mask creation for
+	  kernel/ipi.c. The ipi_mask_create() bitmask computation
+	  (which CPUs need an inter-processor interrupt) is handled
+	  by verified Rust code. IPI signaling, MetaIRQ preemption
+	  override, cooperative thread guard, and CONFIG_IPI_OPTIMIZE
+	  bypass remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
 config GALE_KERNEL_SCHED
 	bool "Use Gale formally verified scheduler"
 	depends on MULTITHREADING
@@ -318,6 +330,28 @@ config GALE_KERNEL_BITARRAY
 	  implementation. Single-bit bounds, region bounds, allocation
 	  parameter validation, and bundle index computation are handled
 	  by verified Rust code.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_SPINLOCK_VALIDATE
+	bool "Use Gale formally verified spinlock validation"
+	depends on SMP
+	help
+	  Replace spinlock_validate.c with the Gale formally verified
+	  Rust implementation. Lock/unlock validity checks and owner
+	  encoding are handled by verified Rust code. The actual
+	  spinlock acquire/release mechanism and IRQ handling remain
+	  native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_CPU_MASK
+	bool "Use Gale formally verified CPU affinity mask"
+	depends on SMP
+	help
+	  Replace kernel/cpu_mask.c with the Gale formally verified Rust
+	  implementation. The mask arithmetic (enable/disable bits,
+	  pin-only validation, zero-mask rejection, running-thread guard)
+	  is handled by verified Rust code. Spinlock, thread state queries,
+	  polling, and userspace syscalls remain native Zephyr C.
 	  Requires a Rust toolchain for the target architecture.
 
 config GALE_KERNEL_RB

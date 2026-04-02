@@ -5657,6 +5657,92 @@ pub extern "C" fn gale_k_object_make_public_decide(
     }
 }
 
+// ---------------------------------------------------------------------------
+// FFI exports — CPU affinity mask
+// ---------------------------------------------------------------------------
+
+/// Result struct for cpu_mask_mod — returns new mask and error code.
+///
+/// Maps to CpuMaskResult from gale::cpu_mask but with C-compatible layout.
+#[cfg(feature = "cpu_mask")]
+#[repr(C)]
+pub struct GaleCpuMaskResult {
+    /// The resulting CPU affinity mask (valid only when `err == 0`).
+    pub mask: u32,
+    /// Error code: 0 on success, -EINVAL on failure.
+    pub err: i32,
+}
+
+/// Core CPU mask modification — decide new mask from enable/disable bits.
+///
+/// cpu_mask.c:19-45:
+///   new_mask = (current | enable) & ~disable;
+///   Rejects running threads, zero masks, and invalid pin masks.
+///
+/// C uses u32 for booleans: 0=false, nonzero=true.
+///
+/// Verified: CM1-CM5 (running guard, pin-only, formula, nonzero, overflow).
+#[cfg(feature = "cpu_mask")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_cpu_mask_mod(
+    current_mask: u32,
+    enable: u32,
+    disable: u32,
+    is_running: u32,
+    pin_only: u32,
+) -> GaleCpuMaskResult {
+    use gale::cpu_mask::*;
+
+    let result = cpu_mask_mod(
+        current_mask,
+        enable,
+        disable,
+        is_running != 0,
+        pin_only != 0,
+    );
+    GaleCpuMaskResult {
+        mask: result.mask,
+        err: result.error,
+    }
+}
+
+/// Validate whether a mask is a valid PIN_ONLY mask (exactly one bit set).
+///
+/// cpu_mask.c:38-41: power-of-two check.
+///
+/// Returns 1 if valid, 0 if invalid.
+///
+/// Verified: CM2 (exactly one bit set).
+#[cfg(feature = "cpu_mask")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_validate_pin_mask(mask: u32) -> i32 {
+    use gale::cpu_mask::*;
+
+    if validate_pin_mask(mask) { 1 } else { 0 }
+}
+
+/// Compute the pin mask for a specific CPU: BIT(cpu_id).
+///
+/// cpu_mask.c:69: k_thread_cpu_pin uses BIT(cpu).
+///
+/// Returns mask in .mask and 0 in .err on success, or -EINVAL in .err on
+/// bounds failure (cpu_id >= max_cpus or max_cpus > 32).
+///
+/// Verified: CM6 (bounds check, single-bit result).
+#[cfg(feature = "cpu_mask")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_cpu_pin_compute(
+    cpu_id: u32,
+    max_cpus: u32,
+) -> GaleCpuMaskResult {
+    use gale::cpu_mask::*;
+
+    match cpu_pin_compute(cpu_id, max_cpus) {
+        Ok(m) => GaleCpuMaskResult { mask: m, err: OK },
+        Err(e) => GaleCpuMaskResult { mask: 0, err: e },
+    }
+}
+
 // Panic handler for no_std
 #[cfg(not(any(test, kani)))]
 #[panic_handler]
@@ -8550,6 +8636,143 @@ pub extern "C" fn gale_rb_validate_color_after_rotation(
     }
 }
 
+// ===========================================================================
+// Spinlock validate — verified spinlock ownership validation
+// ===========================================================================
+
+/// Check whether acquiring the spinlock is valid.
+///
+/// Returns 1 (true) if valid, 0 (false) if the lock is already held by
+/// the same CPU (would deadlock).
+///
+/// Maps to z_spin_lock_valid() in spinlock_validate.c:10-20.
+#[cfg(feature = "spinlock_validate")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_spin_lock_valid(thread_cpu: usize, current_cpu_id: u32) -> i32 {
+    use gale::spinlock_validate::*;
+    if spin_lock_valid(thread_cpu, current_cpu_id) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Check whether releasing the spinlock is valid.
+///
+/// Returns 1 (true) if the stored owner matches the current (cpu | thread),
+/// 0 (false) otherwise.
+///
+/// Maps to z_spin_unlock_valid() in spinlock_validate.c:23-37.
+#[cfg(feature = "spinlock_validate")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_spin_unlock_valid(
+    thread_cpu: usize,
+    current_cpu_id: u32,
+    current_thread: usize,
+) -> i32 {
+    use gale::spinlock_validate::*;
+    if spin_unlock_valid(thread_cpu, current_cpu_id, current_thread) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Compute the owner tag for a spinlock (cpu_id | thread_ptr).
+///
+/// Maps to z_spin_lock_set_owner() in spinlock_validate.c:39-43.
+#[cfg(feature = "spinlock_validate")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_spin_lock_compute_owner(
+    current_cpu_id: u32,
+    current_thread: usize,
+) -> usize {
+    use gale::spinlock_validate::*;
+    spin_lock_compute_owner(current_cpu_id, current_thread)
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — ipi (IPI mask creation for SMP)
+// ---------------------------------------------------------------------------
+//
+// These functions replace the IPI mask computation from kernel/ipi.c:
+//
+//   ipi.c:29-70  ipi_mask_create — compute which CPUs need an IPI
+//
+// Verified by Verus (SMT/Z3):
+//   IP1: current CPU is never in the result mask
+//   IP2: only CPUs within [0, num_cpus) can be in the mask
+//   IP3: only CPUs allowed by target_cpu_mask are considered
+//   IP4: a CPU is included only if its priority > target (lower importance)
+//   IP5: result fits in max_cpus bits (no stray high bits)
+
+/// Compute the IPI bitmask for a newly ready thread.
+///
+/// ipi.c:29-70:
+///   Iterates over CPUs, checking activity, affinity, and priority
+///   to determine which CPUs should receive an IPI.
+///
+/// SAFETY: `cpu_prios` must point to a valid array of `num_cpus` int32_t values.
+///         `cpu_active` must point to a valid array of `num_cpus` uint8_t values.
+///         Called under Zephyr's scheduler spinlock — no concurrent access.
+#[cfg(feature = "ipi")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_compute_ipi_mask(
+    current_cpu: u32,
+    target_prio: i32,
+    target_cpu_mask: u32,
+    cpu_prios: *const i32,
+    cpu_active: *const u8,
+    num_cpus: u32,
+    max_cpus: u32,
+) -> u32 {
+    use gale::ipi::compute_ipi_mask;
+
+    if cpu_prios.is_null() || cpu_active.is_null() {
+        return 0;
+    }
+    if num_cpus == 0 || current_cpu >= num_cpus || num_cpus > max_cpus || max_cpus > 16 {
+        return 0;
+    }
+
+    // SAFETY: Caller guarantees valid arrays of length num_cpus under spinlock.
+    let prios = unsafe { core::slice::from_raw_parts(cpu_prios, num_cpus as usize) };
+    let active_u8 = unsafe { core::slice::from_raw_parts(cpu_active, num_cpus as usize) };
+
+    // Convert u8 array to bool array (stack-allocated, max 16 CPUs)
+    let mut active_bool = [false; 16];
+    let mut i: usize = 0;
+    while i < num_cpus as usize {
+        active_bool[i] = active_u8[i] != 0;
+        i += 1;
+    }
+    let active = &active_bool[..num_cpus as usize];
+
+    compute_ipi_mask(current_cpu, target_prio, target_cpu_mask, prios, active, num_cpus, max_cpus)
+}
+
+/// Validate a previously computed IPI mask.
+///
+/// Returns 1 if the mask is structurally valid (current CPU excluded,
+/// no bits above max_cpus), 0 otherwise.
+///
+/// Verified: IP1 (current CPU exclusion), IP5 (bounded by max_cpus).
+#[cfg(feature = "ipi")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_validate_ipi_mask(mask: u32, current_cpu: u32, max_cpus: u32) -> i32 {
+    use gale::ipi::validate_ipi_mask;
+
+    if current_cpu >= max_cpus || max_cpus > 16 {
+        return 0;
+    }
+
+    if validate_ipi_mask(mask, current_cpu, max_cpus) {
+        1
+    } else {
+        0
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Kani bounded model checking — red-black tree
 // ---------------------------------------------------------------------------
@@ -8627,5 +8850,63 @@ mod kani_rb_proofs {
         } else {
             assert!(rc == OK);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — IPI mask creation
+// ---------------------------------------------------------------------------
+
+#[cfg(all(kani, feature = "ipi"))]
+mod kani_ipi_proofs {
+    use super::*;
+
+    /// IP1: null pointers return 0.
+    #[kani::proof]
+    fn ipi_null_prios_returns_zero() {
+        let active: [u8; 2] = [1, 1];
+        let result = gale_compute_ipi_mask(0, 5, 0x3, core::ptr::null(), active.as_ptr(), 2, 2);
+        assert!(result == 0);
+    }
+
+    /// IP1: null active array returns 0.
+    #[kani::proof]
+    fn ipi_null_active_returns_zero() {
+        let prios: [i32; 2] = [10, 10];
+        let result = gale_compute_ipi_mask(0, 5, 0x3, prios.as_ptr(), core::ptr::null(), 2, 2);
+        assert!(result == 0);
+    }
+
+    /// IP1: current CPU excluded from result.
+    #[kani::proof]
+    fn ipi_current_cpu_excluded() {
+        let prios: [i32; 2] = [10, 10];
+        let active: [u8; 2] = [1, 1];
+        let result = gale_compute_ipi_mask(0, 5, 0x3, prios.as_ptr(), active.as_ptr(), 2, 2);
+        assert!(result & 1 == 0); // bit 0 (current CPU) not set
+    }
+
+    /// IP5: validate_ipi_mask accepts valid mask.
+    #[kani::proof]
+    fn ipi_validate_accepts_valid() {
+        // mask=0b10 (CPU 1), current=0, max=2 -> valid
+        assert!(gale_validate_ipi_mask(0b10, 0, 2) == 1);
+    }
+
+    /// IP5: validate_ipi_mask rejects mask with current CPU set.
+    #[kani::proof]
+    fn ipi_validate_rejects_current_cpu() {
+        // mask=0b01 (CPU 0), current=0, max=2 -> invalid
+        assert!(gale_validate_ipi_mask(0b01, 0, 2) == 0);
+    }
+
+    /// Boundary: invalid parameters return 0.
+    #[kani::proof]
+    fn ipi_invalid_params_zero() {
+        let prios: [i32; 2] = [10, 10];
+        let active: [u8; 2] = [1, 1];
+        // current_cpu >= num_cpus
+        let result = gale_compute_ipi_mask(5, 5, 0x3, prios.as_ptr(), active.as_ptr(), 2, 2);
+        assert!(result == 0);
     }
 }

@@ -17,6 +17,7 @@ all = [
     "futex", "timeslice", "kheap", "thread_lifecycle", "work",
     "fatal", "mempool", "dynamic", "smp_state", "sched",
     "mem_domain", "userspace", "heap", "ring_buf", "bitarray", "rbtree",
+    "spinlock_validate", "ipi", "cpu_mask",
 ]
 sem = []
 mutex = []
@@ -48,6 +49,9 @@ heap = []
 ring_buf = []
 bitarray = []
 rbtree = []
+spinlock_validate = []
+ipi = []
+cpu_mask = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
