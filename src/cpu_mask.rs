@@ -53,12 +53,12 @@ pub struct CpuMaskResult {
 /// Spec-level power-of-2 check: exactly one bit set.
 /// A value `m` has exactly one bit iff `m != 0 && (m & (m - 1)) == 0`.
 pub open spec fn is_power_of_two(m: u32) -> bool {
-    m != 0 && (m as int) & ((m as int) - 1) == 0
+    m != 0 && (m & (m - 1)) == 0
 }
 
 /// Spec-level mask computation.
 pub open spec fn compute_mask(current: u32, enable: u32, disable: u32) -> u32 {
-    ((current | enable) & !disable) as u32
+    (current | enable) & !disable
 }
 
 // ------------------------------------------------------------------
