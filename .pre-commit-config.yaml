@@ -1,37 +1,32 @@
-# Pre-commit hooks backed by Bazel test targets.
+# Pre-commit hooks — mirrors Rust CI checks.
 #
 # Install: pre-commit install
-# Or use: bazel run //:install_precommit (for native git hook)
 #
-# All hooks delegate to Bazel — single source of truth.
+# Runs the same checks as the Rust CI workflow (bazel-tests.yml):
+#   1. cargo test (all workspace tests including differential)
+#   2. clippy (deny warnings)
+#   3. verus-strip gate (plain/ matches stripped src/)
 
 repos:
   - repo: local
     hooks:
-      - id: fmt
-        name: rustfmt
-        entry: bazel test //:fmt_test
+      - id: test
+        name: cargo test
+        entry: cargo test --workspace --quiet
         language: system
         pass_filenames: false
-        files: '\.rs$'
+        files: '\.rs$|Cargo\.toml$'
 
       - id: clippy
         name: clippy -D warnings
-        entry: bazel test //:clippy_test
+        entry: cargo clippy --all-targets -- -D warnings
         language: system
         pass_filenames: false
         files: '\.rs$'
 
-      - id: test
-        name: cargo test
-        entry: bazel test //:cargo_test
+      - id: gate
+        name: verus-strip gate
+        entry: cargo test --manifest-path tools/verus-strip/Cargo.toml --test gate --quiet
         language: system
         pass_filenames: false
-        files: '\.rs$'
-
-      - id: precommit
-        name: full precommit suite
-        entry: bazel test //:precommit
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
+        files: '(^src/|^plain/)'

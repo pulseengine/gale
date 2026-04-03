@@ -6,7 +6,8 @@
 #![allow(
     clippy::unwrap_used,
     clippy::arithmetic_side_effects,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    clippy::indexing_slicing
 )]
 
 use gale::spinlock_validate::*;

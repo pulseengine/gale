@@ -6,7 +6,8 @@
 #![allow(
     clippy::unwrap_used,
     clippy::arithmetic_side_effects,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    clippy::shadow_unrelated
 )]
 
 use gale::cpu_mask::*;
@@ -32,7 +33,7 @@ fn ffi_cpu_mask_mod(
 /// Replica of gale_validate_pin_mask.
 /// Returns 1 if valid, 0 if invalid.
 fn ffi_validate_pin_mask(mask: u32) -> i32 {
-    if validate_pin_mask(mask) { 1 } else { 0 }
+    i32::from(validate_pin_mask(mask))
 }
 
 /// Replica of gale_cpu_pin_compute.
@@ -84,7 +85,7 @@ fn validate_pin_mask_ffi_matches_model_exhaustive() {
         let ffi_result = ffi_validate_pin_mask(mask);
         let model_result = validate_pin_mask(mask);
 
-        assert_eq!(ffi_result, if model_result { 1 } else { 0 },
+        assert_eq!(ffi_result, i32::from(model_result),
             "validate_pin_mask diverged: mask=0x{mask:X}");
     }
 
@@ -164,14 +165,14 @@ fn cpu_mask_mod_pin_only_single_bit() {
     assert_eq!(err, EINVAL, "CM2: multiple bits in pin_only mode rejected");
 
     // Enable single bit: should succeed
-    let (mask, err) = ffi_cpu_mask_mod(0x0, 0x4, 0, false, true);
-    assert_eq!(err, OK, "CM2: single bit in pin_only mode accepted");
-    assert_eq!(mask, 0x4);
+    let (mask2, err2) = ffi_cpu_mask_mod(0x0, 0x4, 0, false, true);
+    assert_eq!(err2, OK, "CM2: single bit in pin_only mode accepted");
+    assert_eq!(mask2, 0x4);
 
     // Enable + disable to result in single bit: should succeed
-    let (mask, err) = ffi_cpu_mask_mod(0x3, 0x0, 0x2, false, true);
-    assert_eq!(err, OK, "CM2: disable to single bit accepted");
-    assert_eq!(mask, 0x1);
+    let (mask3, err3) = ffi_cpu_mask_mod(0x3, 0x0, 0x2, false, true);
+    assert_eq!(err3, OK, "CM2: disable to single bit accepted");
+    assert_eq!(mask3, 0x1);
 }
 
 // =====================================================================
