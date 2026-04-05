@@ -192,6 +192,8 @@ impl ZmsSector {
     pub fn init(sector_size: u32, ate_size: u32, cycle_cnt: u8) -> (result: Result<Self, i32>)
         requires
             ate_size > 0,
+            // Guard against overflow in 5 * ate_size
+            (ate_size as u64) * 5 <= u32::MAX as u64,
         ensures
             match result {
                 Ok(s) => {
@@ -243,7 +245,7 @@ impl ZmsSector {
             result == (self.ate_wra as int >= self.data_wra as int + needed as int
                        && self.ate_wra > 0),
     {
-        self.ate_wra > 0 && self.ate_wra >= self.data_wra + needed
+        self.ate_wra > 0 && (self.ate_wra as u64) >= (self.data_wra as u64) + (needed as u64)
     }
 
     // ------------------------------------------------------------------
@@ -367,6 +369,7 @@ impl ZmsFs {
     pub fn init(sector_count: u32, sector_size: u32, ate_size: u32) -> (result: Result<Self, i32>)
         requires
             ate_size > 0,
+            (ate_size as u64) * 5 <= u32::MAX as u64,
         ensures
             match result {
                 Ok(fs) => {

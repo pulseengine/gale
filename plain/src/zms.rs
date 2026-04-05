@@ -153,7 +153,8 @@ impl ZmsSector {
     ///
     /// ZMS3: if this returns true, the write proceeds without GC.
     pub fn has_space(&self, needed: u32, ate_size: u32) -> bool {
-        self.ate_wra > 0 && self.ate_wra >= self.data_wra + needed
+        self.ate_wra > 0
+            && (self.ate_wra as u64) >= (self.data_wra as u64) + (needed as u64)
     }
     /// Decide whether the sector can be closed.
     ///
