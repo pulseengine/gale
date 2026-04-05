@@ -115,8 +115,6 @@ pub fn compute_ipi_mask(
     while idx < num_cpus
         invariant
             num_cpus <= max_cpus,
-        decreases
-            num_cpus - idx,
             max_cpus <= MAX_CPUS,
             MAX_CPUS <= 32,
             current_cpu < num_cpus,
@@ -127,6 +125,8 @@ pub fn compute_ipi_mask(
             !bit_set(mask, current_cpu),
             // IP2 (partial): no bits at or above idx are set
             forall|i: u32| idx <= i && i < 32 ==> !bit_set(mask, i),
+        decreases
+            (num_cpus - idx) as int,
     {
         if idx != current_cpu {
             if cpu_active[idx as usize] {
