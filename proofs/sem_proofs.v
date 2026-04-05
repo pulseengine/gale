@@ -592,7 +592,7 @@ Theorem only_ok_is_zero :
   EINVAL <> 0 /\ EBUSY <> 0 /\ EAGAIN <> 0 /\ OK = 0.
 Proof.
   unfold EINVAL, EBUSY, EAGAIN, OK.
-  repeat split; try (intro H; lia). reflexivity.
+  repeat split; try (intro H; lia); reflexivity.
 Qed.
 
 (** All error codes are strictly negative.
