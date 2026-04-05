@@ -65,6 +65,8 @@ VERUS_SRCS = [
     "src/spinlock_validate.rs",
     "src/cpu_mask.rs",
     "src/ipi.rs",
+    "src/systick.rs",
+    "src/mpu.rs",
 ]
 
 PLAIN_SRCS = ["//plain:srcs"]
