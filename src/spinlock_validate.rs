@@ -195,9 +195,11 @@ pub fn spin_lock_compute_owner(
     ensures
         owner == encode_owner_spec(current_cpu_id, current_thread),
 {
-    // Proof hint: since thread's low bits are 0 and cpu fits in those bits,
-    // OR is the same as addition, and the fields don't overlap.
-    (current_cpu_id as usize) | current_thread
+    let cpu = current_cpu_id as usize;
+    proof {
+        assert(cpu | current_thread == current_thread | cpu) by(bit_vector);
+    }
+    cpu | current_thread
 }
 
 // ======================================================================

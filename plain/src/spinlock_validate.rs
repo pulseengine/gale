@@ -115,5 +115,6 @@ pub fn spin_unlock_valid(
 /// SV4/SV5: CPU and thread are recoverable.
 /// SV6: CPU ID fits within the mask.
 pub fn spin_lock_compute_owner(current_cpu_id: u32, current_thread: usize) -> usize {
-    (current_cpu_id as usize) | current_thread
+    let cpu = current_cpu_id as usize;
+    cpu | current_thread
 }
