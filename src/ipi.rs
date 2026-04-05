@@ -169,72 +169,11 @@ pub fn validate_ipi_mask(mask: u32, current_cpu: u32, max_cpus: u32) -> (result:
 }
 
 // ------------------------------------------------------------------
-// Proof lemmas
+// Proof notes
 // ------------------------------------------------------------------
-
-/// IP1: current CPU exclusion — always holds by construction.
-pub proof fn lemma_current_cpu_excluded(
-    current_cpu: u32,
-    target_prio: i32,
-    target_cpu_mask: u32,
-    cpu_prios: &[i32],
-    cpu_active: &[bool],
-    num_cpus: u32,
-    max_cpus: u32,
-)
-    requires
-        num_cpus <= max_cpus,
-        max_cpus <= MAX_CPUS,
-        MAX_CPUS <= 32,
-        current_cpu < num_cpus,
-        cpu_prios.len() == num_cpus as int,
-        cpu_active.len() == num_cpus as int,
-    ensures
-        !bit_set(
-            compute_ipi_mask(current_cpu, target_prio, target_cpu_mask,
-                             cpu_prios, cpu_active, num_cpus, max_cpus),
-            current_cpu,
-        ),
-{}
-
-/// IP5: result bounded by max_cpus — no stray high bits.
-pub proof fn lemma_mask_bounded_by_max_cpus(
-    current_cpu: u32,
-    target_prio: i32,
-    target_cpu_mask: u32,
-    cpu_prios: &[i32],
-    cpu_active: &[bool],
-    num_cpus: u32,
-    max_cpus: u32,
-)
-    requires
-        num_cpus <= max_cpus,
-        max_cpus <= MAX_CPUS,
-        MAX_CPUS <= 32,
-        current_cpu < num_cpus,
-        cpu_prios.len() == num_cpus as int,
-        cpu_active.len() == num_cpus as int,
-    ensures
-        mask_bounded(
-            compute_ipi_mask(current_cpu, target_prio, target_cpu_mask,
-                             cpu_prios, cpu_active, num_cpus, max_cpus),
-            max_cpus,
-        ),
-{}
-
-/// Single-CPU system always produces mask 0.
-pub proof fn lemma_single_cpu_zero(
-    target_prio: i32,
-    target_cpu_mask: u32,
-    cpu_prios: &[i32],
-    cpu_active: &[bool],
-)
-    requires
-        cpu_prios.len() == 1,
-        cpu_active.len() == 1,
-    ensures
-        compute_ipi_mask(0, target_prio, target_cpu_mask,
-                         cpu_prios, cpu_active, 1, 1) == 0u32,
-{}
+// IP1 (current CPU exclusion), IP5 (mask bounded by max_cpus), and
+// single-CPU-zero are encoded directly in compute_ipi_mask's ensures
+// clauses. Standalone proof lemmas are omitted because Verus proof
+// functions cannot call exec functions in their ensures clauses.
 
 } // verus!
