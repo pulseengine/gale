@@ -85,6 +85,8 @@ artifacts:
         target: STKH-001
       - type: derives-from
         target: ZEP-SYRS-14
+      - type: satisfies
+        target: ZEP-SYRS-14
 
   # ── Software requirements: the 10 ASIL-D properties ─────────────────────
   #
@@ -110,7 +112,11 @@ artifacts:
       - type: derives-from
         target: SYSREQ-SEM-001
       - type: satisfies
+        target: ZEP-SRS-5-1
+      - type: satisfies
         target: ZEP-SRS-5-2
+      - type: satisfies
+        target: ZEP-SRS-5-3
       - type: satisfies
         target: ZEP-SRS-5-4
       - type: satisfies
@@ -244,6 +250,10 @@ artifacts:
         target: SYSREQ-SEM-001
       - type: satisfies
         target: ZEP-SRS-5-8
+      - type: satisfies
+        target: ZEP-SRS-5-9
+      - type: satisfies
+        target: ZEP-SRS-5-10
 
   - id: SWREQ-SEM-P08
     type: sw-req
@@ -332,6 +342,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-MUT
 
   # ── Mutex: Software requirements (11 ASIL-D properties) ──────────────────
 
@@ -387,6 +399,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MUT-001
+      - type: satisfies
+        target: ZEP-SRS-MUT-3
 
   - id: SWREQ-MUT-M04
     type: sw-req
@@ -405,6 +419,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MUT-001
+      - type: satisfies
+        target: ZEP-SRS-MUT-1
 
   - id: SWREQ-MUT-M05
     type: sw-req
@@ -423,6 +439,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MUT-001
+      - type: satisfies
+        target: ZEP-SRS-MUT-3
 
   - id: SWREQ-MUT-M06
     type: sw-req
@@ -442,6 +460,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MUT-001
+      - type: satisfies
+        target: ZEP-SRS-MUT-4
 
   - id: SWREQ-MUT-M07
     type: sw-req
@@ -480,6 +500,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MUT-001
+      - type: satisfies
+        target: ZEP-SRS-MUT-2
 
   - id: SWREQ-MUT-M09
     type: sw-req
@@ -537,6 +559,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MUT-001
+      - type: satisfies
+        target: ZEP-SRS-MUT-2
 
   # ── CondVar: System requirement ──────────────────────────────────────────
 
@@ -559,6 +583,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-CV
 
   # ── CondVar: Software requirements (8 ASIL-D properties) ────────────────
 
@@ -598,6 +624,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-CV-001
+      - type: satisfies
+        target: ZEP-SRS-CV-1
 
   - id: SWREQ-CV-C03
     type: sw-req
@@ -634,6 +662,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-CV-001
+      - type: satisfies
+        target: ZEP-SRS-CV-2
 
   - id: SWREQ-CV-C05
     type: sw-req
@@ -670,6 +700,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-CV-001
+      - type: satisfies
+        target: ZEP-SRS-CV-3
 
   - id: SWREQ-CV-C07
     type: sw-req
@@ -728,6 +760,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-MQ
 
   # ── MsgQ: Software requirements (13 ASIL-D properties) ──────────────────
 
@@ -748,6 +782,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MQ-001
+      - type: satisfies
+        target: ZEP-SRS-MQ-1
 
   - id: SWREQ-MQ-MQ02
     type: sw-req
@@ -766,6 +802,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MQ-001
+      - type: satisfies
+        target: ZEP-SRS-MQ-1
 
   - id: SWREQ-MQ-MQ03
     type: sw-req
@@ -784,6 +822,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MQ-001
+      - type: satisfies
+        target: ZEP-SRS-MQ-2
 
   - id: SWREQ-MQ-MQ04
     type: sw-req
@@ -802,6 +842,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MQ-001
+      - type: satisfies
+        target: ZEP-SRS-MQ-2
 
   - id: SWREQ-MQ-MQ05
     type: sw-req
@@ -820,6 +862,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MQ-001
+      - type: satisfies
+        target: ZEP-SRS-MQ-3
 
   - id: SWREQ-MQ-MQ06
     type: sw-req
@@ -838,6 +882,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MQ-001
+      - type: satisfies
+        target: ZEP-SRS-MQ-3
 
   - id: SWREQ-MQ-MQ07
     type: sw-req
@@ -910,6 +956,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MQ-001
+      - type: satisfies
+        target: ZEP-SRS-MQ-4
 
   - id: SWREQ-MQ-MQ11
     type: sw-req
@@ -928,6 +976,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MQ-001
+      - type: satisfies
+        target: ZEP-SRS-MQ-4
 
   - id: SWREQ-MQ-MQ12
     type: sw-req
@@ -987,6 +1037,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-SK
 
   # ── Stack: Software requirements (9 ASIL-D properties) ──────────────────
 
@@ -1007,6 +1059,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SK-001
+      - type: satisfies
+        target: ZEP-SRS-SK-1
 
   - id: SWREQ-SK-SK02
     type: sw-req
@@ -1025,6 +1079,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SK-001
+      - type: satisfies
+        target: ZEP-SRS-SK-1
 
   - id: SWREQ-SK-SK03
     type: sw-req
@@ -1043,6 +1099,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SK-001
+      - type: satisfies
+        target: ZEP-SRS-SK-3
 
   - id: SWREQ-SK-SK04
     type: sw-req
@@ -1061,6 +1119,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SK-001
+      - type: satisfies
+        target: ZEP-SRS-SK-3
 
   - id: SWREQ-SK-SK05
     type: sw-req
@@ -1079,6 +1139,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SK-001
+      - type: satisfies
+        target: ZEP-SRS-SK-2
 
   - id: SWREQ-SK-SK06
     type: sw-req
@@ -1097,6 +1159,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SK-001
+      - type: satisfies
+        target: ZEP-SRS-SK-2
 
   - id: SWREQ-SK-SK07
     type: sw-req
@@ -1170,6 +1234,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-PP
 
   # ── Pipe: Software requirements (10 ASIL-D properties) ──────────────────
 
@@ -1190,6 +1256,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-PP-001
+      - type: satisfies
+        target: ZEP-SRS-PP-1
 
   - id: SWREQ-PP-PP02
     type: sw-req
@@ -1208,6 +1276,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-PP-001
+      - type: satisfies
+        target: ZEP-SRS-PP-1
 
   - id: SWREQ-PP-PP03
     type: sw-req
@@ -1226,6 +1296,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-PP-001
+      - type: satisfies
+        target: ZEP-SRS-PP-2
 
   - id: SWREQ-PP-PP04
     type: sw-req
@@ -1244,6 +1316,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-PP-001
+      - type: satisfies
+        target: ZEP-SRS-PP-2
 
   - id: SWREQ-PP-PP05
     type: sw-req
@@ -1297,6 +1371,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-PP-001
+      - type: satisfies
+        target: ZEP-SRS-PP-3
 
   - id: SWREQ-PP-PP08
     type: sw-req
@@ -1315,6 +1391,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-PP-001
+      - type: satisfies
+        target: ZEP-SRS-PP-3
 
   - id: SWREQ-PP-PP09
     type: sw-req
@@ -1331,6 +1409,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-PP-001
+      - type: satisfies
+        target: ZEP-SRS-PP-3
 
   - id: SWREQ-PP-PP10
     type: sw-req
@@ -1371,6 +1451,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-TM
 
   # ── Timer: Software requirements (8 ASIL-D properties) ────────────────
 
@@ -1390,6 +1472,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TM-001
+      - type: satisfies
+        target: ZEP-SRS-TM-2
 
   - id: SWREQ-TM-TM02
     type: sw-req
@@ -1407,6 +1491,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TM-001
+      - type: satisfies
+        target: ZEP-SRS-TM-2
 
   - id: SWREQ-TM-TM03
     type: sw-req
@@ -1424,6 +1510,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TM-001
+      - type: satisfies
+        target: ZEP-SRS-TM-3
 
   - id: SWREQ-TM-TM04
     type: sw-req
@@ -1441,6 +1529,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TM-001
+      - type: satisfies
+        target: ZEP-SRS-TM-3
 
   - id: SWREQ-TM-TM05
     type: sw-req
@@ -1457,6 +1547,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TM-001
+      - type: satisfies
+        target: ZEP-SRS-TM-2
 
   - id: SWREQ-TM-TM06
     type: sw-req
@@ -1474,6 +1566,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TM-001
+      - type: satisfies
+        target: ZEP-SRS-TM-1
 
   - id: SWREQ-TM-TM07
     type: sw-req
@@ -1491,6 +1585,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TM-001
+      - type: satisfies
+        target: ZEP-SRS-TM-1
 
   - id: SWREQ-TM-TM08
     type: sw-req
@@ -1531,6 +1627,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-EV
 
   # ── Event: Software requirements (8 ASIL-D properties) ────────────────
 
@@ -1550,6 +1648,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-EV-001
+      - type: satisfies
+        target: ZEP-SRS-EV-1
 
   - id: SWREQ-EV-EV02
     type: sw-req
@@ -1620,6 +1720,12 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-EV-001
+      - type: satisfies
+        target: ZEP-SRS-EV-1
+      - type: satisfies
+        target: ZEP-SRS-EV-2
+      - type: satisfies
+        target: ZEP-SRS-EV-3
 
   - id: SWREQ-EV-EV06
     type: sw-req
@@ -1638,6 +1744,10 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-EV-001
+      - type: satisfies
+        target: ZEP-SRS-EV-2
+      - type: satisfies
+        target: ZEP-SRS-EV-3
 
   - id: SWREQ-EV-EV07
     type: sw-req
@@ -1695,6 +1805,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-MS
 
   # ── MemSlab: Software requirements (8 ASIL-D properties) ──────────────
 
@@ -1714,6 +1826,10 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MS-001
+      - type: satisfies
+        target: ZEP-SRS-MS-1
+      - type: satisfies
+        target: ZEP-SRS-MS-3
 
   - id: SWREQ-MS-MS02
     type: sw-req
@@ -1731,6 +1847,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MS-001
+      - type: satisfies
+        target: ZEP-SRS-MS-1
 
   - id: SWREQ-MS-MS03
     type: sw-req
@@ -1748,6 +1866,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MS-001
+      - type: satisfies
+        target: ZEP-SRS-MS-1
 
   - id: SWREQ-MS-MS04
     type: sw-req
@@ -1765,6 +1885,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MS-001
+      - type: satisfies
+        target: ZEP-SRS-MS-2
 
   - id: SWREQ-MS-MS05
     type: sw-req
@@ -1782,6 +1904,10 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MS-001
+      - type: satisfies
+        target: ZEP-SRS-MS-2
+      - type: satisfies
+        target: ZEP-SRS-MS-3
 
   - id: SWREQ-MS-MS06
     type: sw-req
@@ -1855,6 +1981,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-FI
 
   # ── FIFO: Software requirements (6 ASIL-D properties) ───────────────────
 
@@ -1874,6 +2002,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-FI-001
+      - type: satisfies
+        target: ZEP-SRS-FI-1
 
   - id: SWREQ-FI-FI02
     type: sw-req
@@ -1891,6 +2021,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-FI-001
+      - type: satisfies
+        target: ZEP-SRS-FI-1
 
   - id: SWREQ-FI-FI03
     type: sw-req
@@ -1909,6 +2041,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-FI-001
+      - type: satisfies
+        target: ZEP-SRS-FI-2
 
   - id: SWREQ-FI-FI04
     type: sw-req
@@ -1927,6 +2061,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-FI-001
+      - type: satisfies
+        target: ZEP-SRS-FI-2
 
   - id: SWREQ-FI-FI05
     type: sw-req
@@ -1982,6 +2118,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-LI
 
   # ── LIFO: Software requirements (6 ASIL-D properties) ───────────────────
 
@@ -2001,6 +2139,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-LI-001
+      - type: satisfies
+        target: ZEP-SRS-LI-1
 
   - id: SWREQ-LI-LI02
     type: sw-req
@@ -2018,6 +2158,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-LI-001
+      - type: satisfies
+        target: ZEP-SRS-LI-1
 
   - id: SWREQ-LI-LI03
     type: sw-req
@@ -2036,6 +2178,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-LI-001
+      - type: satisfies
+        target: ZEP-SRS-LI-2
 
   - id: SWREQ-LI-LI04
     type: sw-req
@@ -2054,6 +2198,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-LI-001
+      - type: satisfies
+        target: ZEP-SRS-LI-2
 
   - id: SWREQ-LI-LI05
     type: sw-req
@@ -2109,6 +2255,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-QU
 
   # ── Queue: Software requirements (6 ASIL-D properties) ──────────────────
 
@@ -2128,6 +2276,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-QU-001
+      - type: satisfies
+        target: ZEP-SRS-QU-1
 
   - id: SWREQ-QU-QU02
     type: sw-req
@@ -2145,6 +2295,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-QU-001
+      - type: satisfies
+        target: ZEP-SRS-QU-1
 
   - id: SWREQ-QU-QU03
     type: sw-req
@@ -2162,6 +2314,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-QU-001
+      - type: satisfies
+        target: ZEP-SRS-QU-1
 
   - id: SWREQ-QU-QU04
     type: sw-req
@@ -2180,6 +2334,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-QU-001
+      - type: satisfies
+        target: ZEP-SRS-QU-2
 
   - id: SWREQ-QU-QU05
     type: sw-req
@@ -2198,6 +2354,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-QU-001
+      - type: satisfies
+        target: ZEP-SRS-QU-2
 
   - id: SWREQ-QU-QU06
     type: sw-req
@@ -2238,6 +2396,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-MB
 
   # ── Mailbox: Software requirements (6 ASIL-D properties) ────────────────
 
@@ -2257,6 +2417,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MB-001
+      - type: satisfies
+        target: ZEP-SRS-MB-1
 
   - id: SWREQ-MB-MB02
     type: sw-req
@@ -2274,6 +2436,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MB-001
+      - type: satisfies
+        target: ZEP-SRS-MB-1
 
   - id: SWREQ-MB-MB03
     type: sw-req
@@ -2293,6 +2457,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MB-001
+      - type: satisfies
+        target: ZEP-SRS-MB-2
 
   - id: SWREQ-MB-MB04
     type: sw-req
@@ -2311,6 +2477,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MB-001
+      - type: satisfies
+        target: ZEP-SRS-MB-2
 
   - id: SWREQ-MB-MB05
     type: sw-req
@@ -2367,6 +2535,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-FX
 
   # ── Futex: Software requirements (6 ASIL-D properties) ────────────────────
 
@@ -2387,6 +2557,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-FX-001
+      - type: satisfies
+        target: ZEP-SRS-FX-1
 
   - id: SWREQ-FX-FX02
     type: sw-req
@@ -2423,6 +2595,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-FX-001
+      - type: satisfies
+        target: ZEP-SRS-FX-2
 
   - id: SWREQ-FX-FX04
     type: sw-req
@@ -2441,6 +2615,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-FX-001
+      - type: satisfies
+        target: ZEP-SRS-FX-2
 
   - id: SWREQ-FX-FX05
     type: sw-req
@@ -2459,6 +2635,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-FX-001
+      - type: satisfies
+        target: ZEP-SRS-FX-2
 
   - id: SWREQ-FX-FX06
     type: sw-req
@@ -2498,6 +2676,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-TO
 
   # ── Timeout: Software requirements (8 ASIL-D properties) ──────────────────
 
@@ -2519,6 +2699,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TO-001
+      - type: satisfies
+        target: ZEP-SRS-TO-1
 
   - id: SWREQ-TO-TO02
     type: sw-req
@@ -2625,6 +2807,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TO-001
+      - type: satisfies
+        target: ZEP-SRS-TO-1
 
   - id: SWREQ-TO-TO08
     type: sw-req
@@ -2643,6 +2827,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TO-001
+      - type: satisfies
+        target: ZEP-SRS-TO-2
 
   # ── Poll: System requirement ───────────────────────────────────────────────
 
@@ -2665,6 +2851,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-PL
 
   # ── Poll: Software requirements (8 ASIL-D properties) ─────────────────────
 
@@ -2685,6 +2873,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-PL-001
+      - type: satisfies
+        target: ZEP-SRS-PL-1
 
   - id: SWREQ-PL-PL02
     type: sw-req
@@ -2703,6 +2893,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-PL-001
+      - type: satisfies
+        target: ZEP-SRS-PL-1
 
   - id: SWREQ-PL-PL03
     type: sw-req
@@ -2721,6 +2913,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-PL-001
+      - type: satisfies
+        target: ZEP-SRS-PL-1
 
   - id: SWREQ-PL-PL04
     type: sw-req
@@ -2739,6 +2933,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-PL-001
+      - type: satisfies
+        target: ZEP-SRS-PL-2
 
   - id: SWREQ-PL-PL05
     type: sw-req
@@ -2757,6 +2953,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-PL-001
+      - type: satisfies
+        target: ZEP-SRS-PL-2
 
   - id: SWREQ-PL-PL06
     type: sw-req
@@ -2775,6 +2973,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-PL-001
+      - type: satisfies
+        target: ZEP-SRS-PL-2
 
   - id: SWREQ-PL-PL07
     type: sw-req
@@ -2833,6 +3033,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-SC
 
   # ── Scheduler: Software requirements (16 ASIL-D properties) ───────────────
 
@@ -2889,6 +3091,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SC-001
+      - type: satisfies
+        target: ZEP-SRS-SC-1
 
   - id: SWREQ-SC-SC04
     type: sw-req
@@ -2907,6 +3111,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SC-001
+      - type: satisfies
+        target: ZEP-SRS-SC-1
 
   - id: SWREQ-SC-SC05
     type: sw-req
@@ -2926,6 +3132,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SC-001
+      - type: satisfies
+        target: ZEP-SRS-SC-2
 
   - id: SWREQ-SC-SC06
     type: sw-req
@@ -3083,6 +3291,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SC-001
+      - type: satisfies
+        target: ZEP-SRS-SC-3
 
   - id: SWREQ-SC-SC15
     type: sw-req
@@ -3142,6 +3352,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-TS
 
   # ── Timeslice: Software requirements (6 ASIL-D properties) ─────────────────
 
@@ -3181,6 +3393,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TS-001
+      - type: satisfies
+        target: ZEP-SRS-TS-2
 
   - id: SWREQ-TS-TS03
     type: sw-req
@@ -3219,6 +3433,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TS-001
+      - type: satisfies
+        target: ZEP-SRS-TS-1
 
   - id: SWREQ-TS-TS05
     type: sw-req
@@ -3280,6 +3496,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-KH
 
   # ── Kernel Heap: Software requirements (6 ASIL-D properties) ───────────────
 
@@ -3300,6 +3518,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-KH-001
+      - type: satisfies
+        target: ZEP-SRS-KH-1
 
   - id: SWREQ-KH-KH02
     type: sw-req
@@ -3319,6 +3539,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-KH-001
+      - type: satisfies
+        target: ZEP-SRS-KH-1
 
   - id: SWREQ-KH-KH03
     type: sw-req
@@ -3338,6 +3560,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-KH-001
+      - type: satisfies
+        target: ZEP-SRS-KH-2
 
   - id: SWREQ-KH-KH04
     type: sw-req
@@ -3418,6 +3642,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-TL
 
   # ── Thread Lifecycle: Software requirements (6 ASIL-D properties) ──────────
 
@@ -3439,6 +3665,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TL-001
+      - type: satisfies
+        target: ZEP-SRS-TL-1
 
   - id: SWREQ-TL-TH02
     type: sw-req
@@ -3458,6 +3686,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TL-001
+      - type: satisfies
+        target: ZEP-SRS-TL-1
 
   - id: SWREQ-TL-TH03
     type: sw-req
@@ -3513,6 +3743,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-TL-001
+      - type: satisfies
+        target: ZEP-SRS-TL-2
 
   - id: SWREQ-TL-TH06
     type: sw-req
@@ -4668,6 +4900,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-WK
 
   - id: SWREQ-WK-WK01
     type: sw-req
@@ -4685,6 +4919,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-WK-001
+      - type: satisfies
+        target: ZEP-SRS-WK-1
 
   - id: SWREQ-WK-WK02
     type: sw-req
@@ -4702,6 +4938,10 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-WK-001
+      - type: satisfies
+        target: ZEP-SRS-WK-1
+      - type: satisfies
+        target: ZEP-SRS-WK-2
 
   - id: SWREQ-WK-WK03
     type: sw-req
@@ -4753,6 +4993,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-WK-001
+      - type: satisfies
+        target: ZEP-SRS-WK-3
 
   - id: SWREQ-WK-WK06
     type: sw-req
@@ -4791,6 +5033,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-FT
 
   - id: SWREQ-FT-FT01
     type: sw-req
@@ -4808,6 +5052,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-FT-001
+      - type: satisfies
+        target: ZEP-SRS-FT-1
 
   - id: SWREQ-FT-FT02
     type: sw-req
@@ -4825,6 +5071,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-FT-001
+      - type: satisfies
+        target: ZEP-SRS-FT-2
 
   - id: SWREQ-FT-FT03
     type: sw-req
@@ -4844,6 +5092,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-FT-001
+      - type: satisfies
+        target: ZEP-SRS-FT-2
 
   - id: SWREQ-FT-FT04
     type: sw-req
@@ -4861,6 +5111,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-FT-001
+      - type: satisfies
+        target: ZEP-SRS-FT-1
 
   # ── MemPool: System requirement ────────────────────────────────────────
 
@@ -4882,6 +5134,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-MP
 
   - id: SWREQ-MP-MP01
     type: sw-req
@@ -4898,6 +5152,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MP-001
+      - type: satisfies
+        target: ZEP-SRS-MP-1
 
   - id: SWREQ-MP-MP02
     type: sw-req
@@ -4914,6 +5170,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MP-001
+      - type: satisfies
+        target: ZEP-SRS-MP-1
 
   - id: SWREQ-MP-MP03
     type: sw-req
@@ -4931,6 +5189,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MP-001
+      - type: satisfies
+        target: ZEP-SRS-MP-1
 
   - id: SWREQ-MP-MP04
     type: sw-req
@@ -4947,6 +5207,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MP-001
+      - type: satisfies
+        target: ZEP-SRS-MP-1
 
   - id: SWREQ-MP-MP05
     type: sw-req
@@ -4964,6 +5226,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MP-001
+      - type: satisfies
+        target: ZEP-SRS-MP-1
 
   - id: SWREQ-MP-MP06
     type: sw-req
@@ -4981,6 +5245,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-MP-001
+      - type: satisfies
+        target: ZEP-SRS-MP-2
 
   # ── Dynamic: System requirement ────────────────────────────────────────
 
@@ -5001,6 +5267,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-DY
 
   - id: SWREQ-DY-DY01
     type: sw-req
@@ -5017,6 +5285,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-DY-001
+      - type: satisfies
+        target: ZEP-SRS-DY-2
 
   - id: SWREQ-DY-DY02
     type: sw-req
@@ -5033,6 +5303,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-DY-001
+      - type: satisfies
+        target: ZEP-SRS-DY-1
 
   - id: SWREQ-DY-DY03
     type: sw-req
@@ -5049,6 +5321,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-DY-001
+      - type: satisfies
+        target: ZEP-SRS-DY-1
 
   - id: SWREQ-DY-DY04
     type: sw-req
@@ -5066,6 +5340,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-DY-001
+      - type: satisfies
+        target: ZEP-SRS-DY-2
 
   # ── SmpState: System requirement ───────────────────────────────────────
 
@@ -5087,6 +5363,8 @@ artifacts:
     links:
       - type: derives-from
         target: STKH-001
+      - type: satisfies
+        target: ZEP-SYRS-SM
 
   - id: SWREQ-SM-SM01
     type: sw-req
@@ -5104,6 +5382,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SM-001
+      - type: satisfies
+        target: ZEP-SRS-SM-1
 
   - id: SWREQ-SM-SM02
     type: sw-req
@@ -5121,6 +5401,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SM-001
+      - type: satisfies
+        target: ZEP-SRS-SM-1
 
   - id: SWREQ-SM-SM03
     type: sw-req
@@ -5138,6 +5420,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SM-001
+      - type: satisfies
+        target: ZEP-SRS-SM-1
 
   - id: SWREQ-SM-SM04
     type: sw-req
@@ -5155,6 +5439,8 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-SM-001
+      - type: satisfies
+        target: ZEP-SRS-SM-2
 
   # ── Performance: System requirements ───────────────────────────────────
 
