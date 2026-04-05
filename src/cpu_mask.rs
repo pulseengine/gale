@@ -51,9 +51,15 @@ pub struct CpuMaskResult {
 // ------------------------------------------------------------------
 
 /// Spec-level power-of-2 check: exactly one bit set.
-/// A value `m` has exactly one bit iff `m != 0 && (m & (m - 1)) == 0`.
 pub open spec fn is_power_of_two(m: u32) -> bool {
-    m != 0 && (m & (m - 1u32)) == 0u32
+    m == 1u32 || m == 2u32 || m == 4u32 || m == 8u32
+    || m == 16u32 || m == 32u32 || m == 64u32 || m == 128u32
+    || m == 256u32 || m == 512u32 || m == 1024u32 || m == 2048u32
+    || m == 4096u32 || m == 8192u32 || m == 16384u32 || m == 32768u32
+    || m == 65536u32 || m == 131072u32 || m == 262144u32 || m == 524288u32
+    || m == 1048576u32 || m == 2097152u32 || m == 4194304u32 || m == 8388608u32
+    || m == 16777216u32 || m == 33554432u32 || m == 67108864u32 || m == 134217728u32
+    || m == 268435456u32 || m == 536870912u32 || m == 1073741824u32 || m == 2147483648u32
 }
 
 /// Spec-level mask computation.
@@ -152,8 +158,7 @@ pub fn cpu_pin_compute(cpu_id: u32, max_cpus: u32) -> (result: Result<u32, i32>)
         result.is_ok() ==> {
             let m = result.unwrap();
             &&& cpu_id < 32
-            &&& m != 0
-            &&& m & sub(m, 1u32) == 0u32
+            &&& is_power_of_two(m)
         },
 {
     if max_cpus > 32 || cpu_id >= max_cpus {
