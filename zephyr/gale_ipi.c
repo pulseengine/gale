@@ -54,7 +54,12 @@ atomic_val_t gale_ipi_mask_create(struct k_thread *thread)
 
 		if (cpu_thread != NULL) {
 			cpu_prios[i] = cpu_thread->base.prio;
+#if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
 			cpu_active[i] = _kernel.cpus[i].active ? 1 : 0;
+#else
+			/* Non-ARM: all online CPUs are considered active */
+			cpu_active[i] = 1;
+#endif
 		} else {
 			cpu_prios[i] = -1;  /* idle priority */
 			cpu_active[i] = 0;
