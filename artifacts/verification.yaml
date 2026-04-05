@@ -3740,7 +3740,9 @@ artifacts:
       method: formal-verification
     links:
       - type: verifies
-        target: SWARCH-WQ-001
+        target: SWREQ-SEM-P06
+      - type: verifies
+        target: SWREQ-SEM-P09
 
   # ── SWE.6: Software verification — Priority ───────────────────────────
 
@@ -3759,7 +3761,7 @@ artifacts:
       method: formal-verification
     links:
       - type: verifies
-        target: SWARCH-WQ-001
+        target: SWREQ-SEM-P10
 
   # ── SWE.6: Software verification — Thread ─────────────────────────────
 
@@ -3779,7 +3781,9 @@ artifacts:
       method: formal-verification
     links:
       - type: verifies
-        target: SWARCH-WQ-001
+        target: SWREQ-SEM-P04
+      - type: verifies
+        target: SWREQ-SEM-P07
 
   # ── SWE.6: Software verification — WaitQueue ──────────────────────────
 
@@ -3799,7 +3803,9 @@ artifacts:
       method: formal-verification
     links:
       - type: verifies
-        target: SWARCH-WQ-001
+        target: SWREQ-SEM-P07
+      - type: verifies
+        target: SWREQ-SEM-P10
 
   # ── SWE.6: Software verification — Timer (Rocq) ───────────────────────
 
@@ -3867,3 +3873,679 @@ artifacts:
         target: SWREQ-MS-MS02
       - type: verifies
         target: SWREQ-MS-MS05
+
+  # ── SYS.5: System verification — FIFO ──────────────────────────────────
+
+  - id: SV-FI-001
+    type: sys-verification
+    title: FIFO Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel FIFO test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_FIFO=y. Tests exercise the complete k_fifo
+      API through the Gale FFI/C shim layer, validating functional
+      equivalence with upstream Zephyr. Test suite:
+      zephyr/tests/kernel/fifo/fifo_api.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-FI-001
+
+  # ── SYS.5: System verification — LIFO ──────────────────────────────────
+
+  - id: SV-LI-001
+    type: sys-verification
+    title: LIFO Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel LIFO test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_LIFO=y. Tests exercise the complete k_lifo
+      API through the Gale FFI/C shim layer, validating functional
+      equivalence with upstream Zephyr. Test suite:
+      zephyr/tests/kernel/fifo/fifo_api (lifo variant).
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-LI-001
+
+  # ── SYS.5: System verification — Queue ─────────────────────────────────
+
+  - id: SV-QU-001
+    type: sys-verification
+    title: Queue Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel queue test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_QUEUE=y. Tests exercise the complete k_queue
+      API through the Gale FFI/C shim layer, validating functional
+      equivalence with upstream Zephyr. Test suite:
+      zephyr/tests/kernel/queue.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-QU-001
+
+  # ── SYS.5: System verification — Mailbox ───────────────────────────────
+
+  - id: SV-MB-001
+    type: sys-verification
+    title: Mailbox Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel mailbox test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_MBOX=y. Tests exercise the complete k_mbox
+      API through the Gale FFI/C shim layer, validating functional
+      equivalence with upstream Zephyr. Test suite:
+      zephyr/tests/kernel/mbox/mbox_api.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-MB-001
+
+  # ── SYS.5: System verification — Futex ─────────────────────────────────
+
+  - id: SV-FX-001
+    type: sys-verification
+    title: Futex Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel futex test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_FUTEX=y. Tests exercise the complete
+      k_futex_wait/k_futex_wake API through the Gale FFI/C shim layer,
+      validating functional equivalence with upstream Zephyr. Test suite:
+      zephyr/tests/kernel/futex.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-FX-001
+
+  # ── SYS.5: System verification — Timeout ───────────────────────────────
+
+  - id: SV-TO-001
+    type: sys-verification
+    title: Timeout Zephyr system integration
+    status: approved
+    description: >
+      Zephyr timeout subsystem integration tests executed on qemu_cortex_m3.
+      The timeout subsystem is validated as part of the broader kernel test
+      suite, confirming that deadline tracking and tick arithmetic operate
+      correctly with Gale primitives. Test suite:
+      zephyr/tests/kernel/context.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-TO-001
+
+  # ── SYS.5: System verification — Poll ──────────────────────────────────
+
+  - id: SV-PL-001
+    type: sys-verification
+    title: Poll Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel poll test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_POLL=y. Tests exercise the complete k_poll
+      API through the Gale FFI/C shim layer, validating multi-object
+      monitoring and signal delivery. Test suite:
+      zephyr/tests/kernel/poll.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-PL-001
+
+  # ── SYS.5: System verification — Scheduler ─────────────────────────────
+
+  - id: SV-SC-001
+    type: sys-verification
+    title: Scheduler Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel scheduler test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_SCHED=y. Tests exercise priority-based
+      scheduling, preemption, cooperative threads, and round-robin through
+      the Gale FFI/C shim layer. Test suites:
+      zephyr/tests/kernel/sched (preempt, cooperative, priority).
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-SC-001
+
+  # ── SYS.5: System verification — Timeslice ─────────────────────────────
+
+  - id: SV-TS-001
+    type: sys-verification
+    title: Timeslice Zephyr system integration
+    status: approved
+    description: >
+      Zephyr timeslice enforcement integration tests executed on
+      qemu_cortex_m3. Validates time-quantum preemption and cooperative
+      thread exemption with Gale scheduler integration. Test suite:
+      zephyr/tests/kernel/sched/scheduler_api.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-TS-001
+
+  # ── SYS.5: System verification — KHeap ─────────────────────────────────
+
+  - id: SV-KH-001
+    type: sys-verification
+    title: KHeap Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel heap test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_KHEAP=y. Tests exercise k_heap_alloc,
+      k_heap_aligned_alloc, and k_heap_free through the Gale FFI/C shim
+      layer. Test suite: zephyr/tests/kernel/mem_heap.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-KH-001
+
+  # ── SYS.5: System verification — Thread Lifecycle ──────────────────────
+
+  - id: SV-TL-001
+    type: sys-verification
+    title: Thread Lifecycle Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel thread lifecycle test suite executed on
+      qemu_cortex_m3 with CONFIG_GALE_KERNEL_THREAD=y. Tests exercise
+      k_thread_create, k_thread_abort, k_thread_join, and state transitions
+      through the Gale FFI/C shim layer. Test suite:
+      zephyr/tests/kernel/threads/thread_apis.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-TL-001
+
+  # ── SYS.5: System verification — High Priority Threads ─────────────────
+
+  - id: SV-HP-001
+    type: sys-verification
+    title: High-Priority Thread Zephyr system integration
+    status: approved
+    description: >
+      Zephyr scheduler priority inversion and high-priority thread tests
+      executed on qemu_cortex_m3. Validates priority ceiling, inheritance,
+      and preemption correctness for high-priority threads with Gale
+      integration. Test suite: zephyr/tests/kernel/sched.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-HP-001
+
+  # ── SYS.5: System verification — Metadata ──────────────────────────────
+
+  - id: SV-MD-001
+    type: sys-verification
+    title: Metadata Zephyr system integration
+    status: approved
+    description: >
+      Zephyr kernel object metadata tests executed on qemu_cortex_m3.
+      Validates that kernel object naming, stack info, and metadata APIs
+      operate correctly with Gale implementations. Test suite:
+      zephyr/tests/kernel/obj_tracking.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-MD-001
+
+  # ── SYS.5: System verification — Sleep ─────────────────────────────────
+
+  - id: SV-SL-001
+    type: sys-verification
+    title: Sleep Zephyr system integration
+    status: approved
+    description: >
+      Zephyr kernel sleep and delay tests executed on qemu_cortex_m3.
+      Validates k_sleep, k_msleep, k_usleep accuracy and thread scheduling
+      interaction with Gale timer integration. Test suite:
+      zephyr/tests/kernel/sleep.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-SL-001
+
+  # ── SYS.5: System verification — Atomic ────────────────────────────────
+
+  - id: SV-AT-001
+    type: sys-verification
+    title: Atomic Operations Zephyr system integration
+    status: approved
+    description: >
+      Zephyr kernel atomic operations test suite executed on qemu_cortex_m3.
+      Validates atomic_set, atomic_get, atomic_add, atomic_cas, and all
+      atomic variants for correctness and absence of data races. Test suite:
+      zephyr/tests/kernel/atomic.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-AT-001
+
+  # ── SYS.5: System verification — Stack Sentinel ────────────────────────
+
+  - id: SV-SKS-001
+    type: sys-verification
+    title: Stack Sentinel Zephyr system integration
+    status: approved
+    description: >
+      Zephyr stack sentinel and overflow detection tests executed on
+      qemu_cortex_m3 with CONFIG_STACK_SENTINEL=y. Validates that stack
+      overflow is detected and fatal error handlers invoked correctly.
+      Test suite: zephyr/tests/kernel/fatal.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-SKS-001
+
+  # ── SYS.5: System verification — Driver Integration ────────────────────
+
+  - id: SV-DI-001
+    type: sys-verification
+    title: Driver Integration Zephyr system integration
+    status: approved
+    description: >
+      Zephyr driver model integration tests executed on qemu_cortex_m3.
+      Validates that Gale kernel primitives operate correctly within the
+      Zephyr driver subsystem, including init order, interrupt context,
+      and synchronization with device drivers. Test suite:
+      zephyr/tests/drivers/build_all.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-DI-001
+
+  # ── SYS.5: System verification — Fatal ─────────────────────────────────
+
+  - id: SV-FD-001
+    type: sys-verification
+    title: Fatal/Debug Zephyr system integration
+    status: approved
+    description: >
+      Zephyr fatal error handling and debug output tests executed on
+      qemu_cortex_m3. Validates crash classification, recovery decisions,
+      and debug output correctness with Gale integration. Test suite:
+      zephyr/tests/kernel/fatal.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-FD-001
+
+  # ── SYS.5: System verification — Ring Buffer ───────────────────────────
+
+  - id: SV-RB-001
+    type: sys-verification
+    title: Ring Buffer Zephyr system integration
+    status: approved
+    description: >
+      Zephyr ring buffer test suite executed on qemu_cortex_m3. Validates
+      ring_buf_put, ring_buf_get, item API, and byte stream API with Gale
+      integration. Test suite: zephyr/tests/lib/ring_buffer.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-RB-001
+
+  # ── SYS.5: System verification — User Space ────────────────────────────
+
+  - id: SV-US-001
+    type: sys-verification
+    title: User Space Zephyr system integration
+    status: approved
+    description: >
+      Zephyr user space (CONFIG_USERSPACE=y) test suite executed on
+      qemu_cortex_m3. Validates syscall dispatch, privilege boundaries,
+      and user-mode access to Gale kernel primitives via system calls.
+      Test suite: zephyr/tests/kernel/userspace.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-US-001
+
+  # ── SYS.5: System verification — Work Queue ────────────────────────────
+
+  - id: SV-WK-001
+    type: sys-verification
+    title: Work Queue Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel work queue test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_WORKQ=y. Tests exercise k_work_submit,
+      k_work_schedule, k_work_cancel, and work queue lifecycle through
+      the Gale FFI/C shim layer. Test suite:
+      zephyr/tests/kernel/workq/work_queue.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-WK-001
+
+  # ── SYS.5: System verification — Fatal Error ───────────────────────────
+
+  - id: SV-FT-001
+    type: sys-verification
+    title: Fatal Error Zephyr system integration
+    status: approved
+    description: >
+      Zephyr fatal error classification and halt tests executed on
+      qemu_cortex_m3. Validates that fatal error reason codes, essential
+      thread detection, and ISR-context halt decisions operate correctly
+      with Gale integration. Test suite: zephyr/tests/kernel/fatal.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-FT-001
+
+  # ── SYS.5: System verification — Memory Pool ───────────────────────────
+
+  - id: SV-MP-001
+    type: sys-verification
+    title: Memory Pool Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr kernel memory pool test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_KERNEL_MEMPOOL=y. Tests exercise block allocation,
+      deallocation, conservation invariant, and bounded capacity through
+      the Gale FFI/C shim layer. Test suite:
+      zephyr/tests/kernel/mem_pool.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-MP-001
+
+  # ── SYS.5: System verification — Dynamic Threads ───────────────────────
+
+  - id: SV-DY-001
+    type: sys-verification
+    title: Dynamic Thread Creation Zephyr system integration
+    status: approved
+    description: >
+      Zephyr dynamic thread creation test suite executed on qemu_cortex_m3
+      with CONFIG_DYNAMIC_THREAD=y. Tests exercise k_thread_create with
+      stack pool allocation, bounded active threads, and proper cleanup
+      with Gale integration. Test suite:
+      zephyr/tests/kernel/threads/dynamic_thread.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-DY-001
+
+  # ── SYS.5: System verification — SMP ───────────────────────────────────
+
+  - id: SV-SM-001
+    type: sys-verification
+    title: SMP Zephyr system integration
+    status: approved
+    description: >
+      Zephyr SMP CPU lifecycle and global lock tests executed on
+      qemu_cortex_m3 with CONFIG_SMP=y. Validates CPU start/stop,
+      global lock coordination, and multi-core scheduling with Gale
+      integration. Test suite: zephyr/tests/kernel/smp.
+    tags: [system-verification, zephyr, qemu, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-SM-001
+
+  # ── SWE.6: Software verification — ZMS ─────────────────────────────────
+
+  - id: FV-ZMS-001
+    type: sw-verification
+    title: ZMS Verus formal verification (SMT/Z3)
+    status: approved
+    description: >
+      Verus specifications in src/zms.rs with requires/ensures clauses
+      that formally verify all 10 ZMS properties (P1-P10) via SMT solving.
+      Proves sector state machine validity, ATE CRC correctness, spare
+      sector invariant, GC data preservation, write O(1) condition,
+      no-stale-data guarantee, full sector detection, entry bounds,
+      wear leveling bounds, and power-fail safety.
+      Executed via: bazel test //:verus_test
+    tags: [formal-verification, verus, smt, swe-6, zms]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-ZMS-P01
+      - type: verifies
+        target: SWREQ-ZMS-P02
+      - type: verifies
+        target: SWREQ-ZMS-P03
+      - type: verifies
+        target: SWREQ-ZMS-P04
+      - type: verifies
+        target: SWREQ-ZMS-P05
+      - type: verifies
+        target: SWREQ-ZMS-P06
+      - type: verifies
+        target: SWREQ-ZMS-P07
+      - type: verifies
+        target: SWREQ-ZMS-P08
+      - type: verifies
+        target: SWREQ-ZMS-P09
+      - type: verifies
+        target: SWREQ-ZMS-P10
+
+  # ── SYS.5: System verification — ZMS ───────────────────────────────────
+
+  - id: SV-ZMS-001
+    type: sys-verification
+    title: ZMS Zephyr system integration
+    status: approved
+    description: >
+      Full Zephyr settings/ZMS test suite executed on qemu_cortex_m3
+      with CONFIG_GALE_ZMS=y. Tests exercise the ZMS NVS-compatible API
+      (zms_mount, zms_write, zms_read, zms_delete) through the Gale
+      integration layer, validating functional equivalence with upstream
+      Zephyr ZMS. Test suite: zephyr/tests/subsys/settings/functional.
+    tags: [system-verification, zephyr, qemu, sys-5, zms]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-ZMS-001
+      - type: verifies
+        target: SYSREQ-ZMS-002
+      - type: verifies
+        target: SYSREQ-ZMS-003
+      - type: verifies
+        target: SYSREQ-ZMS-004
+      - type: verifies
+        target: SYSREQ-ZMS-005
+      - type: verifies
+        target: SYSREQ-ZMS-006
+
+  # ── SWE.6: Software verification — PERF ────────────────────────────────
+
+  - id: FV-PERF-001
+    type: sw-verification
+    title: Binary size CI check (PERF)
+    status: approved
+    description: >
+      CI workflow .github/workflows/binary-size.yml measures the FLASH
+      usage of Gale vs a baseline Zephyr-only build on qemu_cortex_m3
+      for the semaphore benchmark application. The check fails if Gale
+      increases FLASH by more than 10%, enforcing SWREQ-PERF-P01.
+      Executed via: west build; size analysis script.
+    tags: [performance, binary-size, ci, swe-6]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWREQ-PERF-P01
+
+  # ── SWE.6: Software verification — MON ─────────────────────────────────
+
+  - id: FV-MON-001
+    type: sw-verification
+    title: Monitoring exclusion verification
+    status: approved
+    description: >
+      Static analysis via cargo audit, clippy, and grep confirms that
+      Gale source files contain no references to thread_monitor,
+      obj_core, spinlock_validate, or usage tracking subsystems.
+      Validates that monitoring exclusion architecture (SWARCH-MON-001)
+      is correctly implemented and no forbidden symbols are linked.
+      Executed via: .github/workflows/static-analysis.yml
+    tags: [static-analysis, monitoring, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-MON-M01
+      - type: verifies
+        target: SWREQ-MON-M02
+
+  # ── SWE.6: Software verification — TRIV ────────────────────────────────
+
+  - id: FV-TRIV-001
+    type: sw-verification
+    title: Trivial primitives pass-through verification
+    status: approved
+    description: >
+      Integration tests confirm that trivial kernel primitives (those with
+      single-line C implementations) are correctly passed through to the
+      upstream Zephyr C implementations without modification. Verified by
+      running the full Zephyr test suite with CONFIG_GALE_TRIVIAL=y and
+      confirming all tests pass.
+      Executed via: .github/workflows/zephyr-tests.yml
+    tags: [testing, integration, swe-6]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWREQ-TRIV-T01
+
+  # ── SYS.5: System verification — PERF ──────────────────────────────────
+
+  - id: SV-PERF-001
+    type: sys-verification
+    title: Binary size and performance CI checks
+    status: approved
+    description: >
+      CI workflow .github/workflows/binary-size.yml compares FLASH/RAM
+      usage between Gale-enabled and Zephyr-only builds on qemu_cortex_m3.
+      Fails if FLASH increases by more than 10% (SYSREQ-PERF-001).
+      Stack analysis script confirms no FFI function exceeds 256 bytes of
+      stack allocation (SYSREQ-PERF-002). no_std attribute in Cargo.toml
+      with Miri confirming zero heap allocations (SYSREQ-PERF-003).
+    tags: [system-verification, performance, ci, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-PERF-001
+      - type: verifies
+        target: SYSREQ-PERF-002
+      - type: verifies
+        target: SYSREQ-PERF-003
+
+  # ── SYS.5: System verification — MON ───────────────────────────────────
+
+  - id: SV-MON-001
+    type: sys-verification
+    title: Monitoring exclusion system verification
+    status: approved
+    description: >
+      CI build with all monitoring Kconfigs disabled
+      (CONFIG_THREAD_MONITOR=n, CONFIG_SCHED_THREAD_USAGE=n,
+      CONFIG_OBJ_CORE=n, CONFIG_SPIN_VALIDATE=n) on qemu_cortex_m3
+      confirms the full Gale test suite still passes and no monitoring
+      symbols are linked into the safety-critical binary. Static symbol
+      analysis confirms absence of monitoring function calls in Gale modules.
+    tags: [system-verification, monitoring, ci, sys-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SYSREQ-MON-001
+
+  # ── SYS.5: System verification — TRIV ──────────────────────────────────
+
+  - id: SV-TRIV-001
+    type: sys-verification
+    title: Trivial module exclusion system verification
+    status: approved
+    description: >
+      Code review of each excluded trivial module (banner, version, errno,
+      float_context, busy_wait, boot_args, compiler_stack_protect,
+      irq_offload, sys_clock, main_weak, nothread) confirms absence of
+      state machines, overflow-prone arithmetic, and synchronization
+      primitives. Documented rationale in SWARCH-MON-001. Full Zephyr
+      test suite passes with trivial modules at upstream C.
+    tags: [system-verification, trivial, sys-5]
+    fields:
+      method: review
+    links:
+      - type: verifies
+        target: SYSREQ-TRIV-001
+
+  # ── SYS.5: System verification — COV ───────────────────────────────────
+
+  - id: SV-COV-001
+    type: sys-verification
+    title: Module coverage matrix system verification
+    status: approved
+    description: >
+      Coverage matrix in artifacts/design.yaml (SWARCH entries) accounts
+      for every Zephyr kernel C module — either replaced by a Gale
+      implementation or explicitly excluded with rationale. All
+      safety-critical modules (sem, mutex, condvar, msgq, stack, pipe,
+      timer, event, mem_slab, fifo, lifo, queue, mbox, futex, poll,
+      timeout, timeslice, work, kheap, mempool, fatal, dynamic, smp,
+      thread, sched) have corresponding Verus-verified Rust implementations.
+    tags: [system-verification, coverage, sys-5]
+    fields:
+      method: review
+    links:
+      - type: verifies
+        target: SYSREQ-COV-001

@@ -3634,7 +3634,7 @@ artifacts:
       test-suites: 20
     links:
       - type: allocated-from
-        target: SYSREQ-SEM-001
+        target: SWREQ-SEM-P01
 
   - id: SWARCH-TGT-002
     type: sw-arch-component
@@ -3659,7 +3659,7 @@ artifacts:
       uart: sysbus.usart2
     links:
       - type: allocated-from
-        target: SYSREQ-SEM-001
+        target: SWREQ-SEM-P01
       - type: enables
         target: SWREQ-KILN-003
 
@@ -3687,7 +3687,7 @@ artifacts:
       uart: sysbus.lpuart1
     links:
       - type: allocated-from
-        target: SYSREQ-SEM-001
+        target: SWREQ-SEM-P01
       - type: enables
         target: SWREQ-KILN-003
 
@@ -3713,7 +3713,7 @@ artifacts:
       uart: sysbus.uart0
     links:
       - type: allocated-from
-        target: SYSREQ-SEM-001
+        target: SWREQ-SEM-P01
       - type: enables
         target: SWREQ-KILN-003
 
