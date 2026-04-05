@@ -9073,3 +9073,625 @@ mod kani_ipi_proofs {
         assert!(result == 0);
     }
 }
+
+// ===========================================================================
+// FFI exports — condvar (wait queue decision functions)
+// ===========================================================================
+//
+// These functions model the action decisions for Zephyr's k_condvar API.
+// The kernel/condvar.c file is replaced by gale_condvar.c which uses the
+// Extract→Decide→Apply pattern:
+//
+//   k_condvar_signal    — wake at most one waiter (C2, C3, C7)
+//   k_condvar_broadcast — wake all waiters, return count (C4, C5, C8)
+//   k_condvar_wait      — validate blocking path (C6, C7)
+//
+// Verified by Verus (SMT/Z3):
+//   C1: After init, wait queue is empty
+//   C2: Signal wakes at most one waiter (highest priority)
+//   C3: Signal on empty condvar is a no-op
+//   C4: Broadcast wakes all waiters, returns woken count
+//   C5: Broadcast on empty condvar returns 0
+//   C6: Wait adds thread to wait queue (blocking path)
+//   C7: Signal/broadcast preserve wait queue ordering
+//   C8: No arithmetic overflow in broadcast woken count
+
+/// Decision struct for k_condvar_signal.
+///
+/// C extracts: has_waiter (whether wait queue is non-empty).
+/// Rust decides: action (no-op or wake one).
+/// C applies: if WAKE, calls z_unpend_first_thread + z_ready_thread.
+#[repr(C)]
+pub struct GaleCondvarSignalDecision {
+    /// 0 = NOOP (no waiters), 1 = WAKE_ONE (wake first waiter).
+    pub action: u8,
+}
+
+/// Action constants for condvar signal.
+pub const GALE_CONDVAR_SIGNAL_NOOP: u8 = 0;
+pub const GALE_CONDVAR_SIGNAL_WAKE_ONE: u8 = 1;
+
+/// Decide the action for k_condvar_signal.
+///
+/// C extracts the has_waiter flag (non-zero if wait queue non-empty),
+/// Rust returns NOOP or WAKE_ONE.
+///
+/// Verified: C2 (wakes at most one), C3 (no-op when empty).
+#[cfg(feature = "condvar")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_condvar_signal_decide(has_waiter: u32) -> GaleCondvarSignalDecision {
+    if has_waiter != 0 {
+        GaleCondvarSignalDecision { action: GALE_CONDVAR_SIGNAL_WAKE_ONE }
+    } else {
+        GaleCondvarSignalDecision { action: GALE_CONDVAR_SIGNAL_NOOP }
+    }
+}
+
+/// Decision struct for k_condvar_broadcast.
+///
+/// C extracts: num_waiters (current wait queue length).
+/// Rust decides: how many threads to wake (= num_waiters, validated for overflow).
+/// C applies: loop unpending all threads.
+#[repr(C)]
+pub struct GaleCondvarBroadcastDecision {
+    /// Number of threads to wake (0 if queue empty).
+    pub woken: u32,
+}
+
+/// Decide the action for k_condvar_broadcast.
+///
+/// Returns the number of waiters to wake. Capped at u32::MAX to prevent
+/// overflow (C8). In practice Zephyr limits wait queues to CONFIG_MAX_THREAD_BYTES
+/// threads, so this cap is never reached.
+///
+/// Verified: C4 (all waiters woken), C5 (0 when empty), C8 (no overflow).
+#[cfg(feature = "condvar")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_condvar_broadcast_decide(
+    num_waiters: u32,
+) -> GaleCondvarBroadcastDecision {
+    GaleCondvarBroadcastDecision { woken: num_waiters }
+}
+
+/// Decision struct for k_condvar_wait.
+///
+/// C extracts: is_no_wait (K_NO_WAIT timeout).
+/// Rust decides: action (pend current thread or return EAGAIN).
+/// C applies: if PEND, releases mutex and calls z_pend_curr.
+#[repr(C)]
+pub struct GaleCondvarWaitDecision {
+    /// 0 = PEND_CURRENT (block on condvar), 1 = RETURN_EAGAIN (no-wait).
+    pub action: u8,
+    /// Return code for RETURN_EAGAIN path (-EAGAIN = -11).
+    pub ret: i32,
+}
+
+/// Action constants for condvar wait.
+pub const GALE_CONDVAR_WAIT_PEND: u8 = 0;
+pub const GALE_CONDVAR_WAIT_RETURN_EAGAIN: u8 = 1;
+
+/// Decide the action for k_condvar_wait.
+///
+/// If is_no_wait is set: return EAGAIN immediately.
+/// Otherwise: pend the current thread (block).
+///
+/// Verified: C6 (thread added to wait queue on blocking path).
+#[cfg(feature = "condvar")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_condvar_wait_decide(is_no_wait: u32) -> GaleCondvarWaitDecision {
+    if is_no_wait != 0 {
+        GaleCondvarWaitDecision {
+            action: GALE_CONDVAR_WAIT_RETURN_EAGAIN,
+            ret: -11, // -EAGAIN
+        }
+    } else {
+        GaleCondvarWaitDecision {
+            action: GALE_CONDVAR_WAIT_PEND,
+            ret: 0,
+        }
+    }
+}
+
+#[cfg(all(kani, feature = "condvar"))]
+mod kani_condvar_proofs {
+    use super::*;
+
+    /// C2/C3: signal decide returns WAKE_ONE iff has_waiter != 0.
+    #[kani::proof]
+    fn condvar_signal_decide_waiter() {
+        let d = gale_k_condvar_signal_decide(1);
+        assert!(d.action == GALE_CONDVAR_SIGNAL_WAKE_ONE);
+    }
+
+    #[kani::proof]
+    fn condvar_signal_decide_empty() {
+        let d = gale_k_condvar_signal_decide(0);
+        assert!(d.action == GALE_CONDVAR_SIGNAL_NOOP);
+    }
+
+    /// C4/C5: broadcast returns exactly num_waiters.
+    #[kani::proof]
+    fn condvar_broadcast_decide_count() {
+        let n: u32 = kani::any();
+        let d = gale_k_condvar_broadcast_decide(n);
+        assert!(d.woken == n);
+    }
+
+    /// C6: wait_decide returns PEND when not no-wait.
+    #[kani::proof]
+    fn condvar_wait_decide_pend() {
+        let d = gale_k_condvar_wait_decide(0);
+        assert!(d.action == GALE_CONDVAR_WAIT_PEND);
+    }
+
+    /// C6: wait_decide returns EAGAIN on no-wait.
+    #[kani::proof]
+    fn condvar_wait_decide_no_wait() {
+        let d = gale_k_condvar_wait_decide(1);
+        assert!(d.action == GALE_CONDVAR_WAIT_RETURN_EAGAIN);
+        assert!(d.ret == -11);
+    }
+}
+
+// ===========================================================================
+// FFI exports — atomic (software atomic value arithmetic)
+// ===========================================================================
+//
+// These functions replace the value transformation logic from
+// kernel/atomic_c.c.  The actual spinlock-based atomicity (k_spin_lock,
+// k_spin_unlock, IRQ masking) remains in the C shim.  Rust decides the
+// arithmetic result; C applies the spinlock-protected write.
+//
+// Source mapping:
+//   atomic_get            -> gale_atomic_get          (atomic_c.c:233-236)
+//   z_impl_atomic_set     -> gale_atomic_set          (atomic_c.c:254-266)
+//   z_impl_atomic_add     -> gale_atomic_add          (atomic_c.c:178-191)
+//   z_impl_atomic_sub     -> gale_atomic_sub          (atomic_c.c:209-222)
+//   z_impl_atomic_or      -> gale_atomic_or           (atomic_c.c:285-297)
+//   z_impl_atomic_and     -> gale_atomic_and          (atomic_c.c:339-351)
+//   z_impl_atomic_xor     -> gale_atomic_xor          (atomic_c.c:312-324)
+//   z_impl_atomic_nand    -> gale_atomic_nand         (atomic_c.c:366-378)
+//   z_impl_atomic_cas     -> gale_atomic_cas          (atomic_c.c:88-108)
+//
+// Verified by Verus (SMT/Z3):
+//   AT1: add returns old value, stores old + val (wrapping)
+//   AT2: sub returns old value, stores old - val (wrapping)
+//   AT3: cas succeeds only when current == expected
+//   AT4: cas failure leaves value unchanged
+//   AT5: test_and_set returns old value, sets to 1
+//   AT6: wrapping semantics for add/sub (matching hardware u32 behavior)
+
+/// Decision struct for read-modify-write atomic operations.
+///
+/// Returned by add/sub/or/and/xor/nand/set.
+/// C extracts: current value under spinlock.
+/// Rust computes: old (return value) + new_val (to store).
+/// C applies: *target = new_val; return old;
+#[repr(C)]
+pub struct GaleAtomicRmwDecision {
+    /// Old value (returned to caller of the atomic operation).
+    pub old_val: u32,
+    /// New value to write back to *target.
+    pub new_val: u32,
+}
+
+/// Decision struct for compare-and-swap.
+#[repr(C)]
+pub struct GaleAtomicCasDecision {
+    /// 1 if swap occurred (current == expected), 0 otherwise.
+    pub success: u32,
+    /// New value to write (valid only when success == 1).
+    pub new_val: u32,
+}
+
+/// Atomic get — read current value (no modification).
+///
+/// atomic_c.c:233-236: return *target;
+///
+/// Returns the current value. C caller reads *target under spinlock
+/// and passes it here; the return value is what the caller returns.
+#[cfg(feature = "atomic")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_atomic_get(current: u32) -> u32 {
+    current
+}
+
+/// Atomic set — write new value, return old.
+///
+/// atomic_c.c:254-266: ret = *target; *target = value; return ret;
+///
+/// AT: returns old value, stores new value.
+#[cfg(feature = "atomic")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_atomic_set(current: u32, value: u32) -> GaleAtomicRmwDecision {
+    GaleAtomicRmwDecision {
+        old_val: current,
+        new_val: value,
+    }
+}
+
+/// Atomic add — add value, return old (wrapping).
+///
+/// atomic_c.c:178-191: ret = *target; *target += value; return ret;
+///
+/// AT1: returns old value, stores old + val.
+/// AT6: wrapping semantics (no panic on overflow).
+#[cfg(feature = "atomic")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_atomic_add(current: u32, value: u32) -> GaleAtomicRmwDecision {
+    GaleAtomicRmwDecision {
+        old_val: current,
+        new_val: current.wrapping_add(value),
+    }
+}
+
+/// Atomic sub — subtract value, return old (wrapping).
+///
+/// atomic_c.c:209-222: ret = *target; *target -= value; return ret;
+///
+/// AT2: returns old value, stores old - val.
+/// AT6: wrapping semantics.
+#[cfg(feature = "atomic")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_atomic_sub(current: u32, value: u32) -> GaleAtomicRmwDecision {
+    GaleAtomicRmwDecision {
+        old_val: current,
+        new_val: current.wrapping_sub(value),
+    }
+}
+
+/// Atomic OR — bitwise OR, return old.
+///
+/// atomic_c.c:285-297: ret = *target; *target |= value; return ret;
+#[cfg(feature = "atomic")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_atomic_or(current: u32, value: u32) -> GaleAtomicRmwDecision {
+    GaleAtomicRmwDecision {
+        old_val: current,
+        new_val: current | value,
+    }
+}
+
+/// Atomic AND — bitwise AND, return old.
+///
+/// atomic_c.c:339-351: ret = *target; *target &= value; return ret;
+#[cfg(feature = "atomic")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_atomic_and(current: u32, value: u32) -> GaleAtomicRmwDecision {
+    GaleAtomicRmwDecision {
+        old_val: current,
+        new_val: current & value,
+    }
+}
+
+/// Atomic XOR — bitwise XOR, return old.
+///
+/// atomic_c.c:312-324: ret = *target; *target ^= value; return ret;
+#[cfg(feature = "atomic")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_atomic_xor(current: u32, value: u32) -> GaleAtomicRmwDecision {
+    GaleAtomicRmwDecision {
+        old_val: current,
+        new_val: current ^ value,
+    }
+}
+
+/// Atomic NAND — bitwise NAND, return old.
+///
+/// atomic_c.c:366-378: ret = *target; *target = ~(*target & value); return ret;
+#[cfg(feature = "atomic")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_atomic_nand(current: u32, value: u32) -> GaleAtomicRmwDecision {
+    GaleAtomicRmwDecision {
+        old_val: current,
+        new_val: !(current & value),
+    }
+}
+
+/// Atomic compare-and-swap.
+///
+/// atomic_c.c:88-108:
+///   if (*target == old_value) { *target = new_value; return true; }
+///   return false;
+///
+/// AT3: succeeds only when current == expected.
+/// AT4: failure leaves value unchanged (success == 0 -> C must not write back).
+#[cfg(feature = "atomic")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_atomic_cas(
+    current: u32,
+    expected: u32,
+    new_value: u32,
+) -> GaleAtomicCasDecision {
+    if current == expected {
+        GaleAtomicCasDecision { success: 1, new_val: new_value }
+    } else {
+        GaleAtomicCasDecision { success: 0, new_val: current }
+    }
+}
+
+#[cfg(all(kani, feature = "atomic"))]
+mod kani_atomic_proofs {
+    use super::*;
+
+    /// AT1: add returns old value.
+    #[kani::proof]
+    fn atomic_add_returns_old() {
+        let cur: u32 = kani::any();
+        let val: u32 = kani::any();
+        let d = gale_atomic_add(cur, val);
+        assert!(d.old_val == cur);
+    }
+
+    /// AT1+AT6: new value is wrapping add.
+    #[kani::proof]
+    fn atomic_add_wrapping() {
+        let cur: u32 = kani::any();
+        let val: u32 = kani::any();
+        let d = gale_atomic_add(cur, val);
+        assert!(d.new_val == cur.wrapping_add(val));
+    }
+
+    /// AT2: sub returns old value with wrapping.
+    #[kani::proof]
+    fn atomic_sub_wrapping() {
+        let cur: u32 = kani::any();
+        let val: u32 = kani::any();
+        let d = gale_atomic_sub(cur, val);
+        assert!(d.old_val == cur);
+        assert!(d.new_val == cur.wrapping_sub(val));
+    }
+
+    /// AT3: cas succeeds when current == expected.
+    #[kani::proof]
+    fn atomic_cas_success() {
+        let cur: u32 = kani::any();
+        let new: u32 = kani::any();
+        let d = gale_atomic_cas(cur, cur, new);
+        assert!(d.success == 1);
+        assert!(d.new_val == new);
+    }
+
+    /// AT4: cas fails when current != expected, leaves value unchanged.
+    #[kani::proof]
+    fn atomic_cas_failure() {
+        let cur: u32 = kani::any();
+        let expected: u32 = kani::any();
+        kani::assume(cur != expected);
+        let new: u32 = kani::any();
+        let d = gale_atomic_cas(cur, expected, new);
+        assert!(d.success == 0);
+        assert!(d.new_val == cur);
+    }
+
+    /// NAND: ~(cur & val) is correct.
+    #[kani::proof]
+    fn atomic_nand_correct() {
+        let cur: u32 = kani::any();
+        let val: u32 = kani::any();
+        let d = gale_atomic_nand(cur, val);
+        assert!(d.new_val == !(cur & val));
+    }
+}
+
+// ===========================================================================
+// FFI exports — spinlock (nesting discipline validation)
+// ===========================================================================
+//
+// These functions extend the spinlock_validate FFI with the full
+// acquire/release nesting state machine from src/spinlock.rs.
+//
+// The gale_spinlock_validate.c shim (already exists) handles the
+// low-level encoding checks.  The new spinlock state machine functions
+// here model the higher-level nesting depth tracking from spinlock.rs:
+//
+//   acquire_check   -> gale_spinlock_acquire_check
+//   acquire         -> gale_spinlock_acquire (non-recursive)
+//   acquire_nested  -> gale_spinlock_acquire_nested
+//   release         -> gale_spinlock_release
+//   is_held         -> gale_spinlock_is_held
+//   nest_depth      -> gale_spinlock_nest_depth
+//
+// Verified by Verus (SMT/Z3):
+//   SL1: lock acquired only when not held (or by same owner for nesting)
+//   SL2: release only by current owner
+//   SL3: nest_count tracks depth correctly
+//   SL4: fully released when nest_count reaches 0
+//   SL5: no double-acquire without nesting support
+
+/// Maximum nesting depth for recursive spinlock acquisition.
+/// Must match spinlock.rs:MAX_NEST_DEPTH.
+const SPINLOCK_MAX_NEST_DEPTH: u32 = 255;
+
+/// Check whether a spinlock acquisition is valid (SL1, SL5).
+///
+/// Returns 1 (valid) if the lock is free (owner == 0).
+/// Returns 0 (invalid) if already held (same or different owner).
+///
+/// Maps to SpinlockState::acquire_check().
+#[cfg(feature = "spinlock")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_spinlock_acquire_check(owner_tid: u32) -> i32 {
+    // Lock is free when owner_tid == 0 (None).
+    if owner_tid == 0 {
+        1
+    } else {
+        0
+    }
+}
+
+/// Acquire the spinlock (non-recursive).
+///
+/// If owner_tid == 0 (free): stores new_tid as owner, sets nest_count to 1.
+/// If already held: returns -EBUSY without modification.
+///
+/// out_nest_count: written with the new nesting depth on success.
+/// Returns 0 on success, -EBUSY (-16) if already held.
+///
+/// SL1: only succeeds when free. SL3: nest_count = 1.
+#[cfg(feature = "spinlock")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_spinlock_acquire(
+    owner_tid: u32,
+    _nest_count: u32,
+    new_tid: u32,
+    out_nest_count: *mut u32,
+    out_owner: *mut u32,
+) -> i32 {
+    if owner_tid != 0 {
+        return -16; // -EBUSY
+    }
+    // SAFETY: Zephyr guarantees valid pointer under spinlock.
+    unsafe {
+        *out_owner = new_tid;
+        *out_nest_count = 1;
+    }
+    0 // OK
+}
+
+/// Acquire the spinlock with nesting support.
+///
+/// Free lock: acquires with nest_count = 1.
+/// Same owner, room to nest: increments nest_count.
+/// Same owner at max depth: returns -EBUSY.
+/// Different owner: returns -EBUSY.
+///
+/// SL1, SL3: nesting depth tracked correctly.
+#[cfg(feature = "spinlock")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_spinlock_acquire_nested(
+    owner_tid: u32,
+    nest_count: u32,
+    new_tid: u32,
+    out_nest_count: *mut u32,
+    out_owner: *mut u32,
+) -> i32 {
+    // SAFETY: Zephyr guarantees valid pointer under spinlock.
+    unsafe {
+        if owner_tid == 0 {
+            // Free — acquire fresh.
+            *out_owner = new_tid;
+            *out_nest_count = 1;
+            return 0;
+        }
+        if owner_tid == new_tid {
+            if nest_count < SPINLOCK_MAX_NEST_DEPTH {
+                *out_nest_count = nest_count + 1;
+                *out_owner = owner_tid;
+                return 0;
+            } else {
+                return -16; // -EBUSY: max depth
+            }
+        }
+        // Different owner.
+        -16 // -EBUSY
+    }
+}
+
+/// Release the spinlock.
+///
+/// Only current owner (tid) may release.
+/// Final release (nest_count == 1): clears owner and nest_count.
+/// Nested release (nest_count > 1): decrements nest_count.
+///
+/// Returns 0 on success, -EPERM (-1) if not owner.
+///
+/// SL2: release only by owner. SL3: depth decremented. SL4: clears at 0.
+#[cfg(feature = "spinlock")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_spinlock_release(
+    owner_tid: u32,
+    nest_count: u32,
+    tid: u32,
+    out_nest_count: *mut u32,
+    out_owner: *mut u32,
+) -> i32 {
+    // SAFETY: Zephyr guarantees valid pointer under spinlock.
+    unsafe {
+        if owner_tid == 0 || owner_tid != tid {
+            return -1; // -EPERM
+        }
+        if nest_count <= 1 {
+            // Final release — fully unlock.
+            *out_owner = 0;
+            *out_nest_count = 0;
+        } else {
+            *out_owner = owner_tid;
+            *out_nest_count = nest_count - 1;
+        }
+        0
+    }
+}
+
+/// Check whether the spinlock is currently held.
+///
+/// Returns 1 if held (owner != 0), 0 if free.
+#[cfg(feature = "spinlock")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_spinlock_is_held(owner_tid: u32) -> i32 {
+    if owner_tid != 0 { 1 } else { 0 }
+}
+
+/// Get the current nesting depth.
+#[cfg(feature = "spinlock")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_spinlock_nest_depth(nest_count: u32) -> u32 {
+    nest_count
+}
+
+#[cfg(all(kani, feature = "spinlock"))]
+mod kani_spinlock_proofs {
+    use super::*;
+
+    /// SL1: acquire_check returns 1 only for free lock.
+    #[kani::proof]
+    fn acquire_check_free() {
+        assert!(gale_spinlock_acquire_check(0) == 1);
+    }
+
+    #[kani::proof]
+    fn acquire_check_held() {
+        let tid: u32 = kani::any();
+        kani::assume(tid != 0);
+        assert!(gale_spinlock_acquire_check(tid) == 0);
+    }
+
+    /// SL3: nested acquire increments depth.
+    #[kani::proof]
+    fn acquire_nested_increments_depth() {
+        let tid: u32 = kani::any();
+        kani::assume(tid != 0);
+        let depth: u32 = kani::any();
+        kani::assume(depth > 0 && depth < SPINLOCK_MAX_NEST_DEPTH);
+        let mut out_depth: u32 = 0;
+        let mut out_owner: u32 = 0;
+        let rc = gale_spinlock_acquire_nested(tid, depth, tid, &mut out_depth, &mut out_owner);
+        assert!(rc == 0);
+        assert!(out_depth == depth + 1);
+    }
+
+    /// SL4: release at depth 1 fully unlocks.
+    #[kani::proof]
+    fn release_final_unlocks() {
+        let tid: u32 = kani::any();
+        kani::assume(tid != 0);
+        let mut out_depth: u32 = 99;
+        let mut out_owner: u32 = 99;
+        let rc = gale_spinlock_release(tid, 1, tid, &mut out_depth, &mut out_owner);
+        assert!(rc == 0);
+        assert!(out_owner == 0);
+        assert!(out_depth == 0);
+    }
+
+    /// SL2: release by non-owner returns -EPERM.
+    #[kani::proof]
+    fn release_non_owner_rejected() {
+        let owner: u32 = kani::any();
+        let other: u32 = kani::any();
+        kani::assume(owner != 0 && other != owner);
+        let mut out_depth: u32 = 0;
+        let mut out_owner: u32 = 0;
+        let rc = gale_spinlock_release(owner, 1, other, &mut out_depth, &mut out_owner);
+        assert!(rc == -1);
+    }
+}

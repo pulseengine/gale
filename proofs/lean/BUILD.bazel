@@ -65,3 +65,45 @@ lean_proof_test(
     srcs = ["PriorityQueue.lean"],
     deps = [":priority_queue", "@mathlib//:Mathlib"],
 )
+
+# ── ARM SysTick Timer Arithmetic ──────────────────────────────────────
+
+lean_library(
+    name = "systick",
+    srcs = ["SysTick.lean"],
+    deps = ["@mathlib//:Mathlib"],
+)
+
+lean_proof_test(
+    name = "systick_test",
+    srcs = ["SysTick.lean"],
+    deps = [":systick", "@mathlib//:Mathlib"],
+)
+
+# ── Ring Buffer Index Arithmetic ───────────────────────────────────────
+
+lean_library(
+    name = "ring_buf",
+    srcs = ["RingBuf.lean"],
+    deps = ["@mathlib//:Mathlib"],
+)
+
+lean_proof_test(
+    name = "ring_buf_test",
+    srcs = ["RingBuf.lean"],
+    deps = [":ring_buf", "@mathlib//:Mathlib"],
+)
+
+# ── Atomic Wrapping Arithmetic ─────────────────────────────────────────
+
+lean_library(
+    name = "atomic",
+    srcs = ["Atomic.lean"],
+    deps = ["@mathlib//:Mathlib"],
+)
+
+lean_proof_test(
+    name = "atomic_test",
+    srcs = ["Atomic.lean"],
+    deps = [":atomic", "@mathlib//:Mathlib"],
+)

@@ -3,7 +3,7 @@ name = "gale-ffi"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
-description = "C FFI bindings for Gale verified kernel primitives (semaphore, mutex)"
+description = "C FFI bindings for Gale verified kernel primitives (sem, mutex, condvar, atomic, spinlock, ring_buf, ...)"
 license = "Apache-2.0"
 
 [lib]
@@ -12,15 +12,16 @@ crate-type = ["staticlib"]
 [features]
 default = ["all"]
 all = [
-    "sem", "mutex", "msgq", "pipe", "stack", "timer", "mem_slab",
+    "sem", "mutex", "condvar", "msgq", "pipe", "stack", "timer", "mem_slab",
     "event", "fifo", "lifo", "queue", "mbox", "timeout", "poll",
     "futex", "timeslice", "kheap", "thread_lifecycle", "work",
     "fatal", "mempool", "dynamic", "smp_state", "sched",
     "mem_domain", "userspace", "heap", "ring_buf", "bitarray", "rbtree",
-    "spinlock_validate", "ipi", "cpu_mask",
+    "spinlock_validate", "spinlock", "atomic", "ipi", "cpu_mask",
 ]
 sem = []
 mutex = []
+condvar = []
 msgq = []
 pipe = []
 stack = []
@@ -50,6 +51,8 @@ ring_buf = []
 bitarray = []
 rbtree = []
 spinlock_validate = []
+spinlock = []
+atomic = []
 ipi = []
 cpu_mask = []
 

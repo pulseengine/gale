@@ -38,10 +38,12 @@ config GALE_KERNEL_CONDVAR
 	bool "Use Gale formally verified condvar"
 	depends on MULTITHREADING
 	help
-	  Mark kernel/condvar.c wait queue operations as verified by
-	  Gale. Condvar is a pure wait queue wrapper with no FFI —
-	  the upstream condvar.c is still compiled, but its wait queue
-	  operations are covered by Gale's Verus proofs.
+	  Replace kernel/condvar.c with the Gale formally verified Rust
+	  implementation using the Extract→Decide→Apply pattern. Signal,
+	  broadcast, and wait action decisions are handled by verified Rust
+	  code. Wait queue side effects (z_unpend_first_thread, z_ready_thread,
+	  z_pend_curr, mutex lock/unlock) and scheduling remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
 
 config GALE_KERNEL_MSGQ
 	bool "Use Gale formally verified message queue"
@@ -341,6 +343,37 @@ config GALE_KERNEL_SPINLOCK_VALIDATE
 	  encoding are handled by verified Rust code. The actual
 	  spinlock acquire/release mechanism and IRQ handling remain
 	  native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_SPINLOCK
+	bool "Use Gale formally verified spinlock nesting discipline"
+	help
+	  Add Gale formally verified spinlock nesting-state tracking for
+	  kernel spinlock users. Ownership and nesting depth invariants
+	  (acquire_check, acquire, acquire_nested, release) are handled
+	  by verified Rust code. Hardware spinlock primitives (CAS/ticket
+	  lock, IRQ masking, memory barriers) remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_ATOMIC
+	bool "Use Gale formally verified atomic operations"
+	help
+	  Replace kernel/atomic_c.c with the Gale formally verified Rust
+	  implementation. The arithmetic transformations (add, sub, or, and,
+	  xor, nand, set, cas) are handled by verified Rust code with
+	  wrapping overflow semantics. The spinlock-based atomicity mechanism
+	  (k_spin_lock/k_spin_unlock, IRQ masking) remains native Zephyr C.
+	  Only applies when CONFIG_ATOMIC_OPERATIONS_C is set.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_RING_BUF
+	bool "Use Gale formally verified ring buffer index arithmetic"
+	help
+	  Add Gale formally verified index arithmetic validation for
+	  lib/utils/ring_buffer.c. Claim size computation, finish
+	  validation, and space/size queries use verified Rust code.
+	  The actual buffer memory, memcpy, dlist, and item-mode wrappers
+	  remain in the upstream ring_buffer.c.
 	  Requires a Rust toolchain for the target architecture.
 
 config GALE_KERNEL_CPU_MASK

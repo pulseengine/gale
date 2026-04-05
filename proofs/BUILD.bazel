@@ -165,3 +165,71 @@ rocq_proof_test(
     srcs = ["mem_slab_proofs.v"],
     deps = [":mem_slab_proofs"],
 )
+
+# ── Heap proofs ──────────────────────────────────────────────────────────
+
+rocq_library(
+    name = "heap_proofs",
+    srcs = ["heap_proofs.v"],
+    deps = [
+        "//plain:rocq_of_rust_lib",
+    ],
+    extra_flags = ["-impredicative-set"],
+)
+
+rocq_proof_test(
+    name = "heap_proofs_test",
+    srcs = ["heap_proofs.v"],
+    deps = [":heap_proofs"],
+)
+
+# ── Poll proofs ──────────────────────────────────────────────────────────
+
+rocq_library(
+    name = "poll_proofs",
+    srcs = ["poll_proofs.v"],
+    deps = [
+        "//plain:rocq_of_rust_lib",
+    ],
+    extra_flags = ["-impredicative-set"],
+)
+
+rocq_proof_test(
+    name = "poll_proofs_test",
+    srcs = ["poll_proofs.v"],
+    deps = [":poll_proofs"],
+)
+
+# ── Sched proofs ─────────────────────────────────────────────────────────
+
+rocq_library(
+    name = "sched_proofs",
+    srcs = ["sched_proofs.v"],
+    deps = [
+        "//plain:rocq_of_rust_lib",
+    ],
+    extra_flags = ["-impredicative-set"],
+)
+
+rocq_proof_test(
+    name = "sched_proofs_test",
+    srcs = ["sched_proofs.v"],
+    deps = [":sched_proofs"],
+)
+
+# ── Thread lifecycle proofs ───────────────────────────────────────────────
+
+rocq_library(
+    name = "thread_lifecycle_proofs",
+    srcs = ["thread_lifecycle_proofs.v"],
+    deps = [
+        "//plain:rocq_of_rust_lib",
+    ],
+    extra_flags = ["-impredicative-set"],
+)
+
+rocq_proof_test(
+    name = "thread_lifecycle_proofs_test",
+    srcs = ["thread_lifecycle_proofs.v"],
+    deps = [":thread_lifecycle_proofs"],
+)
