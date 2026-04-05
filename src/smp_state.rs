@@ -327,4 +327,54 @@ pub proof fn lemma_all_active_rejects_start(active: u32, max_cpus: u32)
         !(active < max_cpus),
 {}
 
+// ======================================================================
+// Standalone decide functions for FFI
+// ======================================================================
+
+/// Decision for SMP start CPU: validate and compute new active count.
+///
+/// SM2: start increments active.
+pub fn start_cpu_decide(active_cpus: u32, max_cpus: u32) -> (result: Result<u32, i32>)
+    ensures
+        match result {
+            Ok(new_active) => {
+                &&& active_cpus < max_cpus
+                &&& new_active == active_cpus + 1
+            },
+            Err(e) => {
+                &&& e == EBUSY
+                &&& active_cpus >= max_cpus
+            },
+        },
+{
+    if active_cpus < max_cpus {
+        Ok(active_cpus + 1)
+    } else {
+        Err(EBUSY)
+    }
+}
+
+/// Decision for SMP stop CPU: validate and compute new active count.
+///
+/// SM3: stop decrements active, CPU 0 never stops (min 1).
+pub fn stop_cpu_decide(active_cpus: u32) -> (result: Result<u32, i32>)
+    ensures
+        match result {
+            Ok(new_active) => {
+                &&& active_cpus > 1
+                &&& new_active == active_cpus - 1
+            },
+            Err(e) => {
+                &&& e == EINVAL
+                &&& active_cpus <= 1
+            },
+        },
+{
+    if active_cpus > 1 {
+        Ok(active_cpus - 1)
+    } else {
+        Err(EINVAL)
+    }
+}
+
 } // verus!

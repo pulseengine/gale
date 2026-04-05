@@ -42,6 +42,71 @@ use crate::error::*;
 
 verus! {
 
+/// Lightweight insert decision for Queue — no queue allocation.
+/// Used by FFI to avoid constructing full Queue objects.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum InsertDecision {
+    /// A waiting thread should be woken (count unchanged).
+    WakeThread = 0,
+    /// Data should be inserted into the list (count incremented).
+    Insert = 1,
+    /// Count would overflow — reject.
+    Overflow = 2,
+}
+
+/// Lightweight get decision for Queue — no queue allocation.
+/// Used by FFI to avoid constructing full Queue objects.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum GetDecision {
+    /// Data available: count decremented by 1.
+    Dequeued = 0,
+    /// Queue empty: return EAGAIN.
+    Empty = 1,
+}
+
+/// Lightweight insert decision — takes scalars, no queue allocation.
+///
+/// Uses u32::MAX - 1 as the overflow boundary (same as fifo) to keep
+/// one slot reserved, preventing count from reaching u32::MAX.
+///
+/// Verified properties (QU2, QU3, QU6):
+/// - has_waiter ==> WakeThread (count unchanged)
+/// - !has_waiter && count < u32::MAX - 1 ==> Insert
+/// - !has_waiter && count >= u32::MAX - 1 ==> Overflow
+pub fn insert_decide(count: u32, has_waiter: bool) -> (result: InsertDecision)
+    ensures
+        has_waiter ==> result === InsertDecision::WakeThread,
+        !has_waiter && count < u32::MAX - 1 ==> result === InsertDecision::Insert,
+        !has_waiter && count >= u32::MAX - 1 ==> result === InsertDecision::Overflow,
+{
+    if has_waiter {
+        InsertDecision::WakeThread
+    } else if count < u32::MAX - 1 {
+        InsertDecision::Insert
+    } else {
+        InsertDecision::Overflow
+    }
+}
+
+/// Lightweight get decision — takes scalars, no queue allocation.
+///
+/// Verified properties (QU4, QU5):
+/// - count > 0 ==> Dequeued
+/// - count == 0 ==> Empty
+pub fn get_decide(count: u32) -> (result: GetDecision)
+    ensures
+        count > 0 ==> result === GetDecision::Dequeued,
+        count == 0 ==> result === GetDecision::Empty,
+{
+    if count > 0 {
+        GetDecision::Dequeued
+    } else {
+        GetDecision::Empty
+    }
+}
+
 /// Dynamic queue — count model.
 ///
 /// Corresponds to Zephyr's struct k_queue {

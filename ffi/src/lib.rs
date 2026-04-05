@@ -2212,21 +2212,26 @@ pub extern "C" fn gale_fifo_put_validate(
     count: u32,
     new_count: *mut u32,
 ) -> i32 {
+    use gale::fifo::{PutDecision, put_decide};
+
     unsafe {
         if new_count.is_null() {
             return EINVAL;
         }
 
-        if count >= u32::MAX - 1 {
-            return EOVERFLOW;
+        // Delegate to verified model (has_waiter=false: this API
+        // handles the no-waiter direct-insert path only).
+        let d = put_decide(count, false);
+        match d {
+            PutDecision::Insert => {
+                #[allow(clippy::arithmetic_side_effects)]
+                {
+                    *new_count = count + 1;
+                }
+                OK
+            }
+            PutDecision::Overflow | PutDecision::WakeThread => EOVERFLOW,
         }
-
-        // Verified: count < u32::MAX - 1, no overflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_count = count + 1;
-        }
-        OK
     }
 }
 
@@ -2248,21 +2253,25 @@ pub extern "C" fn gale_fifo_get_validate(
     count: u32,
     new_count: *mut u32,
 ) -> i32 {
+    use gale::fifo::{GetDecision, get_decide};
+
     unsafe {
         if new_count.is_null() {
             return EINVAL;
         }
 
-        if count == 0 {
-            return EAGAIN;
+        // Delegate to verified model.
+        let d = get_decide(count);
+        match d {
+            GetDecision::Dequeued => {
+                #[allow(clippy::arithmetic_side_effects)]
+                {
+                    *new_count = count - 1;
+                }
+                OK
+            }
+            GetDecision::Empty => EAGAIN,
         }
-
-        // Verified: count > 0, no underflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_count = count - 1;
-        }
-        OK
     }
 }
 
@@ -2371,21 +2380,26 @@ pub extern "C" fn gale_lifo_put_validate(
     count: u32,
     new_count: *mut u32,
 ) -> i32 {
+    use gale::lifo::{PutDecision, put_decide};
+
     unsafe {
         if new_count.is_null() {
             return EINVAL;
         }
 
-        if count >= u32::MAX - 1 {
-            return EOVERFLOW;
+        // Delegate to verified model (has_waiter=false: this API
+        // handles the no-waiter direct-insert path only).
+        let d = put_decide(count, false);
+        match d {
+            PutDecision::Insert => {
+                #[allow(clippy::arithmetic_side_effects)]
+                {
+                    *new_count = count + 1;
+                }
+                OK
+            }
+            PutDecision::Overflow | PutDecision::WakeThread => EOVERFLOW,
         }
-
-        // Verified: count < u32::MAX - 1, no overflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_count = count + 1;
-        }
-        OK
     }
 }
 
@@ -2407,21 +2421,25 @@ pub extern "C" fn gale_lifo_get_validate(
     count: u32,
     new_count: *mut u32,
 ) -> i32 {
+    use gale::lifo::{GetDecision, get_decide};
+
     unsafe {
         if new_count.is_null() {
             return EINVAL;
         }
 
-        if count == 0 {
-            return EAGAIN;
+        // Delegate to verified model.
+        let d = get_decide(count);
+        match d {
+            GetDecision::Dequeued => {
+                #[allow(clippy::arithmetic_side_effects)]
+                {
+                    *new_count = count - 1;
+                }
+                OK
+            }
+            GetDecision::Empty => EAGAIN,
         }
-
-        // Verified: count > 0, no underflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_count = count - 1;
-        }
-        OK
     }
 }
 
@@ -2529,21 +2547,26 @@ pub extern "C" fn gale_queue_append_validate(
     count: u32,
     new_count: *mut u32,
 ) -> i32 {
+    use gale::queue::{InsertDecision, insert_decide};
+
     unsafe {
         if new_count.is_null() {
             return EINVAL;
         }
 
-        if count >= u32::MAX - 1 {
-            return EOVERFLOW;
+        // Delegate to verified model (has_waiter=false: this API
+        // handles the no-waiter direct-insert path only).
+        let d = insert_decide(count, false);
+        match d {
+            InsertDecision::Insert => {
+                #[allow(clippy::arithmetic_side_effects)]
+                {
+                    *new_count = count + 1;
+                }
+                OK
+            }
+            InsertDecision::Overflow | InsertDecision::WakeThread => EOVERFLOW,
         }
-
-        // Verified: count < u32::MAX - 1, no overflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_count = count + 1;
-        }
-        OK
     }
 }
 
@@ -2565,21 +2588,26 @@ pub extern "C" fn gale_queue_prepend_validate(
     count: u32,
     new_count: *mut u32,
 ) -> i32 {
+    use gale::queue::{InsertDecision, insert_decide};
+
     unsafe {
         if new_count.is_null() {
             return EINVAL;
         }
 
-        if count >= u32::MAX - 1 {
-            return EOVERFLOW;
+        // Delegate to verified model (has_waiter=false: this API
+        // handles the no-waiter direct-insert path only).
+        let d = insert_decide(count, false);
+        match d {
+            InsertDecision::Insert => {
+                #[allow(clippy::arithmetic_side_effects)]
+                {
+                    *new_count = count + 1;
+                }
+                OK
+            }
+            InsertDecision::Overflow | InsertDecision::WakeThread => EOVERFLOW,
         }
-
-        // Verified: count < u32::MAX - 1, no overflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_count = count + 1;
-        }
-        OK
     }
 }
 
@@ -2601,21 +2629,25 @@ pub extern "C" fn gale_queue_get_validate(
     count: u32,
     new_count: *mut u32,
 ) -> i32 {
+    use gale::queue::{GetDecision, get_decide};
+
     unsafe {
         if new_count.is_null() {
             return EINVAL;
         }
 
-        if count == 0 {
-            return EAGAIN;
+        // Delegate to verified model.
+        let d = get_decide(count);
+        match d {
+            GetDecision::Dequeued => {
+                #[allow(clippy::arithmetic_side_effects)]
+                {
+                    *new_count = count - 1;
+                }
+                OK
+            }
+            GetDecision::Empty => EAGAIN,
         }
-
-        // Verified: count > 0, no underflow.
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_count = count - 1;
-        }
-        OK
     }
 }
 
@@ -2637,11 +2669,10 @@ pub extern "C" fn gale_queue_get_validate(
 #[cfg(feature = "mbox")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mbox_validate_send(size: u32) -> i32 {
-    if size == 0 {
-        EINVAL
-    } else {
-        OK
-    }
+    use gale::mbox::validate_send_decide;
+
+    // Delegate to verified model.
+    validate_send_decide(size)
 }
 
 /// Check if sender and receiver IDs are compatible for mailbox matching.
@@ -2662,11 +2693,10 @@ pub extern "C" fn gale_mbox_validate_send(size: u32) -> i32 {
 #[cfg(feature = "mbox")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mbox_match_check(send_id: u32, recv_id: u32) -> i32 {
-    if send_id == 0 || recv_id == 0 || send_id == recv_id {
-        1
-    } else {
-        0
-    }
+    use gale::mbox::match_check_decide;
+
+    // Delegate to verified model.
+    if match_check_decide(send_id, recv_id) { 1 } else { 0 }
 }
 
 /// Compute the actual data exchange size for a mailbox message.
@@ -2683,11 +2713,10 @@ pub extern "C" fn gale_mbox_match_check(send_id: u32, recv_id: u32) -> i32 {
 #[cfg(feature = "mbox")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mbox_data_exchange(tx_size: u32, rx_buf_size: u32) -> u32 {
-    if tx_size < rx_buf_size {
-        tx_size
-    } else {
-        rx_buf_size
-    }
+    use gale::mbox::data_exchange_decide;
+
+    // Delegate to verified model.
+    data_exchange_decide(tx_size, rx_buf_size)
 }
 
 // ---- Phase 2: Queue Decision API ----
@@ -2893,25 +2922,17 @@ pub extern "C" fn gale_timeout_add_decide(
     current_tick: u64,
     duration: u64,
 ) -> GaleTimeoutAddDecision {
-    if current_tick >= K_FOREVER_TICKS {
-        return GaleTimeoutAddDecision {
-            ret: EINVAL,
-            deadline: 0,
-        };
-    }
+    use gale::timeout::add_decide;
 
-    if duration >= K_FOREVER_TICKS - current_tick {
-        return GaleTimeoutAddDecision {
-            ret: EINVAL,
+    match add_decide(current_tick, duration) {
+        Ok(dl) => GaleTimeoutAddDecision {
+            ret: OK,
+            deadline: dl,
+        },
+        Err(e) => GaleTimeoutAddDecision {
+            ret: e,
             deadline: 0,
-        };
-    }
-
-    #[allow(clippy::arithmetic_side_effects)]
-    let dl = current_tick + duration;
-    GaleTimeoutAddDecision {
-        ret: OK,
-        deadline: dl,
+        },
     }
 }
 
@@ -2939,7 +2960,10 @@ pub const GALE_TIMEOUT_ACTION_NOOP: u8 = 1;
 pub extern "C" fn gale_timeout_abort_decide(
     is_linked: u32,
 ) -> GaleTimeoutAbortDecision {
-    if is_linked != 0 {
+    use gale::timeout::abort_decide;
+
+    // Delegate to verified model (TO3).
+    if abort_decide(is_linked != 0) {
         GaleTimeoutAbortDecision {
             ret: OK,
             action: GALE_TIMEOUT_ACTION_REMOVE,
@@ -2980,30 +3004,20 @@ pub extern "C" fn gale_timeout_announce_decide(
     deadline: u64,
     active: u32,
 ) -> GaleTimeoutAnnounceDecision {
-    if ticks >= K_FOREVER_TICKS - current_tick {
-        return GaleTimeoutAnnounceDecision {
-            ret: EINVAL,
+    use gale::timeout::announce_decide;
+
+    // Delegate to verified model (TO4, TO5, TO7).
+    match announce_decide(current_tick, ticks, deadline, active != 0) {
+        Ok((new_tick, fired)) => GaleTimeoutAnnounceDecision {
+            ret: OK,
+            new_tick,
+            fired: if fired { 1 } else { 0 },
+        },
+        Err(e) => GaleTimeoutAnnounceDecision {
+            ret: e,
             new_tick: 0,
             fired: 0,
-        };
-    }
-
-    #[allow(clippy::arithmetic_side_effects)]
-    let advanced = current_tick + ticks;
-
-    let fired = if active != 0
-        && deadline != K_FOREVER_TICKS
-        && deadline <= advanced
-    {
-        1u32
-    } else {
-        0u32
-    };
-
-    GaleTimeoutAnnounceDecision {
-        ret: OK,
-        new_tick: advanced,
-        fired,
+        },
     }
 }
 
@@ -3133,12 +3147,10 @@ pub extern "C" fn gale_poll_check_sem(
     event_type: u32,
     sem_count: u32,
 ) -> i32 {
-    const TYPE_SEM_AVAILABLE: u32 = 1;
-    if event_type == TYPE_SEM_AVAILABLE && sem_count > 0 {
-        1
-    } else {
-        0
-    }
+    use gale::poll::check_sem_decide;
+
+    // Delegate to verified model (PL3).
+    if check_sem_decide(event_type, sem_count) { 1 } else { 0 }
 }
 
 /// Raise a poll signal: set signaled flag and result value.
@@ -3160,13 +3172,17 @@ pub extern "C" fn gale_poll_signal_raise(
     result: *mut i32,
     result_val: i32,
 ) -> i32 {
+    use gale::poll::signal_raise_decide;
+
     unsafe {
         if signaled.is_null() || result.is_null() {
             return EINVAL;
         }
 
-        *result = result_val;
-        *signaled = 1;
+        // Delegate to verified model (PL7).
+        let (new_signaled, new_result, _) = signal_raise_decide(result_val, false);
+        *signaled = new_signaled;
+        *result = new_result;
         OK
     }
 }
@@ -3233,21 +3249,20 @@ pub extern "C" fn gale_k_poll_signal_raise_decide(
     result_val: i32,
     has_poll_event: u32,
 ) -> GalePollSignalRaiseDecision {
-    // Regardless of prior signaled state, raise always sets signaled=1
-    // and stores the result value.
+    use gale::poll::signal_raise_decide;
+
+    // Delegate to verified model (PL7).
     let _ = signaled;
-    if has_poll_event != 0 {
-        GalePollSignalRaiseDecision {
-            new_signaled: 1,
-            new_result: result_val,
-            action: GALE_POLL_ACTION_SIGNAL_EVENT,
-        }
-    } else {
-        GalePollSignalRaiseDecision {
-            new_signaled: 1,
-            new_result: result_val,
-            action: GALE_POLL_ACTION_NO_EVENT,
-        }
+    let (new_signaled, new_result, has_event) =
+        signal_raise_decide(result_val, has_poll_event != 0);
+    GalePollSignalRaiseDecision {
+        new_signaled,
+        new_result,
+        action: if has_event {
+            GALE_POLL_ACTION_SIGNAL_EVENT
+        } else {
+            GALE_POLL_ACTION_NO_EVENT
+        },
     }
 }
 
@@ -3281,10 +3296,13 @@ pub extern "C" fn gale_k_poll_signal_raise_decide(
 #[cfg(feature = "futex")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_futex_wait_check(val: u32, expected: u32) -> i32 {
-    if val == expected {
-        OK
-    } else {
-        EAGAIN
+    use gale::futex::{WaitDecision, wait_decide};
+
+    // Delegate to verified model.
+    let d = wait_decide(val, expected);
+    match d {
+        WaitDecision::Block => OK,
+        WaitDecision::Mismatch => EAGAIN,
     }
 }
 
@@ -3310,24 +3328,17 @@ pub extern "C" fn gale_futex_wake(
     woken: *mut u32,
     remaining: *mut u32,
 ) -> i32 {
+    use gale::futex::wake_decide;
+
     unsafe {
         if woken.is_null() || remaining.is_null() {
             return EINVAL;
         }
 
-        if num_waiters == 0 {
-            *woken = 0;
-            *remaining = 0;
-        } else if wake_all != 0 {
-            *woken = num_waiters;
-            *remaining = 0;
-        } else {
-            *woken = 1;
-            #[allow(clippy::arithmetic_side_effects)]
-            {
-                *remaining = num_waiters - 1;
-            }
-        }
+        // Delegate to verified model.
+        let d = wake_decide(num_waiters, wake_all != 0);
+        *woken = d.woken;
+        *remaining = d.remaining;
         OK
     }
 }
@@ -3447,12 +3458,15 @@ pub extern "C" fn gale_timeslice_reset(
     slice_max_ticks: u32,
     new_ticks: *mut u32,
 ) -> i32 {
+    use gale::timeslice::reset_decide;
+
     unsafe {
         if new_ticks.is_null() {
             return EINVAL;
         }
 
-        *new_ticks = slice_max_ticks;
+        // Delegate to verified model (TS2).
+        *new_ticks = reset_decide(slice_max_ticks);
         OK
     }
 }
@@ -3478,20 +3492,17 @@ pub extern "C" fn gale_timeslice_tick(
     new_ticks: *mut u32,
     expired: *mut u32,
 ) -> i32 {
+    use gale::timeslice::tick_decide;
+
     unsafe {
         if new_ticks.is_null() || expired.is_null() {
             return EINVAL;
         }
 
-        if slice_ticks > 0 {
-            #[allow(clippy::arithmetic_side_effects)]
-            let decremented = slice_ticks - 1;
-            *new_ticks = decremented;
-            *expired = if decremented == 0 { 1 } else { 0 };
-        } else {
-            *new_ticks = 0;
-            *expired = 1;
-        }
+        // Delegate to verified model (TS3, TS4, TS5).
+        let (nt, exp) = tick_decide(slice_ticks);
+        *new_ticks = nt;
+        *expired = if exp { 1 } else { 0 };
         OK
     }
 }
@@ -3537,33 +3548,18 @@ pub extern "C" fn gale_k_timeslice_tick_decide(
     slice_ticks: u32,
     is_cooperative: u32,
 ) -> GaleTimesliceTickDecision {
-    // No time slicing configured for this thread
-    if slice_ticks == 0 {
-        return GaleTimesliceTickDecision {
-            action: GALE_TIMESLICE_ACTION_NO_YIELD,
-            new_ticks: ticks_remaining,
-        };
-    }
+    use gale::timeslice::timeslice_tick_full_decide;
 
-    // Cooperative threads never yield to timeslicing
-    if is_cooperative != 0 {
-        return GaleTimesliceTickDecision {
-            action: GALE_TIMESLICE_ACTION_NO_YIELD,
-            new_ticks: ticks_remaining,
-        };
-    }
-
-    // Slice expired — yield and reset
-    if ticks_remaining == 0 {
-        GaleTimesliceTickDecision {
-            action: GALE_TIMESLICE_ACTION_YIELD,
-            new_ticks: slice_ticks,
-        }
-    } else {
-        GaleTimesliceTickDecision {
-            action: GALE_TIMESLICE_ACTION_NO_YIELD,
-            new_ticks: ticks_remaining,
-        }
+    // Delegate to verified model (TS4, TS6).
+    let (should_yield, new_ticks) =
+        timeslice_tick_full_decide(ticks_remaining, slice_ticks, is_cooperative != 0);
+    GaleTimesliceTickDecision {
+        action: if should_yield {
+            GALE_TIMESLICE_ACTION_YIELD
+        } else {
+            GALE_TIMESLICE_ACTION_NO_YIELD
+        },
+        new_ticks,
     }
 }
 
@@ -3604,21 +3600,20 @@ pub extern "C" fn gale_kheap_alloc_validate(
     bytes: u32,
     new_allocated: *mut u32,
 ) -> i32 {
+    use gale::kheap::alloc_decide;
+
     unsafe {
         if new_allocated.is_null() || bytes == 0 {
             return EINVAL;
         }
 
-        #[allow(clippy::arithmetic_side_effects)]
-        let remaining = capacity - allocated_bytes.min(capacity);
-        if bytes <= remaining {
-            #[allow(clippy::arithmetic_side_effects)]
-            {
-                *new_allocated = allocated_bytes + bytes;
+        // Delegate to verified model (KH2, KH3, KH6).
+        match alloc_decide(allocated_bytes.min(capacity), capacity, bytes) {
+            Ok(na) => {
+                *new_allocated = na;
+                OK
             }
-            OK
-        } else {
-            ENOMEM
+            Err(e) => e,
         }
     }
 }
@@ -3640,19 +3635,20 @@ pub extern "C" fn gale_kheap_free_validate(
     bytes: u32,
     new_allocated: *mut u32,
 ) -> i32 {
+    use gale::kheap::free_decide;
+
     unsafe {
         if new_allocated.is_null() || bytes == 0 {
             return EINVAL;
         }
 
-        if bytes <= allocated_bytes {
-            #[allow(clippy::arithmetic_side_effects)]
-            {
-                *new_allocated = allocated_bytes - bytes;
+        // Delegate to verified model (KH4).
+        match free_decide(allocated_bytes, bytes) {
+            Ok(na) => {
+                *new_allocated = na;
+                OK
             }
-            OK
-        } else {
-            EINVAL
+            Err(e) => e,
         }
     }
 }
@@ -4116,42 +4112,33 @@ pub extern "C" fn gale_k_work_submit_decide(
     is_queued: u8,
     is_running: u8,
 ) -> GaleWorkSubmitDecision {
-    // If canceling, reject the submission
-    if (flags & WORK_FLAG_CANCELING) != 0 {
-        return GaleWorkSubmitDecision {
-            action: GALE_WORK_SUBMIT_REJECT,
-            new_flags: flags,
-            ret: EBUSY,
-        };
-    }
+    use gale::work::{SubmitDecision, submit_decide};
 
-    // If already queued, no-op
-    if is_queued != 0 {
-        return GaleWorkSubmitDecision {
-            action: GALE_WORK_SUBMIT_ALREADY,
-            new_flags: flags,
-            ret: 0,
-        };
-    }
+    let _ = (is_queued, is_running); // model derives these from flags
 
-    // Not queued -- set QUEUED flag
-    #[allow(clippy::arithmetic_side_effects)]
-    let new_flags = flags | WORK_FLAG_QUEUED;
-
-    if is_running != 0 {
-        // Was running -- re-queue to the same queue
-        GaleWorkSubmitDecision {
-            action: GALE_WORK_SUBMIT_REQUEUE,
-            new_flags,
-            ret: 2,
-        }
-    } else {
-        // Idle -- newly queued
-        GaleWorkSubmitDecision {
+    // Delegate to verified model (WK2, WK3, WK4).
+    let (decision, new_flags) = submit_decide(flags);
+    match decision {
+        SubmitDecision::Queue => GaleWorkSubmitDecision {
             action: GALE_WORK_SUBMIT_QUEUE,
             new_flags,
             ret: 1,
-        }
+        },
+        SubmitDecision::Requeue => GaleWorkSubmitDecision {
+            action: GALE_WORK_SUBMIT_REQUEUE,
+            new_flags,
+            ret: 2,
+        },
+        SubmitDecision::AlreadyQueued => GaleWorkSubmitDecision {
+            action: GALE_WORK_SUBMIT_ALREADY,
+            new_flags,
+            ret: 0,
+        },
+        SubmitDecision::Reject => GaleWorkSubmitDecision {
+            action: GALE_WORK_SUBMIT_REJECT,
+            new_flags,
+            ret: EBUSY,
+        },
     }
 }
 
@@ -4194,38 +4181,20 @@ pub extern "C" fn gale_k_work_cancel_decide(
     let _ = is_running; // used implicitly via flags
 
     // Step 1: If not already canceling, clear QUEUED
-    let dequeued = (flags & WORK_FLAG_CANCELING) == 0 && is_queued != 0;
+    use gale::work::{CancelDecisionAction, cancel_decide};
 
-    #[allow(clippy::arithmetic_side_effects)]
-    let mut f = if dequeued {
-        flags & !WORK_FLAG_QUEUED
-    } else {
-        flags
+    let _ = (is_queued, is_running); // model derives these from flags
+
+    // Delegate to verified model (WK5).
+    let (decision, new_flags, busy) = cancel_decide(flags);
+    let action = match decision {
+        CancelDecisionAction::Idle => GALE_WORK_CANCEL_IDLE,
+        CancelDecisionAction::Dequeue => GALE_WORK_CANCEL_DEQUEUE,
+        CancelDecisionAction::SetCanceling => GALE_WORK_CANCEL_CANCELING,
     };
-
-    // Step 2: Check busy status after dequeue
-    #[allow(clippy::arithmetic_side_effects)]
-    let busy = f & WORK_BUSY_MASK;
-
-    // Step 3: If still busy, set CANCELING
-    if busy != 0 {
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            f |= WORK_FLAG_CANCELING;
-        }
-    }
-
-    let action = if busy == 0 {
-        GALE_WORK_CANCEL_IDLE
-    } else if dequeued {
-        GALE_WORK_CANCEL_DEQUEUE
-    } else {
-        GALE_WORK_CANCEL_CANCELING
-    };
-
     GaleWorkCancelDecision {
         action,
-        new_flags: f,
+        new_flags,
         busy,
     }
 }
@@ -4360,44 +4329,23 @@ pub extern "C" fn gale_k_fatal_decide(
     is_isr: u32,
     test_mode: u32,
 ) -> GaleFatalDecision {
-    // Validate reason code
-    if reason > 4 {
-        return GaleFatalDecision {
+    use gale::fatal::{RecoveryAction, classify_decide};
+
+    // Delegate to verified model (FT1, FT2, FT3).
+    match classify_decide(reason, is_isr != 0, test_mode != 0) {
+        Ok(action) => {
+            let a = match action {
+                RecoveryAction::AbortThread => GALE_FATAL_ACTION_ABORT_THREAD,
+                RecoveryAction::Halt => GALE_FATAL_ACTION_HALT,
+                RecoveryAction::Ignore => GALE_FATAL_ACTION_IGNORE,
+            };
+            GaleFatalDecision { action: a, ret: 0 }
+        }
+        Err(e) => GaleFatalDecision {
             action: GALE_FATAL_ACTION_HALT,
-            ret: EINVAL,
-        };
+            ret: e,
+        },
     }
-
-    let action = if test_mode != 0 {
-        // Test mode — more permissive
-        if is_isr != 0 {
-            if reason == 2 {
-                // STACK_CHECK_FAIL — abort even in ISR
-                GALE_FATAL_ACTION_ABORT_THREAD
-            } else {
-                GALE_FATAL_ACTION_IGNORE
-            }
-        } else {
-            GALE_FATAL_ACTION_ABORT_THREAD
-        }
-    } else {
-        // Production mode
-        if reason == 4 {
-            // KERNEL_PANIC — always halt
-            GALE_FATAL_ACTION_HALT
-        } else if reason == 2 {
-            // STACK_CHECK_FAIL — always abort thread
-            GALE_FATAL_ACTION_ABORT_THREAD
-        } else if is_isr != 0 {
-            // ISR context — halt
-            GALE_FATAL_ACTION_HALT
-        } else {
-            // Thread context — abort
-            GALE_FATAL_ACTION_ABORT_THREAD
-        }
-    };
-
-    GaleFatalDecision { action, ret: 0 }
 }
 
 // ---------------------------------------------------------------------------
@@ -4433,20 +4381,21 @@ pub extern "C" fn gale_mempool_alloc_validate(
     capacity: u32,
     new_allocated: *mut u32,
 ) -> i32 {
+    use gale::mempool::alloc_block_decide;
+
     unsafe {
         if new_allocated.is_null() {
             return EINVAL;
         }
 
-        if allocated >= capacity {
-            return ENOMEM;
+        // Delegate to verified model (MP2, MP3).
+        match alloc_block_decide(allocated, capacity) {
+            Ok(na) => {
+                *new_allocated = na;
+                OK
+            }
+            Err(e) => e,
         }
-
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_allocated = allocated + 1;
-        }
-        OK
     }
 }
 
@@ -4465,20 +4414,21 @@ pub extern "C" fn gale_mempool_free_validate(
     allocated: u32,
     new_allocated: *mut u32,
 ) -> i32 {
+    use gale::mempool::free_block_decide;
+
     unsafe {
         if new_allocated.is_null() {
             return EINVAL;
         }
 
-        if allocated == 0 {
-            return EINVAL;
+        // Delegate to verified model (MP4).
+        match free_block_decide(allocated) {
+            Ok(na) => {
+                *new_allocated = na;
+                OK
+            }
+            Err(e) => e,
         }
-
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_allocated = allocated - 1;
-        }
-        OK
     }
 }
 
@@ -4597,20 +4547,21 @@ pub extern "C" fn gale_dynamic_alloc_validate(
     max_threads: u32,
     new_active: *mut u32,
 ) -> i32 {
+    use gale::dynamic::alloc_decide;
+
     unsafe {
         if new_active.is_null() {
             return EINVAL;
         }
 
-        if active >= max_threads {
-            return ENOMEM;
+        // Delegate to verified model (DY2, DY3).
+        match alloc_decide(active, max_threads) {
+            Ok(na) => {
+                *new_active = na;
+                OK
+            }
+            Err(e) => e,
         }
-
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_active = active + 1;
-        }
-        OK
     }
 }
 
@@ -4629,20 +4580,21 @@ pub extern "C" fn gale_dynamic_free_validate(
     active: u32,
     new_active: *mut u32,
 ) -> i32 {
+    use gale::dynamic::free_decide;
+
     unsafe {
         if new_active.is_null() {
             return EINVAL;
         }
 
-        if active == 0 {
-            return EINVAL;
+        // Delegate to verified model (DY4).
+        match free_decide(active) {
+            Ok(na) => {
+                *new_active = na;
+                OK
+            }
+            Err(e) => e,
         }
-
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_active = active - 1;
-        }
-        OK
     }
 }
 
@@ -4679,20 +4631,21 @@ pub extern "C" fn gale_smp_start_cpu_validate(
     max_cpus: u32,
     new_active: *mut u32,
 ) -> i32 {
+    use gale::smp_state::start_cpu_decide;
+
     unsafe {
         if new_active.is_null() {
             return EINVAL;
         }
 
-        if active_cpus >= max_cpus {
-            return EBUSY;
+        // Delegate to verified model (SM2).
+        match start_cpu_decide(active_cpus, max_cpus) {
+            Ok(na) => {
+                *new_active = na;
+                OK
+            }
+            Err(e) => e,
         }
-
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_active = active_cpus + 1;
-        }
-        OK
     }
 }
 
@@ -4711,20 +4664,21 @@ pub extern "C" fn gale_smp_stop_cpu_validate(
     active_cpus: u32,
     new_active: *mut u32,
 ) -> i32 {
+    use gale::smp_state::stop_cpu_decide;
+
     unsafe {
         if new_active.is_null() {
             return EINVAL;
         }
 
-        if active_cpus <= 1 {
-            return EINVAL;
+        // Delegate to verified model (SM3).
+        match stop_cpu_decide(active_cpus) {
+            Ok(na) => {
+                *new_active = na;
+                OK
+            }
+            Err(e) => e,
         }
-
-        #[allow(clippy::arithmetic_side_effects)]
-        {
-            *new_active = active_cpus - 1;
-        }
-        OK
     }
 }
 
@@ -4754,18 +4708,18 @@ pub extern "C" fn gale_dynamic_alloc_decide(
     active: u32,
     max_threads: u32,
 ) -> GaleDynamicAllocDecision {
-    if active >= max_threads {
-        GaleDynamicAllocDecision {
-            action: GALE_DYNAMIC_ACTION_POOL_FULL,
-            new_active: active,
-        }
-    } else {
-        #[allow(clippy::arithmetic_side_effects)]
-        let new_active = active + 1;
-        GaleDynamicAllocDecision {
+    use gale::dynamic::alloc_decide;
+
+    // Delegate to verified model (DY2, DY3).
+    match alloc_decide(active, max_threads) {
+        Ok(new_active) => GaleDynamicAllocDecision {
             action: GALE_DYNAMIC_ACTION_ALLOC_OK,
             new_active,
-        }
+        },
+        Err(_) => GaleDynamicAllocDecision {
+            action: GALE_DYNAMIC_ACTION_POOL_FULL,
+            new_active: active,
+        },
     }
 }
 
@@ -4792,18 +4746,18 @@ pub const GALE_DYNAMIC_ACTION_UNDERFLOW: u8 = 1;
 pub extern "C" fn gale_dynamic_free_decide(
     active: u32,
 ) -> GaleDynamicFreeDecision {
-    if active == 0 {
-        GaleDynamicFreeDecision {
-            action: GALE_DYNAMIC_ACTION_UNDERFLOW,
-            new_active: 0,
-        }
-    } else {
-        #[allow(clippy::arithmetic_side_effects)]
-        let new_active = active - 1;
-        GaleDynamicFreeDecision {
+    use gale::dynamic::free_decide;
+
+    // Delegate to verified model (DY4).
+    match free_decide(active) {
+        Ok(new_active) => GaleDynamicFreeDecision {
             action: GALE_DYNAMIC_ACTION_FREE_OK,
             new_active,
-        }
+        },
+        Err(_) => GaleDynamicFreeDecision {
+            action: GALE_DYNAMIC_ACTION_UNDERFLOW,
+            new_active: 0,
+        },
     }
 }
 
@@ -4833,18 +4787,18 @@ pub extern "C" fn gale_smp_start_cpu_decide(
     active_cpus: u32,
     max_cpus: u32,
 ) -> GaleSmpStartDecision {
-    if active_cpus >= max_cpus {
-        GaleSmpStartDecision {
-            action: GALE_SMP_ACTION_ALL_ACTIVE,
-            new_active: active_cpus,
-        }
-    } else {
-        #[allow(clippy::arithmetic_side_effects)]
-        let new_active = active_cpus + 1;
-        GaleSmpStartDecision {
+    use gale::smp_state::start_cpu_decide;
+
+    // Delegate to verified model (SM2).
+    match start_cpu_decide(active_cpus, max_cpus) {
+        Ok(new_active) => GaleSmpStartDecision {
             action: GALE_SMP_ACTION_START_OK,
             new_active,
-        }
+        },
+        Err(_) => GaleSmpStartDecision {
+            action: GALE_SMP_ACTION_ALL_ACTIVE,
+            new_active: active_cpus,
+        },
     }
 }
 
@@ -4871,18 +4825,18 @@ pub const GALE_SMP_ACTION_LAST_CPU: u8 = 1;
 pub extern "C" fn gale_smp_stop_cpu_decide(
     active_cpus: u32,
 ) -> GaleSmpStopDecision {
-    if active_cpus <= 1 {
-        GaleSmpStopDecision {
-            action: GALE_SMP_ACTION_LAST_CPU,
-            new_active: active_cpus,
-        }
-    } else {
-        #[allow(clippy::arithmetic_side_effects)]
-        let new_active = active_cpus - 1;
-        GaleSmpStopDecision {
+    use gale::smp_state::stop_cpu_decide;
+
+    // Delegate to verified model (SM3).
+    match stop_cpu_decide(active_cpus) {
+        Ok(new_active) => GaleSmpStopDecision {
             action: GALE_SMP_ACTION_STOP_OK,
             new_active,
-        }
+        },
+        Err(_) => GaleSmpStopDecision {
+            action: GALE_SMP_ACTION_LAST_CPU,
+            new_active: active_cpus,
+        },
     }
 }
 
@@ -4958,13 +4912,18 @@ pub extern "C" fn gale_sched_should_preempt(
     candidate_is_metairq: u32,
     swap_ok: u32,
 ) -> i32 {
-    if swap_ok != 0 {
-        return 1;
+    use gale::sched::should_preempt;
+
+    // Delegate to verified model (SC6).
+    if should_preempt(
+        current_is_cooperative != 0,
+        candidate_is_metairq != 0,
+        swap_ok != 0,
+    ) {
+        1
+    } else {
+        0
     }
-    if current_is_cooperative != 0 && candidate_is_metairq == 0 {
-        return 0;
-    }
-    1
 }
 
 // ---- Phase 3: Sched Decision API ----
@@ -5068,30 +5027,27 @@ pub extern "C" fn gale_k_sched_preempt_decide(
     swap_ok: u32,
     current_is_prevented: u32,
 ) -> GaleSchedPreemptDecision {
-    // swap_ok (k_yield) always allows preemption
-    if swap_ok != 0 {
-        return GaleSchedPreemptDecision {
-            should_preempt: GALE_SCHED_PREEMPT,
-        };
-    }
+    use gale::sched::should_preempt;
 
-    // If current is pended/suspended/dummy, preempt
+    // If current is pended/suspended/dummy, always preempt (FFI-specific).
     if current_is_prevented != 0 {
         return GaleSchedPreemptDecision {
             should_preempt: GALE_SCHED_PREEMPT,
         };
     }
 
-    // Preemptible current or MetaIRQ candidate -> preempt
-    if is_cooperative == 0 || candidate_is_metairq != 0 {
-        return GaleSchedPreemptDecision {
-            should_preempt: GALE_SCHED_PREEMPT,
-        };
-    }
-
-    // Cooperative current + non-MetaIRQ candidate -> no preemption
+    // Delegate core preemption logic to verified model (SC6).
+    let preempt = should_preempt(
+        is_cooperative != 0,
+        candidate_is_metairq != 0,
+        swap_ok != 0,
+    );
     GaleSchedPreemptDecision {
-        should_preempt: GALE_SCHED_NO_PREEMPT,
+        should_preempt: if preempt {
+            GALE_SCHED_PREEMPT
+        } else {
+            GALE_SCHED_NO_PREEMPT
+        },
     }
 }
 
@@ -5156,15 +5112,10 @@ pub extern "C" fn gale_mem_domain_check_partition(
     domain_sizes: *const u32,
     _num_partitions: u32,
 ) -> GaleMemDomainCheckPartitionDecision {
-    // MD3: size must be > 0
-    if part_size == 0 {
-        return GaleMemDomainCheckPartitionDecision { ret: EINVAL };
-    }
+    use gale::mem_domain::{partition_valid_decide, partitions_overlap_decide};
 
-    // MD6: start + size must not overflow
-    #[allow(clippy::arithmetic_side_effects)]
-    let pend: u64 = part_start as u64 + part_size as u64;
-    if pend > u32::MAX as u64 {
+    // MD3 + MD6: validate partition (size > 0, no overflow).
+    if !partition_valid_decide(part_start, part_size) {
         return GaleMemDomainCheckPartitionDecision { ret: EINVAL };
     }
 
@@ -5173,17 +5124,15 @@ pub extern "C" fn gale_mem_domain_check_partition(
         return GaleMemDomainCheckPartitionDecision { ret: EINVAL };
     }
 
-    // MD1: check non-overlap with all existing active partitions
+    // MD1: check non-overlap with all existing active partitions.
     let mut i: u32 = 0;
     while i < MEM_DOMAIN_MAX_PARTITIONS {
         unsafe {
             let dsize = *domain_sizes.add(i as usize);
             if dsize > 0 {
                 let dstart = *domain_starts.add(i as usize);
-                #[allow(clippy::arithmetic_side_effects)]
-                let dend: u64 = dstart as u64 + dsize as u64;
-                // Overlap: pend > dstart && dend > pstart
-                if pend > dstart as u64 && dend > part_start as u64 {
+                // Delegate overlap check to verified model (MD1).
+                if partitions_overlap_decide(part_start, part_size, dstart, dsize) {
                     return GaleMemDomainCheckPartitionDecision { ret: EINVAL };
                 }
             }
@@ -5466,15 +5415,15 @@ pub extern "C" fn gale_k_object_access_decide(
     flags: u8,
     has_perm_bit: u8,
 ) -> GaleUserspaceAccessDecision {
-    if (flags & K_OBJ_FLAG_PUBLIC) != 0 {
-        // US5: public objects grant access to everyone
-        GaleUserspaceAccessDecision { granted: 1 }
-    } else if has_perm_bit != 0 {
-        // US1: thread has the permission bit set
-        GaleUserspaceAccessDecision { granted: 1 }
-    } else {
-        // US1: no permission
-        GaleUserspaceAccessDecision { granted: 0 }
+    use gale::userspace::access_decide;
+
+    // Delegate to verified model (US1, US5).
+    let granted = access_decide(
+        (flags & K_OBJ_FLAG_PUBLIC) != 0,
+        has_perm_bit != 0,
+    );
+    GaleUserspaceAccessDecision {
+        granted: if granted { 1 } else { 0 },
     }
 }
 
@@ -5521,33 +5470,15 @@ pub extern "C" fn gale_k_object_validate_decide(
     has_access: u8,
     init_check: i8,
 ) -> GaleUserspaceValidateDecision {
-    // US4: type check — K_OBJ_ANY (0) matches everything
-    if expected_type != 0 && obj_type != expected_type {
-        return GaleUserspaceValidateDecision { ret: EBADF };
-    }
+    use gale::userspace::validate_decide;
 
-    // US1/US5: permission check
-    if has_access == 0 {
-        return GaleUserspaceValidateDecision { ret: EPERM };
-    }
-
-    // US7: initialization state check
+    // Delegate to verified model (US1, US4, US5, US7).
+    let type_matches = expected_type == 0 || obj_type == expected_type;
     let is_initialized = (flags & K_OBJ_FLAG_INITIALIZED) != 0;
-
-    if init_check == OBJ_INIT_TRUE {
-        // Object MUST be initialized
-        if !is_initialized {
-            return GaleUserspaceValidateDecision { ret: EINVAL };
-        }
-    } else if init_check == OBJ_INIT_FALSE {
-        // Object MUST NOT be initialized
-        if is_initialized {
-            return GaleUserspaceValidateDecision { ret: EADDRINUSE };
-        }
+    match validate_decide(type_matches, has_access != 0, is_initialized, init_check) {
+        Ok(()) => GaleUserspaceValidateDecision { ret: OK },
+        Err(e) => GaleUserspaceValidateDecision { ret: e },
     }
-    // OBJ_INIT_ANY: don't care
-
-    GaleUserspaceValidateDecision { ret: OK }
 }
 
 /// Decision for k_object_init — compute new flags with INITIALIZED set.
@@ -8837,6 +8768,251 @@ mod kani_rb_proofs {
         } else {
             assert!(rc == OK);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — spinlock validate
+// ---------------------------------------------------------------------------
+
+#[cfg(all(kani, feature = "spinlock_validate"))]
+mod kani_spinlock_validate_proofs {
+    use super::*;
+
+    #[kani::proof]
+    fn spinlock_lock_valid_free() {
+        let cpu_id: u32 = kani::any();
+        kani::assume(cpu_id < 4);
+        let ret = gale_spin_lock_valid(0, cpu_id);
+        assert!(ret == 1);
+    }
+
+    #[kani::proof]
+    fn spinlock_lock_valid_same_cpu_deadlock() {
+        let cpu_id: u32 = kani::any();
+        kani::assume(cpu_id < 4);
+        let thread_ptr: usize = kani::any();
+        kani::assume(thread_ptr != 0);
+        kani::assume(thread_ptr & 3 == 0);
+        let thread_cpu = thread_ptr | (cpu_id as usize);
+        let ret = gale_spin_lock_valid(thread_cpu, cpu_id);
+        assert!(ret == 0);
+    }
+
+    #[kani::proof]
+    fn spinlock_lock_valid_different_cpu() {
+        let holder_cpu: u32 = kani::any();
+        let current_cpu: u32 = kani::any();
+        kani::assume(holder_cpu < 4);
+        kani::assume(current_cpu < 4);
+        kani::assume(holder_cpu != current_cpu);
+        let thread_ptr: usize = kani::any();
+        kani::assume(thread_ptr != 0);
+        kani::assume(thread_ptr & 3 == 0);
+        let thread_cpu = thread_ptr | (holder_cpu as usize);
+        let ret = gale_spin_lock_valid(thread_cpu, current_cpu);
+        assert!(ret == 1);
+    }
+
+    #[kani::proof]
+    fn spinlock_unlock_valid_matching_owner() {
+        let cpu_id: u32 = kani::any();
+        kani::assume(cpu_id < 4);
+        let thread: usize = kani::any();
+        kani::assume(thread != 0);
+        kani::assume(thread & 3 == 0);
+        let owner = gale_spin_lock_compute_owner(cpu_id, thread);
+        let ret = gale_spin_unlock_valid(owner, cpu_id, thread);
+        assert!(ret == 1);
+    }
+
+    #[kani::proof]
+    fn spinlock_unlock_valid_mismatched_owner() {
+        let cpu_id: u32 = kani::any();
+        kani::assume(cpu_id < 4);
+        let thread: usize = kani::any();
+        kani::assume(thread != 0);
+        kani::assume(thread & 3 == 0);
+        let other_thread: usize = kani::any();
+        kani::assume(other_thread != 0);
+        kani::assume(other_thread & 3 == 0);
+        kani::assume(other_thread != thread);
+        let owner = gale_spin_lock_compute_owner(cpu_id, thread);
+        let ret = gale_spin_unlock_valid(owner, cpu_id, other_thread);
+        assert!(ret == 0);
+    }
+
+    #[kani::proof]
+    fn spinlock_owner_encoding_roundtrip() {
+        let cpu_id: u32 = kani::any();
+        kani::assume(cpu_id < 4);
+        let thread: usize = kani::any();
+        kani::assume(thread != 0);
+        kani::assume(thread & 3 == 0);
+        let owner = gale_spin_lock_compute_owner(cpu_id, thread);
+        assert!((owner & 3) == cpu_id as usize);
+        assert!((owner & !3) == thread);
+    }
+
+    #[kani::proof]
+    fn spinlock_lock_valid_no_panic() {
+        let thread_cpu: usize = kani::any();
+        let cpu_id: u32 = kani::any();
+        kani::assume(cpu_id < 4);
+        let _ = gale_spin_lock_valid(thread_cpu, cpu_id);
+    }
+
+    #[kani::proof]
+    fn spinlock_unlock_valid_no_panic() {
+        let thread_cpu: usize = kani::any();
+        let cpu_id: u32 = kani::any();
+        kani::assume(cpu_id < 4);
+        let thread: usize = kani::any();
+        kani::assume(thread != 0);
+        kani::assume(thread & 3 == 0);
+        let _ = gale_spin_unlock_valid(thread_cpu, cpu_id, thread);
+    }
+
+    #[kani::proof]
+    fn spinlock_compute_owner_no_panic() {
+        let cpu_id: u32 = kani::any();
+        kani::assume(cpu_id < 4);
+        let thread: usize = kani::any();
+        kani::assume(thread != 0);
+        kani::assume(thread & 3 == 0);
+        let _ = gale_spin_lock_compute_owner(cpu_id, thread);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — CPU affinity mask
+// ---------------------------------------------------------------------------
+
+#[cfg(all(kani, feature = "cpu_mask"))]
+mod kani_cpu_mask_proofs {
+    use super::*;
+
+    #[kani::proof]
+    fn cpu_mask_running_thread_rejected() {
+        let current: u32 = kani::any();
+        let enable: u32 = kani::any();
+        let disable: u32 = kani::any();
+        let pin_only: u32 = kani::any();
+        kani::assume(pin_only <= 1);
+        let r = gale_cpu_mask_mod(current, enable, disable, 1, pin_only);
+        assert!(r.err == EINVAL);
+    }
+
+    #[kani::proof]
+    fn cpu_mask_formula_correct() {
+        let current: u32 = kani::any();
+        let enable: u32 = kani::any();
+        let disable: u32 = kani::any();
+        let r = gale_cpu_mask_mod(current, enable, disable, 0, 0);
+        if r.err == OK {
+            assert!(r.mask == (current | enable) & !disable);
+        }
+    }
+
+    #[kani::proof]
+    fn cpu_mask_result_nonzero() {
+        let current: u32 = kani::any();
+        let enable: u32 = kani::any();
+        let disable: u32 = kani::any();
+        let pin_only: u32 = kani::any();
+        kani::assume(pin_only <= 1);
+        let r = gale_cpu_mask_mod(current, enable, disable, 0, pin_only);
+        if r.err == OK {
+            assert!(r.mask != 0);
+        }
+    }
+
+    #[kani::proof]
+    fn cpu_mask_pin_only_single_bit() {
+        let current: u32 = kani::any();
+        let enable: u32 = kani::any();
+        let disable: u32 = kani::any();
+        let r = gale_cpu_mask_mod(current, enable, disable, 0, 1);
+        if r.err == OK {
+            assert!(r.mask != 0 && (r.mask & (r.mask - 1)) == 0);
+        }
+    }
+
+    #[kani::proof]
+    fn cpu_mask_validate_pin_powers_of_two() {
+        let shift: u32 = kani::any();
+        kani::assume(shift < 32);
+        let mask = 1u32 << shift;
+        assert!(gale_validate_pin_mask(mask) == 1);
+    }
+
+    #[kani::proof]
+    fn cpu_mask_validate_pin_rejects_zero() {
+        assert!(gale_validate_pin_mask(0) == 0);
+    }
+
+    #[kani::proof]
+    fn cpu_mask_validate_pin_rejects_multi_bit() {
+        let mask: u32 = kani::any();
+        kani::assume(mask != 0);
+        kani::assume((mask & (mask - 1)) != 0);
+        assert!(gale_validate_pin_mask(mask) == 0);
+    }
+
+    #[kani::proof]
+    fn cpu_pin_compute_valid() {
+        let cpu_id: u32 = kani::any();
+        let max_cpus: u32 = kani::any();
+        kani::assume(max_cpus > 0 && max_cpus <= 32);
+        kani::assume(cpu_id < max_cpus);
+        let r = gale_cpu_pin_compute(cpu_id, max_cpus);
+        assert!(r.err == OK);
+        assert!(r.mask == (1u32 << cpu_id));
+        assert!(r.mask != 0 && (r.mask & (r.mask - 1)) == 0);
+    }
+
+    #[kani::proof]
+    fn cpu_pin_compute_out_of_bounds() {
+        let cpu_id: u32 = kani::any();
+        let max_cpus: u32 = kani::any();
+        kani::assume(max_cpus <= 32);
+        kani::assume(cpu_id >= max_cpus);
+        let r = gale_cpu_pin_compute(cpu_id, max_cpus);
+        assert!(r.err == EINVAL);
+    }
+
+    #[kani::proof]
+    fn cpu_pin_compute_max_cpus_too_large() {
+        let cpu_id: u32 = kani::any();
+        let max_cpus: u32 = kani::any();
+        kani::assume(max_cpus > 32);
+        let r = gale_cpu_pin_compute(cpu_id, max_cpus);
+        assert!(r.err == EINVAL);
+    }
+
+    #[kani::proof]
+    fn cpu_mask_mod_no_panic() {
+        let current: u32 = kani::any();
+        let enable: u32 = kani::any();
+        let disable: u32 = kani::any();
+        let is_running: u32 = kani::any();
+        let pin_only: u32 = kani::any();
+        kani::assume(is_running <= 1);
+        kani::assume(pin_only <= 1);
+        let _ = gale_cpu_mask_mod(current, enable, disable, is_running, pin_only);
+    }
+
+    #[kani::proof]
+    fn cpu_mask_validate_pin_no_panic() {
+        let mask: u32 = kani::any();
+        let _ = gale_validate_pin_mask(mask);
+    }
+
+    #[kani::proof]
+    fn cpu_pin_compute_no_panic() {
+        let cpu_id: u32 = kani::any();
+        let max_cpus: u32 = kani::any();
+        let _ = gale_cpu_pin_compute(cpu_id, max_cpus);
     }
 }
 

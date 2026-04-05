@@ -167,3 +167,24 @@ impl FatalError {
         matches!(self.context, FatalContext::Isr)
     }
 }
+/// Decision for fatal error classification from numeric arguments.
+///
+/// FT1: maps reason codes. FT2: panic halts. FT3: recovery depends on context.
+/// Returns Ok(RecoveryAction) or Err(EINVAL) for unknown reason.
+pub fn classify_decide(
+    reason: u32,
+    is_isr: bool,
+    test_mode: bool,
+) -> Result<RecoveryAction, i32> {
+    match FatalError::from_code(reason) {
+        Some(r) => {
+            let err = FatalError::new(
+                r,
+                if is_isr { FatalContext::Isr } else { FatalContext::Thread },
+                test_mode,
+            );
+            Ok(err.classify())
+        }
+        None => Err(EINVAL),
+    }
+}

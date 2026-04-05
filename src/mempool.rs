@@ -350,4 +350,54 @@ pub proof fn lemma_total_size_overflow(capacity: u32, block_size: u32)
         (capacity as u64) * (block_size as u64) > u32::MAX as u64,
 {}
 
+// ======================================================================
+// Standalone decide functions for FFI
+// ======================================================================
+
+/// Decision for mempool alloc: validate and compute new allocated count.
+///
+/// MP2: alloc success. MP3: full returns ENOMEM.
+pub fn alloc_block_decide(allocated: u32, capacity: u32) -> (result: Result<u32, i32>)
+    ensures
+        match result {
+            Ok(new_alloc) => {
+                &&& allocated < capacity
+                &&& new_alloc == allocated + 1
+            },
+            Err(e) => {
+                &&& e == ENOMEM
+                &&& allocated >= capacity
+            },
+        },
+{
+    if allocated < capacity {
+        Ok(allocated + 1)
+    } else {
+        Err(ENOMEM)
+    }
+}
+
+/// Decision for mempool free: validate and compute new allocated count.
+///
+/// MP4: free success. No underflow.
+pub fn free_block_decide(allocated: u32) -> (result: Result<u32, i32>)
+    ensures
+        match result {
+            Ok(new_alloc) => {
+                &&& allocated > 0
+                &&& new_alloc == allocated - 1
+            },
+            Err(e) => {
+                &&& e == EINVAL
+                &&& allocated == 0
+            },
+        },
+{
+    if allocated > 0 {
+        Ok(allocated - 1)
+    } else {
+        Err(EINVAL)
+    }
+}
+
 } // verus!

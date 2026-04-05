@@ -303,4 +303,34 @@ pub proof fn lemma_test_mode_permissive()
         true,
 {}
 
+// ======================================================================
+// Standalone decide functions for FFI
+// ======================================================================
+
+/// Decision for fatal error classification from numeric arguments.
+///
+/// FT1: maps reason codes. FT2: panic halts. FT3: recovery depends on context.
+/// Returns Ok(RecoveryAction) or Err(EINVAL) for unknown reason.
+pub fn classify_decide(
+    reason: u32,
+    is_isr: bool,
+    test_mode: bool,
+) -> (result: Result<RecoveryAction, i32>)
+    ensures
+        reason > 4 ==> result.is_err(),
+        (reason <= 4 && result.is_ok()) ==> true,
+{
+    match FatalError::from_code(reason) {
+        Some(r) => {
+            let err = FatalError::new(
+                r,
+                if is_isr { FatalContext::Isr } else { FatalContext::Thread },
+                test_mode,
+            );
+            Ok(err.classify())
+        }
+        None => Err(EINVAL),
+    }
+}
+
 } // verus!

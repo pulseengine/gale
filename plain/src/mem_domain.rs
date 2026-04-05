@@ -242,3 +242,24 @@ impl MemDomain {
         false
     }
 }
+/// Decision for partition validation: check size > 0, no overflow, no overlap.
+///
+/// MD1: non-overlap. MD3: size > 0. MD6: no address overflow.
+/// Takes the candidate partition and one existing partition (called per slot).
+/// Returns true if the candidate overlaps the existing partition.
+pub fn partitions_overlap_decide(
+    part_start: u32,
+    part_size: u32,
+    existing_start: u32,
+    existing_size: u32,
+) -> bool {
+    let pend: u64 = part_start as u64 + part_size as u64;
+    let eend: u64 = existing_start as u64 + existing_size as u64;
+    pend > existing_start as u64 && eend > part_start as u64
+}
+/// Decision for partition validity: check size > 0 and no address overflow.
+///
+/// MD3: size > 0. MD6: start + size <= u32::MAX.
+pub fn partition_valid_decide(start: u32, size: u32) -> bool {
+    size > 0 && (start as u64 + size as u64) <= u32::MAX as u64
+}

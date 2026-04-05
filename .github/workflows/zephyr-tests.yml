@@ -134,7 +134,7 @@ jobs:
             test_path: tests/kernel/common
 
           # Tests requiring MPU run on mps2/an385 job below.
-          # SMP tests need multi-core board (not available in QEMU).
+          # SMP tests run on qemu_x86_64 (2-CPU SMP) in the zephyr-smp-test job.
 
     steps:
       - name: Checkout Gale
@@ -155,7 +155,7 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
-          west sdk install
+          west sdk install -t arm-zephyr-eabi
 
       - name: Build and run test
         env:
@@ -229,7 +229,7 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
-          west sdk install
+          west sdk install -t arm-zephyr-eabi
 
       - name: Build and run test
         env:
@@ -244,6 +244,86 @@ jobs:
             -- \
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf"
+          timeout 120 west build -t run 2>&1 | tee test.log
+          if grep -q "PROJECT EXECUTION SUCCESSFUL" test.log; then
+            echo "PASS"
+          else
+            echo "::error::Test suite failed"
+            exit 1
+          fi
+
+  # =========================================================================
+  # SMP tests — run on qemu_x86_64 (x86-64, 2-CPU SMP via QEMU)
+  #
+  # Exercises Gale modules that depend on CONFIG_SMP:
+  #   - CONFIG_GALE_KERNEL_SPINLOCK_VALIDATE (spinlock ownership validation)
+  #   - CONFIG_GALE_KERNEL_CPU_MASK          (CPU affinity mask arithmetic)
+  #   - CONFIG_GALE_KERNEL_IPI               (IPI mask creation)
+  #
+  # Board choice: qemu_x86_64 is the simplest SMP-capable QEMU target with
+  # an existing Rust triple mapping (x86_64-unknown-none) in CMakeLists.txt.
+  # qemu_cortex_a53 (AArch64) would be preferable but Gale has no A-profile
+  # triple mapping yet (see test-matrix.yaml).
+  #
+  # TODO: Once qemu_cortex_a53 support is added to CMakeLists.txt, consider
+  #       migrating these tests to an ARM64 SMP target for consistency with
+  #       the primary Cortex-M test suite.
+  # =========================================================================
+  zephyr-smp-test:
+    name: "${{ matrix.primitive }} (qemu_x86_64, SMP)"
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      options: --user root
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - primitive: smp_semaphore
+            test_path: tests/kernel/semaphore/semaphore
+          - primitive: smp_mutex
+            test_path: tests/kernel/mutex/mutex_api
+          - primitive: smp_threads
+            test_path: tests/kernel/threads/thread_apis
+
+    env:
+      HOME: /root
+      DOCKER_CONFIG: /tmp/.docker
+
+    steps:
+      - name: Checkout Gale
+        uses: actions/checkout@v4
+        with:
+          path: gale
+
+      - name: Install Rust + x86_64 target
+        run: |
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          . /root/.cargo/env
+          rustup target add x86_64-unknown-none
+
+      - name: Initialize west workspace
+        run: |
+          pip3 install west
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
+          cd zephyr-workspace
+          west update --narrow -o=--depth=1
+          west sdk install -t x86_64-zephyr-elf
+
+      - name: Build and run test
+        env:
+          TEST_PATH: ${{ matrix.test_path }}
+        run: |
+          . /root/.cargo/env
+          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
+          cd zephyr-workspace
+          west build -b qemu_x86_64 \
+            -s "zephyr/${TEST_PATH}" \
+            -- \
+            -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
+            -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf;${GALE_ROOT}/zephyr/gale_smp_overlay.conf"
           timeout 120 west build -t run 2>&1 | tee test.log
           if grep -q "PROJECT EXECUTION SUCCESSFUL" test.log; then
             echo "PASS"
@@ -284,7 +364,7 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
-          west sdk install
+          west sdk install -t arm-zephyr-eabi
 
       - name: Setup SDK paths
         run: |

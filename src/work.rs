@@ -379,4 +379,86 @@ pub proof fn lemma_cancel_running_lifecycle()
         true,
 {}
 
+// ======================================================================
+// Standalone decide functions for FFI
+// ======================================================================
+
+/// Submit decision result.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum SubmitDecision {
+    /// Newly queued (return 1).
+    Queue = 0,
+    /// Was running, re-queued (return 2).
+    Requeue = 1,
+    /// Already queued, no-op (return 0).
+    AlreadyQueued = 2,
+    /// Rejected — canceling (return -EBUSY).
+    Reject = 3,
+}
+
+/// Decision for work submit: compute new flags and action.
+///
+/// WK2: submit sets QUEUED. WK3: CANCELING rejects. WK4: already queued is no-op.
+/// Returns (decision, new_flags).
+pub fn submit_decide(flags: u8) -> (result: (SubmitDecision, u8))
+    requires
+        (flags & !(FLAG_RUNNING | FLAG_CANCELING | FLAG_QUEUED | FLAG_FLUSHING)) == 0,
+    ensures
+        // WK3: canceling -> reject, unchanged
+        (flags & FLAG_CANCELING) != 0 ==> (result.0 === SubmitDecision::Reject && result.1 == flags),
+        // WK4: already queued -> no-op
+        ((flags & FLAG_CANCELING) == 0 && (flags & FLAG_QUEUED) != 0)
+            ==> (result.0 === SubmitDecision::AlreadyQueued && result.1 == flags),
+{
+    if (flags & FLAG_CANCELING) != 0 {
+        return (SubmitDecision::Reject, flags);
+    }
+    if (flags & FLAG_QUEUED) != 0 {
+        return (SubmitDecision::AlreadyQueued, flags);
+    }
+    let new_flags = flags | FLAG_QUEUED;
+    if (flags & FLAG_RUNNING) != 0 {
+        (SubmitDecision::Requeue, new_flags)
+    } else {
+        (SubmitDecision::Queue, new_flags)
+    }
+}
+
+/// Cancel decision result.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum CancelDecisionAction {
+    /// Already idle, nothing to do.
+    Idle = 0,
+    /// Was queued, dequeue it.
+    Dequeue = 1,
+    /// Still busy (running), set CANCELING.
+    SetCanceling = 2,
+}
+
+/// Decision for work cancel: compute new flags, busy status, and action.
+///
+/// WK5: clears QUEUED (when not already CANCELING), sets CANCELING if still busy.
+/// Returns (action, new_flags, busy).
+pub fn cancel_decide(flags: u8) -> (result: (CancelDecisionAction, u8, u8))
+    requires
+        (flags & !(FLAG_RUNNING | FLAG_CANCELING | FLAG_QUEUED | FLAG_FLUSHING)) == 0,
+{
+    let dequeued = (flags & FLAG_CANCELING) == 0 && (flags & FLAG_QUEUED) != 0;
+    let mut f = if dequeued { flags & !FLAG_QUEUED } else { flags };
+    let busy = f & BUSY_MASK;
+    if busy != 0 {
+        f = f | FLAG_CANCELING;
+    }
+    let action = if busy == 0 {
+        CancelDecisionAction::Idle
+    } else if dequeued {
+        CancelDecisionAction::Dequeue
+    } else {
+        CancelDecisionAction::SetCanceling
+    };
+    (action, f, busy)
+}
+
 } // verus!

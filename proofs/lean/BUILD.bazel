@@ -38,6 +38,20 @@ lean_proof_test(
     deps = [":priority_ceiling", "@mathlib//:Mathlib"],
 )
 
+# ── ARM MPU Region Validation ──────────────────────────────────────────
+
+lean_library(
+    name = "mpu_region",
+    srcs = ["MpuRegion.lean"],
+    deps = ["@mathlib//:Mathlib"],
+)
+
+lean_proof_test(
+    name = "mpu_region_test",
+    srcs = ["MpuRegion.lean"],
+    deps = [":mpu_region", "@mathlib//:Mathlib"],
+)
+
 # ── Priority Queue Invariants ──────────────────────────────────────────
 
 lean_library(

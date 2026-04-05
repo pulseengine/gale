@@ -130,3 +130,4 @@ uninlined_format_args = "allow"  # format!("{}", x) vs format!("{x}")
 bool_to_int_with_if = "allow"   # if x { 1 } else { 0 } (C FFI convention)
 unreadable_literal = "allow"    # 0xFFFFFFFF in tests
 no_effect_underscore_binding = "allow" # _x = Enum::Variant in layout tests
+if_same_then_else = "allow"  # verus-strip: identical branches from spec guards

@@ -34,6 +34,51 @@
 //!   FI5: init sets count to 0
 //!   FI6: no arithmetic overflow in any operation
 use crate::error::*;
+/// Lightweight put decision for FIFO — no queue allocation.
+/// Used by FFI to avoid constructing full Fifo objects.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum PutDecision {
+    /// A waiting thread should be woken (count unchanged).
+    WakeThread = 0,
+    /// Data should be inserted into the list (count incremented).
+    Insert = 1,
+    /// Count would overflow — reject.
+    Overflow = 2,
+}
+/// Lightweight get decision for FIFO — no queue allocation.
+/// Used by FFI to avoid constructing full Fifo objects.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum GetDecision {
+    /// Data available: count decremented by 1.
+    Dequeued = 0,
+    /// Queue empty: return EAGAIN.
+    Empty = 1,
+}
+/// Lightweight put decision — takes scalars, no queue allocation.
+///
+/// Verified properties (FI2, FI6):
+/// - has_waiter ==> WakeThread (count unchanged)
+/// - !has_waiter && count < u32::MAX - 1 ==> Insert
+/// - !has_waiter && count >= u32::MAX - 1 ==> Overflow
+pub fn put_decide(count: u32, has_waiter: bool) -> PutDecision {
+    if has_waiter {
+        PutDecision::WakeThread
+    } else if count < u32::MAX - 1 {
+        PutDecision::Insert
+    } else {
+        PutDecision::Overflow
+    }
+}
+/// Lightweight get decision — takes scalars, no queue allocation.
+///
+/// Verified properties (FI3, FI4):
+/// - count > 0 ==> Dequeued
+/// - count == 0 ==> Empty
+pub fn get_decide(count: u32) -> GetDecision {
+    if count > 0 { GetDecision::Dequeued } else { GetDecision::Empty }
+}
 /// FIFO queue -- count model.
 ///
 /// Corresponds to Zephyr's struct k_fifo {

@@ -710,4 +710,31 @@ pub proof fn lemma_reset_then_check()
 {
 }
 
+// ======================================================================
+// Standalone decide functions for FFI
+// ======================================================================
+
+/// Decision for poll_check_sem: check if semaphore condition is met.
+///
+/// PL3: SEM_AVAILABLE iff count > 0 AND type matches.
+pub fn check_sem_decide(event_type: u32, sem_count: u32) -> (result: bool)
+    ensures
+        result == (event_type == TYPE_SEM_AVAILABLE && sem_count > 0),
+{
+    event_type == TYPE_SEM_AVAILABLE && sem_count > 0
+}
+
+/// Decision for poll_signal_raise: compute new signaled state.
+///
+/// PL7: raise always sets signaled=1.
+/// Returns (new_signaled, should_signal_event).
+pub fn signal_raise_decide(result_val: i32, has_poll_event: bool) -> (result: (u32, i32, bool))
+    ensures
+        result.0 == 1u32,
+        result.1 == result_val,
+        result.2 == has_poll_event,
+{
+    (1u32, result_val, has_poll_event)
+}
+
 } // verus!

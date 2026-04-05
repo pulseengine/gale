@@ -121,3 +121,15 @@ impl DynamicPool {
         self.active == 0
     }
 }
+/// Decision for dynamic pool alloc: validate and compute new active count.
+///
+/// DY2: alloc success. DY3: full returns ENOMEM.
+pub fn alloc_decide(active: u32, max_threads: u32) -> Result<u32, i32> {
+    if active < max_threads { Ok(active + 1) } else { Err(ENOMEM) }
+}
+/// Decision for dynamic pool free: validate and compute new active count.
+///
+/// DY4: free success. No underflow.
+pub fn free_decide(active: u32) -> Result<u32, i32> {
+    if active > 0 { Ok(active - 1) } else { Err(EINVAL) }
+}

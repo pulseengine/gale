@@ -29,6 +29,65 @@ use crate::wait_queue::WaitQueue;
 
 verus! {
 
+/// Lightweight wait decision for Futex — no queue allocation.
+/// Used by FFI to avoid constructing full Futex objects.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum WaitDecision {
+    /// Value matches expected — caller should block.
+    Block = 0,
+    /// Value does not match expected — return EAGAIN.
+    Mismatch = 1,
+}
+
+/// Lightweight wake decision for Futex — no queue allocation.
+/// Used by FFI to compute wake counts without constructing Futex objects.
+#[derive(Debug, PartialEq, Eq)]
+pub struct WakeDecision {
+    /// Number of threads to wake.
+    pub woken: u32,
+    /// Number of threads remaining after wake.
+    pub remaining: u32,
+}
+
+/// Lightweight wait decision — takes scalars, no queue allocation.
+///
+/// Verified properties (FX1, FX2):
+/// - val == expected ==> Block
+/// - val != expected ==> Mismatch
+pub fn wait_decide(val: u32, expected: u32) -> (result: WaitDecision)
+    ensures
+        val == expected ==> result === WaitDecision::Block,
+        val != expected ==> result === WaitDecision::Mismatch,
+{
+    if val == expected {
+        WaitDecision::Block
+    } else {
+        WaitDecision::Mismatch
+    }
+}
+
+/// Lightweight wake decision — takes scalars, no queue allocation.
+///
+/// Verified properties (FX3, FX4, FX5, FX6):
+/// - num_waiters == 0 ==> woken == 0, remaining == 0
+/// - wake_all && num_waiters > 0 ==> woken == num_waiters, remaining == 0
+/// - !wake_all && num_waiters > 0 ==> woken == 1, remaining == num_waiters - 1
+pub fn wake_decide(num_waiters: u32, wake_all: bool) -> (result: WakeDecision)
+    ensures
+        num_waiters == 0 ==> result.woken == 0 && result.remaining == 0,
+        wake_all && num_waiters > 0 ==> result.woken == num_waiters && result.remaining == 0,
+        !wake_all && num_waiters > 0 ==> result.woken == 1 && result.remaining == num_waiters - 1,
+{
+    if num_waiters == 0 {
+        WakeDecision { woken: 0, remaining: 0 }
+    } else if wake_all {
+        WakeDecision { woken: num_waiters, remaining: 0 }
+    } else {
+        WakeDecision { woken: 1, remaining: num_waiters - 1 }
+    }
+}
+
 /// Result of a wait operation.
 #[derive(Debug, PartialEq, Eq)]
 pub enum WaitResult {

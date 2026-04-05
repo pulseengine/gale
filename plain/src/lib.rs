@@ -19,6 +19,7 @@
 //! - [`mutex`] — Reentrant mutex (port of kernel/mutex.c)
 //! - [`condvar`] — Condition variable (port of kernel/condvar.c)
 //! - [`cpu_mask`] — CPU affinity mask (port of kernel/cpu_mask.c)
+//! - [`mpu`] — ARM MPU v7 region validation (port of arch/arm/core/mpu/)
 #![no_std]
 #![allow(unused_imports)]
 #![allow(
@@ -75,3 +76,5 @@ pub mod atomic;
 pub mod userspace;
 pub mod ring_buf;
 pub mod zms;
+pub mod systick;
+pub mod mpu;

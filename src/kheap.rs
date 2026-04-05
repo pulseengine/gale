@@ -411,4 +411,61 @@ pub proof fn lemma_calloc_overflow_detected(num: u32, size: u32)
 {
 }
 
+// ======================================================================
+// Standalone decide functions for FFI
+// ======================================================================
+
+/// Decision for kheap alloc: validate and compute new allocated_bytes.
+///
+/// KH2: alloc success. KH3: full returns ENOMEM. KH6: no overflow.
+/// Returns Ok(new_allocated) or Err(error_code).
+pub fn alloc_decide(allocated_bytes: u32, capacity: u32, bytes: u32) -> (result: Result<u32, i32>)
+    requires
+        bytes > 0,
+        allocated_bytes <= capacity,
+    ensures
+        match result {
+            Ok(new_alloc) => {
+                &&& bytes <= capacity - allocated_bytes
+                &&& new_alloc == allocated_bytes + bytes
+            },
+            Err(e) => {
+                &&& e == ENOMEM
+                &&& bytes > capacity - allocated_bytes
+            },
+        },
+{
+    if bytes <= capacity - allocated_bytes {
+        Ok(allocated_bytes + bytes)
+    } else {
+        Err(ENOMEM)
+    }
+}
+
+/// Decision for kheap free: validate and compute new allocated_bytes.
+///
+/// KH4: free success. No underflow.
+/// Returns Ok(new_allocated) or Err(EINVAL).
+pub fn free_decide(allocated_bytes: u32, bytes: u32) -> (result: Result<u32, i32>)
+    requires
+        bytes > 0,
+    ensures
+        match result {
+            Ok(new_alloc) => {
+                &&& bytes <= allocated_bytes
+                &&& new_alloc == allocated_bytes - bytes
+            },
+            Err(e) => {
+                &&& e == EINVAL
+                &&& bytes > allocated_bytes
+            },
+        },
+{
+    if bytes <= allocated_bytes {
+        Ok(allocated_bytes - bytes)
+    } else {
+        Err(EINVAL)
+    }
+}
+
 } // verus!

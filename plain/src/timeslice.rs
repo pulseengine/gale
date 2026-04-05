@@ -132,3 +132,40 @@ impl TimeSlice {
         was
     }
 }
+/// Decision for timeslice reset: compute new ticks after reset.
+///
+/// TS2: reset sets slice_ticks = slice_max_ticks.
+pub fn reset_decide(slice_max_ticks: u32) -> u32 {
+    slice_max_ticks
+}
+/// Decision for timeslice tick: consume one tick, detect expiry.
+///
+/// TS3: decrements by 1. TS4: expired when reaching 0. TS5: no underflow.
+/// Returns (new_ticks, expired).
+pub fn tick_decide(slice_ticks: u32) -> (u32, bool) {
+    if slice_ticks > 0 {
+        let new = slice_ticks - 1;
+        (new, new == 0)
+    } else {
+        (0, true)
+    }
+}
+/// Full decision for timeslice tick handler: decides whether to yield.
+///
+/// TS4: expire detection. TS6: cooperative threads never yield.
+/// Returns (should_yield, new_ticks).
+pub fn timeslice_tick_full_decide(
+    ticks_remaining: u32,
+    slice_ticks: u32,
+    is_cooperative: bool,
+) -> (bool, u32) {
+    if slice_ticks == 0 {
+        (false, ticks_remaining)
+    } else if is_cooperative {
+        (false, ticks_remaining)
+    } else if ticks_remaining == 0 {
+        (true, slice_ticks)
+    } else {
+        (false, ticks_remaining)
+    }
+}

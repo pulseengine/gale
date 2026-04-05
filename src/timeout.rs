@@ -626,4 +626,84 @@ pub proof fn lemma_abort_then_add()
 {
 }
 
+// ======================================================================
+// Standalone decide functions for FFI
+// ======================================================================
+
+/// Decision for add_timeout: compute absolute deadline from current_tick + duration.
+///
+/// Returns Ok(deadline) on success, Err(EINVAL) on overflow.
+/// TO2: deadline = current_tick + duration, TO5: no overflow.
+pub fn add_decide(current_tick: u64, duration: u64) -> (result: Result<u64, i32>)
+    requires
+        true,
+    ensures
+        match result {
+            Ok(dl) => {
+                &&& current_tick < K_FOREVER_TICKS
+                &&& current_tick + duration < K_FOREVER_TICKS
+                &&& dl == current_tick + duration
+            },
+            Err(e) => {
+                &&& e == EINVAL
+                &&& (current_tick >= K_FOREVER_TICKS || current_tick + duration >= K_FOREVER_TICKS)
+            },
+        },
+{
+    if current_tick >= K_FOREVER_TICKS {
+        return Err(EINVAL);
+    }
+    if duration >= K_FOREVER_TICKS - current_tick {
+        return Err(EINVAL);
+    }
+    #[allow(clippy::arithmetic_side_effects)]
+    let dl = current_tick + duration;
+    Ok(dl)
+}
+
+/// Decision for abort_timeout: is the timeout active?
+///
+/// Returns true if active (should be removed), false if already inactive.
+/// TO3: abort clears to inactive.
+pub fn abort_decide(is_active: bool) -> (result: bool)
+    ensures result == is_active,
+{
+    is_active
+}
+
+/// Decision for announce: advance tick and check if timeout fired.
+///
+/// Returns Ok((new_tick, fired)) on success, Err(EINVAL) on overflow.
+/// TO4: fires when deadline <= new_tick, TO7: K_FOREVER never fires.
+pub fn announce_decide(
+    current_tick: u64,
+    ticks: u64,
+    deadline: u64,
+    active: bool,
+) -> (result: Result<(u64, bool), i32>)
+    requires
+        true,
+    ensures
+        match result {
+            Ok((new_tick, fired)) => {
+                &&& current_tick + ticks < K_FOREVER_TICKS
+                &&& new_tick == current_tick + ticks
+                &&& (fired ==> (active && deadline != K_FOREVER_TICKS && deadline <= new_tick))
+                &&& (!fired ==> (!active || deadline == K_FOREVER_TICKS || deadline > new_tick))
+            },
+            Err(e) => {
+                &&& e == EINVAL
+                &&& current_tick + ticks >= K_FOREVER_TICKS
+            },
+        },
+{
+    if ticks >= K_FOREVER_TICKS - current_tick {
+        return Err(EINVAL);
+    }
+    #[allow(clippy::arithmetic_side_effects)]
+    let new_tick = current_tick + ticks;
+    let fired = active && deadline != K_FOREVER_TICKS && deadline <= new_tick;
+    Ok((new_tick, fired))
+}
+
 } // verus!

@@ -150,3 +150,15 @@ impl MemPool {
         self.allocated == 0
     }
 }
+/// Decision for mempool alloc: validate and compute new allocated count.
+///
+/// MP2: alloc success. MP3: full returns ENOMEM.
+pub fn alloc_block_decide(allocated: u32, capacity: u32) -> Result<u32, i32> {
+    if allocated < capacity { Ok(allocated + 1) } else { Err(ENOMEM) }
+}
+/// Decision for mempool free: validate and compute new allocated count.
+///
+/// MP4: free success. No underflow.
+pub fn free_block_decide(allocated: u32) -> Result<u32, i32> {
+    if allocated > 0 { Ok(allocated - 1) } else { Err(EINVAL) }
+}

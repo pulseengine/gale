@@ -149,3 +149,15 @@ impl SmpState {
         self.global_lock_count > 0
     }
 }
+/// Decision for SMP start CPU: validate and compute new active count.
+///
+/// SM2: start increments active.
+pub fn start_cpu_decide(active_cpus: u32, max_cpus: u32) -> Result<u32, i32> {
+    if active_cpus < max_cpus { Ok(active_cpus + 1) } else { Err(EBUSY) }
+}
+/// Decision for SMP stop CPU: validate and compute new active count.
+///
+/// SM3: stop decrements active, CPU 0 never stops (min 1).
+pub fn stop_cpu_decide(active_cpus: u32) -> Result<u32, i32> {
+    if active_cpus > 1 { Ok(active_cpus - 1) } else { Err(EINVAL) }
+}

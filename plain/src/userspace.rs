@@ -324,3 +324,38 @@ impl KernelObject {
         self.obj_type
     }
 }
+/// Decision for access check: check if a thread has access to an object.
+///
+/// US1: permission required. US5: public bypasses.
+/// Returns true if access granted.
+pub fn access_decide(is_public: bool, has_perm_bit: bool) -> bool {
+    is_public || has_perm_bit
+}
+/// Decision for object validation: type check, access check, init check.
+///
+/// US1: permission. US4: type match. US5: supervisor. US7: init state.
+/// Returns Ok(()) on success, Err(code) on failure.
+/// init_check: 0=MustBeInit, -1=MustNotBeInit, 1=DontCare
+pub fn validate_decide(
+    type_matches: bool,
+    has_access: bool,
+    is_initialized: bool,
+    init_check: i8,
+) -> Result<(), i32> {
+    if !type_matches {
+        return Err(EBADF);
+    }
+    if !has_access {
+        return Err(EPERM);
+    }
+    if init_check == 0 {
+        if !is_initialized {
+            return Err(EINVAL);
+        }
+    } else if init_check == -1 {
+        if is_initialized {
+            return Err(EADDRINUSE);
+        }
+    }
+    Ok(())
+}

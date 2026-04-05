@@ -70,7 +70,7 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
-          west sdk install
+          west sdk install -t arm-zephyr-eabi
 
       - name: Setup SDK paths
         run: |
@@ -277,7 +277,7 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
-          west sdk install
+          west sdk install -t arm-zephyr-eabi
 
       - name: Setup SDK paths
         run: |

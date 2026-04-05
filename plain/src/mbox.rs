@@ -28,6 +28,32 @@
 //!   MB5: data exchange: actual size = min(tx_size, rx_buf_size)
 //!   MB6: no overflow in size calculations
 use crate::error::*;
+/// Lightweight send validation — stateless, no Mbox object needed.
+///
+/// Verified properties (MB1):
+/// - size > 0 ==> Ok
+/// - size == 0 ==> Err (EINVAL)
+pub fn validate_send_decide(size: u32) -> i32 {
+    if size == 0 { EINVAL } else { OK }
+}
+/// Lightweight match check — stateless, no Mbox object needed.
+///
+/// Simplified ID matching: 0 means K_ANY (match any).
+///
+/// Verified properties (MB4):
+/// - send_id == 0 || recv_id == 0 || send_id == recv_id ==> true
+/// - otherwise ==> false
+pub fn match_check_decide(send_id: u32, recv_id: u32) -> bool {
+    send_id == 0 || recv_id == 0 || send_id == recv_id
+}
+/// Lightweight data exchange size computation — stateless, no Mbox object needed.
+///
+/// Verified properties (MB5, MB6):
+/// - result == min(tx_size, rx_buf_size)
+/// - result <= tx_size && result <= rx_buf_size
+pub fn data_exchange_decide(tx_size: u32, rx_buf_size: u32) -> u32 {
+    if tx_size < rx_buf_size { tx_size } else { rx_buf_size }
+}
 /// Sentinel value representing "any thread" (K_ANY in Zephyr).
 /// mailbox.c:117-120: tx_target_thread == K_ANY || rx_source_thread == K_ANY
 pub const K_ANY: u32 = 0u32;

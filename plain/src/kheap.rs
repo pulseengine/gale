@@ -148,3 +148,25 @@ impl KHeap {
         self.allocated_bytes == 0
     }
 }
+/// Decision for kheap alloc: validate and compute new allocated_bytes.
+///
+/// KH2: alloc success. KH3: full returns ENOMEM. KH6: no overflow.
+/// Returns Ok(new_allocated) or Err(error_code).
+pub fn alloc_decide(
+    allocated_bytes: u32,
+    capacity: u32,
+    bytes: u32,
+) -> Result<u32, i32> {
+    if bytes <= capacity - allocated_bytes {
+        Ok(allocated_bytes + bytes)
+    } else {
+        Err(ENOMEM)
+    }
+}
+/// Decision for kheap free: validate and compute new allocated_bytes.
+///
+/// KH4: free success. No underflow.
+/// Returns Ok(new_allocated) or Err(EINVAL).
+pub fn free_decide(allocated_bytes: u32, bytes: u32) -> Result<u32, i32> {
+    if bytes <= allocated_bytes { Ok(allocated_bytes - bytes) } else { Err(EINVAL) }
+}

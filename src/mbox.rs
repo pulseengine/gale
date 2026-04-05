@@ -34,6 +34,60 @@ use crate::error::*;
 verus! {
 
 // =====================================================================
+// Standalone decide functions for FFI
+// =====================================================================
+
+/// Lightweight send validation — stateless, no Mbox object needed.
+///
+/// Verified properties (MB1):
+/// - size > 0 ==> Ok
+/// - size == 0 ==> Err (EINVAL)
+pub fn validate_send_decide(size: u32) -> (result: i32)
+    ensures
+        size > 0 ==> result == OK,
+        size == 0 ==> result == EINVAL,
+{
+    if size == 0 {
+        EINVAL
+    } else {
+        OK
+    }
+}
+
+/// Lightweight match check — stateless, no Mbox object needed.
+///
+/// Simplified ID matching: 0 means K_ANY (match any).
+///
+/// Verified properties (MB4):
+/// - send_id == 0 || recv_id == 0 || send_id == recv_id ==> true
+/// - otherwise ==> false
+pub fn match_check_decide(send_id: u32, recv_id: u32) -> (result: bool)
+    ensures
+        (send_id == 0 || recv_id == 0 || send_id == recv_id) ==> result == true,
+        (send_id != 0 && recv_id != 0 && send_id != recv_id) ==> result == false,
+{
+    send_id == 0 || recv_id == 0 || send_id == recv_id
+}
+
+/// Lightweight data exchange size computation — stateless, no Mbox object needed.
+///
+/// Verified properties (MB5, MB6):
+/// - result == min(tx_size, rx_buf_size)
+/// - result <= tx_size && result <= rx_buf_size
+pub fn data_exchange_decide(tx_size: u32, rx_buf_size: u32) -> (result: u32)
+    ensures
+        result == if tx_size < rx_buf_size { tx_size } else { rx_buf_size },
+        result <= tx_size,
+        result <= rx_buf_size,
+{
+    if tx_size < rx_buf_size {
+        tx_size
+    } else {
+        rx_buf_size
+    }
+}
+
+// =====================================================================
 // Constants for thread ID matching
 // =====================================================================
 
