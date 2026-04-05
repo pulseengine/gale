@@ -53,7 +53,7 @@ pub struct CpuMaskResult {
 /// Spec-level power-of-2 check: exactly one bit set.
 /// A value `m` has exactly one bit iff `m != 0 && (m & (m - 1)) == 0`.
 pub open spec fn is_power_of_two(m: u32) -> bool {
-    m != 0 && (m & (m - 1)) == 0
+    m != 0 && (m & (m - 1u32)) == 0u32
 }
 
 /// Spec-level mask computation.
@@ -147,7 +147,7 @@ pub fn cpu_pin_compute(cpu_id: u32, max_cpus: u32) -> (result: Result<u32, i32>)
     ensures
         // Bounds failure
         (cpu_id >= max_cpus || max_cpus > 32) ==> result.is_err(),
-        result.is_err() ==> result == Err(EINVAL),
+        result.is_err() ==> result == Err::<u32, i32>(EINVAL),
         // Success: result is a single-bit mask
         result.is_ok() ==> {
             let m = result.unwrap();

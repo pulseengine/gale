@@ -770,8 +770,7 @@ Theorem init_at_limit_give_saturates :
     sem_inv cnt lim.
 Proof.
   intros lim Hlim.
-  unfold sem_inv. repeat split; try lia.
-  intro. lia.
+  unfold sem_inv. repeat split; try lia; intro; lia.
 Qed.
 
 (** Scenario: init(1, L) then take then give — full roundtrip.
