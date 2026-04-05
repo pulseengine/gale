@@ -282,31 +282,8 @@ pub proof fn lemma_encode_decode_roundtrip(cpu: u32, thread: usize)
             thread & CPU_MASK == 0usize;
 }
 
-/// SV2: spin_lock_valid characterisation (free or different-CPU -> valid).
-pub proof fn lemma_lock_valid_characterisation(thread_cpu: usize, cpu: u32)
-    requires
-        cpu_id_valid(cpu),
-    ensures
-        spin_lock_valid(thread_cpu, cpu) == (
-            thread_cpu == 0 || (thread_cpu & CPU_MASK) != (cpu as usize)
-        ),
-{
-}
-
-/// SV3: spin_unlock_valid returns true iff owner matches.
-pub proof fn lemma_unlock_valid_iff_owner(
-    thread_cpu: usize,
-    cpu: u32,
-    thread: usize,
-)
-    requires
-        cpu_id_valid(cpu),
-        thread_ptr_valid(thread),
-    ensures
-        spin_unlock_valid(thread_cpu, cpu, thread) == (
-            thread_cpu == encode_owner_spec(cpu, thread)
-        ),
-{
-}
+// SV2 (lock_valid characterisation) and SV3 (unlock_valid iff owner)
+// are encoded directly in the exec functions' ensures clauses.
+// Standalone proof lemmas omitted: Verus proof fns cannot call exec fns.
 
 } // verus!
