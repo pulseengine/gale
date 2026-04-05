@@ -168,6 +168,20 @@ pub fn cpu_pin_compute(cpu_id: u32, max_cpus: u32) -> (result: Result<u32, i32>)
     // cpu_id < 32 guaranteed by the bounds check above (max_cpus <= 32)
     let mask: u32 = 1u32 << cpu_id;
 
+    // Proof hint: 1 << cpu_id is a power of two for any cpu_id < 32
+    proof {
+        assert(mask == 1u32 || mask == 2u32 || mask == 4u32 || mask == 8u32
+            || mask == 16u32 || mask == 32u32 || mask == 64u32 || mask == 128u32
+            || mask == 256u32 || mask == 512u32 || mask == 1024u32 || mask == 2048u32
+            || mask == 4096u32 || mask == 8192u32 || mask == 16384u32 || mask == 32768u32
+            || mask == 65536u32 || mask == 131072u32 || mask == 262144u32 || mask == 524288u32
+            || mask == 1048576u32 || mask == 2097152u32 || mask == 4194304u32 || mask == 8388608u32
+            || mask == 16777216u32 || mask == 33554432u32 || mask == 67108864u32 || mask == 134217728u32
+            || mask == 268435456u32 || mask == 536870912u32 || mask == 1073741824u32 || mask == 2147483648u32
+        ) by(bit_vector)
+            requires cpu_id < 32u32, mask == 1u32 << cpu_id;
+    }
+
     Ok(mask)
 }
 

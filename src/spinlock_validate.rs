@@ -162,7 +162,12 @@ pub fn spin_unlock_valid(
     ensures
         valid == (thread_cpu == encode_owner_spec(current_cpu_id, current_thread)),
 {
-    let expected = (current_cpu_id as usize) | current_thread;
+    let cpu = current_cpu_id as usize;
+    let expected = cpu | current_thread;
+    // OR is commutative: cpu | thread == thread | cpu == encode_owner_spec
+    proof {
+        assert(cpu | current_thread == current_thread | cpu) by(bit_vector);
+    }
     thread_cpu == expected
 }
 
@@ -199,21 +204,19 @@ pub fn spin_lock_compute_owner(
     // Proof hint: since thread's low bits are 0 and cpu fits in those bits,
     // OR is the same as addition, and the fields don't overlap.
     proof {
-        // thread & CPU_MASK == 0 (from thread_ptr_valid)
-        // cpu < MAX_CPUS == CPU_MASK + 1, so cpu <= CPU_MASK
-        // Therefore (thread | cpu) & CPU_MASK == cpu
-        // and      (thread | cpu) & !CPU_MASK == thread
-        //
-        // Also thread != 0 so thread | cpu != 0.
-        assert(current_thread & CPU_MASK == 0) by(bit_vector)
-            requires current_thread & CPU_MASK == 0usize;
         let cpu = current_cpu_id as usize;
-        assert((current_thread | cpu) & CPU_MASK == cpu) by(bit_vector)
-            requires current_thread & CPU_MASK == 0usize, cpu & !CPU_MASK == 0usize;
-        assert((current_thread | cpu) & !CPU_MASK == current_thread) by(bit_vector)
-            requires current_thread & CPU_MASK == 0usize;
+        let owner = current_thread | cpu;
+        // Bridge: CPU_MASK == 3
+        assert(CPU_MASK == 3usize);
+        // BV proofs with literal mask
+        assert((current_thread | cpu) & 3usize == cpu) by(bit_vector)
+            requires current_thread & 3usize == 0usize, cpu & !3usize == 0usize;
+        assert((current_thread | cpu) & !3usize == current_thread) by(bit_vector)
+            requires current_thread & 3usize == 0usize;
         assert((current_thread | cpu) != 0usize) by(bit_vector)
             requires current_thread != 0usize;
+        // OR commutativity: cpu | thread == thread | cpu
+        assert(cpu | current_thread == current_thread | cpu) by(bit_vector);
     }
     (current_cpu_id as usize) | current_thread
 }
@@ -244,20 +247,21 @@ pub proof fn lemma_encoding_injective(
     let o2 = thread2 | (cpu2 as usize);
 
     if cpu1 != cpu2 {
-        assert(o1 & CPU_MASK != o2 & CPU_MASK) by(bit_vector)
+        assert(o1 & 3usize != o2 & 3usize) by(bit_vector)
             requires
-                thread1 & CPU_MASK == 0usize,
-                thread2 & CPU_MASK == 0usize,
-                (cpu1 as usize) & !CPU_MASK == 0usize,
-                (cpu2 as usize) & !CPU_MASK == 0usize,
+                thread1 & 3usize == 0usize,
+                thread2 & 3usize == 0usize,
+                (cpu1 as usize) & !3usize == 0usize,
+                (cpu2 as usize) & !3usize == 0usize,
                 cpu1 as usize != cpu2 as usize;
+        assert(CPU_MASK == 3usize);
         assert(o1 != o2);
     } else {
         // cpu1 == cpu2 && thread1 != thread2
-        assert(o1 & !CPU_MASK != o2 & !CPU_MASK) by(bit_vector)
+        assert(o1 & !3usize != o2 & !3usize) by(bit_vector)
             requires
-                thread1 & CPU_MASK == 0usize,
-                thread2 & CPU_MASK == 0usize,
+                thread1 & 3usize == 0usize,
+                thread2 & 3usize == 0usize,
                 thread1 != thread2;
         assert(o1 != o2);
     }
@@ -273,13 +277,14 @@ pub proof fn lemma_encode_decode_roundtrip(cpu: u32, thread: usize)
         decode_thread_spec(encode_owner_spec(cpu, thread)) == thread,
 {
     let owner = thread | (cpu as usize);
-    assert(owner & CPU_MASK == cpu as usize) by(bit_vector)
+    assert(owner & 3usize == cpu as usize) by(bit_vector)
         requires
-            thread & CPU_MASK == 0usize,
-            (cpu as usize) & !CPU_MASK == 0usize;
-    assert(owner & !CPU_MASK == thread) by(bit_vector)
+            thread & 3usize == 0usize,
+            (cpu as usize) & !3usize == 0usize;
+    assert(owner & !3usize == thread) by(bit_vector)
         requires
-            thread & CPU_MASK == 0usize;
+            thread & 3usize == 0usize;
+    assert(CPU_MASK == 3usize);
 }
 
 // SV2 (lock_valid characterisation) and SV3 (unlock_valid iff owner)

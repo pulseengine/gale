@@ -96,7 +96,8 @@ pub fn spin_unlock_valid(
     current_cpu_id: u32,
     current_thread: usize,
 ) -> bool {
-    let expected = (current_cpu_id as usize) | current_thread;
+    let cpu = current_cpu_id as usize;
+    let expected = cpu | current_thread;
     thread_cpu == expected
 }
 /// Compute the owner tag for a spinlock.

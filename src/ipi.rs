@@ -115,6 +115,8 @@ pub fn compute_ipi_mask(
     while idx < num_cpus
         invariant
             num_cpus <= max_cpus,
+        decreases
+            num_cpus - idx,
             max_cpus <= MAX_CPUS,
             MAX_CPUS <= 32,
             current_cpu < num_cpus,
