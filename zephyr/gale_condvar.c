@@ -70,7 +70,7 @@ int z_impl_k_condvar_signal(struct k_condvar *condvar)
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_condvar, signal, condvar);
 
 	/* Extract: is the wait queue non-empty? */
-	bool has_waiter = !z_waitq_is_empty(&condvar->wait_q);
+	bool has_waiter = (z_waitq_head(&condvar->wait_q) != NULL);
 
 	/* Decide: Rust determines NOOP or WAKE_ONE */
 	struct gale_condvar_signal_decision d =
@@ -114,16 +114,15 @@ int z_impl_k_condvar_broadcast(struct k_condvar *condvar)
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_condvar, broadcast, condvar);
 
-	/* Extract: current wait queue length */
+	/* Extract: current wait queue length (bounded by MAX_NUM_THREADS) */
 	uint32_t num_waiters = 0;
 	{
-		struct k_thread *t = z_waitq_head(&condvar->wait_q);
+		sys_dnode_t *node;
 
-		while (t != NULL) {
+		SYS_DLIST_FOR_EACH_NODE(&condvar->wait_q, node) {
 			num_waiters++;
-			t = (struct k_thread *)t->base.pended_on;
-			/* guard against corrupt list */
-			if (num_waiters > CONFIG_MAX_THREAD_BYTES * 8U) {
+			/* Safety bound: Zephyr has a finite thread pool */
+			if (num_waiters > 256U) {
 				break;
 			}
 		}
