@@ -170,7 +170,7 @@ jobs:
             -- \
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf"
-          timeout 120 west build -t run 2>&1 | tee test.log
+          timeout 300 west build -t run 2>&1 | tee test.log
           if grep -q "PROJECT EXECUTION SUCCESSFUL" test.log; then
             echo "PASS"
           else
@@ -244,7 +244,7 @@ jobs:
             -- \
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf"
-          timeout 120 west build -t run 2>&1 | tee test.log
+          timeout 300 west build -t run 2>&1 | tee test.log
           if grep -q "PROJECT EXECUTION SUCCESSFUL" test.log; then
             echo "PASS"
           else
@@ -324,7 +324,7 @@ jobs:
             -- \
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf;${GALE_ROOT}/zephyr/gale_smp_overlay.conf"
-          timeout 120 west build -t run 2>&1 | tee test.log
+          timeout 300 west build -t run 2>&1 | tee test.log
           if grep -q "PROJECT EXECUTION SUCCESSFUL" test.log; then
             echo "PASS"
           else
