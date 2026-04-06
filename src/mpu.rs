@@ -121,8 +121,8 @@ pub fn regions_overlap(r1: &MpuRegion, r2: &MpuRegion) -> (result: bool)
         r1.size > 0,
         r2.size > 0,
         // Valid regions cannot wrap the 32-bit address space
-        r1.base as u64 + r1.size as u64 <= 0x1_0000_0000u64,
-        r2.base as u64 + r2.size as u64 <= 0x1_0000_0000u64,
+        r1.base as int + r1.size as int <= 0x1_0000_0000,
+        r2.base as int + r2.size as int <= 0x1_0000_0000,
     ensures
         result == (
             r1.base < r2.base + r2.size
@@ -151,7 +151,7 @@ pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
         count <= MAX_REGIONS_V8,
         forall|i: int| 0 <= i < count as int ==> (
             regions@[i].size > 0
-            && regions@[i].base as u64 + regions@[i].size as u64 <= 0x1_0000_0000u64
+            && regions@[i].base as int + regions@[i].size as int <= 0x1_0000_0000
         ),
     ensures
         result ==> (
@@ -185,7 +185,7 @@ pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
             ),
             forall|k: int| 0 <= k < count as int ==> (
                 regions@[k].size > 0
-                && regions@[k].base as u64 + regions@[k].size as u64 <= 0x1_0000_0000u64
+                && regions@[k].base as int + regions@[k].size as int <= 0x1_0000_0000
             ),
     {
         let r = &regions[i as usize];
@@ -210,7 +210,7 @@ pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
             ),
             forall|k: int| 0 <= k < count as int ==> (
                 regions@[k].size > 0
-                && regions@[k].base as u64 + regions@[k].size as u64 <= 0x1_0000_0000u64
+                && regions@[k].base as int + regions@[k].size as int <= 0x1_0000_0000
             ),
             forall|a: int, b: int|
                 0 <= a < i as int && 0 <= b < count as int && a != b ==> !(
@@ -233,7 +233,7 @@ pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
                 ),
                 forall|k: int| 0 <= k < count as int ==> (
                     regions@[k].size > 0
-                    && regions@[k].base as u64 + regions@[k].size as u64 <= 0x1_0000_0000u64
+                    && regions@[k].base as int + regions@[k].size as int <= 0x1_0000_0000
                 ),
                 forall|a: int, b: int|
                     0 <= a < i as int && 0 <= b < count as int && a != b ==> !(
@@ -283,8 +283,8 @@ pub proof fn lemma_overlap_symmetric(r1: MpuRegion, r2: MpuRegion)
     requires
         r1.size > 0,
         r2.size > 0,
-        r1.base as u64 + r1.size as u64 <= 0x1_0000_0000u64,
-        r2.base as u64 + r2.size as u64 <= 0x1_0000_0000u64,
+        r1.base as int + r1.size as int <= 0x1_0000_0000,
+        r2.base as int + r2.size as int <= 0x1_0000_0000,
     ensures
         regions_overlap(&r1, &r2) == regions_overlap(&r2, &r1),
 {
