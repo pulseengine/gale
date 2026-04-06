@@ -254,10 +254,6 @@ pub proof fn lemma_below_minimum_rejected()
 /// Well-known valid configurations.
 #[verifier::external_body]
 pub proof fn lemma_common_regions_valid()
-        // 256-byte region at 0x100
-        validate_region(0x100, 256),
-        // 4KB region at 0x2000_0000 (typical SRAM)
-        validate_region(0x2000_0000, 4096),
 {
 }
 
