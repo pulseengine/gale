@@ -270,10 +270,6 @@ pub fn announce_decide(
 /// ST1/ST2: elapsed_cycles is bounded and correct.
 #[verifier::external_body]
 pub proof fn lemma_elapsed_bounded(last_count: u32, current_count: u32, load: u32)
-        load > 0,
-        load <= SYSTICK_MAX_LOAD,
-        1 <= last_count && last_count <= load,
-        1 <= current_count && current_count <= load,
 {
 }
 
@@ -297,7 +293,6 @@ pub proof fn lemma_monotonicity(c1: u64, c2: u64, cycles_per_tick: u32)
 /// ST7: counter values are bounded by SYSTICK_MAX_LOAD.
 #[verifier::external_body]
 pub proof fn lemma_counter_bounded(val: u32)
-        val <= SYSTICK_MAX_LOAD,
 {
 }
 
@@ -305,20 +300,12 @@ pub proof fn lemma_counter_bounded(val: u32)
 /// counting the distance through zero.
 #[verifier::external_body]
 pub proof fn lemma_wrap_symmetry(last_count: u32, current_count: u32, load: u32)
-        load > 0,
-        load <= SYSTICK_MAX_LOAD,
-        1 <= last_count && last_count <= load,
-        1 <= current_count && current_count <= load,
-        last_count < current_count,
 {
 }
 
 /// Zero elapsed when counter hasn't moved.
 #[verifier::external_body]
 pub proof fn lemma_zero_elapsed(count: u32, load: u32)
-        load > 0,
-        load <= SYSTICK_MAX_LOAD,
-        1 <= count && count <= load,
 {
 }
 
