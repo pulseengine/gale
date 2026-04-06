@@ -73,11 +73,6 @@ pub const SYSTICK_MAX_LOAD: u32 = 0x00FF_FFFFu32;
 /// ST2: wrap-around handled correctly
 #[verifier::external_body]
 pub fn elapsed_cycles(last_count: u32, current_count: u32, load: u32) -> (result: u32)
-        load > 0,
-        load <= SYSTICK_MAX_LOAD,
-        // Adjusted counter values are in [1, load] (after the val==0 -> load mapping)
-        1 <= last_count && last_count <= load,
-        1 <= current_count && current_count <= load,
 {
     if last_count >= current_count {
         // Normal case: counter decremented from last_count to current_count

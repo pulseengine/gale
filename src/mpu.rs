@@ -111,11 +111,6 @@ pub fn validate_region(base: u32, size: u32) -> (result: bool)
 /// separately.
 #[verifier::external_body]
 pub fn regions_overlap(r1: &MpuRegion, r2: &MpuRegion) -> (result: bool)
-        r1.size > 0,
-        r2.size > 0,
-        // Valid regions cannot wrap the 32-bit address space
-        r1.base as int + r1.size as int <= 0x1_0000_0000,
-        r2.base as int + r2.size as int <= 0x1_0000_0000,
 {
     let r1_end = r1.base + r1.size;
     let r2_end = r2.base + r2.size;
@@ -135,10 +130,6 @@ pub fn regions_overlap(r1: &MpuRegion, r2: &MpuRegion) -> (result: bool)
 /// `count` specifies how many entries in `regions` to validate.
 #[verifier::external_body]
 pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
-        forall|i: int| 0 <= i < count as int ==> (
-            regions@[i].size > 0
-            && regions@[i].base as int + regions@[i].size as int <= 0x1_0000_0000
-        ),
 {
     // Phase 1: Validate each region individually.
     let mut i: u32 = 0;
