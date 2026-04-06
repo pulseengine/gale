@@ -155,7 +155,7 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
-          west sdk install -t arm-zephyr-eabi
+          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi && break || sleep 5; done
 
       - name: Build and run test
         env:
@@ -229,7 +229,7 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
-          west sdk install -t arm-zephyr-eabi
+          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi && break || sleep 5; done
 
       - name: Build and run test
         env:
@@ -309,7 +309,7 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
-          west sdk install -t x86_64-zephyr-elf
+          for attempt in 1 2 3; do west sdk install -t x86_64-zephyr-elf && break || sleep 5; done
 
       - name: Build and run test
         env:
@@ -364,7 +364,7 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
-          west sdk install -t arm-zephyr-eabi
+          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi && break || sleep 5; done
 
       - name: Setup SDK paths
         run: |
