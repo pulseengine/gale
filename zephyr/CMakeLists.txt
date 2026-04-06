@@ -83,6 +83,18 @@ else()
   set(RUST_TARGET "")
 endif()
 
+# x86 targets need static relocation model — the default PIC mode
+# generates .got.plt sections that the Zephyr linker script discards,
+# causing link failures.
+if(CONFIG_X86)
+  if(GALE_CARGO_RUSTFLAGS_ENV STREQUAL "")
+    set(GALE_CARGO_RUSTFLAGS_ENV "RUSTFLAGS=-Crelocation-model=static")
+  else()
+    string(REPLACE "RUSTFLAGS=" "RUSTFLAGS=-Crelocation-model=static "
+           GALE_CARGO_RUSTFLAGS_ENV "${GALE_CARGO_RUSTFLAGS_ENV}")
+  endif()
+endif()
+
 # --------------------------------------------------------------------------
 # Build Rust static library via cargo
 # --------------------------------------------------------------------------
