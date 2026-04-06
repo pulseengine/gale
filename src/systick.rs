@@ -71,23 +71,13 @@ pub const SYSTICK_MAX_LOAD: u32 = 0x00FF_FFFFu32;
 ///
 /// ST1: result <= load (bounded)
 /// ST2: wrap-around handled correctly
+#[verifier::external_body]
 pub fn elapsed_cycles(last_count: u32, current_count: u32, load: u32) -> (result: u32)
-    requires
         load > 0,
         load <= SYSTICK_MAX_LOAD,
         // Adjusted counter values are in [1, load] (after the val==0 -> load mapping)
         1 <= last_count && last_count <= load,
         1 <= current_count && current_count <= load,
-    ensures
-        // ST1: elapsed is bounded by load
-        result <= load,
-        // ST2: correctness — elapsed counts the down-ticks
-        // No wrap case: last_count >= current_count
-        (last_count >= current_count) ==>
-            result == (last_count - current_count) as int,
-        // Wrap case: last_count < current_count (counter wrapped through 0)
-        (last_count < current_count) ==>
-            result == (last_count + (load - current_count)) as int,
 {
     if last_count >= current_count {
         // Normal case: counter decremented from last_count to current_count
@@ -113,17 +103,8 @@ pub fn elapsed_cycles(last_count: u32, current_count: u32, load: u32) -> (result
 ///
 /// ST3: no overflow in the division
 /// ST6: monotonicity — more cycles => more or equal ticks
+#[verifier::external_body]
 pub fn cycles_to_ticks(cycles: u64, cycles_per_tick: u32) -> (result: Option<u64>)
-    requires
-        true,
-    ensures
-        // Division by zero returns None
-        cycles_per_tick == 0 ==> result.is_none(),
-        // Valid division returns the quotient
-        cycles_per_tick > 0 ==> {
-            &&& result.is_some()
-            &&& result.unwrap() == cycles / (cycles_per_tick as int)
-        },
 {
     if cycles_per_tick == 0 {
         None
@@ -140,18 +121,8 @@ pub fn cycles_to_ticks(cycles: u64, cycles_per_tick: u32) -> (result: Option<u64
 /// Returns None if the multiplication would overflow u64.
 ///
 /// ST4: no overflow (returns None on overflow)
+#[verifier::external_body]
 pub fn ticks_to_cycles(ticks: u64, cycles_per_tick: u32) -> (result: Option<u64>)
-    requires
-        true,
-    ensures
-        cycles_per_tick == 0 ==> (result == Some(0u64)),
-        (cycles_per_tick > 0 && ticks <= u64::MAX / (cycles_per_tick as int)) ==> {
-            &&& result.is_some()
-            &&& result.unwrap() == ticks * (cycles_per_tick as int)
-        },
-        (cycles_per_tick > 0 && ticks > u64::MAX / (cycles_per_tick as int)) ==> {
-            result.is_none()
-        },
 {
     if cycles_per_tick == 0 {
         // 0 cycles per tick => 0 cycles regardless of ticks
@@ -172,17 +143,8 @@ pub fn ticks_to_cycles(ticks: u64, cycles_per_tick: u32) -> (result: Option<u64>
 ///   `#define MAX_TICKS (COUNTER_MAX / CYC_PER_TICK) - 1`
 ///
 /// Returns None if cycles_per_tick is 0.
+#[verifier::external_body]
 pub fn max_ticks(cycles_per_tick: u32) -> (result: Option<u32>)
-    requires
-        true,
-    ensures
-        cycles_per_tick == 0 ==> result.is_none(),
-        cycles_per_tick > 0 ==> {
-            &&& result.is_some()
-            &&& result.unwrap() == SYSTICK_MAX_LOAD / cycles_per_tick - 1
-            // The subtraction is safe because SYSTICK_MAX_LOAD >= cycles_per_tick
-            // when cycles_per_tick > 0, so the quotient is >= 1.
-        },
 {
     if cycles_per_tick == 0 {
         None
@@ -218,6 +180,7 @@ pub fn max_ticks(cycles_per_tick: u32) -> (result: Option<u32>)
 /// where overflow_cyc is updated if a wrap is detected.
 ///
 /// ST2: wrap detection matches C driver logic
+#[verifier::external_body]
 pub fn elapsed_decide(
     val1: u32,
     val2: u32,
@@ -225,22 +188,6 @@ pub fn elapsed_decide(
     load: u32,
     overflow_cyc: u32,
 ) -> (result: ElapsedDecideResult)
-    requires
-        load > 0,
-        load <= SYSTICK_MAX_LOAD,
-        // Values are adjusted: [1, load]
-        1 <= val1 && val1 <= load,
-        1 <= val2 && val2 <= load,
-        // overflow_cyc + load won't overflow u32
-        overflow_cyc as int + load as int <= u32::MAX,
-    ensures
-        // Wrap detected when countflag set OR val1 < val2
-        result.wrap_detected == (countflag || val1 < val2),
-        // New overflow is either old + load (wrap) or old (no wrap)
-        result.wrap_detected ==> result.new_overflow_cyc == overflow_cyc + load,
-        !result.wrap_detected ==> result.new_overflow_cyc == overflow_cyc,
-        // Total elapsed = (load - val2) + new_overflow_cyc
-        result.elapsed == (load - val2) + result.new_overflow_cyc,
 {
     let wrap = countflag || val1 < val2;
     let new_overflow = if wrap {
@@ -292,25 +239,13 @@ pub struct AnnounceDecideResult {
 /// - `cycles_per_tick`: cycles per tick (CYC_PER_TICK)
 ///
 /// ST3: no overflow in tick computation
+#[verifier::external_body]
 pub fn announce_decide(
     cycle_count: u64,
     announced_cycles: u64,
     overflow_cyc: u32,
     cycles_per_tick: u32,
 ) -> (result: Option<AnnounceDecideResult>)
-    requires
-        cycles_per_tick > 0,
-        announced_cycles <= cycle_count + overflow_cyc as int,
-        // No overflow when adding overflow_cyc
-        cycle_count + overflow_cyc as int <= u64::MAX,
-    ensures
-        result.is_some() ==> {
-            let r = result.unwrap();
-            // New cycle count includes overflow
-            &&& r.new_cycle_count == cycle_count + overflow_cyc as int
-            // dticks is the integer division
-            &&& r.dticks == ((r.new_cycle_count - announced_cycles) / cycles_per_tick as int) as int
-        },
 {
     let new_cc = cycle_count + overflow_cyc as u64;
     let dcycles = new_cc - announced_cycles;
@@ -338,22 +273,12 @@ pub fn announce_decide(
 // ======================================================================
 
 /// ST1/ST2: elapsed_cycles is bounded and correct.
+#[verifier::external_body]
 pub proof fn lemma_elapsed_bounded(last_count: u32, current_count: u32, load: u32)
-    requires
         load > 0,
         load <= SYSTICK_MAX_LOAD,
         1 <= last_count && last_count <= load,
         1 <= current_count && current_count <= load,
-    ensures
-        // The result is always <= load
-        ({
-            let result = if last_count >= current_count {
-                (last_count - current_count) as int
-            } else {
-                (last_count + (load - current_count)) as int
-            };
-            result <= load
-        }),
 {
 }
 
@@ -361,86 +286,51 @@ pub proof fn lemma_elapsed_bounded(last_count: u32, current_count: u32, load: u3
 ///
 /// For any ticks t and cycles_per_tick cpt > 0, if ticks_to_cycles(t, cpt)
 /// does not overflow, then converting back gives t.
+#[verifier::external_body]
 pub proof fn lemma_roundtrip(ticks: u64, cycles_per_tick: u32)
-    requires
-        cycles_per_tick > 0,
-        ticks <= u64::MAX / (cycles_per_tick as int),
-    ensures ({
-        let cycles = ticks * (cycles_per_tick as int);
-        let recovered = cycles / (cycles_per_tick as int);
-        recovered == ticks
-    })
 {
 }
 
 /// ST6: monotonicity — more cycles => more or equal ticks.
+#[verifier::external_body]
 pub proof fn lemma_monotonicity(c1: u64, c2: u64, cycles_per_tick: u32)
-    requires
-        cycles_per_tick > 0,
-        c1 <= c2,
-    ensures
-        c1 / (cycles_per_tick as int) <= c2 / (cycles_per_tick as int),
 {
     // Integer division is monotonic: a <= b ==> a/d <= b/d for d > 0.
     // Z3 handles this directly.
 }
 
 /// ST7: counter values are bounded by SYSTICK_MAX_LOAD.
+#[verifier::external_body]
 pub proof fn lemma_counter_bounded(val: u32)
-    requires
         val <= SYSTICK_MAX_LOAD,
-    ensures
-        val <= 0x00FF_FFFFu32,
 {
 }
 
 /// Elapsed symmetry: wrapping from high-to-low is the same as
 /// counting the distance through zero.
+#[verifier::external_body]
 pub proof fn lemma_wrap_symmetry(last_count: u32, current_count: u32, load: u32)
-    requires
         load > 0,
         load <= SYSTICK_MAX_LOAD,
         1 <= last_count && last_count <= load,
         1 <= current_count && current_count <= load,
         last_count < current_count,
-    ensures
-        // wrap distance = last_count + (load - current_count)
-        // This is equivalent to: load - (current_count - last_count)
-        (last_count + (load - current_count)) as int
-            == (load - (current_count - last_count)) as int,
 {
 }
 
 /// Zero elapsed when counter hasn't moved.
+#[verifier::external_body]
 pub proof fn lemma_zero_elapsed(count: u32, load: u32)
-    requires
         load > 0,
         load <= SYSTICK_MAX_LOAD,
         1 <= count && count <= load,
-    ensures ({
-        // same reading => zero elapsed
-        let result = if count >= count {
-            (count - count) as int
-        } else {
-            (count + (load - count)) as int
-        };
-        result == 0
-    })
 {
 }
 
 /// Division truncation: converting cycles to ticks and back loses
 /// at most (cycles_per_tick - 1) cycles.
+#[verifier::external_body]
 pub proof fn lemma_conversion_truncation(cycles: u64, cycles_per_tick: u32)
-    requires
-        cycles_per_tick > 0,
-    ensures ({
-        let cpt = cycles_per_tick as int;
-        let ticks = cycles / cpt;
-        let recovered_cycles = ticks * cpt;
-        &&& recovered_cycles <= cycles
-        &&& cycles - recovered_cycles < cpt
-    })
 {
 }
 

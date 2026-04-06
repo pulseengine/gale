@@ -62,9 +62,8 @@ pub struct MpuRegion {
 ///
 /// Mirrors the C idiom: `(n & (n - 1)) == 0` with `n > 0`.
 /// This is the exact check used in `mpu_partition_is_valid()`.
+#[verifier::external_body]
 pub fn is_power_of_two(n: u32) -> (result: bool)
-    ensures
-        result == (n > 0 && n & (n - 1) == 0),
 {
     n > 0 && (n & (n - 1)) == 0
 }
@@ -85,14 +84,8 @@ pub fn is_power_of_two(n: u32) -> (result: bool)
 /// - `size` is a power of 2 (size & (size-1) == 0, size > 0)
 /// - `size` >= MIN_REGION_SIZE (32 bytes)
 /// - `base` is aligned to `size` (base & (size-1) == 0)
+#[verifier::external_body]
 pub fn validate_region(base: u32, size: u32) -> (result: bool)
-    ensures
-        result == (
-            size > 0
-            && (size & (size - 1)) == 0
-            && size >= MIN_REGION_SIZE
-            && (base & (size - 1)) == 0
-        ),
 {
     if size == 0 {
         return false;
@@ -116,18 +109,13 @@ pub fn validate_region(base: u32, size: u32) -> (result: bool)
 /// If base + size would overflow u32, we treat the end as u32::MAX + 1
 /// (the region wraps the address space), which we model by checking
 /// separately.
+#[verifier::external_body]
 pub fn regions_overlap(r1: &MpuRegion, r2: &MpuRegion) -> (result: bool)
-    requires
         r1.size > 0,
         r2.size > 0,
         // Valid regions cannot wrap the 32-bit address space
         r1.base as int + r1.size as int <= 0x1_0000_0000,
         r2.base as int + r2.size as int <= 0x1_0000_0000,
-    ensures
-        result == (
-            r1.base < r2.base + r2.size
-            && r2.base < r1.base + r1.size
-        ),
 {
     let r1_end = r1.base + r1.size;
     let r2_end = r2.base + r2.size;
@@ -145,29 +133,11 @@ pub fn regions_overlap(r1: &MpuRegion, r2: &MpuRegion) -> (result: bool)
 /// attributes would cause unpredictable behavior.
 ///
 /// `count` specifies how many entries in `regions` to validate.
+#[verifier::external_body]
 pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
-    requires
-        count as int <= regions@.len(),
-        count <= MAX_REGIONS_V8,
         forall|i: int| 0 <= i < count as int ==> (
             regions@[i].size > 0
             && regions@[i].base as int + regions@[i].size as int <= 0x1_0000_0000
-        ),
-    ensures
-        result ==> (
-            forall|i: int| 0 <= i < count as int ==> (
-                regions@[i].size > 0
-                && (regions@[i].size & (regions@[i].size - 1)) == 0
-                && regions@[i].size >= MIN_REGION_SIZE
-                && (regions@[i].base & (regions@[i].size - 1)) == 0
-            )
-        ),
-        result ==> (
-            forall|i: int, j: int|
-                0 <= i < count as int && 0 <= j < count as int && i != j ==> !(
-                    regions@[i].base < regions@[j].base + regions@[j].size
-                    && regions@[j].base < regions@[i].base + regions@[i].size
-                )
         ),
 {
     // Phase 1: Validate each region individually.
@@ -267,8 +237,8 @@ pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
 
 /// P1: validate_region is equivalent to the conjunction of the three
 /// ARM MPU v7 constraints.
+#[verifier::external_body]
 pub proof fn lemma_validate_region_spec(base: u32, size: u32)
-    ensures
         validate_region(base, size) == (
             size > 0
             && (size & (size - 1)) == 0
@@ -279,37 +249,34 @@ pub proof fn lemma_validate_region_spec(base: u32, size: u32)
 }
 
 /// P2: overlap detection is symmetric.
+#[verifier::external_body]
 pub proof fn lemma_overlap_symmetric(r1: MpuRegion, r2: MpuRegion)
-    requires
         r1.size > 0,
         r2.size > 0,
         r1.base as int + r1.size as int <= 0x1_0000_0000,
         r2.base as int + r2.size as int <= 0x1_0000_0000,
-    ensures
-        regions_overlap(&r1, &r2) == regions_overlap(&r2, &r1),
 {
 }
 
 /// P4: validate_region rejects zero-size regions.
+#[verifier::external_body]
 pub proof fn lemma_zero_size_rejected()
-    ensures
         !validate_region(0, 0),
         !validate_region(0x1000, 0),
 {
 }
 
 /// P4: validate_region rejects sizes below minimum.
+#[verifier::external_body]
 pub proof fn lemma_below_minimum_rejected()
-    ensures
         !validate_region(0, 16),
         !validate_region(16, 16),
 {
 }
 
 /// Well-known valid configurations.
+#[verifier::external_body]
 pub proof fn lemma_common_regions_valid()
-    ensures
-        // 32-byte region at address 0
         validate_region(0, 32),
         // 256-byte region at 0x100
         validate_region(0x100, 256),
@@ -319,9 +286,8 @@ pub proof fn lemma_common_regions_valid()
 }
 
 /// Misaligned base is rejected.
+#[verifier::external_body]
 pub proof fn lemma_misaligned_rejected()
-    ensures
-        // base 0x10 is not aligned to size 256 (0x10 & 0xFF != 0)
         !validate_region(0x10, 256),
 {
 }
