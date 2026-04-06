@@ -86,11 +86,17 @@ endif()
 # x86 targets need static relocation model — the default PIC mode
 # generates .got.plt sections that the Zephyr linker script discards,
 # causing link failures.
+#
+# They also need code-model=small — the x86_64-unknown-none Rust target
+# defaults to code-model=kernel which assumes addresses in the upper
+# 2 GB of the 64-bit address space (sign-extended 32-bit immediates).
+# Zephyr maps the kernel in the lower address space, so we must use
+# code-model=small (addresses in the lower 2 GB) to match the C code.
 if(CONFIG_X86)
   if(GALE_CARGO_RUSTFLAGS_ENV STREQUAL "")
-    set(GALE_CARGO_RUSTFLAGS_ENV "RUSTFLAGS=-Crelocation-model=static")
+    set(GALE_CARGO_RUSTFLAGS_ENV "RUSTFLAGS=-Crelocation-model=static -Ccode-model=small")
   else()
-    string(REPLACE "RUSTFLAGS=" "RUSTFLAGS=-Crelocation-model=static "
+    string(REPLACE "RUSTFLAGS=" "RUSTFLAGS=-Crelocation-model=static -Ccode-model=small "
            GALE_CARGO_RUSTFLAGS_ENV "${GALE_CARGO_RUSTFLAGS_ENV}")
   endif()
 endif()

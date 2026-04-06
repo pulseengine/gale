@@ -57,8 +57,13 @@ atomic_val_t gale_ipi_mask_create(struct k_thread *thread)
 #if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
 			cpu_active[i] = _kernel.cpus[i].active ? 1 : 0;
 #else
-			/* Non-ARM: all online CPUs are considered active */
-			cpu_active[i] = 1;
+			/* Non-ARM: check _kernel.cpus[i].idle_thread to determine
+			 * whether the CPU has finished initialization (idle_thread
+			 * is set by z_init_cpu() before the CPU begins scheduling).
+			 * A NULL idle_thread means the CPU has not started yet and
+			 * should not receive an IPI.
+			 */
+			cpu_active[i] = (_kernel.cpus[i].idle_thread != NULL) ? 1 : 0;
 #endif
 		} else {
 			cpu_prios[i] = -1;  /* idle priority */

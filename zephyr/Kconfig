@@ -337,12 +337,15 @@ config GALE_KERNEL_BITARRAY
 config GALE_KERNEL_SPINLOCK_VALIDATE
 	bool "Use Gale formally verified spinlock validation"
 	depends on SMP
+	select SPIN_VALIDATE
 	help
 	  Replace spinlock_validate.c with the Gale formally verified
 	  Rust implementation. Lock/unlock validity checks and owner
 	  encoding are handled by verified Rust code. The actual
 	  spinlock acquire/release mechanism and IRQ handling remain
 	  native Zephyr C.
+	  Selecting SPIN_VALIDATE ensures struct k_spinlock contains the
+	  thread_cpu ownership field that the Gale shim reads and writes.
 	  Requires a Rust toolchain for the target architecture.
 
 config GALE_KERNEL_SPINLOCK

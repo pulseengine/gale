@@ -22,6 +22,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/spinlock.h>
+#include <kernel_internal.h>
 
 #include "gale_spinlock_validate.h"
 
@@ -41,6 +42,15 @@ bool z_spin_unlock_valid(struct k_spinlock *l)
 	 * matching the original C semantics.
 	 */
 	l->thread_cpu = 0;
+
+	/* Edge case: an ISR aborted _current, leaving it as a dummy
+	 * thread.  The spinlock was locked by the pre-abort thread,
+	 * so the owner check below would fail.  Skip validation in
+	 * this case, matching upstream spinlock_validate.c:29-32.
+	 */
+	if (arch_is_in_isr() && _current->base.thread_state & _THREAD_DUMMY) {
+		return true;
+	}
 
 	if (thread_cpu == 0) {
 		return false;

@@ -65,9 +65,15 @@ static const char *reason_to_str(unsigned int reason)
 
 FUNC_NORETURN void k_fatal_halt(unsigned int reason)
 {
-	ARG_UNUSED(reason);
+	/* Attempt arch-level halt so the error is visible on all targets.
+	 * arch_system_halt() is a no-return arch primitive that may trigger
+	 * a debugger break, reset, or QEMU shutdown depending on the board.
+	 * Falling through to the spin loop ensures this function never
+	 * returns even if arch_system_halt() somehow returns.
+	 */
+	arch_system_halt(reason);
 	for (;;) {
-		/* spin forever */
+		/* spin forever — should not be reached */
 	}
 }
 
