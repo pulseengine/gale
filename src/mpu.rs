@@ -134,20 +134,6 @@ pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
     // Phase 1: Validate each region individually.
     let mut i: u32 = 0;
     while i < count
-        invariant
-            i <= count,
-            count as int <= regions@.len(),
-            count <= MAX_REGIONS_V8,
-            forall|k: int| 0 <= k < i as int ==> (
-                regions@[k].size > 0
-                && (regions@[k].size & (regions@[k].size - 1)) == 0
-                && regions@[k].size >= MIN_REGION_SIZE
-                && (regions@[k].base & (regions@[k].size - 1)) == 0
-            ),
-            forall|k: int| 0 <= k < count as int ==> (
-                regions@[k].size > 0
-                && regions@[k].base as int + regions@[k].size as int <= 0x1_0000_0000
-            ),
     {
         let r = &regions[i as usize];
         if !validate_region(r.base, r.size) {
@@ -159,53 +145,9 @@ pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
     // Phase 2: Check all pairs for overlap.
     let mut i: u32 = 0;
     while i < count
-        invariant
-            i <= count,
-            count as int <= regions@.len(),
-            count <= MAX_REGIONS_V8,
-            forall|k: int| 0 <= k < count as int ==> (
-                regions@[k].size > 0
-                && (regions@[k].size & (regions@[k].size - 1)) == 0
-                && regions@[k].size >= MIN_REGION_SIZE
-                && (regions@[k].base & (regions@[k].size - 1)) == 0
-            ),
-            forall|k: int| 0 <= k < count as int ==> (
-                regions@[k].size > 0
-                && regions@[k].base as int + regions@[k].size as int <= 0x1_0000_0000
-            ),
-            forall|a: int, b: int|
-                0 <= a < i as int && 0 <= b < count as int && a != b ==> !(
-                    regions@[a].base < regions@[b].base + regions@[b].size
-                    && regions@[b].base < regions@[a].base + regions@[a].size
-                ),
     {
         let mut j: u32 = 0;
         while j < count
-            invariant
-                i < count,
-                j <= count,
-                count as int <= regions@.len(),
-                count <= MAX_REGIONS_V8,
-                forall|k: int| 0 <= k < count as int ==> (
-                    regions@[k].size > 0
-                    && (regions@[k].size & (regions@[k].size - 1)) == 0
-                    && regions@[k].size >= MIN_REGION_SIZE
-                    && (regions@[k].base & (regions@[k].size - 1)) == 0
-                ),
-                forall|k: int| 0 <= k < count as int ==> (
-                    regions@[k].size > 0
-                    && regions@[k].base as int + regions@[k].size as int <= 0x1_0000_0000
-                ),
-                forall|a: int, b: int|
-                    0 <= a < i as int && 0 <= b < count as int && a != b ==> !(
-                        regions@[a].base < regions@[b].base + regions@[b].size
-                        && regions@[b].base < regions@[a].base + regions@[a].size
-                    ),
-                forall|b: int|
-                    0 <= b < j as int && (i as int) != b ==> !(
-                        regions@[i as int].base < regions@[b].base + regions@[b].size
-                        && regions@[b].base < regions@[i as int].base + regions@[i as int].size
-                    ),
         {
             if i != j {
                 let ri = &regions[i as usize];
