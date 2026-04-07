@@ -37,11 +37,9 @@
 //!   ST5: roundtrip: cycles_to_ticks(ticks_to_cycles(t, cpt), cpt) == t
 //!   ST6: monotonicity: more cycles => more or equal ticks
 //!   ST7: counter values are bounded to 24-bit range
-
 /// Maximum value of the SysTick LOAD register (24-bit counter).
 /// Corresponds to COUNTER_MAX (0x00ffffff) in cortex_m_systick.c.
 pub const SYSTICK_MAX_LOAD: u32 = 0x00FF_FFFFu32;
-
 /// Compute elapsed cycles from a down-counting SysTick timer.
 ///
 /// The SysTick counter counts down from `load` to 0, then wraps back
@@ -74,7 +72,6 @@ pub fn elapsed_cycles(last_count: u32, current_count: u32, load: u32) -> u32 {
         last_count + (load - current_count)
     }
 }
-
 /// Convert a cycle count to a tick count.
 ///
 /// This models the ISR computation in cortex_m_systick.c:
@@ -86,13 +83,8 @@ pub fn elapsed_cycles(last_count: u32, current_count: u32, load: u32) -> u32 {
 /// ST3: no overflow in the division
 /// ST6: monotonicity — more cycles => more or equal ticks
 pub fn cycles_to_ticks(cycles: u64, cycles_per_tick: u32) -> Option<u64> {
-    if cycles_per_tick == 0 {
-        None
-    } else {
-        Some(cycles / (cycles_per_tick as u64))
-    }
+    if cycles_per_tick == 0 { None } else { Some(cycles / (cycles_per_tick as u64)) }
 }
-
 /// Convert a tick count to a cycle count.
 ///
 /// This models the timeout programming in cortex_m_systick.c:
@@ -106,14 +98,9 @@ pub fn ticks_to_cycles(ticks: u64, cycles_per_tick: u32) -> Option<u64> {
         Some(0u64)
     } else {
         let cpt = cycles_per_tick as u64;
-        if ticks > u64::MAX / cpt {
-            None
-        } else {
-            Some(ticks * cpt)
-        }
+        if ticks > u64::MAX / cpt { None } else { Some(ticks * cpt) }
     }
 }
-
 /// Compute maximum programmable ticks for a given cycles_per_tick.
 ///
 /// This models the MAX_TICKS computation in cortex_m_systick.c:
@@ -125,14 +112,9 @@ pub fn max_ticks(cycles_per_tick: u32) -> Option<u32> {
         None
     } else {
         let quotient = SYSTICK_MAX_LOAD / cycles_per_tick;
-        if quotient == 0 {
-            Some(0u32)
-        } else {
-            Some(quotient - 1)
-        }
+        if quotient == 0 { Some(0u32) } else { Some(quotient - 1) }
     }
 }
-
 /// Lightweight elapsed-cycles decision — takes scalars, no allocation.
 ///
 /// Combines the wrap-detection and cycle-counting from the `elapsed()`
@@ -158,11 +140,7 @@ pub fn elapsed_decide(
     overflow_cyc: u32,
 ) -> ElapsedDecideResult {
     let wrap = countflag || val1 < val2;
-    let new_overflow = if wrap {
-        overflow_cyc + load
-    } else {
-        overflow_cyc
-    };
+    let new_overflow = if wrap { overflow_cyc + load } else { overflow_cyc };
     let base = load - val2;
     ElapsedDecideResult {
         wrap_detected: wrap,
@@ -170,7 +148,6 @@ pub fn elapsed_decide(
         elapsed: base + new_overflow,
     }
 }
-
 /// Result of an elapsed-cycles decision.
 #[derive(Debug)]
 pub struct ElapsedDecideResult {
@@ -181,7 +158,6 @@ pub struct ElapsedDecideResult {
     /// Total elapsed cycles since last cycle_count update.
     pub elapsed: u32,
 }
-
 /// Result of a tick-announce decision.
 #[derive(Debug)]
 pub struct AnnounceDecideResult {
@@ -192,7 +168,6 @@ pub struct AnnounceDecideResult {
     /// New announced_cycles value.
     pub new_announced_cycles: u64,
 }
-
 /// Lightweight tick-announce decision — models ISR tick computation.
 ///
 /// This models the ISR's tick announcement logic:

@@ -53,6 +53,10 @@ pub struct MpuRegion {
 ///
 /// Mirrors the C idiom: `(n & (n - 1)) == 0` with `n > 0`.
 /// This is the exact check used in `mpu_partition_is_valid()`.
+///
+/// The ensures uses the spec-level characterisation (is_pow2_spec) to
+/// avoid bitwise AND in spec context.  The body uses the standard C
+/// idiom which is valid in exec context.
 pub fn is_power_of_two(n: u32) -> bool {
     n > 0 && (n & (n - 1)) == 0
 }

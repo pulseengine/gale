@@ -9,6 +9,7 @@
 
 load("@rules_rocq_rust//coq_of_rust:defs.bzl", "coq_of_rust_library")
 load("@rules_rocq_rust//rocq:defs.bzl", "rocq_library")
+load("//bzl:defs.bzl", "verus_strip_gate")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -23,6 +24,110 @@ filegroup(
 alias(
     name = "rocq_of_rust_lib",
     actual = "@rocq_of_rust_source//:rocq_of_rust_main",
+)
+
+# ── Gate: verify plain/src/*.rs matches verus-strip output of src/*.rs ──────
+#
+# Delegates to @rules_verus//verus:defs.bzl#verus_strip_test via the
+# verus_strip_gate macro, which overrides _strip_tool to use
+# //tools/verus-strip:verus-strip (gale's local tool with extended stripping
+# logic: let ghost, inline proof{}, assume_specification support).
+verus_strip_gate(
+    name = "strip_gate",
+    verus_srcs = [
+        "//:src/atomic.rs",
+        "//:src/condvar.rs",
+        "//:src/cpu_mask.rs",
+        "//:src/device_init.rs",
+        "//:src/dynamic.rs",
+        "//:src/error.rs",
+        "//:src/event.rs",
+        "//:src/fatal.rs",
+        "//:src/fault_decode.rs",
+        "//:src/fifo.rs",
+        "//:src/futex.rs",
+        "//:src/heap.rs",
+        "//:src/ipi.rs",
+        "//:src/kheap.rs",
+        "//:src/lib.rs",
+        "//:src/lifo.rs",
+        "//:src/mbox.rs",
+        "//:src/mem_domain.rs",
+        "//:src/mem_slab.rs",
+        "//:src/mempool.rs",
+        "//:src/mpu.rs",
+        "//:src/msgq.rs",
+        "//:src/mutex.rs",
+        "//:src/pipe.rs",
+        "//:src/poll.rs",
+        "//:src/priority.rs",
+        "//:src/queue.rs",
+        "//:src/ring_buf.rs",
+        "//:src/sched.rs",
+        "//:src/sem.rs",
+        "//:src/smp_state.rs",
+        "//:src/spinlock.rs",
+        "//:src/spinlock_validate.rs",
+        "//:src/stack.rs",
+        "//:src/stack_config.rs",
+        "//:src/systick.rs",
+        "//:src/thread.rs",
+        "//:src/thread_lifecycle.rs",
+        "//:src/timeout.rs",
+        "//:src/timer.rs",
+        "//:src/timeslice.rs",
+        "//:src/userspace.rs",
+        "//:src/wait_queue.rs",
+        "//:src/work.rs",
+        "//:src/zms.rs",
+    ],
+    plain_srcs = [
+        "src/atomic.rs",
+        "src/condvar.rs",
+        "src/cpu_mask.rs",
+        "src/device_init.rs",
+        "src/dynamic.rs",
+        "src/error.rs",
+        "src/event.rs",
+        "src/fatal.rs",
+        "src/fault_decode.rs",
+        "src/fifo.rs",
+        "src/futex.rs",
+        "src/heap.rs",
+        "src/ipi.rs",
+        "src/kheap.rs",
+        "src/lib.rs",
+        "src/lifo.rs",
+        "src/mbox.rs",
+        "src/mem_domain.rs",
+        "src/mem_slab.rs",
+        "src/mempool.rs",
+        "src/mpu.rs",
+        "src/msgq.rs",
+        "src/mutex.rs",
+        "src/pipe.rs",
+        "src/poll.rs",
+        "src/priority.rs",
+        "src/queue.rs",
+        "src/ring_buf.rs",
+        "src/sched.rs",
+        "src/sem.rs",
+        "src/smp_state.rs",
+        "src/spinlock.rs",
+        "src/spinlock_validate.rs",
+        "src/stack.rs",
+        "src/stack_config.rs",
+        "src/systick.rs",
+        "src/thread.rs",
+        "src/thread_lifecycle.rs",
+        "src/timeout.rs",
+        "src/timer.rs",
+        "src/timeslice.rs",
+        "src/userspace.rs",
+        "src/wait_queue.rs",
+        "src/work.rs",
+        "src/zms.rs",
+    ],
 )
 
 # ── Modules: translate standalone .rs → .v → .vo ──────────────────────

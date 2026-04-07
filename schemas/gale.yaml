@@ -118,6 +118,32 @@ link-types:
       A detailed design element maps to a specific C function in the
       upstream source.  Used for line-level traceability.
 
+  - name: allocated-from
+    inverse: allocated-to
+    description: >
+      Architecture component is allocated from a requirement.
+      Inverse of allocated-to — used on the architecture side to point
+      back to the requirement(s) that drove the component's creation.
+
+  - name: satisfied-by
+    inverse: satisfies
+    description: >
+      Upstream or system requirement is satisfied by a lower-level artifact.
+      Inverse of satisfies — used on the requirement side to record which
+      SW requirements or design elements fulfil it.
+
+  - name: enables
+    inverse: enabled-by
+    description: >
+      An architecture component or platform enables a requirement or capability.
+      Used for test targets that enable verification of specific requirements.
+
+  - name: verified-on
+    inverse: verification-target-of
+    description: >
+      A requirement or verification measure is verified on a specific
+      architecture target (e.g. a Renode emulation platform).
+
 traceability-rules:
   - name: sw-req-has-provenance
     description: Every SW requirement should trace to a source provenance record

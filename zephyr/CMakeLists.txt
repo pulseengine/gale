@@ -1768,6 +1768,12 @@ zephyr_library_include_directories(
   ${ARCH_DIR}/${ARCH}/include
 )
 zephyr_library_link_libraries(${GALE_FFI_LIB})
+# When IPI and sched are both active, gale_sched.c calls gale_ipi_mask_create()
+# defined in gale_ipi.  Make the dependency explicit so the linker can resolve it.
+if(CONFIG_GALE_KERNEL_IPI AND CONFIG_SMP)
+  add_dependencies(gale_sched gale_ipi)
+  target_link_libraries(gale_sched PRIVATE gale_ipi)
+endif()
 add_dependencies(gale_sched gale_ffi_build)
 
 endif() # CONFIG_GALE_KERNEL_SCHED

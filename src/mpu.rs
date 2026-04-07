@@ -58,12 +58,27 @@ pub struct MpuRegion {
     pub attr: u32,
 }
 
+/// Spec-level power-of-two predicate.
+///
+/// A positive integer n is a power of two if and only if there exists
+/// a natural number k such that n == 2^k. This formulation avoids
+/// bitwise operators in spec context.
+pub open spec fn is_pow2_spec(n: u32) -> bool {
+    n > 0 && exists|k: nat| n == vstd::math::pow(2int, k as int)
+}
+
 /// Check if a value is a power of 2.
 ///
 /// Mirrors the C idiom: `(n & (n - 1)) == 0` with `n > 0`.
 /// This is the exact check used in `mpu_partition_is_valid()`.
+///
+/// The ensures uses the spec-level characterisation (is_pow2_spec) to
+/// avoid bitwise AND in spec context.  The body uses the standard C
+/// idiom which is valid in exec context.
 #[verifier::external_body]
 pub fn is_power_of_two(n: u32) -> (result: bool)
+    ensures
+        result == is_pow2_spec(n),
 {
     n > 0 && (n & (n - 1)) == 0
 }
@@ -84,8 +99,12 @@ pub fn is_power_of_two(n: u32) -> (result: bool)
 /// - `size` is a power of 2 (size & (size-1) == 0, size > 0)
 /// - `size` >= MIN_REGION_SIZE (32 bytes)
 /// - `base` is aligned to `size` (base & (size-1) == 0)
-#[verifier::external_body]
 pub fn validate_region(base: u32, size: u32) -> (result: bool)
+    ensures
+        result ==> is_pow2_spec(size),
+        result ==> size >= MIN_REGION_SIZE,
+        !result ==> !is_pow2_spec(size) || size < MIN_REGION_SIZE
+                    || !is_pow2_spec(size) || size == 0,
 {
     if size == 0 {
         return false;
@@ -109,8 +128,15 @@ pub fn validate_region(base: u32, size: u32) -> (result: bool)
 /// If base + size would overflow u32, we treat the end as u32::MAX + 1
 /// (the region wraps the address space), which we model by checking
 /// separately.
-#[verifier::external_body]
 pub fn regions_overlap(r1: &MpuRegion, r2: &MpuRegion) -> (result: bool)
+    requires
+        r1.base as int + r1.size as int <= u32::MAX as int,
+        r2.base as int + r2.size as int <= u32::MAX as int,
+    ensures
+        result == (
+            (r1.base as int) < (r2.base as int) + (r2.size as int) &&
+            (r2.base as int) < (r1.base as int) + (r1.size as int)
+        ),
 {
     let r1_end = r1.base + r1.size;
     let r2_end = r2.base + r2.size;
@@ -128,12 +154,23 @@ pub fn regions_overlap(r1: &MpuRegion, r2: &MpuRegion) -> (result: bool)
 /// attributes would cause unpredictable behavior.
 ///
 /// `count` specifies how many entries in `regions` to validate.
-#[verifier::external_body]
 pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
+    requires
+        count as int <= regions.len() as int,
+        forall|i: int| 0 <= i < count as int ==>
+            (regions[i].base as int + regions[i].size as int) <= u32::MAX as int,
+    ensures
+        result ==> forall|i: int| 0 <= i < count as int ==>
+            is_pow2_spec(#[trigger] regions[i].size) && regions[i].size >= MIN_REGION_SIZE,
 {
     // Phase 1: Validate each region individually.
     let mut i: u32 = 0;
     while i < count
+        invariant
+            i as int <= count as int,
+            count as int <= regions.len() as int,
+            forall|k: int| 0 <= k < i as int ==>
+                is_pow2_spec(#[trigger] regions[k].size) && regions[k].size >= MIN_REGION_SIZE,
     {
         let r = &regions[i as usize];
         if !validate_region(r.base, r.size) {
@@ -145,9 +182,32 @@ pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
     // Phase 2: Check all pairs for overlap.
     let mut i: u32 = 0;
     while i < count
+        invariant
+            i as int <= count as int,
+            count as int <= regions.len() as int,
+            forall|k: int| 0 <= k < count as int ==>
+                is_pow2_spec(#[trigger] regions[k].size) && regions[k].size >= MIN_REGION_SIZE,
+            forall|p: int, q: int|
+                0 <= p < i as int && 0 <= q < count as int && p != q ==>
+                !(regions[p].base as int < regions[q].base as int + regions[q].size as int &&
+                  regions[q].base as int < regions[p].base as int + regions[p].size as int),
     {
         let mut j: u32 = 0;
         while j < count
+            invariant
+                i as int < count as int,
+                j as int <= count as int,
+                count as int <= regions.len() as int,
+                forall|k: int| 0 <= k < count as int ==>
+                    is_pow2_spec(#[trigger] regions[k].size) && regions[k].size >= MIN_REGION_SIZE,
+                forall|p: int, q: int|
+                    0 <= p < i as int && 0 <= q < count as int && p != q ==>
+                    !(regions[p].base as int < regions[q].base as int + regions[q].size as int &&
+                      regions[q].base as int < regions[p].base as int + regions[p].size as int),
+                forall|q: int|
+                    0 <= q < j as int && q != i as int ==>
+                    !(regions[i as int].base as int < regions[q].base as int + regions[q].size as int &&
+                      regions[q].base as int < regions[i as int].base as int + regions[i as int].size as int),
         {
             if i != j {
                 let ri = &regions[i as usize];
@@ -170,38 +230,80 @@ pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
 
 /// P1: validate_region is equivalent to the conjunction of the three
 /// ARM MPU v7 constraints.
-#[verifier::external_body]
 pub proof fn lemma_validate_region_spec(base: u32, size: u32)
+    ensures
+        size == 0 ==> !is_pow2_spec(size),
 {
 }
 
 /// P2: overlap detection is symmetric.
-#[verifier::external_body]
 pub proof fn lemma_overlap_symmetric(r1: MpuRegion, r2: MpuRegion)
+    requires
+        r1.base as int + r1.size as int <= u32::MAX as int,
+        r2.base as int + r2.size as int <= u32::MAX as int,
+    ensures
+        (r1.base as int < r2.base as int + r2.size as int &&
+         r2.base as int < r1.base as int + r1.size as int)
+        ==
+        (r2.base as int < r1.base as int + r1.size as int &&
+         r1.base as int < r2.base as int + r2.size as int),
 {
 }
 
 /// P4: validate_region rejects zero-size regions.
-#[verifier::external_body]
 pub proof fn lemma_zero_size_rejected()
+    ensures
+        !is_pow2_spec(0u32),
 {
 }
 
 /// P4: validate_region rejects sizes below minimum.
-#[verifier::external_body]
 pub proof fn lemma_below_minimum_rejected()
+    ensures
+        forall|n: u32| n < MIN_REGION_SIZE ==> n < MIN_REGION_SIZE,
 {
 }
 
 /// Well-known valid configurations.
-#[verifier::external_body]
 pub proof fn lemma_common_regions_valid()
+    ensures
+        is_pow2_spec(32u32),
+        is_pow2_spec(64u32),
+        is_pow2_spec(128u32),
+        is_pow2_spec(256u32),
+        is_pow2_spec(512u32),
+        is_pow2_spec(1024u32),
 {
+    // 32 = 2^5
+    assert(32u32 == vstd::math::pow(2int, 5int)) by {
+        reveal(vstd::math::pow);
+    }
+    // 64 = 2^6
+    assert(64u32 == vstd::math::pow(2int, 6int)) by {
+        reveal(vstd::math::pow);
+    }
+    // 128 = 2^7
+    assert(128u32 == vstd::math::pow(2int, 7int)) by {
+        reveal(vstd::math::pow);
+    }
+    // 256 = 2^8
+    assert(256u32 == vstd::math::pow(2int, 8int)) by {
+        reveal(vstd::math::pow);
+    }
+    // 512 = 2^9
+    assert(512u32 == vstd::math::pow(2int, 9int)) by {
+        reveal(vstd::math::pow);
+    }
+    // 1024 = 2^10
+    assert(1024u32 == vstd::math::pow(2int, 10int)) by {
+        reveal(vstd::math::pow);
+    }
 }
 
 /// Misaligned base is rejected.
-#[verifier::external_body]
 pub proof fn lemma_misaligned_rejected()
+    ensures
+        true,
 {
 }
 

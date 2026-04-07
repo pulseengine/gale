@@ -65,6 +65,18 @@ int32_t gale_validate_ipi_mask(uint32_t mask,
                                uint32_t current_cpu,
                                uint32_t max_cpus);
 
+/*
+ * C-shim wrapper — declared here so callers (e.g. gale_sched.c) can use
+ * the verified mask creation without pulling in <ipi.h> internals.
+ *
+ * Only available when CONFIG_SMP && !CONFIG_IPI_OPTIMIZE; the definition
+ * lives in zephyr/gale_ipi.c.
+ */
+#if defined(CONFIG_SMP) && !defined(CONFIG_IPI_OPTIMIZE)
+struct k_thread;   /* forward declaration — avoid pulling in kernel.h */
+atomic_val_t gale_ipi_mask_create(struct k_thread *thread);
+#endif /* CONFIG_SMP && !CONFIG_IPI_OPTIMIZE */
+
 #ifdef __cplusplus
 }
 #endif

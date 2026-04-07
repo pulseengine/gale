@@ -30,6 +30,12 @@
 #include <zephyr/sys/util.h>
 
 #include "gale_sched.h"
+#if defined(CONFIG_GALE_KERNEL_IPI) && defined(CONFIG_SMP) && !defined(CONFIG_IPI_OPTIMIZE)
+#include "gale_ipi.h"
+#define ipi_mask_create_sched(t) ((atomic_val_t)gale_ipi_mask_create(t))
+#else
+#define ipi_mask_create_sched(t) ipi_mask_create(t)
+#endif
 
 LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
 
@@ -380,7 +386,7 @@ static void ready_thread(struct k_thread *thread)
 		queue_thread(thread);
 		update_cache(0);
 
-		flag_ipi(ipi_mask_create(thread));
+		flag_ipi(ipi_mask_create_sched(thread));
 	}
 }
 
@@ -735,7 +741,7 @@ bool z_thread_prio_set(struct k_thread *thread, int prio)
 				queue_thread(thread);
 
 				if (old_prio > prio) {
-					flag_ipi(ipi_mask_create(thread));
+					flag_ipi(ipi_mask_create_sched(thread));
 				}
 			} else {
 				/*
@@ -974,7 +980,7 @@ void *z_get_next_switch_handle(void *interrupted)
 #ifdef CONFIG_SCHED_IPI_CASCADE
 				if ((new_thread->base.cpu_mask != -1) &&
 				    (old_thread->base.cpu_mask != BIT(cpu_id))) {
-					flag_ipi(ipi_mask_create(old_thread));
+					flag_ipi(ipi_mask_create_sched(old_thread));
 				}
 #endif
 				runq_add(old_thread);
