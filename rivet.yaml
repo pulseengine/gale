@@ -4,6 +4,8 @@ project:
   schemas:
     - common
     - aspice
+    - stpa
+    - safety-case
     - gale
   description: >
     Formally verified Rust port of Zephyr RTOS kernel primitives.

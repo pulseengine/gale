@@ -1,0 +1,280 @@
+# STPA Safety Analysis — Gale kernel primitives
+#
+# Systems-Theoretic Process Analysis following the STPA Handbook
+# (Leveson & Thomas, 2018).
+#
+# Steps covered:
+#   1a  Losses       — what stakeholders want to prevent
+#   1b  Hazards      — system states/conditions that lead to losses
+#   1c  System-level constraints — what must hold to prevent hazards
+#
+# Analysis scope: Gale formally verified Rust kernel primitives targeting
+# ASIL-D per ISO 26262.  Control structure, UCAs, and loss scenarios are
+# out of scope for this initial artifact and will be added in a follow-on.
+
+artifacts:
+
+  # ── Step 1a: Losses ──────────────────────────────────────────────────────
+
+  - id: L-1
+    type: loss
+    title: Loss of vehicle control
+    status: approved
+    description: >
+      A kernel failure in a safety-critical execution path causes the
+      vehicle to behave unexpectedly or uncontrollably — a catastrophic
+      outcome at ASIL-D severity.
+    tags: [safety, asil-d, loss]
+    fields:
+      stakeholders: [vehicle-oem, tier1-supplier, end-user, regulatory-authority]
+
+  - id: L-2
+    type: loss
+    title: Loss of data integrity
+    status: approved
+    description: >
+      Corrupted kernel state (thread control blocks, synchronization
+      primitive state, memory ownership records) produces incorrect
+      outputs or silent data errors that propagate to higher-level
+      safety functions.
+    tags: [safety, asil-d, loss]
+    fields:
+      stakeholders: [vehicle-oem, tier1-supplier, end-user]
+
+  - id: L-3
+    type: loss
+    title: Loss of availability
+    status: approved
+    description: >
+      The kernel hangs, deadlocks, or starves a safety-critical thread,
+      preventing timely execution of vehicle safety functions.
+    tags: [safety, asil-d, loss]
+    fields:
+      stakeholders: [vehicle-oem, tier1-supplier, end-user]
+
+  # ── Step 1b: Hazards ─────────────────────────────────────────────────────
+
+  - id: H-1
+    type: hazard
+    title: Kernel provides incorrect thread scheduling decision
+    status: approved
+    description: >
+      The scheduler returns a thread that is not the highest-priority
+      ready thread, causing a lower-priority thread to run in place of a
+      safety-critical one.  In a worst-case environment (time-critical
+      safety function pending) this leads to L-1.
+    tags: [safety, asil-d, scheduling]
+    fields:
+      severity: catastrophic
+    links:
+      - type: leads-to-loss
+        target: L-1
+
+  - id: H-2
+    type: hazard
+    title: Mutex priority inversion causes timing violation
+    status: approved
+    description: >
+      An unbounded priority inversion — a high-priority thread blocked on
+      a mutex held by a low-priority thread that is itself preempted —
+      delays a safety-critical operation past its deadline.
+    tags: [safety, asil-d, mutex, priority-inversion]
+    fields:
+      severity: catastrophic
+    links:
+      - type: leads-to-loss
+        target: L-1
+
+  - id: H-3
+    type: hazard
+    title: Semaphore count overflow or underflow
+    status: approved
+    description: >
+      The semaphore count wraps past its defined [0, limit] range,
+      corrupting the signalling contract between producers and consumers
+      and leading to incorrect resource accounting.
+    tags: [safety, asil-d, semaphore, overflow]
+    fields:
+      severity: critical
+    links:
+      - type: leads-to-loss
+        target: L-2
+
+  - id: H-4
+    type: hazard
+    title: Deadlock in kernel synchronization primitives
+    status: approved
+    description: >
+      A cycle of blocked threads (e.g. two threads each holding one mutex
+      and waiting for the other) causes the kernel to make no forward
+      progress, permanently preventing safety functions from executing.
+    tags: [safety, asil-d, deadlock, mutex, condvar]
+    fields:
+      severity: catastrophic
+    links:
+      - type: leads-to-loss
+        target: L-3
+
+  - id: H-5
+    type: hazard
+    title: Stack overflow corrupts adjacent memory
+    status: approved
+    description: >
+      A thread stack grows beyond its allocated bounds and overwrites
+      adjacent kernel or thread-control-block memory, silently corrupting
+      kernel state.
+    tags: [safety, asil-d, stack, memory-safety]
+    fields:
+      severity: critical
+    links:
+      - type: leads-to-loss
+        target: L-2
+
+  - id: H-6
+    type: hazard
+    title: Integer overflow in timeout or timer arithmetic
+    status: approved
+    description: >
+      Tick counter or timeout delta arithmetic wraps around, causing a
+      timeout to expire at the wrong time (too early or never), which
+      may either falsely release a blocked safety thread or permanently
+      suppress a required wakeup.
+    tags: [safety, asil-d, overflow, timeout, timer]
+    fields:
+      severity: critical
+    links:
+      - type: leads-to-loss
+        target: L-1
+      - type: leads-to-loss
+        target: L-2
+
+  # ── Step 1c: System-level Constraints ────────────────────────────────────
+
+  - id: SC-1
+    type: system-constraint
+    title: Scheduler must always return highest-priority ready thread
+    status: approved
+    description: >
+      At every scheduling point the kernel must select the thread with the
+      numerically highest priority (lowest priority number) among all
+      threads in the READY state.  Formally proven by FV-SC-004 (Lean 4
+      scheduling theory) and verified by FV-MUT-001/FV-SEM-001 Verus
+      proofs that scheduling-point invariants hold.
+    tags: [safety, asil-d, scheduling]
+    fields:
+      spec-baseline: SWREQ-SC-SC03
+    links:
+      - type: prevents
+        target: H-1
+      - type: satisfies
+        target: SWREQ-SC-SC03
+
+  - id: SC-2
+    type: system-constraint
+    title: Mutex must implement priority inheritance
+    status: approved
+    description: >
+      Whenever a higher-priority thread blocks on a mutex, the kernel must
+      temporarily raise the lock-holding thread's effective priority to
+      that of the highest-priority waiter, preventing unbounded priority
+      inversion.  Enforced by SWREQ-MUT-M08 and proven by FV-MUT-001
+      (Verus) and FV-MUT-002 (Rocq).
+    tags: [safety, asil-d, mutex, priority-inheritance]
+    fields:
+      spec-baseline: SWREQ-MUT-M08
+    links:
+      - type: prevents
+        target: H-2
+      - type: satisfies
+        target: SWREQ-MUT-M08
+
+  - id: SC-3
+    type: system-constraint
+    title: Semaphore count must be bounded within [0, limit]
+    status: approved
+    description: >
+      The semaphore count must satisfy the invariant 0 <= count <= limit
+      at all times.  Give operations must saturate at limit; take
+      operations must not decrement below zero.  Proven by FV-SEM-001
+      (Verus) and FV-SEM-002 (Rocq) against SWREQ-SEM-P01/P02/P03.
+    tags: [safety, asil-d, semaphore]
+    fields:
+      spec-baseline: SWREQ-SEM-P01
+    links:
+      - type: prevents
+        target: H-3
+      - type: satisfies
+        target: SWREQ-SEM-P01
+      - type: satisfies
+        target: SWREQ-SEM-P02
+      - type: satisfies
+        target: SWREQ-SEM-P03
+
+  - id: SC-4
+    type: system-constraint
+    title: All blocking primitives must support timeout
+    status: approved
+    description: >
+      Every API that can block a thread (semaphore take, mutex lock,
+      condvar wait, message queue receive) must accept an optional
+      timeout parameter and return -EAGAIN if the deadline expires,
+      guaranteeing forward progress.  Enforced by SWREQ-TO-TO01/TO02
+      and proven by FV-TO-001 (Verus).
+    tags: [safety, asil-d, timeout, deadlock-prevention]
+    fields:
+      spec-baseline: SWREQ-TO-TO01
+    links:
+      - type: prevents
+        target: H-4
+      - type: satisfies
+        target: SWREQ-TO-TO01
+      - type: satisfies
+        target: SWREQ-TO-TO02
+
+  - id: SC-5
+    type: system-constraint
+    title: Stack bounds must be checked before push or pop
+    status: approved
+    description: >
+      Every push operation must verify that count < capacity and every pop
+      must verify count > 0 before mutating stack state, ensuring the
+      stack invariant 0 <= count <= capacity holds at all times.  Proven
+      by FV-SK-001 (Verus) and FV-SK-002 (Rocq) against SWREQ-SK-SK01
+      through SWREQ-SK-SK06.
+    tags: [safety, asil-d, stack, bounds-checking]
+    fields:
+      spec-baseline: SWREQ-SK-SK01
+    links:
+      - type: prevents
+        target: H-5
+      - type: satisfies
+        target: SWREQ-SK-SK01
+      - type: satisfies
+        target: SWREQ-SK-SK04
+      - type: satisfies
+        target: SWREQ-SK-SK06
+
+  - id: SC-6
+    type: system-constraint
+    title: All arithmetic must use overflow-checked operations
+    status: approved
+    description: >
+      Every integer arithmetic operation in the kernel (tick counters,
+      priority values, semaphore counts, stack indices, lock counts) must
+      be performed with Rust checked_add / checked_sub / saturating_*
+      operations or equivalent Verus-proven no-overflow postconditions,
+      eliminating silent wrapping.  Enforced by SWREQ-SC-SC16,
+      SWREQ-SK-SK08, SWREQ-MUT-M10, proven by FV-TO-001, FV-SK-001,
+      FV-MUT-001, FV-SEM-001.
+    tags: [safety, asil-d, overflow, arithmetic]
+    fields:
+      spec-baseline: SWREQ-SC-SC16
+    links:
+      - type: prevents
+        target: H-6
+      - type: satisfies
+        target: SWREQ-SC-SC16
+      - type: satisfies
+        target: SWREQ-SK-SK08
+      - type: satisfies
+        target: SWREQ-MUT-M10

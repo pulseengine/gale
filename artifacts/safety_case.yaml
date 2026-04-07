@@ -1,0 +1,291 @@
+# GSN Safety Case — Gale kernel primitives
+#
+# Goal Structuring Notation (GSN Community Standard v3) safety argument
+# for the Gale formally verified RTOS kernel primitives.
+#
+# Top-level argument: Gale kernel primitives are safe for ASIL-D deployment.
+#
+# Argument strategy: Safety is argued via three complementary evidence tracks:
+#   1. Formal verification (Verus SMT/Z3 + Rocq theorem proofs)
+#   2. Dynamic testing (differential tests, Kani BMC, integration)
+#   3. STPA system-theoretic safety analysis (stpa.yaml)
+#
+# Sub-goals are linked to STPA constraints (SC-*) and SW verification
+# artifacts (FV-*) to close the traceability chain.
+
+artifacts:
+
+  # ── Contexts ──────────────────────────────────────────────────────────────
+
+  - id: C-1
+    type: safety-context
+    title: Target platform — ARM Cortex-M, no MMU
+    status: approved
+    description: >
+      The Gale kernel targets ARM Cortex-M microcontrollers with the
+      Memory Protection Unit (MPU) as the sole hardware memory isolation
+      mechanism.  There is no virtual memory or MMU.  All kernel code runs
+      in privileged mode; user-space isolation is enforced via MPU regions
+      programmed by the Zephyr userspace subsystem.
+    tags: [safety, asil-d, context, platform]
+    fields:
+      context-type: operational-environment
+      statement: >
+        Deployment context: ARM Cortex-M (M0+ through M7) SoCs without
+        a memory management unit.  Hardware memory protection is provided
+        exclusively by the ARM MPU.  The absence of virtual memory means
+        that any stack overflow or out-of-bounds write will corrupt
+        physical addresses; software bounds checking (SC-5) is therefore
+        a primary line of defence.
+    links:
+      - type: scopes
+        target: G-1
+
+  - id: C-2
+    type: safety-context
+    title: Zephyr RTOS v3.x kernel API compatibility
+    status: approved
+    description: >
+      Gale replaces Zephyr kernel primitives under the existing Zephyr v3.x
+      public API surface.  Functional equivalence is validated via the
+      Zephyr twister test suite run unmodified against Gale's Rust
+      implementations.  The API contract is fixed by the Zephyr upstream
+      headers imported via PROV-* provenance records.
+    tags: [safety, asil-d, context, api]
+    fields:
+      context-type: scope
+      statement: >
+        API compatibility scope: Zephyr RTOS v3.x kernel synchronization
+        primitives (semaphore, mutex, condvar, stack, scheduler, timeout,
+        timer).  The full Zephyr twister test suite constitutes the
+        semantic equivalence oracle for the C-to-Rust translation (G-5).
+    links:
+      - type: scopes
+        target: G-1
+
+  # ── Top-level Goal ────────────────────────────────────────────────────────
+
+  - id: G-1
+    type: safety-goal
+    title: Gale kernel primitives are safe for ASIL-D deployment
+    status: draft
+    description: >
+      The top-level safety claim.  Gale's formally verified Rust kernel
+      primitives provide a safety argument sufficient for automotive ASIL-D
+      classification per ISO 26262 when deployed on ARM Cortex-M targets
+      running Zephyr v3.x.
+    tags: [safety, asil-d, top-goal]
+    fields:
+      claim: >
+        The Gale kernel primitives (semaphore, mutex, condvar, stack,
+        scheduler, timeout, timer) are free from the hazards identified in
+        the STPA analysis (H-1 through H-6) and satisfy all system-level
+        safety constraints (SC-1 through SC-6), making them safe for
+        deployment in ASIL-D automotive applications on ARM Cortex-M
+        hardware running Zephyr RTOS v3.x.
+      goal-type: system-level
+      asil: D
+
+  # ── Top-level Strategy ────────────────────────────────────────────────────
+
+  - id: S-1
+    type: safety-strategy
+    title: Argue safety via formal verification, dynamic testing, and STPA
+    status: draft
+    description: >
+      The top-level goal G-1 is decomposed into four sub-goals covering:
+      arithmetic safety (G-2), state machine correctness (G-3), deadlock
+      freedom (G-4), and semantic equivalence with the Zephyr C reference
+      (G-5).  Each sub-goal is supported by a different verification track,
+      and the STPA analysis (C-1, C-2) bounds the operational context.
+    tags: [safety, asil-d, strategy]
+    fields:
+      rationale: >
+        No single verification technique provides complete assurance for an
+        ASIL-D kernel.  Formal verification (Verus/Rocq) proves correctness
+        properties for an abstract model; bounded model checking (Kani)
+        exhaustively explores finite state spaces at the Rust MIR level;
+        differential tests against POSIX/FreeRTOS reference models catch
+        semantic divergence; and Zephyr integration tests validate the
+        full API contract.  Together these four tracks provide complementary
+        coverage satisfying ISO 26262 Table 4 (ASIL-D software verification
+        methods).
+      method: decomposition
+    links:
+      - type: decomposes
+        target: G-1
+
+  # ── Sub-goals ─────────────────────────────────────────────────────────────
+
+  - id: G-2
+    type: safety-goal
+    title: All kernel arithmetic is overflow-free
+    status: draft
+    description: >
+      Every integer arithmetic operation in the kernel primitives is proven
+      to not overflow by Verus SMT proofs.  This sub-goal directly addresses
+      system constraint SC-6 (overflow-checked operations) and hazard H-6
+      (integer overflow in timeout/timer arithmetic).
+    tags: [safety, asil-d, arithmetic, overflow]
+    fields:
+      claim: >
+        All integer arithmetic in the Gale kernel primitives (tick
+        counters, semaphore counts, priority values, lock counts, stack
+        indices) is free from overflow and underflow, as proven by Verus
+        SMT/Z3 proofs for each primitive.
+      goal-type: element-level
+      asil: D
+    links:
+      - type: sub-goal-of
+        target: G-1
+
+  - id: G-3
+    type: safety-goal
+    title: All kernel state transitions are correct
+    status: draft
+    description: >
+      Every state transition in the kernel synchronization primitives
+      (semaphore, mutex, condvar, scheduler run queue) produces the
+      correct post-state as specified in the SWREQ-* requirements and
+      validated by differential testing against POSIX and FreeRTOS
+      reference implementations.  Addresses SC-1, SC-2, SC-3.
+    tags: [safety, asil-d, state-machine, differential-testing]
+    fields:
+      claim: >
+        All observable state transitions of Gale kernel primitives match
+        the specified behaviour (SWREQ-SEM-*, SWREQ-MUT-*, SWREQ-SC-*)
+        under all valid input sequences, as demonstrated by differential
+        specification testing against POSIX and FreeRTOS reference models.
+      goal-type: element-level
+      asil: D
+    links:
+      - type: sub-goal-of
+        target: G-1
+
+  - id: G-4
+    type: safety-goal
+    title: No deadlock in kernel synchronization primitives
+    status: draft
+    description: >
+      The kernel primitives cannot deadlock: mutex and condvar designs
+      prohibit lock cycles; every blocking operation accepts a timeout
+      (SC-4); and priority inheritance (SC-2) prevents priority inversion
+      chains.  Proven by Rocq theorem proofs and Kani bounded model
+      checking.
+    tags: [safety, asil-d, deadlock, mutex, condvar]
+    fields:
+      claim: >
+        The Gale mutex, condvar, semaphore, and timeout subsystems cannot
+        enter a deadlock state: every blocking operation is bounded by an
+        optional timeout, priority inheritance prevents unbounded inversion,
+        and Rocq proofs establish forward-progress invariants for all
+        kernel synchronization protocols.
+      goal-type: element-level
+      asil: D
+    links:
+      - type: sub-goal-of
+        target: G-1
+
+  - id: G-5
+    type: safety-goal
+    title: C-to-Rust translation preserves Zephyr kernel semantics
+    status: draft
+    description: >
+      The Rust implementations of Gale kernel primitives are semantically
+      equivalent to the Zephyr C originals under the full Zephyr twister
+      integration test suite.  Equivalence is additionally confirmed by
+      Kani C↔Rust semantic equivalence checks (FV-TRACTOR-EQ) and
+      differential specification tests (FV-TRACTOR-DIFF).
+    tags: [safety, asil-d, translation, zephyr, integration]
+    fields:
+      claim: >
+        For every input sequence admitted by the Zephyr v3.x kernel API,
+        the Gale Rust implementation produces the same observable outputs
+        and side-effects as the Zephyr C reference, as verified by the
+        unmodified Zephyr twister test suite, Kani semantic equivalence
+        checks, and differential specification tests.
+      goal-type: element-level
+      asil: D
+    links:
+      - type: sub-goal-of
+        target: G-1
+
+  # ── Solutions (evidence) ─────────────────────────────────────────────────
+
+  - id: Sn-1
+    type: safety-solution
+    title: Verus SMT/Z3 overflow-freedom proofs
+    status: approved
+    description: >
+      Verus formal verification proofs covering arithmetic no-overflow
+      postconditions across all kernel primitives.  Key artifacts:
+      FV-SEM-001 (semaphore), FV-MUT-001 (mutex), FV-SC-001 (scheduler
+      priority arithmetic), FV-TO-001 (timeout tick arithmetic),
+      FV-SK-001 (stack index arithmetic).  All proofs check via Z3 as part
+      of the CI pipeline.
+    tags: [safety, asil-d, formal-verification, verus]
+    fields:
+      evidence-type: formal-proof
+      evidence-ref: FV-SEM-001, FV-MUT-001, FV-TO-001, FV-SK-001, FV-SC-001
+      confidence: high
+    links:
+      - type: supports
+        target: G-2
+
+  - id: Sn-2
+    type: safety-solution
+    title: Differential specification testing (POSIX/FreeRTOS reference models)
+    status: approved
+    description: >
+      FV-TRACTOR-DIFF: differential tests exercise the Gale implementations
+      against POSIX semaphore/mutex and FreeRTOS queue reference models,
+      verifying that every observable state transition matches specification.
+      Complements formal proofs with concrete execution traces.
+    tags: [safety, asil-d, testing, differential]
+    fields:
+      evidence-type: test-report
+      evidence-ref: FV-TRACTOR-DIFF
+      confidence: high
+    links:
+      - type: supports
+        target: G-3
+
+  - id: Sn-3
+    type: safety-solution
+    title: Rocq theorem proofs and Kani BMC for deadlock freedom
+    status: approved
+    description: >
+      Two complementary evidence sources for deadlock freedom.
+      FV-MUT-002: Rocq (Coq) theorem proofs of mutex ownership-transfer
+      and forward-progress invariants.  FV-CV-002: Rocq proofs of condvar
+      wait/notify protocol correctness.  FV-TRACTOR-EQ: Kani bounded model
+      checking exhaustively explores state spaces for mutex+condvar
+      interactions within a bounded number of threads.
+    tags: [safety, asil-d, formal-verification, rocq, kani]
+    fields:
+      evidence-type: formal-proof
+      evidence-ref: FV-MUT-002, FV-CV-002, FV-TRACTOR-EQ
+      confidence: high
+    links:
+      - type: supports
+        target: G-4
+
+  - id: Sn-4
+    type: safety-solution
+    title: Zephyr twister integration tests
+    status: approved
+    description: >
+      The unmodified Zephyr twister test suite is executed against Gale
+      kernel primitives via the system-level verification artifacts
+      SV-SEM-001, SV-MUT-001 (implicit via SV-SC-001), SV-SC-001,
+      SV-TL-001 (thread lifecycle), and the integration-level IV-SEM-001,
+      IV-MUT-001, IV-SC-001.  Passing this suite demonstrates full
+      API-level semantic equivalence with the Zephyr C originals.
+    tags: [safety, asil-d, testing, zephyr, integration]
+    fields:
+      evidence-type: test-report
+      evidence-ref: SV-SEM-001, SV-SC-001, SV-TL-001, IV-SEM-001, IV-SC-001
+      confidence: high
+    links:
+      - type: supports
+        target: G-5
