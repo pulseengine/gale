@@ -189,8 +189,8 @@ pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
                 is_pow2_spec(#[trigger] regions[k].size) && regions[k].size >= MIN_REGION_SIZE,
             forall|p: int, q: int|
                 0 <= p < i as int && 0 <= q < count as int && p != q ==>
-                !(regions[p].base as int < regions[q].base as int + regions[q].size as int &&
-                  regions[q].base as int < regions[p].base as int + regions[p].size as int),
+                !((regions[p].base as int) < (regions[q].base as int) + (regions[q].size as int) &&
+                  (regions[q].base as int) < (regions[p].base as int) + (regions[p].size as int)),
     {
         let mut j: u32 = 0;
         while j < count
@@ -202,12 +202,12 @@ pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
                     is_pow2_spec(#[trigger] regions[k].size) && regions[k].size >= MIN_REGION_SIZE,
                 forall|p: int, q: int|
                     0 <= p < i as int && 0 <= q < count as int && p != q ==>
-                    !(regions[p].base as int < regions[q].base as int + regions[q].size as int &&
-                      regions[q].base as int < regions[p].base as int + regions[p].size as int),
+                    !((regions[p].base as int) < (regions[q].base as int) + (regions[q].size as int) &&
+                      (regions[q].base as int) < (regions[p].base as int) + (regions[p].size as int)),
                 forall|q: int|
                     0 <= q < j as int && q != i as int ==>
-                    !(regions[i as int].base as int < regions[q].base as int + regions[q].size as int &&
-                      regions[q].base as int < regions[i as int].base as int + regions[i as int].size as int),
+                    !((regions[i as int].base as int) < (regions[q].base as int) + (regions[q].size as int) &&
+                      (regions[q].base as int) < (regions[i as int].base as int) + (regions[i as int].size as int)),
         {
             if i != j {
                 let ri = &regions[i as usize];
