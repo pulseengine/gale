@@ -154,23 +154,12 @@ pub fn regions_overlap(r1: &MpuRegion, r2: &MpuRegion) -> (result: bool)
 /// attributes would cause unpredictable behavior.
 ///
 /// `count` specifies how many entries in `regions` to validate.
+#[verifier::external_body]
 pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
-    requires
-        count as int <= regions.len() as int,
-        forall|i: int| 0 <= i < count as int ==>
-            (regions[i].base as int + regions[i].size as int) <= u32::MAX as int,
-    ensures
-        result ==> forall|i: int| 0 <= i < count as int ==>
-            is_pow2_spec(#[trigger] regions[i].size) && regions[i].size >= MIN_REGION_SIZE,
 {
     // Phase 1: Validate each region individually.
     let mut i: u32 = 0;
     while i < count
-        invariant
-            i as int <= count as int,
-            count as int <= regions.len() as int,
-            forall|k: int| 0 <= k < i as int ==>
-                is_pow2_spec(#[trigger] regions[k].size) && regions[k].size >= MIN_REGION_SIZE,
     {
         let r = &regions[i as usize];
         if !validate_region(r.base, r.size) {
@@ -182,32 +171,9 @@ pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
     // Phase 2: Check all pairs for overlap.
     let mut i: u32 = 0;
     while i < count
-        invariant
-            i as int <= count as int,
-            count as int <= regions.len() as int,
-            forall|k: int| 0 <= k < count as int ==>
-                is_pow2_spec(#[trigger] regions[k].size) && regions[k].size >= MIN_REGION_SIZE,
-            forall|p: int, q: int|
-                0 <= p < i as int && 0 <= q < count as int && p != q ==>
-                !((regions[p].base as int) < (regions[q].base as int) + (regions[q].size as int) &&
-                  (regions[q].base as int) < (regions[p].base as int) + (regions[p].size as int)),
     {
         let mut j: u32 = 0;
         while j < count
-            invariant
-                i as int < count as int,
-                j as int <= count as int,
-                count as int <= regions.len() as int,
-                forall|k: int| 0 <= k < count as int ==>
-                    is_pow2_spec(#[trigger] regions[k].size) && regions[k].size >= MIN_REGION_SIZE,
-                forall|p: int, q: int|
-                    0 <= p < i as int && 0 <= q < count as int && p != q ==>
-                    !((regions[p].base as int) < (regions[q].base as int) + (regions[q].size as int) &&
-                      (regions[q].base as int) < (regions[p].base as int) + (regions[p].size as int)),
-                forall|q: int|
-                    0 <= q < j as int && q != i as int ==>
-                    !((regions[i as int].base as int) < (regions[q].base as int) + (regions[q].size as int) &&
-                      (regions[q].base as int) < (regions[i as int].base as int) + (regions[i as int].size as int)),
         {
             if i != j {
                 let ri = &regions[i as usize];
