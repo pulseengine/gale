@@ -82,12 +82,104 @@ pub open spec fn is_pow2_spec(n: u32) -> bool {
 /// The ensures uses the spec-level characterisation (is_pow2_spec) to
 /// avoid bitwise AND in spec context.  The body uses the standard C
 /// idiom which is valid in exec context.
-#[verifier::external_body]
+///
+/// Proof strategy: `by(bit_vector)` establishes that `n > 0 && n & (n-1) == 0`
+/// implies `n` is one of the 32 known powers of two, then each case is
+/// witnessed against `spec_pow2(k)` for the matching exponent.
 pub fn is_power_of_two(n: u32) -> (result: bool)
     ensures
         result == is_pow2_spec(n),
 {
-    n > 0 && (n & (n - 1)) == 0
+    let result = n > 0 && (n & (n - 1)) == 0;
+    proof {
+        // Forward: if the bitwise check holds, produce a witness for is_pow2_spec.
+        if result {
+            // bit_vector decision procedure enumerates all 32 u32 powers of two.
+            assert(
+                n == 1u32 || n == 2u32 || n == 4u32 || n == 8u32
+                || n == 16u32 || n == 32u32 || n == 64u32 || n == 128u32
+                || n == 256u32 || n == 512u32 || n == 1024u32 || n == 2048u32
+                || n == 4096u32 || n == 8192u32 || n == 16384u32 || n == 32768u32
+                || n == 65536u32 || n == 131072u32 || n == 262144u32 || n == 524288u32
+                || n == 1048576u32 || n == 2097152u32 || n == 4194304u32 || n == 8388608u32
+                || n == 16777216u32 || n == 33554432u32 || n == 67108864u32 || n == 134217728u32
+                || n == 268435456u32 || n == 536870912u32 || n == 1073741824u32
+                || n == 2147483648u32
+            ) by(bit_vector)
+                requires n > 0u32, n & sub(n, 1u32) == 0u32;
+            // Witness each case against spec_pow2.
+            if n == 1           { assert(n as int == spec_pow2(0)); }
+            else if n == 2      { assert(n as int == spec_pow2(1)); }
+            else if n == 4      { assert(n as int == spec_pow2(2)); }
+            else if n == 8      { assert(n as int == spec_pow2(3)); }
+            else if n == 16     { assert(n as int == spec_pow2(4)); }
+            else if n == 32     { assert(n as int == spec_pow2(5)); }
+            else if n == 64     { assert(n as int == spec_pow2(6)); }
+            else if n == 128    { assert(n as int == spec_pow2(7)); }
+            else if n == 256    { assert(n as int == spec_pow2(8)); }
+            else if n == 512    { assert(n as int == spec_pow2(9)); }
+            else if n == 1024   { assert(n as int == spec_pow2(10)); }
+            else if n == 2048   { assert(n as int == spec_pow2(11)); }
+            else if n == 4096   { assert(n as int == spec_pow2(12)); }
+            else if n == 8192   { assert(n as int == spec_pow2(13)); }
+            else if n == 16384  { assert(n as int == spec_pow2(14)); }
+            else if n == 32768  { assert(n as int == spec_pow2(15)); }
+            else if n == 65536  { assert(n as int == spec_pow2(16)); }
+            else if n == 131072 { assert(n as int == spec_pow2(17)); }
+            else if n == 262144 { assert(n as int == spec_pow2(18)); }
+            else if n == 524288 { assert(n as int == spec_pow2(19)); }
+            else if n == 1048576   { assert(n as int == spec_pow2(20)); }
+            else if n == 2097152   { assert(n as int == spec_pow2(21)); }
+            else if n == 4194304   { assert(n as int == spec_pow2(22)); }
+            else if n == 8388608   { assert(n as int == spec_pow2(23)); }
+            else if n == 16777216  { assert(n as int == spec_pow2(24)); }
+            else if n == 33554432  { assert(n as int == spec_pow2(25)); }
+            else if n == 67108864  { assert(n as int == spec_pow2(26)); }
+            else if n == 134217728 { assert(n as int == spec_pow2(27)); }
+            else if n == 268435456 { assert(n as int == spec_pow2(28)); }
+            else if n == 536870912 { assert(n as int == spec_pow2(29)); }
+            else if n == 1073741824 { assert(n as int == spec_pow2(30)); }
+            else                    { assert(n as int == spec_pow2(31)); }
+        }
+        // Backward: if is_pow2_spec(n) holds, the bitwise check must hold too.
+        if is_pow2_spec(n) {
+            let k = choose|k: nat| k < 32 && n as int == spec_pow2(k);
+            // Unfold spec_pow2 for each possible k to expose the concrete value.
+            if k == 0       { assert(n == 1u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 1u32; }
+            else if k == 1  { assert(n == 2u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 2u32; }
+            else if k == 2  { assert(n == 4u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 4u32; }
+            else if k == 3  { assert(n == 8u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 8u32; }
+            else if k == 4  { assert(n == 16u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 16u32; }
+            else if k == 5  { assert(n == 32u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 32u32; }
+            else if k == 6  { assert(n == 64u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 64u32; }
+            else if k == 7  { assert(n == 128u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 128u32; }
+            else if k == 8  { assert(n == 256u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 256u32; }
+            else if k == 9  { assert(n == 512u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 512u32; }
+            else if k == 10 { assert(n == 1024u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 1024u32; }
+            else if k == 11 { assert(n == 2048u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 2048u32; }
+            else if k == 12 { assert(n == 4096u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 4096u32; }
+            else if k == 13 { assert(n == 8192u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 8192u32; }
+            else if k == 14 { assert(n == 16384u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 16384u32; }
+            else if k == 15 { assert(n == 32768u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 32768u32; }
+            else if k == 16 { assert(n == 65536u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 65536u32; }
+            else if k == 17 { assert(n == 131072u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 131072u32; }
+            else if k == 18 { assert(n == 262144u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 262144u32; }
+            else if k == 19 { assert(n == 524288u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 524288u32; }
+            else if k == 20 { assert(n == 1048576u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 1048576u32; }
+            else if k == 21 { assert(n == 2097152u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 2097152u32; }
+            else if k == 22 { assert(n == 4194304u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 4194304u32; }
+            else if k == 23 { assert(n == 8388608u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 8388608u32; }
+            else if k == 24 { assert(n == 16777216u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 16777216u32; }
+            else if k == 25 { assert(n == 33554432u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 33554432u32; }
+            else if k == 26 { assert(n == 67108864u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 67108864u32; }
+            else if k == 27 { assert(n == 134217728u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 134217728u32; }
+            else if k == 28 { assert(n == 268435456u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 268435456u32; }
+            else if k == 29 { assert(n == 536870912u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 536870912u32; }
+            else if k == 30 { assert(n == 1073741824u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 1073741824u32; }
+            else            { assert(n == 2147483648u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 2147483648u32; }
+        }
+    }
+    result
 }
 
 /// Validate a single MPU region configuration.
@@ -106,15 +198,18 @@ pub fn is_power_of_two(n: u32) -> (result: bool)
 /// - `size` is a power of 2 (size & (size-1) == 0, size > 0)
 /// - `size` >= MIN_REGION_SIZE (32 bytes)
 /// - `base` is aligned to `size` (base & (size-1) == 0)
-#[verifier::external_body]
 pub fn validate_region(base: u32, size: u32) -> (result: bool)
 {
     if size == 0 {
         return false;
     }
-    let power_of_two = (size & (size - 1)) == 0;
+    // size > 0 here, so size - 1 does not underflow.
+    // Verus infers size >= 1 from size != 0 via LIA; sub(size, 1u32) is safe.
+    assert(size >= 1u32);
+    let size_minus_1 = sub(size, 1u32);
+    let power_of_two = (size & size_minus_1) == 0;
     let min_size = size >= MIN_REGION_SIZE;
-    let aligned = (base & (size - 1)) == 0;
+    let aligned = (base & size_minus_1) == 0;
     power_of_two && min_size && aligned
 }
 
@@ -227,13 +322,11 @@ pub proof fn lemma_zero_size_rejected()
 }
 
 /// P4: validate_region rejects sizes below minimum.
-#[verifier::external_body]
 pub proof fn lemma_below_minimum_rejected()
 {
 }
 
 /// Well-known valid configurations.
-#[verifier::external_body]
 pub proof fn lemma_common_regions_valid()
 {
 }

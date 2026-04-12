@@ -85,6 +85,25 @@ artifacts:
         hardware running Zephyr RTOS v3.x.
       goal-type: system-level
       asil: D
+    links:
+      - type: goal-addresses-hazard
+        target: H-1
+      - type: goal-addresses-hazard
+        target: H-2
+      - type: goal-addresses-hazard
+        target: H-3
+      - type: goal-addresses-hazard
+        target: H-4
+      - type: goal-addresses-hazard
+        target: H-5
+      - type: goal-addresses-hazard
+        target: H-6
+      - type: goal-addresses-hazard
+        target: L-1
+      - type: goal-addresses-hazard
+        target: L-2
+      - type: goal-addresses-hazard
+        target: L-3
 
   # ── Top-level Strategy ────────────────────────────────────────────────────
 

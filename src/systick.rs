@@ -129,7 +129,6 @@ pub fn cycles_to_ticks(cycles: u64, cycles_per_tick: u32) -> (result: Option<u64
 /// Returns None if the multiplication would overflow u64.
 ///
 /// ST4: no overflow (returns None on overflow)
-#[verifier::external_body]
 pub fn ticks_to_cycles(ticks: u64, cycles_per_tick: u32) -> (result: Option<u64>)
     ensures
         cycles_per_tick == 0 ==> result === Some(0u64),
@@ -148,8 +147,15 @@ pub fn ticks_to_cycles(ticks: u64, cycles_per_tick: u32) -> (result: Option<u64>
         if ticks > u64::MAX / cpt {
             None
         } else {
-            // ticks <= u64::MAX / cpt guarantees ticks * cpt <= u64::MAX
-            assert(ticks as int * cpt as int <= u64::MAX as int);
+            // ticks <= u64::MAX / cpt  ==>  ticks * cpt <= u64::MAX.
+            // Integer division satisfies: (a / b) * b <= a for b > 0.
+            // So (u64::MAX / cpt) * cpt <= u64::MAX.
+            // Since ticks <= u64::MAX / cpt, we have ticks * cpt <= (u64::MAX / cpt) * cpt <= u64::MAX.
+            assert(ticks as int * cpt as int <= u64::MAX as int) by {
+                assert(cpt > 0u64);
+                assert(ticks as int <= u64::MAX as int / cpt as int);
+                assert((u64::MAX as int / cpt as int) * cpt as int <= u64::MAX as int);
+            };
             Some(ticks * cpt)
         }
     }
@@ -268,7 +274,6 @@ pub struct AnnounceDecideResult {
 /// - `cycles_per_tick`: cycles per tick (CYC_PER_TICK)
 ///
 /// ST3: no overflow in tick computation
-#[verifier::external_body]
 pub fn announce_decide(
     cycle_count: u64,
     announced_cycles: u64,
@@ -287,12 +292,29 @@ pub fn announce_decide(
                     / (cycles_per_tick as int)
         },
 {
+    // new_cc no-overflow: guaranteed by requires cycle_count + overflow_cyc <= u64::MAX.
+    assert(cycle_count as int + overflow_cyc as int <= u64::MAX as int);
     let new_cc = cycle_count + overflow_cyc as u64;
+    // dcycles no-underflow: announced_cycles <= new_cc by requires.
     let dcycles = new_cc - announced_cycles;
     let cpt = cycles_per_tick as u64;
     let dticks = dcycles / cpt;
+    // announced_add = dticks * cpt <= dcycles (integer division property).
+    assert(dticks as int * cpt as int <= dcycles as int) by {
+        assert(cpt > 0u64);
+        assert(dticks as int == dcycles as int / cpt as int);
+        assert((dcycles as int / cpt as int) * cpt as int <= dcycles as int);
+    };
     let announced_add = dticks * cpt;
-    // dticks * cpt <= dcycles < u64::MAX, so no overflow
+    // new_announced no-overflow:
+    //   announced_cycles + announced_add
+    //   <= announced_cycles + dcycles
+    //   == announced_cycles + (new_cc - announced_cycles)
+    //   == new_cc  <= u64::MAX.
+    assert(announced_cycles as int + announced_add as int <= u64::MAX as int) by {
+        assert(announced_add as int <= dcycles as int);
+        assert(dcycles as int == new_cc as int - announced_cycles as int);
+    };
     let new_announced = announced_cycles + announced_add;
     // Truncate dticks to u32 — in practice always fits because
     // dcycles <= COUNTER_MAX * (number of wraps since last announce),
@@ -329,7 +351,6 @@ pub proof fn lemma_elapsed_bounded(last_count: u32, current_count: u32, load: u3
 ///
 /// For any ticks t and cycles_per_tick cpt > 0, if ticks_to_cycles(t, cpt)
 /// does not overflow, then converting back gives t.
-#[verifier::external_body]
 pub proof fn lemma_roundtrip(ticks: u64, cycles_per_tick: u32)
     requires
         cycles_per_tick > 0,
@@ -340,10 +361,11 @@ pub proof fn lemma_roundtrip(ticks: u64, cycles_per_tick: u32)
             cycles / (cycles_per_tick as int) == ticks as int
         }),
 {
+    // (t * d) / d == t for d > 0: standard integer arithmetic.
+    // Z3 handles this via linear arithmetic.
 }
 
 /// ST6: monotonicity — more cycles => more or equal ticks.
-#[verifier::external_body]
 pub proof fn lemma_monotonicity(c1: u64, c2: u64, cycles_per_tick: u32)
     requires
         cycles_per_tick > 0,
@@ -388,7 +410,6 @@ pub proof fn lemma_zero_elapsed(count: u32, load: u32)
 
 /// Division truncation: converting cycles to ticks and back loses
 /// at most (cycles_per_tick - 1) cycles.
-#[verifier::external_body]
 pub proof fn lemma_conversion_truncation(cycles: u64, cycles_per_tick: u32)
     requires
         cycles_per_tick > 0,
@@ -399,6 +420,8 @@ pub proof fn lemma_conversion_truncation(cycles: u64, cycles_per_tick: u32)
             cycles as int - back < cycles_per_tick as int
         }),
 {
+    // Remainder after integer division: a - (a/d)*d == a % d < d.
+    // Z3 handles this via the modulo/division relationship.
 }
 
 } // verus!
