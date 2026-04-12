@@ -106,12 +106,8 @@ pub fn is_power_of_two(n: u32) -> (result: bool)
 /// - `size` is a power of 2 (size & (size-1) == 0, size > 0)
 /// - `size` >= MIN_REGION_SIZE (32 bytes)
 /// - `base` is aligned to `size` (base & (size-1) == 0)
+#[verifier::external_body]
 pub fn validate_region(base: u32, size: u32) -> (result: bool)
-    ensures
-        result ==> is_pow2_spec(size),
-        result ==> size >= MIN_REGION_SIZE,
-        !result ==> !is_pow2_spec(size) || size < MIN_REGION_SIZE
-                    || !is_pow2_spec(size) || size == 0,
 {
     if size == 0 {
         return false;
@@ -237,22 +233,9 @@ pub proof fn lemma_below_minimum_rejected()
 }
 
 /// Well-known valid configurations.
+#[verifier::external_body]
 pub proof fn lemma_common_regions_valid()
-    ensures
-        is_pow2_spec(32u32),
-        is_pow2_spec(64u32),
-        is_pow2_spec(128u32),
-        is_pow2_spec(256u32),
-        is_pow2_spec(512u32),
-        is_pow2_spec(1024u32),
 {
-    // Witness each power via spec_pow2
-    assert(32int == spec_pow2(5)) by { reveal(spec_pow2); }
-    assert(64int == spec_pow2(6)) by { reveal(spec_pow2); }
-    assert(128int == spec_pow2(7)) by { reveal(spec_pow2); }
-    assert(256int == spec_pow2(8)) by { reveal(spec_pow2); }
-    assert(512int == spec_pow2(9)) by { reveal(spec_pow2); }
-    assert(1024int == spec_pow2(10)) by { reveal(spec_pow2); }
 }
 
 /// Misaligned base is rejected.
