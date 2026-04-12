@@ -60,11 +60,18 @@ pub struct MpuRegion {
 
 /// Spec-level power-of-two predicate.
 ///
+/// Spec-level power of two: 2^k as int (recursive, no bitwise).
+pub open spec fn spec_pow2(k: nat) -> int
+    decreases k,
+{
+    if k == 0 { 1 } else { 2 * spec_pow2((k - 1) as nat) }
+}
+
 /// A positive integer n is a power of two if and only if there exists
 /// a natural number k such that n == 2^k. This formulation avoids
 /// bitwise operators in spec context.
 pub open spec fn is_pow2_spec(n: u32) -> bool {
-    n > 0 && exists|k: nat| n == vstd::math::pow(2int, k as int)
+    n > 0 && exists|k: nat| k < 32 && n as int == spec_pow2(k)
 }
 
 /// Check if a value is a power of 2.
@@ -240,30 +247,13 @@ pub proof fn lemma_common_regions_valid()
         is_pow2_spec(512u32),
         is_pow2_spec(1024u32),
 {
-    // 32 = 2^5
-    assert(32u32 == vstd::math::pow(2int, 5int)) by {
-        reveal(vstd::math::pow);
-    }
-    // 64 = 2^6
-    assert(64u32 == vstd::math::pow(2int, 6int)) by {
-        reveal(vstd::math::pow);
-    }
-    // 128 = 2^7
-    assert(128u32 == vstd::math::pow(2int, 7int)) by {
-        reveal(vstd::math::pow);
-    }
-    // 256 = 2^8
-    assert(256u32 == vstd::math::pow(2int, 8int)) by {
-        reveal(vstd::math::pow);
-    }
-    // 512 = 2^9
-    assert(512u32 == vstd::math::pow(2int, 9int)) by {
-        reveal(vstd::math::pow);
-    }
-    // 1024 = 2^10
-    assert(1024u32 == vstd::math::pow(2int, 10int)) by {
-        reveal(vstd::math::pow);
-    }
+    // Witness each power via spec_pow2
+    assert(32int == spec_pow2(5)) by { reveal(spec_pow2); }
+    assert(64int == spec_pow2(6)) by { reveal(spec_pow2); }
+    assert(128int == spec_pow2(7)) by { reveal(spec_pow2); }
+    assert(256int == spec_pow2(8)) by { reveal(spec_pow2); }
+    assert(512int == spec_pow2(9)) by { reveal(spec_pow2); }
+    assert(1024int == spec_pow2(10)) by { reveal(spec_pow2); }
 }
 
 /// Misaligned base is rejected.
