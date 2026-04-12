@@ -208,11 +208,11 @@ pub proof fn lemma_overlap_symmetric(r1: MpuRegion, r2: MpuRegion)
         r1.base as int + r1.size as int <= u32::MAX as int,
         r2.base as int + r2.size as int <= u32::MAX as int,
     ensures
-        (r1.base as int < r2.base as int + r2.size as int &&
-         r2.base as int < r1.base as int + r1.size as int)
+        ((r1.base as int) < (r2.base as int) + (r2.size as int) &&
+         (r2.base as int) < (r1.base as int) + (r1.size as int))
         ==
-        (r2.base as int < r1.base as int + r1.size as int &&
-         r1.base as int < r2.base as int + r2.size as int),
+        ((r2.base as int) < (r1.base as int) + (r1.size as int) &&
+         (r1.base as int) < (r2.base as int) + (r2.size as int)),
 {
 }
 
