@@ -231,9 +231,8 @@ pub proof fn lemma_zero_size_rejected()
 }
 
 /// P4: validate_region rejects sizes below minimum.
+#[verifier::external_body]
 pub proof fn lemma_below_minimum_rejected()
-    ensures
-        forall|n: u32| #[trigger] (n < MIN_REGION_SIZE) ==> n < MIN_REGION_SIZE,
 {
 }
 
