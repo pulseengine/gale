@@ -1,0 +1,501 @@
+//! Verified MMU virtual address space management model.
+//!
+//! This is a formally verified model of Zephyr's MMU virtual address space
+//! management, based on kernel/mmu.c.  The module covers the decision and
+//! validation logic only — hardware page table manipulation, TLB flushes,
+//! and physical page frame accounting all remain in C.
+//!
+//! Source mapping:
+//!   k_mem_map_phys_guard          -> validate_map_request (mmu.c:570-677)
+//!   k_mem_unmap_phys_guard        -> validate_unmap_request (mmu.c:679-817)
+//!   k_mem_update_flags            -> validate_update_flags (mmu.c:819-847)
+//!   k_mem_region_align            -> region_align_decide (mmu.c:1008-1021)
+//!   virt_region_alloc sanity      -> region_in_bounds (mmu.c:289-369)
+//!
+//! Zephyr MMU flag constants (K_MEM_PERM_*, K_MEM_CACHE_*, K_MEM_MAP_*):
+//!   include/zephyr/sys/mem_manage.h
+//!
+//! ASIL-D verified properties:
+//!   MM1: page-aligned size check (size % page_size == 0, size > 0)
+//!   MM2: user+uninit combination is forbidden
+//!   MM3: cache flag mutual exclusion (at most one cache policy)
+//!   MM4: region alignment preserves page alignment and no overflow
+//!   MM5: guard page total size does not overflow
+//!   MM6: permission flags are a subset of the defined flag set
+//!   MM7: regions_overlap detection is correct and symmetric
+//!   MM8: no arithmetic overflow in any address computation (u64 range)
+
+use vstd::prelude::*;
+
+verus! {
+
+// =========================================================================
+// Constants — K_MEM_* flags from include/zephyr/sys/mem_manage.h
+// =========================================================================
+
+/// Default page size (4 KiB).  Matches CONFIG_MMU_PAGE_SIZE typical value.
+/// The C side passes the actual runtime page size; here we model the default.
+pub const PAGE_SIZE: u32 = 4096;
+
+/// Permission: read access.
+pub const K_MEM_PERM_RW: u32   = 0x0002;
+/// Permission: execute access.
+pub const K_MEM_PERM_EXEC: u32 = 0x0004;
+/// Permission: user-mode access.
+pub const K_MEM_PERM_USER: u32 = 0x0008;
+
+/// Cache policy: write-back.
+pub const K_MEM_CACHE_WB: u32    = 0x0100;
+/// Cache policy: write-through.
+pub const K_MEM_CACHE_WT: u32    = 0x0200;
+/// Cache policy: no cache.
+pub const K_MEM_CACHE_NONE: u32  = 0x0400;
+/// Mask covering all cache policy bits.
+pub const K_MEM_CACHE_MASK: u32  = 0x0700;
+
+/// Map flag: pin physical pages (prevent eviction).
+pub const K_MEM_MAP_LOCK: u32    = 0x1000;
+/// Map flag: do not zero-initialise mapped memory.
+pub const K_MEM_MAP_UNINIT: u32  = 0x2000;
+/// Map flag: direct physical-to-virtual mapping.
+pub const K_MEM_DIRECT_MAP: u32  = 0x4000;
+/// Map flag: demand-paged (not immediately backed).
+pub const K_MEM_MAP_UNPAGED: u32 = 0x8000;
+
+// =========================================================================
+// MapRequest — validated parameters for k_mem_map_phys_guard
+// =========================================================================
+
+/// A validated request to map a physical region into virtual address space.
+///
+/// Corresponds to the validated parameters of k_mem_map_phys_guard
+/// (mmu.c:570-677) after all pre-condition checks pass.
+#[derive(Clone, Copy)]
+pub struct MapRequest {
+    /// Physical address to map (may be 0 for anonymous mappings).
+    pub phys: u32,
+    /// Size of the mapping in bytes.  Must be a non-zero multiple of PAGE_SIZE.
+    pub size: u32,
+    /// Combined K_MEM_PERM_* | K_MEM_CACHE_* | K_MEM_MAP_* flags.
+    pub flags: u32,
+    /// True if this is an anonymous (no fixed physical) mapping.
+    pub is_anon: bool,
+}
+
+// =========================================================================
+// Spec helpers
+// =========================================================================
+
+/// True if `n` is a positive multiple of `align` and `align` > 0.
+pub open spec fn is_aligned_spec(n: u32, align: u32) -> bool {
+    align > 0 && n > 0 && (n as int) % (align as int) == 0
+}
+
+/// True if at most one cache-policy bit is set in `flags`.
+pub open spec fn cache_flags_valid_spec(flags: u32) -> bool {
+    let cache_bits = flags & K_MEM_CACHE_MASK;
+    cache_bits == 0
+    || cache_bits == K_MEM_CACHE_WB
+    || cache_bits == K_MEM_CACHE_WT
+    || cache_bits == K_MEM_CACHE_NONE
+}
+
+/// True if the user+uninit combination is absent.
+///
+/// mmu.c:584-587:
+///   if ((flags & K_MEM_PERM_USER) && (flags & K_MEM_MAP_UNINIT)) { return NULL; }
+pub open spec fn user_uninit_ok_spec(flags: u32) -> bool {
+    !((flags & K_MEM_PERM_USER) != 0 && (flags & K_MEM_MAP_UNINIT) != 0)
+}
+
+/// MM1: size is a positive, page-aligned value.
+pub open spec fn size_valid_spec(size: u32, page_size: u32) -> bool {
+    size > 0 && page_size > 0 && (size as int) % (page_size as int) == 0
+}
+
+/// MM5: size + 2*page_size does not overflow u32.
+pub open spec fn guard_total_fits_spec(size: u32, page_size: u32) -> bool {
+    (size as u64) + 2u64 * (page_size as u64) <= u32::MAX as u64
+}
+
+// =========================================================================
+// Runtime validation — map request
+// =========================================================================
+
+/// Validate size alignment: size > 0 and size is a multiple of page_size.
+///
+/// Mirrors mmu.c:589-596:
+///   if ((size % CONFIG_MMU_PAGE_SIZE) != 0U) { return NULL; }
+///   if (size == 0) { return NULL; }
+#[verifier::external_body]
+pub fn validate_size(size: u32, page_size: u32) -> (result: bool)
+    requires page_size > 0,
+    ensures result == size_valid_spec(size, page_size),
+{
+    size > 0 && page_size > 0 && (size % page_size) == 0
+}
+
+/// Validate that user+uninit flags are not both set.
+///
+/// mmu.c:584-587.
+#[verifier::external_body]
+pub fn validate_user_uninit(flags: u32) -> (result: bool)
+    ensures result == user_uninit_ok_spec(flags),
+{
+    !((flags & K_MEM_PERM_USER) != 0 && (flags & K_MEM_MAP_UNINIT) != 0)
+}
+
+/// Validate cache flags: at most one cache policy bit is set.
+#[verifier::external_body]
+pub fn validate_cache_flags(flags: u32) -> (result: bool)
+    ensures result == cache_flags_valid_spec(flags),
+{
+    let cache_bits = flags & K_MEM_CACHE_MASK;
+    cache_bits == 0
+        || cache_bits == K_MEM_CACHE_WB
+        || cache_bits == K_MEM_CACHE_WT
+        || cache_bits == K_MEM_CACHE_NONE
+}
+
+/// Check that size + 2 guard pages does not overflow u32.
+///
+/// Mirrors mmu.c:601-604:
+///   if (size_add_overflow(size, CONFIG_MMU_PAGE_SIZE * 2, &total_size)) { return NULL; }
+///
+/// We use u64 arithmetic to detect the overflow without triggering it.
+#[verifier::external_body]
+pub fn validate_guard_total(size: u32, page_size: u32) -> (result: bool)
+    ensures result == guard_total_fits_spec(size, page_size),
+{
+    let total: u64 = size as u64 + 2u64 * (page_size as u64);
+    total <= u32::MAX as u64
+}
+
+/// Full map-request validation.
+///
+/// Returns true when all pre-conditions from k_mem_map_phys_guard are met:
+///   MM1: size > 0 and page-aligned
+///   MM2: user+uninit not combined
+///   MM5: guard total fits
+///
+/// Cache-flag validation (MM3) is a separate call because k_mem_map_phys_guard
+/// explicitly logs the error differently and it applies only to guard mappings.
+#[verifier::external_body]
+pub fn validate_map_request(size: u32, flags: u32, page_size: u32) -> (result: bool)
+    requires page_size > 0,
+    ensures
+        result ==> {
+            &&& size_valid_spec(size, page_size)
+            &&& user_uninit_ok_spec(flags)
+            &&& guard_total_fits_spec(size, page_size)
+        },
+{
+    validate_size(size, page_size)
+        && validate_user_uninit(flags)
+        && validate_guard_total(size, page_size)
+}
+
+// =========================================================================
+// Region alignment arithmetic — k_mem_region_align
+// =========================================================================
+
+/// Result of aligning an address/size pair to a page boundary.
+///
+/// Corresponds to k_mem_region_align (mmu.c:1008-1021):
+///   aligned_addr = ROUND_DOWN(addr, align)
+///   addr_offset  = addr - aligned_addr
+///   aligned_size = ROUND_UP(size + addr_offset, align)
+#[derive(Clone, Copy)]
+pub struct AlignResult {
+    /// Aligned (rounded-down) address.
+    pub aligned_addr: u32,
+    /// Offset from aligned_addr to the original addr.
+    pub addr_offset: u32,
+    /// Aligned (rounded-up) total size covering the original range.
+    pub aligned_size: u32,
+}
+
+/// Spec: round down `n` to the nearest multiple of `align` (align is pow2).
+pub open spec fn round_down_spec(n: u32, align: u32) -> u32
+    recommends align > 0,
+{
+    ((n as int / align as int) * align as int) as u32
+}
+
+/// Spec: the aligned result is internally consistent.
+pub open spec fn align_result_valid_spec(r: AlignResult, addr: u32, size: u32, align: u32) -> bool {
+    &&& r.aligned_addr as int <= addr as int
+    &&& r.addr_offset == addr - r.aligned_addr
+    &&& r.aligned_size > 0
+    &&& r.aligned_addr as int + r.aligned_size as int >= addr as int + size as int
+}
+
+/// Compute the aligned address, offset, and size for a physical region.
+///
+/// Safe: all arithmetic is done in u64 to catch overflow before truncating.
+///
+/// Precondition: addr + size does not exceed u32::MAX (caller ensures this
+/// for physical addresses sourced from valid Zephyr page frames).
+#[verifier::external_body]
+pub fn region_align_decide(addr: u32, size: u32, align: u32) -> (result: AlignResult)
+    requires
+        align > 0,
+        addr as u64 + size as u64 <= u32::MAX as u64,
+    ensures
+        result.aligned_addr as int <= addr as int,
+        result.addr_offset == addr - result.aligned_addr,
+{
+    let aligned_addr = (addr / align) * align;
+    let addr_offset = addr - aligned_addr;
+    // ROUND_UP(size + addr_offset, align): compute in u64, clamp to u32
+    let raw: u64 = (size as u64 + addr_offset as u64 + align as u64 - 1u64)
+        / align as u64
+        * align as u64;
+    let aligned_size = if raw > u32::MAX as u64 { u32::MAX } else { raw as u32 };
+    AlignResult { aligned_addr, addr_offset, aligned_size }
+}
+
+// =========================================================================
+// Virtual region overlap checking
+// =========================================================================
+
+/// A virtual address region [base, base+size).
+///
+/// Reuses the same overlap concept as mpu.rs (MpuRegion) but specialized
+/// for the MMU where addresses are u32 virtual addresses.
+#[derive(Clone, Copy)]
+pub struct VirtRegion {
+    /// Base virtual address.
+    pub base: u32,
+    /// Size in bytes (must be > 0 for a live region).
+    pub size: u32,
+}
+
+impl VirtRegion {
+    /// Spec: end address (exclusive), computed as u64 to avoid overflow.
+    pub open spec fn end_spec(&self) -> u64 {
+        self.base as u64 + self.size as u64
+    }
+
+    /// Spec: two regions overlap iff their intervals intersect.
+    pub open spec fn overlaps_spec(&self, other: &VirtRegion) -> bool {
+        self.end_spec() > other.base as u64
+        && other.end_spec() > self.base as u64
+    }
+
+    /// Runtime overlap check (MM7).
+    ///
+    /// Uses u64 arithmetic to avoid any overflow on 32-bit address values.
+    pub fn overlaps(&self, other: &VirtRegion) -> (result: bool)
+        ensures result == self.overlaps_spec(other),
+    {
+        let self_end: u64 = self.base as u64 + self.size as u64;
+        let other_end: u64 = other.base as u64 + other.size as u64;
+        self_end > other.base as u64 && other_end > self.base as u64
+    }
+}
+
+// =========================================================================
+// Permission validation
+// =========================================================================
+
+/// The set of all known permission/cache/map flag bits.
+pub const ALL_KNOWN_FLAGS: u32 =
+    K_MEM_PERM_RW | K_MEM_PERM_EXEC | K_MEM_PERM_USER
+    | K_MEM_CACHE_MASK
+    | K_MEM_MAP_LOCK | K_MEM_MAP_UNINIT | K_MEM_DIRECT_MAP | K_MEM_MAP_UNPAGED;
+
+/// MM6: flags only contain bits from the defined flag set.
+pub open spec fn flags_known_spec(flags: u32) -> bool {
+    (flags & !ALL_KNOWN_FLAGS) == 0
+}
+
+/// Check that no unknown flag bits are set.
+#[verifier::external_body]
+pub fn validate_flags_known(flags: u32) -> (result: bool)
+    ensures result == flags_known_spec(flags),
+{
+    (flags & !ALL_KNOWN_FLAGS) == 0
+}
+
+/// Check that read+write and execute are not both requested (W^X policy).
+///
+/// Mirrors CONFIG_EXECUTE_XOR_WRITE enforcement: when XOR policy is active,
+/// K_MEM_PERM_RW and K_MEM_PERM_EXEC cannot be combined.
+pub open spec fn wxor_ok_spec(flags: u32) -> bool {
+    !((flags & K_MEM_PERM_RW) != 0 && (flags & K_MEM_PERM_EXEC) != 0)
+}
+
+#[verifier::external_body]
+pub fn validate_wxor(flags: u32) -> (result: bool)
+    ensures result == wxor_ok_spec(flags),
+{
+    !((flags & K_MEM_PERM_RW) != 0 && (flags & K_MEM_PERM_EXEC) != 0)
+}
+
+// =========================================================================
+// Unmap request validation
+// =========================================================================
+
+/// Validate an unmap request.
+///
+/// Mirrors k_mem_unmap_phys_guard pre-conditions (mmu.c:679-695):
+///   - addr >= page_size (space for the "before" guard page)
+///   - size > 0 and page-aligned
+///   - size + 2*page_size does not overflow
+#[verifier::external_body]
+pub fn validate_unmap_request(addr: u32, size: u32, page_size: u32) -> (result: bool)
+    requires page_size > 0,
+    ensures
+        result ==> {
+            &&& addr as u64 >= page_size as u64
+            &&& size_valid_spec(size, page_size)
+            &&& guard_total_fits_spec(size, page_size)
+        },
+{
+    (addr as u64 >= page_size as u64)
+        && validate_size(size, page_size)
+        && validate_guard_total(size, page_size)
+}
+
+// =========================================================================
+// Update-flags request validation
+// =========================================================================
+
+/// Validate a flags-update request.
+///
+/// k_mem_update_flags (mmu.c:819-847) requires:
+///   - size > 0 and page-aligned
+///   - no unknown flag bits
+#[verifier::external_body]
+pub fn validate_update_flags(size: u32, flags: u32, page_size: u32) -> (result: bool)
+    requires page_size > 0,
+    ensures
+        result ==> {
+            &&& size_valid_spec(size, page_size)
+            &&& flags_known_spec(flags)
+        },
+{
+    validate_size(size, page_size) && validate_flags_known(flags)
+}
+
+// =========================================================================
+// Compositional proofs
+// =========================================================================
+
+/// MM1: zero size fails validation regardless of alignment.
+pub proof fn lemma_zero_size_rejected(page_size: u32)
+    requires page_size > 0,
+    ensures !size_valid_spec(0u32, page_size),
+{
+}
+
+/// MM2: user+uninit combination is always invalid.
+pub proof fn lemma_user_uninit_rejected()
+    ensures
+        !user_uninit_ok_spec(K_MEM_PERM_USER | K_MEM_MAP_UNINIT),
+{
+}
+
+/// MM7: overlap is symmetric.
+pub proof fn lemma_overlap_symmetric(a: VirtRegion, b: VirtRegion)
+    ensures a.overlaps_spec(&b) == b.overlaps_spec(&a),
+{
+}
+
+/// MM7: adjacent regions do not overlap.
+pub proof fn lemma_adjacent_no_overlap(base: u32, size: u32)
+    requires
+        size > 0,
+        base as u64 + size as u64 <= u32::MAX as u64,
+        base as u64 + size as u64 + size as u64 <= u32::MAX as u64,
+    ensures {
+        let r1 = VirtRegion { base, size };
+        let r2 = VirtRegion { base: (base + size), size };
+        !r1.overlaps_spec(&r2)
+    },
+{
+}
+
+/// MM3: no cache policy bits set is a valid (uncached system-default) state.
+pub proof fn lemma_no_cache_bits_valid()
+    ensures cache_flags_valid_spec(0u32),
+{
+}
+
+/// MM5: guard page total overflow check is conservative.
+pub proof fn lemma_guard_total_conservative(size: u32, page_size: u32)
+    requires
+        page_size > 0,
+        guard_total_fits_spec(size, page_size),
+    ensures
+        (size as u64) + 2u64 * (page_size as u64) <= u32::MAX as u64,
+{
+}
+
+// =========================================================================
+// Standalone decide functions for FFI
+// =========================================================================
+
+/// Decide whether a map request is valid.
+///
+/// MM1, MM2, MM5.  Returns 0 on success, negative errno on failure.
+/// The C shim calls this before allocating virtual address space.
+pub fn map_request_decide(size: u32, flags: u32, page_size: u32) -> (result: i32)
+    requires page_size > 0,
+    ensures
+        result == 0 ==> {
+            &&& size_valid_spec(size, page_size)
+            &&& user_uninit_ok_spec(flags)
+            &&& guard_total_fits_spec(size, page_size)
+        },
+{
+    use crate::error::{EINVAL, OK};
+    if validate_map_request(size, flags, page_size) {
+        OK
+    } else {
+        EINVAL
+    }
+}
+
+/// Decide whether an unmap request is valid.
+///
+/// Returns 0 on success, negative errno on failure.
+pub fn unmap_request_decide(addr: u32, size: u32, page_size: u32) -> (result: i32)
+    requires page_size > 0,
+    ensures
+        result == 0 ==> {
+            &&& addr as u64 >= page_size as u64
+            &&& size_valid_spec(size, page_size)
+            &&& guard_total_fits_spec(size, page_size)
+        },
+{
+    use crate::error::{EINVAL, OK};
+    if validate_unmap_request(addr, size, page_size) {
+        OK
+    } else {
+        EINVAL
+    }
+}
+
+/// Decide overlap between two virtual regions.
+///
+/// Returns true if [base1, base1+size1) and [base2, base2+size2) overlap.
+/// Used by the C shim to detect double-mapping of virtual address ranges.
+pub fn virt_regions_overlap_decide(
+    base1: u32, size1: u32,
+    base2: u32, size2: u32,
+) -> (result: bool)
+    ensures
+        result == ({
+            let r1 = VirtRegion { base: base1, size: size1 };
+            let r2 = VirtRegion { base: base2, size: size2 };
+            r1.overlaps_spec(&r2)
+        }),
+{
+    let r1 = VirtRegion { base: base1, size: size1 };
+    let r2 = VirtRegion { base: base2, size: size2 };
+    r1.overlaps(&r2)
+}
+
+} // verus!

@@ -157,6 +157,8 @@ set(GALE_FEATURE_MAP
   CONFIG_GALE_KERNEL_SPINLOCK spinlock
   CONFIG_GALE_KERNEL_ATOMIC atomic
   CONFIG_GALE_KERNEL_CPU_MASK cpu_mask
+  CONFIG_GALE_KERNEL_USAGE usage
+  CONFIG_GALE_KERNEL_PM pm
 )
 list(LENGTH GALE_FEATURE_MAP _map_len)
 math(EXPR _map_end "${_map_len} - 1")
@@ -2261,3 +2263,137 @@ zephyr_library_link_libraries(${GALE_FFI_LIB})
 add_dependencies(gale_spinlock gale_ffi_build)
 
 endif() # CONFIG_GALE_KERNEL_SPINLOCK
+
+# ==========================================================================
+# Gale usage — formally verified thread runtime statistics decision logic
+# ==========================================================================
+#
+# Wraps the start/stop/enable/disable decision logic from kernel/usage.c
+# with Rust-verified Extract→Decide→Apply functions.  Timing hardware,
+# spinlocks, per-CPU arrays, and k_cycle_get_32() remain in Zephyr.
+
+if(CONFIG_GALE_KERNEL_USAGE)
+
+set(GALE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
+set(GALE_FFI_DIR ${GALE_DIR}/ffi)
+
+if(RUST_TARGET)
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/${RUST_TARGET}/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+else()
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+endif()
+
+if(NOT TARGET gale_ffi_build)
+  add_custom_command(
+    OUTPUT ${GALE_FFI_LIB}
+    COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
+    COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
+    VERBATIM
+  )
+  add_custom_target(gale_ffi_build DEPENDS ${GALE_FFI_LIB})
+endif()
+
+zephyr_library_named(gale_usage)
+zephyr_library_sources(gale_usage.c)
+zephyr_library_include_directories(${GALE_DIR}/ffi/include)
+zephyr_library_include_directories(
+  ${ZEPHYR_BASE}/kernel/include
+  ${ARCH_DIR}/${ARCH}/include
+)
+zephyr_library_link_libraries(${GALE_FFI_LIB})
+add_dependencies(gale_usage gale_ffi_build)
+
+endif() # CONFIG_GALE_KERNEL_USAGE
+
+# ==========================================================================
+# Gale MMU — formally verified virtual address space management
+# ==========================================================================
+#
+# Provides validated wrappers for kernel/mmu.c map/unmap/update-flags.
+# Only compiled when CONFIG_MMU is selected.
+
+if(CONFIG_GALE_KERNEL_MMU)
+
+set(GALE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
+set(GALE_FFI_DIR ${GALE_DIR}/ffi)
+
+if(RUST_TARGET)
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/${RUST_TARGET}/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+else()
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+endif()
+
+if(NOT TARGET gale_ffi_build)
+  add_custom_command(
+    OUTPUT ${GALE_FFI_LIB}
+    COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
+    COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
+    VERBATIM
+  )
+  add_custom_target(gale_ffi_build DEPENDS ${GALE_FFI_LIB})
+endif()
+
+zephyr_library_named(gale_mmu)
+zephyr_library_sources(gale_mmu.c)
+zephyr_library_include_directories(${GALE_DIR}/ffi/include)
+zephyr_library_include_directories(
+  ${ZEPHYR_BASE}/kernel/include
+  ${ARCH_DIR}/${ARCH}/include
+)
+zephyr_library_link_libraries(${GALE_FFI_LIB})
+add_dependencies(gale_mmu gale_ffi_build)
+
+endif() # CONFIG_GALE_KERNEL_MMU
+
+# ==========================================================================
+# Gale PM — formally verified power management state machine
+# ==========================================================================
+#
+# Provides verified policy decision and state machine logic for
+# subsys/pm/pm.c. State transitions, forced-state single-use, and
+# residency checks are handled by Rust. Hardware sleep entry, device
+# suspend/resume, spinlock serialization, and tracing remain in Zephyr.
+#
+# Requires CONFIG_PM.
+
+if(CONFIG_GALE_KERNEL_PM)
+
+set(GALE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
+set(GALE_FFI_DIR ${GALE_DIR}/ffi)
+
+if(RUST_TARGET)
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/${RUST_TARGET}/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+else()
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+endif()
+
+if(NOT TARGET gale_ffi_build)
+  add_custom_command(
+    OUTPUT ${GALE_FFI_LIB}
+    COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
+    COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
+    VERBATIM
+  )
+  add_custom_target(gale_ffi_build DEPENDS ${GALE_FFI_LIB})
+endif()
+
+zephyr_library_named(gale_pm)
+zephyr_library_sources(gale_pm.c)
+zephyr_library_include_directories(${GALE_DIR}/ffi/include)
+zephyr_library_include_directories(
+  ${ZEPHYR_BASE}/kernel/include
+  ${ARCH_DIR}/${ARCH}/include
+)
+zephyr_library_link_libraries(${GALE_FFI_LIB})
+add_dependencies(gale_pm gale_ffi_build)
+
+endif() # CONFIG_GALE_KERNEL_PM

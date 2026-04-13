@@ -390,6 +390,19 @@ config GALE_KERNEL_CPU_MASK
 	  polling, and userspace syscalls remain native Zephyr C.
 	  Requires a Rust toolchain for the target architecture.
 
+config GALE_KERNEL_USAGE
+	bool "Use Gale formally verified thread runtime statistics"
+	depends on SCHED_THREAD_USAGE
+	help
+	  Replace kernel/usage.c with the Gale formally verified Rust
+	  implementation. The start/stop tracking decision logic, idempotent
+	  sys enable/disable guards, average-cycles computation (division-by-zero
+	  protection), and overflow-safe cycle accumulation are handled by
+	  verified Rust code. Timing hardware, spinlocks, per-CPU arrays,
+	  k_cycle_get_32(), and the obj_core stat wrappers remain native
+	  Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
 config GALE_KERNEL_RB
 	bool "Use Gale formally verified red-black tree validation"
 	help
@@ -400,4 +413,30 @@ config GALE_KERNEL_RB
 	  swap validation after rotation are handled by verified Rust
 	  code. Tree structure, pointers, and all mutations remain
 	  native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_MMU
+	bool "Use Gale formally verified MMU validation"
+	depends on MMU
+	help
+	  Add Gale formally verified validation guards for kernel/mmu.c.
+	  Map/unmap/update-flags pre-condition checks (page-aligned size,
+	  user+uninit exclusion, guard-page overflow detection, known-flag
+	  validation) and region-alignment arithmetic are handled by
+	  verified Rust code. Virtual address space allocation, physical
+	  page frame accounting, arch_mem_map/arch_mem_unmap, TLB
+	  maintenance, demand paging, and spinlock serialization remain
+	  native Zephyr C.
+
+config GALE_KERNEL_PM
+	bool "Use Gale formally verified power management state machine"
+	depends on PM
+	help
+	  Add Gale formally verified policy decision and state machine logic
+	  for subsys/pm/pm.c. State transition validity (PM2/PM3/PM4),
+	  forced-state single-use enforcement (PM5), and minimum-residency
+	  policy checks (PM6) are handled by verified Rust code. Hardware
+	  sleep entry (pm_state_set/pm_state_exit_post_ops), device
+	  suspend/resume, clock management, spinlock serialization, tracing,
+	  and the scheduler lock remain native Zephyr C.
 	  Requires a Rust toolchain for the target architecture.

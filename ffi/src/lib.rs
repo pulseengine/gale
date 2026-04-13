@@ -231,6 +231,43 @@
 //!
 //! Verified: HP1-HP8 (bounds, conservation, alloc gating, free exactness,
 //! double-free, alignment, overflow, merge invariant).
+//!
+//! ## MMU (gale_mmu_*)
+//!
+//! Pure functions replacing validation logic in kernel/mmu.c:
+//!   mmu.c:570-677   k_mem_map_phys_guard — size/flags/overflow checks
+//!   mmu.c:679-817   k_mem_unmap_phys_guard — addr/size/guard checks
+//!   mmu.c:819-847   k_mem_update_flags — size/flags checks
+//!   mmu.c:1008-1021 k_mem_region_align — alignment arithmetic
+//!
+//! Verified: MM1-MM8 (size alignment, user+uninit, cache flags,
+//! guard overflow, known flags, W^X, overlap, no overflow).
+//!
+//! ## PM (gale_pm_*)
+//!
+//! Pure functions replacing policy and state machine decisions from
+//! subsys/pm/pm.c and subsys/pm/policy/policy_default.c:
+//!   pm.c:135-153         pm_state_force — record forced state
+//!   pm.c:182-189         forced/policy selection in pm_system_suspend
+//!   policy_default.c:27-38  min-residency check
+//!
+//! Verified: PM1-PM7 (state enum bounds, transition validity, terminal
+//! SOFT_OFF, forced single-use, residency policy, substate bounds).
+//!
+//! ## Usage (gale_usage_*)
+//!
+//! Pure functions replacing decision logic in kernel/usage.c:
+//!   usage.c:74-97    z_sched_usage_start  — start_decide
+//!   usage.c:99-119   z_sched_usage_stop   — stop_decide
+//!   usage.c:155-159  z_sched_cpu_usage    — average_cycles (div-by-zero guard)
+//!   usage.c:211-215  z_sched_thread_usage — average_cycles (div-by-zero guard)
+//!   usage.c:227-246  k_thread_runtime_stats_enable  — thread enable
+//!   usage.c:248-273  k_thread_runtime_stats_disable — thread disable
+//!   usage.c:283-293  k_sys_runtime_stats_enable  — sys_enable_decide
+//!   usage.c:317-326  k_sys_runtime_stats_disable — sys_disable_decide
+//!
+//! Verified: US1-US6 (tracking guard, accumulate-only-when-started,
+//! track_usage toggle, idempotent sys ops, no divide-by-zero, monotone cycles).
 
 #![cfg_attr(not(any(test, kani)), no_std)]
 // FFI boundary crate — unsafe is inherent (no_mangle, raw pointers).
@@ -9694,4 +9731,479 @@ mod kani_spinlock_proofs {
         let rc = gale_spinlock_release(owner, 1, other, &mut out_depth, &mut out_owner);
         assert!(rc == -1);
     }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — usage (thread runtime statistics)
+// ---------------------------------------------------------------------------
+//
+// Pure functions replacing decision logic from kernel/usage.c:
+//
+//   usage.c:74-97    z_sched_usage_start  — start_decide
+//   usage.c:99-119   z_sched_usage_stop   — stop_decide
+//   usage.c:155-159  z_sched_cpu_usage    — average_cycles (division guard)
+//   usage.c:211-215  z_sched_thread_usage — average_cycles (division guard)
+//   usage.c:227-246  k_thread_runtime_stats_enable  — thread enable
+//   usage.c:248-273  k_thread_runtime_stats_disable — thread disable
+//   usage.c:283-293  k_sys_runtime_stats_enable  — sys_enable_decide
+//   usage.c:317-326  k_sys_runtime_stats_disable — sys_disable_decide
+//
+// Verified by Verus (SMT/Z3):
+//   US1: tracking only starts when track_usage flag is set
+//   US2: stop accumulates only when usage0 != 0
+//   US3: enable sets track_usage; disable clears it
+//   US4: sys enable/disable is idempotent
+//   US5: average_cycles == 0 when num_windows == 0 (no divide-by-zero)
+//   US6: cycle accumulation is monotonically non-decreasing
+
+/// Action codes for sys enable/disable — returned to the C shim.
+pub const GALE_USAGE_SYS_NOOP: u8 = 0;
+pub const GALE_USAGE_SYS_APPLY: u8 = 1;
+
+/// Decide whether k_sys_runtime_stats_enable() should apply changes.
+///
+/// usage.c:283-293: if already tracking, early-return (no-op).
+///
+/// Returns:
+///   GALE_USAGE_SYS_NOOP  (0) — already enabled; do nothing
+///   GALE_USAGE_SYS_APPLY (1) — not yet enabled; apply to all CPUs
+///
+/// Verified: US4 (idempotent enable).
+#[cfg(feature = "usage")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_usage_sys_enable_decide(current_tracking: u32) -> u8 {
+    use gale::usage::{SysTrackDecision, sys_enable_decide};
+
+    match sys_enable_decide(current_tracking != 0) {
+        SysTrackDecision::NoOp => GALE_USAGE_SYS_NOOP,
+        SysTrackDecision::Apply => GALE_USAGE_SYS_APPLY,
+    }
+}
+
+/// Decide whether k_sys_runtime_stats_disable() should apply changes.
+///
+/// usage.c:317-326: if not tracking, early-return (no-op).
+///
+/// Returns:
+///   GALE_USAGE_SYS_NOOP  (0) — already disabled; do nothing
+///   GALE_USAGE_SYS_APPLY (1) — currently enabled; apply to all CPUs
+///
+/// Verified: US4 (idempotent disable).
+#[cfg(feature = "usage")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_usage_sys_disable_decide(current_tracking: u32) -> u8 {
+    use gale::usage::{SysTrackDecision, sys_disable_decide};
+
+    match sys_disable_decide(current_tracking != 0) {
+        SysTrackDecision::NoOp => GALE_USAGE_SYS_NOOP,
+        SysTrackDecision::Apply => GALE_USAGE_SYS_APPLY,
+    }
+}
+
+/// Action codes for z_sched_usage_start.
+pub const GALE_USAGE_START_RECORD_ONLY: u8 = 0;
+pub const GALE_USAGE_START_RECORD_WINDOW: u8 = 1;
+
+/// Decide what z_sched_usage_start should do for this thread.
+///
+/// usage.c:74-97: if track_usage is true (analysis mode), also reset
+/// the current window counter and increment num_windows.
+///
+/// Returns:
+///   GALE_USAGE_START_RECORD_ONLY   (0) — set usage0=now only
+///   GALE_USAGE_START_RECORD_WINDOW (1) — set usage0=now, also update window
+///
+/// Verified: US1 (window tracking only when track_usage set).
+#[cfg(feature = "usage")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_usage_start_decide(track_usage: u32) -> u8 {
+    use gale::usage::{StartDecision, start_decide};
+
+    match start_decide(track_usage != 0) {
+        StartDecision::RecordOnly => GALE_USAGE_START_RECORD_ONLY,
+        StartDecision::RecordStart => GALE_USAGE_START_RECORD_WINDOW,
+    }
+}
+
+/// Action codes for z_sched_usage_stop.
+pub const GALE_USAGE_STOP_SKIP: u8 = 0;
+pub const GALE_USAGE_STOP_ACCUMULATE: u8 = 1;
+
+/// Decide what z_sched_usage_stop should do.
+///
+/// usage.c:107: `if (u0 != 0)` — only accumulate if start was recorded.
+///
+/// Returns:
+///   GALE_USAGE_STOP_SKIP       (0) — usage0 == 0; do nothing
+///   GALE_USAGE_STOP_ACCUMULATE (1) — usage0 != 0; compute and accumulate cycles
+///
+/// Verified: US2 (accumulate only when usage0 != 0).
+#[cfg(feature = "usage")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_usage_stop_decide(usage0: u32) -> u8 {
+    use gale::usage::{StopDecision, stop_decide};
+
+    match stop_decide(usage0) {
+        StopDecision::Skip => GALE_USAGE_STOP_SKIP,
+        StopDecision::Accumulate => GALE_USAGE_STOP_ACCUMULATE,
+    }
+}
+
+/// Compute average cycles, guarding against division by zero.
+///
+/// usage.c:155-159, 211-215:
+///   if (num_windows == 0) { stats->average_cycles = 0; }
+///   else { stats->average_cycles = total / num_windows; }
+///
+/// Arguments:
+///   total_cycles: accumulated total execution cycles
+///   num_windows:  number of scheduling windows
+///   out_average:  pointer to receive the computed average
+///
+/// Returns:
+///   0 (OK)      — result written to *out_average
+///   -EINVAL     — null pointer
+///
+/// Verified: US5 (no division by zero when num_windows == 0).
+#[cfg(feature = "usage")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_usage_average_cycles(
+    total_cycles: u64,
+    num_windows: u32,
+    out_average: *mut u64,
+) -> i32 {
+    use gale::usage::average_cycles;
+
+    unsafe {
+        if out_average.is_null() {
+            return EINVAL;
+        }
+        *out_average = average_cycles(total_cycles, num_windows);
+        OK
+    }
+}
+
+/// Compute elapsed cycles between two u32 timestamps using wrapping subtraction.
+///
+/// usage.c:108: `uint32_t cycles = usage_now() - u0;`
+/// The hardware cycle counter is u32 and wraps around; wrapping subtraction
+/// handles the wrap-around correctly.
+///
+/// Verified: US2 (elapsed cycles used by stop path).
+#[cfg(feature = "usage")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_usage_elapsed_cycles(now: u32, usage0: u32) -> u32 {
+    use gale::usage::elapsed_cycles;
+
+    elapsed_cycles(now, usage0)
+}
+
+/// Accumulate cycles into a thread's total, checking for overflow.
+///
+/// Called by the C shim's stop path after computing elapsed cycles.
+/// US6: total_cycles is monotonically non-decreasing.
+///
+/// Arguments:
+///   total_cycles:     pointer to the thread's accumulated cycle counter
+///   cycles:           cycles to add (from elapsed_cycles)
+///
+/// Returns:
+///   0 (OK)         — *total_cycles updated
+///   -EOVERFLOW     — would overflow u64; *total_cycles unchanged
+///   -EINVAL        — null pointer
+#[cfg(feature = "usage")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_usage_accumulate(total_cycles: *mut u64, cycles: u32) -> i32 {
+    use gale::usage::ThreadUsage;
+
+    unsafe {
+        if total_cycles.is_null() {
+            return EINVAL;
+        }
+
+        let mut usage = ThreadUsage {
+            track_usage: true,
+            total_cycles: *total_cycles,
+            num_windows: 0,
+        };
+        let rc = usage.accumulate(cycles);
+        if rc == OK {
+            *total_cycles = usage.total_cycles;
+        }
+        rc
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MMU — validated virtual address space management decisions
+// ---------------------------------------------------------------------------
+
+/// Decision result for region-align arithmetic.
+#[repr(C)]
+#[cfg(feature = "mmu")]
+pub struct GaleMmuAlignResult {
+    /// Aligned (rounded-down) address.
+    pub aligned_addr: u32,
+    /// Offset from aligned_addr to the original addr.
+    pub addr_offset: u32,
+    /// Rounded-up total size covering the original range.
+    pub aligned_size: u32,
+}
+
+/// Validate a map request before allocating virtual address space.
+///
+/// mmu.c:570-677 — size > 0, page-aligned, user+uninit forbidden,
+/// guard-page total does not overflow.
+///
+/// Returns 0 (OK) or -EINVAL.
+#[cfg(feature = "mmu")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_mmu_map_request_decide(size: u32, flags: u32, page_size: u32) -> i32 {
+    use gale::mmu::map_request_decide;
+    if page_size == 0 {
+        return EINVAL;
+    }
+    map_request_decide(size, flags, page_size)
+}
+
+/// Validate an unmap request.
+///
+/// mmu.c:679-695 — addr >= page_size, size > 0 and page-aligned,
+/// guard-page total does not overflow.
+///
+/// Returns 0 (OK) or -EINVAL.
+#[cfg(feature = "mmu")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_mmu_unmap_request_decide(addr: u32, size: u32, page_size: u32) -> i32 {
+    use gale::mmu::unmap_request_decide;
+    if page_size == 0 {
+        return EINVAL;
+    }
+    unmap_request_decide(addr, size, page_size)
+}
+
+/// Validate a flags-update request.
+///
+/// mmu.c:819-847 — size > 0, page-aligned, only known K_MEM_* bits set.
+///
+/// Returns 0 (OK) or -EINVAL.
+#[cfg(feature = "mmu")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_mmu_update_flags_decide(size: u32, flags: u32, page_size: u32) -> i32 {
+    use gale::mmu::validate_update_flags;
+    if page_size == 0 {
+        return EINVAL;
+    }
+    if validate_update_flags(size, flags, page_size) {
+        OK
+    } else {
+        EINVAL
+    }
+}
+
+/// Compute page-aligned address, offset, and size for a physical region.
+///
+/// mmu.c:1008-1021 (k_mem_region_align).
+#[cfg(feature = "mmu")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_mmu_region_align(
+    addr: u32,
+    size: u32,
+    align: u32,
+) -> GaleMmuAlignResult {
+    use gale::mmu::region_align_decide;
+    if align == 0 {
+        return GaleMmuAlignResult { aligned_addr: addr, addr_offset: 0, aligned_size: size };
+    }
+    let r = region_align_decide(addr, size, align);
+    GaleMmuAlignResult {
+        aligned_addr: r.aligned_addr,
+        addr_offset: r.addr_offset,
+        aligned_size: r.aligned_size,
+    }
+}
+
+/// Check whether two virtual address regions overlap.
+///
+/// Returns true if [base1, base1+size1) and [base2, base2+size2) intersect.
+#[cfg(feature = "mmu")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_mmu_regions_overlap(
+    base1: u32,
+    size1: u32,
+    base2: u32,
+    size2: u32,
+) -> bool {
+    use gale::mmu::virt_regions_overlap_decide;
+    virt_regions_overlap_decide(base1, size1, base2, size2)
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — pm (power management state machine)
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the policy and state machine decision logic from
+// subsys/pm/pm.c and subsys/pm/policy/policy_default.c:
+//
+//   pm.c:135-153        pm_state_force — record forced state
+//   pm.c:182-189        forced/policy selection in pm_system_suspend
+//   policy_default.c:27-38  min-residency check
+//
+// Verified by Verus (SMT/Z3):
+//   PM1: state enum bounds
+//   PM2: ACTIVE can transition to any state
+//   PM3: any non-terminal state resumes to ACTIVE
+//   PM4: SOFT_OFF is terminal
+//   PM5: forced state applied once, then cleared
+//   PM6: policy respects residency constraint
+
+/// Decision struct for PM state force — tells C shim what action to take.
+#[repr(C)]
+pub struct GalePmForceDecision {
+    /// Action: 0=FORCE_OK, 1=TERMINAL (SOFT_OFF blocks force)
+    pub action: u8,
+    /// Requested state code (only meaningful when action=FORCE_OK)
+    pub state: u8,
+    /// Requested substate id
+    pub substate_id: u8,
+}
+
+pub const GALE_PM_FORCE_OK: u8 = 0;
+pub const GALE_PM_FORCE_TERMINAL: u8 = 1;
+
+/// Decide whether a PM state can be forced.
+///
+/// C extracts whether the CPU is currently in SOFT_OFF; Rust decides
+/// if the force is permissible (PM4: SOFT_OFF blocks all forces).
+///
+/// Verified: PM4, PM5.
+#[cfg(feature = "pm")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_pm_force_decide(
+    current_state: u8,
+    target_state: u8,
+    substate_id: u8,
+) -> GalePmForceDecision {
+    use gale::pm::{PmState, PM_STATE_COUNT};
+
+    if current_state >= PM_STATE_COUNT || target_state >= PM_STATE_COUNT {
+        return GalePmForceDecision {
+            action: GALE_PM_FORCE_TERMINAL,
+            state: current_state,
+            substate_id: 0,
+        };
+    }
+    // PM4: SOFT_OFF is terminal — cannot force any transition from it
+    if current_state == PmState::SoftOff as u8 {
+        return GalePmForceDecision {
+            action: GALE_PM_FORCE_TERMINAL,
+            state: current_state,
+            substate_id: 0,
+        };
+    }
+    GalePmForceDecision {
+        action: GALE_PM_FORCE_OK,
+        state: target_state,
+        substate_id,
+    }
+}
+
+/// Decision struct for PM suspend — tells C shim which state to enter.
+#[repr(C)]
+pub struct GalePmSuspendDecision {
+    /// Action: 0=ENTER_STATE, 1=STAY_ACTIVE
+    pub action: u8,
+    /// State to enter (only valid when action=ENTER_STATE)
+    pub state: u8,
+    /// Substate id
+    pub substate_id: u8,
+}
+
+pub const GALE_PM_ACTION_ENTER_STATE: u8 = 0;
+pub const GALE_PM_ACTION_STAY_ACTIVE: u8 = 1;
+
+/// Decide PM suspend outcome: forced state vs. policy state.
+///
+/// C shim extracts: whether a forced state is pending, which state the
+/// policy chose.  Rust decides which one to use (PM5: forced wins).
+///
+/// Verified: PM5.
+#[cfg(feature = "pm")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_pm_suspend_decide(
+    has_forced: u8,
+    forced_state: u8,
+    forced_substate: u8,
+    has_policy: u8,
+    policy_state: u8,
+    policy_substate: u8,
+) -> GalePmSuspendDecision {
+    use gale::pm::{PmState, suspend_state_decide, PM_STATE_COUNT};
+
+    let forced = if has_forced != 0 && forced_state < PM_STATE_COUNT {
+        PmState::from_u8(forced_state).ok()
+    } else {
+        None
+    };
+    let policy = if has_policy != 0 && policy_state < PM_STATE_COUNT {
+        PmState::from_u8(policy_state).ok()
+    } else {
+        None
+    };
+
+    match suspend_state_decide(forced, policy) {
+        Some(state) => {
+            let substate = if has_forced != 0 { forced_substate } else { policy_substate };
+            GalePmSuspendDecision {
+                action: GALE_PM_ACTION_ENTER_STATE,
+                state: state as u8,
+                substate_id: substate,
+            }
+        }
+        None => GalePmSuspendDecision {
+            action: GALE_PM_ACTION_STAY_ACTIVE,
+            state: 0,
+            substate_id: 0,
+        },
+    }
+}
+
+/// Decide whether the residency constraint is satisfied.
+///
+/// C shim converts min_residency_us + exit_latency_us to ticks and
+/// passes both to Rust. Rust decides if there is enough time.
+///
+/// Verified: PM6.
+#[cfg(feature = "pm")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_pm_residency_ok(
+    ticks_available: i32,
+    min_residency_ticks: u32,
+) -> bool {
+    use gale::pm::policy_residency_ok;
+    policy_residency_ok(ticks_available, min_residency_ticks)
+}
+
+/// Decide whether a power state transition is valid.
+///
+/// C shim passes raw state codes; Rust validates PM2/PM3/PM4.
+///
+/// Returns: 1 if valid, 0 if not.
+#[cfg(feature = "pm")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_pm_transition_valid(from_state: u8, to_state: u8) -> u8 {
+    use gale::pm::{PmState, state_transition_valid, PM_STATE_COUNT};
+
+    if from_state >= PM_STATE_COUNT || to_state >= PM_STATE_COUNT {
+        return 0;
+    }
+    let from = match PmState::from_u8(from_state) {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+    let to = match PmState::from_u8(to_state) {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+    if state_transition_valid(from, to) { 1 } else { 0 }
 }

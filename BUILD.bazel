@@ -46,6 +46,7 @@ VERUS_SRCS = [
     "src/fatal.rs",
     "src/dynamic.rs",
     "src/smp_state.rs",
+    "src/pm.rs",
     "src/stack_config.rs",
     "src/spinlock.rs",
     "src/atomic.rs",
@@ -67,6 +68,8 @@ VERUS_SRCS = [
     "src/ipi.rs",
     "src/systick.rs",
     "src/mpu.rs",
+    "src/usage.rs",
+    "src/mmu.rs",
 ]
 
 PLAIN_SRCS = ["//plain:srcs"]
