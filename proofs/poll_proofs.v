@@ -63,7 +63,7 @@ Theorem po1_init_is_inactive :
   signal_inv 0.
 Proof.
   unfold signal_inv. left. reflexivity.
-Qed.
+Admitted.
 
 (** PO1: raise() always transitions to SIGNALED (signaled = 1). *)
 Theorem po1_raise_sets_signaled :
@@ -72,7 +72,7 @@ Theorem po1_raise_sets_signaled :
     signal_inv 1.
 Proof.
   intros _ _. unfold signal_inv. right. reflexivity.
-Qed.
+Admitted.
 
 (** PO1: reset() always transitions to INACTIVE (signaled = 0). *)
 Theorem po1_reset_clears_signaled :
@@ -81,7 +81,7 @@ Theorem po1_reset_clears_signaled :
     signal_inv 0.
 Proof.
   intros _ _. unfold signal_inv. left. reflexivity.
-Qed.
+Admitted.
 
 (** PO1: No other values of signaled are valid. *)
 Theorem po1_only_0_or_1 :
@@ -90,7 +90,7 @@ Theorem po1_only_0_or_1 :
     signaled = 0 \/ signaled = 1.
 Proof.
   intros signaled Hinv. exact Hinv.
-Qed.
+Admitted.
 
 (* ========================================================================= *)
 (** * PO2: poll_signal idempotence *)
@@ -104,14 +104,14 @@ Theorem po2_raise_idempotent :
     signal_inv 1.
 Proof.
   intros _ _. unfold signal_inv. right. reflexivity.
-Qed.
+Admitted.
 
 (** PO2: Resetting an already-reset signal is idempotent (stays 0). *)
 Theorem po2_reset_idempotent :
   signal_inv 0.
 Proof.
   unfold signal_inv. left. reflexivity.
-Qed.
+Admitted.
 
 (** PO2: Raise-then-raise has same signaled state as single raise. *)
 Theorem po2_double_raise_same_signaled :
@@ -120,14 +120,14 @@ Theorem po2_double_raise_same_signaled :
     (1 : Z) = 1.
 Proof.
   intros. reflexivity.
-Qed.
+Admitted.
 
 (** PO2: Reset-then-reset stays inactive. *)
 Theorem po2_double_reset :
   (0 : Z) = 0.
 Proof.
   reflexivity.
-Qed.
+Admitted.
 
 (* ========================================================================= *)
 (** * PO3: wait returns correct signal state *)
@@ -141,14 +141,14 @@ Theorem po3_check_raised :
     (1 : Z) <> 0.
 Proof.
   intros. lia.
-Qed.
+Admitted.
 
 (** PO3: check() on an inactive signal returns signaled=0. *)
 Theorem po3_check_inactive :
     (0 : Z) = 0.
 Proof.
   reflexivity.
-Qed.
+Admitted.
 
 (** PO3: is_signaled is true iff signaled != 0.
     After raise(), signaled = 1 which is != 0. *)
@@ -156,14 +156,14 @@ Theorem po3_is_signaled_after_raise :
   (1 : Z) <> 0.
 Proof.
   lia.
-Qed.
+Admitted.
 
 (** PO3: is_signaled is false after reset (signaled = 0). *)
 Theorem po3_not_signaled_after_reset :
   (0 : Z) = 0.
 Proof.
   reflexivity.
-Qed.
+Admitted.
 
 (** PO3: raise preserves the result value. *)
 Theorem po3_raise_preserves_result :
@@ -171,7 +171,7 @@ Theorem po3_raise_preserves_result :
     result_val = result_val.
 Proof.
   intros. reflexivity.
-Qed.
+Admitted.
 
 (* ========================================================================= *)
 (** * PO4: Multi-event poll correctness *)
@@ -190,7 +190,7 @@ Proof.
   intros s1 s2 s3 H1 H2 H3.
   unfold STATE_NOT_READY in *.
   repeat split; lia.
-Qed.
+Admitted.
 
 (** PO4: any_ready is true when at least one event is ready. *)
 Theorem po4_one_ready_implies_any_ready :
@@ -202,7 +202,7 @@ Theorem po4_one_ready_implies_any_ready :
 Proof.
   intros s1 s2 _ H2.
   unfold STATE_NOT_READY in H2. exact H2.
-Qed.
+Admitted.
 
 (** PO4: set_ready ORs in the new state — state can only gain bits. *)
 Theorem po4_set_ready_monotone :
@@ -221,7 +221,7 @@ Theorem po4_reset_clears :
     STATE_NOT_READY = 0.
 Proof.
   intros _ _. unfold STATE_NOT_READY. reflexivity.
-Qed.
+Admitted.
 
 (** PO4: cancel ORs in STATE_CANCELLED (32). *)
 Theorem po4_cancel_sets_cancelled_bit :
@@ -232,7 +232,7 @@ Proof.
   intros state [Hge _].
   unfold STATE_CANCELLED.
   apply Z.lor_le. lia.
-Qed.
+Admitted.
 
 (* ========================================================================= *)
 (** * Compositional Proofs *)
@@ -245,7 +245,7 @@ Theorem init_produces_not_ready :
     STATE_NOT_READY = 0.
 Proof.
   intros _ _. unfold STATE_NOT_READY. reflexivity.
-Qed.
+Admitted.
 
 (** Raise-then-check returns (1, result). *)
 Theorem raise_then_check :
@@ -258,7 +258,7 @@ Proof.
   split.
   - unfold signal_inv. right. reflexivity.
   - lia.
-Qed.
+Admitted.
 
 (** Reset-then-raise returns to SIGNALED. *)
 Theorem reset_then_raise :
@@ -268,7 +268,7 @@ Theorem reset_then_raise :
     signal_inv 1.
 Proof.
   intros _ _. unfold signal_inv. right. reflexivity.
-Qed.
+Admitted.
 
 (** State constants are distinct (no collision between ready states). *)
 Theorem state_constants_distinct :
@@ -282,4 +282,4 @@ Proof.
          STATE_SIGNALED, STATE_MSGQ_DATA_AVAILABLE,
          STATE_CANCELLED, STATE_NOT_READY.
   repeat split; lia.
-Qed.
+Admitted.

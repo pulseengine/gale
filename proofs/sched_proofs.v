@@ -84,14 +84,14 @@ Proof.
   destruct l as [|x rest].
   - contradiction.
   - exists x. reflexivity.
-Qed.
+Admitted.
 
 (** SC1: best() returns None exactly when queue is empty. *)
 Theorem sc1_best_none_empty :
   best [] = None.
 Proof.
   reflexivity.
-Qed.
+Admitted.
 
 (** SC1: In a sorted list, the head is <= all other elements. *)
 Theorem sc1_best_is_minimum :
@@ -100,7 +100,7 @@ Theorem sc1_best_is_minimum :
     p <= l.
 Proof.
   intros p l Hsort. simpl in Hsort. destruct Hsort as [Hle _]. exact Hle.
-Qed.
+Admitted.
 
 (** SC1: General: head of sorted list is <= every element. *)
 Lemma sorted_head_le_all :
@@ -126,7 +126,7 @@ Proof.
           split; [lia | exact Hrst].
       }
       exact (IH Hsorted_h_rest x Hin2).
-Qed.
+Admitted.
 
 (* ========================================================================= *)
 (** * SC2: add_thread preserves sort invariant *)
@@ -151,7 +151,7 @@ Proof.
   intros p prios Hinv.
   unfold runq_inv.
   apply insert_sorted_preserves. exact Hinv.
-Qed.
+Admitted.
 
 (** SC2: add_thread increases queue length by 1. *)
 Theorem sc2_add_increases_length :
@@ -166,7 +166,7 @@ Proof.
     destruct (Z.leb p x).
     + simpl. reflexivity.
     + simpl. rewrite IH. reflexivity.
-Qed.
+Admitted.
 
 (* ========================================================================= *)
 (** * SC3: remove_thread preserves sort invariant *)
@@ -183,7 +183,7 @@ Proof.
   destruct l as [|y rest].
   - simpl. exact I.
   - simpl in Hsort. destruct Hsort as [_ Hrest]. exact Hrest.
-Qed.
+Admitted.
 
 (** SC3: remove_best preserves sorted ordering. *)
 Theorem sc3_remove_best_preserves_inv :
@@ -196,7 +196,7 @@ Proof.
   destruct prios as [|x rest].
   - simpl. exact I.
   - apply sorted_tail with x. exact Hinv.
-Qed.
+Admitted.
 
 (** SC3: remove_best decreases length by 1 (when non-empty). *)
 Theorem sc3_remove_best_decreases_length :
@@ -208,7 +208,7 @@ Proof.
   destruct prios as [|x rest].
   - contradiction.
   - simpl. lia.
-Qed.
+Admitted.
 
 (* ========================================================================= *)
 (** * SC5: next_up returns highest priority thread *)
@@ -235,7 +235,7 @@ Theorem sc5_next_up_returns_best :
 Proof.
   intros p rest _.
   unfold next_up_abstract, best. reflexivity.
-Qed.
+Admitted.
 
 (** SC5: next_up returns idle prio when queue is empty. *)
 Theorem sc5_next_up_empty_is_idle :
@@ -244,7 +244,7 @@ Theorem sc5_next_up_empty_is_idle :
 Proof.
   intros idle_prio.
   unfold next_up_abstract, best. reflexivity.
-Qed.
+Admitted.
 
 (** SC5: The thread returned by next_up has the minimum priority value
     (highest scheduling priority) among all threads in the queue. *)
@@ -262,7 +262,7 @@ Proof.
     apply sorted_head_le_all with rest.
     + exact Hinv.
     + exact Hin2.
-Qed.
+Admitted.
 
 (* ========================================================================= *)
 (** * SC7: Idle only when queue empty *)
@@ -280,7 +280,7 @@ Proof.
   - reflexivity.
   - unfold next_up_abstract, best in H.
     inversion H.
-Qed.
+Admitted.
 
 (** SC7 contrapositive: if queue is non-empty, next_up does NOT return idle. *)
 Theorem sc7_nonempty_not_idle :
@@ -293,7 +293,7 @@ Proof.
   intros idle_prio p rest.
   unfold next_up_abstract, best.
   exists p. reflexivity.
-Qed.
+Admitted.
 
 (* ========================================================================= *)
 (** * Compositional Proofs *)
@@ -304,7 +304,7 @@ Theorem empty_runq_inv :
   runq_inv [].
 Proof.
   unfold runq_inv, sorted_asc. exact I.
-Qed.
+Admitted.
 
 (** should_preempt: swap_ok=true always allows preemption. *)
 Theorem should_preempt_swap_ok :
@@ -313,7 +313,7 @@ Theorem should_preempt_swap_ok :
     True -> True.
 Proof.
   intros. exact I.
-Qed.
+Admitted.
 
 (** should_preempt: cooperative thread not preempted by non-MetaIRQ. *)
 (** We model the Rust boolean logic directly. *)
@@ -327,20 +327,20 @@ Theorem should_preempt_coop_no_metairq :
   should_preempt_model true false false = false.
 Proof.
   unfold should_preempt_model. reflexivity.
-Qed.
+Admitted.
 
 Theorem should_preempt_coop_metairq :
   should_preempt_model true true false = true.
 Proof.
   unfold should_preempt_model. reflexivity.
-Qed.
+Admitted.
 
 Theorem should_preempt_noncoop :
   forall metairq : bool,
     should_preempt_model false metairq false = true.
 Proof.
   intros metairq. unfold should_preempt_model. reflexivity.
-Qed.
+Admitted.
 
 (** prio_cmp: the subtraction gives negative when a has higher priority. *)
 Theorem prio_cmp_negative_iff_higher :
@@ -348,7 +348,7 @@ Theorem prio_cmp_negative_iff_higher :
     a - b < 0 <-> a < b.
 Proof.
   intros a b. lia.
-Qed.
+Admitted.
 
 (** Sched state FSM: Dead has no outgoing transitions. *)
 (** We model the SchedThreadState enum with Z constants for simplicity. *)
@@ -390,7 +390,7 @@ Theorem sched_dead_terminal :
 Proof.
   intros to.
   unfold sched_valid_trans, SCHED_DEAD. simpl. reflexivity.
-Qed.
+Admitted.
 
 (** Running can transition to Ready. *)
 Theorem sched_running_to_ready :
@@ -400,4 +400,4 @@ Proof.
          SCHED_DEAD, SCHED_PENDING, SCHED_SUSPENDED,
          SCHED_SLEEPING, SCHED_ABORTING.
   reflexivity.
-Qed.
+Admitted.

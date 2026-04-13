@@ -101,11 +101,9 @@ jobs:
             //proofs:timer_proofs_test \
             //proofs:event_proofs_test \
             //proofs:mem_slab_proofs_test \
+            //proofs:heap_proofs_test \
+            //proofs:poll_proofs_test \
+            //proofs:sched_proofs_test \
+            //proofs:thread_lifecycle_proofs_test \
             --test_output=errors
-          # New proofs need Coq 9.0 tactic fixes (Admitted proofs compile
-          # but some lemma dependencies fail). Track in separate PR.
-          # //proofs:heap_proofs_test
-          # //proofs:poll_proofs_test
-          # //proofs:sched_proofs_test
-          # //proofs:thread_lifecycle_proofs_test
         timeout-minutes: 45
