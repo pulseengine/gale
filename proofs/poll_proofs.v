@@ -229,10 +229,7 @@ Theorem po4_cancel_sets_cancelled_bit :
     event_state_valid state ->
     Z.lor state STATE_CANCELLED >= STATE_CANCELLED.
 Proof.
-  intros state [Hge _].
-  unfold STATE_CANCELLED.
-  apply Z.lor_le. lia.
-Admitted.
+Admitted. (* Z.lor_le not in Coq 9.0 *)
 
 (* ========================================================================= *)
 (** * Compositional Proofs *)
