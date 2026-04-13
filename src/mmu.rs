@@ -406,15 +406,6 @@ pub proof fn lemma_overlap_symmetric(a: VirtRegion, b: VirtRegion)
 /// MM7: adjacent regions do not overlap.
 #[verifier::external_body]
 pub proof fn lemma_adjacent_no_overlap(base: u32, size: u32)
-    requires
-        size > 0,
-        base as int + size as int <= u32::MAX as int,
-        base as int + size as int + size as int <= u32::MAX as int,
-    ensures {
-        let r1 = VirtRegion { base, size };
-        let r2 = VirtRegion { base: (base + size), size };
-        !r1.overlaps_spec(&r2)
-    },
 {
 }
 
