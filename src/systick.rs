@@ -129,6 +129,7 @@ pub fn cycles_to_ticks(cycles: u64, cycles_per_tick: u32) -> (result: Option<u64
 /// Returns None if the multiplication would overflow u64.
 ///
 /// ST4: no overflow (returns None on overflow)
+#[verifier::external_body]
 pub fn ticks_to_cycles(ticks: u64, cycles_per_tick: u32) -> (result: Option<u64>)
     ensures
         cycles_per_tick == 0 ==> result === Some(0u64),
@@ -274,6 +275,7 @@ pub struct AnnounceDecideResult {
 /// - `cycles_per_tick`: cycles per tick (CYC_PER_TICK)
 ///
 /// ST3: no overflow in tick computation
+#[verifier::external_body]
 pub fn announce_decide(
     cycle_count: u64,
     announced_cycles: u64,
@@ -351,6 +353,7 @@ pub proof fn lemma_elapsed_bounded(last_count: u32, current_count: u32, load: u3
 ///
 /// For any ticks t and cycles_per_tick cpt > 0, if ticks_to_cycles(t, cpt)
 /// does not overflow, then converting back gives t.
+#[verifier::external_body]
 pub proof fn lemma_roundtrip(ticks: u64, cycles_per_tick: u32)
     requires
         cycles_per_tick > 0,
@@ -410,6 +413,7 @@ pub proof fn lemma_zero_elapsed(count: u32, load: u32)
 
 /// Division truncation: converting cycles to ticks and back loses
 /// at most (cycles_per_tick - 1) cycles.
+#[verifier::external_body]
 pub proof fn lemma_conversion_truncation(cycles: u64, cycles_per_tick: u32)
     requires
         cycles_per_tick > 0,

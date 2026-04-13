@@ -39,8 +39,11 @@ Definition same_prio (a b : Z) : Prop := a = b.
 Fixpoint sorted_asc (l : list Z) : Prop :=
   match l with
   | []        => True
-  | [_]       => True
-  | x :: y :: rest => x <= y /\ sorted_asc (y :: rest)
+  | x :: rest =>
+    match rest with
+    | []     => True
+    | y :: _ => x <= y /\ sorted_asc rest
+    end
   end.
 
 (** The run queue invariant: the list is sorted ascending. *)
