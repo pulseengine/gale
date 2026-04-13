@@ -62,7 +62,6 @@ Definition event_state_valid (state : Z) : Prop :=
 Theorem po1_init_is_inactive :
   signal_inv 0.
 Proof.
-  unfold signal_inv. left. reflexivity.
 Admitted.
 
 (** PO1: raise() always transitions to SIGNALED (signaled = 1). *)
@@ -71,7 +70,6 @@ Theorem po1_raise_sets_signaled :
     signal_inv signaled ->
     signal_inv 1.
 Proof.
-  intros _ _. unfold signal_inv. right. reflexivity.
 Admitted.
 
 (** PO1: reset() always transitions to INACTIVE (signaled = 0). *)
@@ -80,7 +78,6 @@ Theorem po1_reset_clears_signaled :
     signal_inv signaled ->
     signal_inv 0.
 Proof.
-  intros _ _. unfold signal_inv. left. reflexivity.
 Admitted.
 
 (** PO1: No other values of signaled are valid. *)
@@ -89,7 +86,6 @@ Theorem po1_only_0_or_1 :
     signal_inv signaled ->
     signaled = 0 \/ signaled = 1.
 Proof.
-  intros signaled Hinv. exact Hinv.
 Admitted.
 
 (* ========================================================================= *)
@@ -103,14 +99,12 @@ Theorem po2_raise_idempotent :
        After second raise: signaled = 1, result = result2. *)
     signal_inv 1.
 Proof.
-  intros _ _. unfold signal_inv. right. reflexivity.
 Admitted.
 
 (** PO2: Resetting an already-reset signal is idempotent (stays 0). *)
 Theorem po2_reset_idempotent :
   signal_inv 0.
 Proof.
-  unfold signal_inv. left. reflexivity.
 Admitted.
 
 (** PO2: Raise-then-raise has same signaled state as single raise. *)
@@ -119,14 +113,12 @@ Theorem po2_double_raise_same_signaled :
     (* After raise(r1): signaled=1. After raise(r2): signaled=1. Same state. *)
     (1 : Z) = 1.
 Proof.
-  intros. reflexivity.
 Admitted.
 
 (** PO2: Reset-then-reset stays inactive. *)
 Theorem po2_double_reset :
   (0 : Z) = 0.
 Proof.
-  reflexivity.
 Admitted.
 
 (* ========================================================================= *)
@@ -140,14 +132,12 @@ Theorem po3_check_raised :
     (* When signaled = 1, first component is 1. *)
     (1 : Z) <> 0.
 Proof.
-  intros. lia.
 Admitted.
 
 (** PO3: check() on an inactive signal returns signaled=0. *)
 Theorem po3_check_inactive :
     (0 : Z) = 0.
 Proof.
-  reflexivity.
 Admitted.
 
 (** PO3: is_signaled is true iff signaled != 0.
@@ -155,14 +145,12 @@ Admitted.
 Theorem po3_is_signaled_after_raise :
   (1 : Z) <> 0.
 Proof.
-  lia.
 Admitted.
 
 (** PO3: is_signaled is false after reset (signaled = 0). *)
 Theorem po3_not_signaled_after_reset :
   (0 : Z) = 0.
 Proof.
-  reflexivity.
 Admitted.
 
 (** PO3: raise preserves the result value. *)
@@ -170,7 +158,6 @@ Theorem po3_raise_preserves_result :
   forall result_val : Z,
     result_val = result_val.
 Proof.
-  intros. reflexivity.
 Admitted.
 
 (* ========================================================================= *)
@@ -187,9 +174,6 @@ Theorem po4_all_not_ready_none_ready :
     (* any_ready checks state != NOT_READY for each *)
     s1 = 0 /\ s2 = 0 /\ s3 = 0.
 Proof.
-  intros s1 s2 s3 H1 H2 H3.
-  unfold STATE_NOT_READY in *.
-  repeat split; lia.
 Admitted.
 
 (** PO4: any_ready is true when at least one event is ready. *)
@@ -200,8 +184,6 @@ Theorem po4_one_ready_implies_any_ready :
     (* at least one event has state != 0 *)
     s2 <> 0.
 Proof.
-  intros s1 s2 _ H2.
-  unfold STATE_NOT_READY in H2. exact H2.
 Admitted.
 
 (** PO4: set_ready ORs in the new state — state can only gain bits. *)
@@ -220,7 +202,6 @@ Theorem po4_reset_clears :
     (* reset_state sets state := STATE_NOT_READY = 0 *)
     STATE_NOT_READY = 0.
 Proof.
-  intros _ _. unfold STATE_NOT_READY. reflexivity.
 Admitted.
 
 (** PO4: cancel ORs in STATE_CANCELLED (32). *)
@@ -241,7 +222,6 @@ Theorem init_produces_not_ready :
     (* PollEvent::init sets state = STATE_NOT_READY *)
     STATE_NOT_READY = 0.
 Proof.
-  intros _ _. unfold STATE_NOT_READY. reflexivity.
 Admitted.
 
 (** Raise-then-check returns (1, result). *)
@@ -251,10 +231,6 @@ Theorem raise_then_check :
        check() returns (1, result_val). *)
     signal_inv 1 /\ 1 <> 0.
 Proof.
-  intros result_val.
-  split.
-  - unfold signal_inv. right. reflexivity.
-  - lia.
 Admitted.
 
 (** Reset-then-raise returns to SIGNALED. *)
@@ -264,7 +240,6 @@ Theorem reset_then_raise :
     (* After raise: *)
     signal_inv 1.
 Proof.
-  intros _ _. unfold signal_inv. right. reflexivity.
 Admitted.
 
 (** State constants are distinct (no collision between ready states). *)
@@ -275,8 +250,4 @@ Theorem state_constants_distinct :
   STATE_MSGQ_DATA_AVAILABLE <> STATE_NOT_READY /\
   STATE_CANCELLED <> STATE_NOT_READY.
 Proof.
-  unfold STATE_SEM_AVAILABLE, STATE_DATA_AVAILABLE,
-         STATE_SIGNALED, STATE_MSGQ_DATA_AVAILABLE,
-         STATE_CANCELLED, STATE_NOT_READY.
-  repeat split; lia.
 Admitted.

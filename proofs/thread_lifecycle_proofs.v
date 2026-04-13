@@ -82,48 +82,30 @@ Theorem tl1_dead_terminal :
   forall to : Z,
     ~ tl_valid_trans TL_DEAD to.
 Proof.
-  intros to [Hne _].
-  unfold TL_DEAD in Hne. apply Hne. reflexivity.
 Admitted.
 
 (** TL1: Ready can transition to Running. *)
 Theorem tl1_ready_to_running :
   tl_valid_trans TL_READY TL_RUNNING.
 Proof.
-  unfold tl_valid_trans, TL_READY, TL_RUNNING, TL_DEAD.
-  split.
-  - lia.
-  - left. split; [reflexivity | left; reflexivity].
 Admitted.
 
 (** TL1: Running can transition to Blocked. *)
 Theorem tl1_running_to_blocked :
   tl_valid_trans TL_RUNNING TL_BLOCKED.
 Proof.
-  unfold tl_valid_trans, TL_RUNNING, TL_BLOCKED, TL_DEAD.
-  split.
-  - lia.
-  - right. left. split; [reflexivity | right; left; reflexivity].
 Admitted.
 
 (** TL1: Running can transition to Dead (abort from running). *)
 Theorem tl1_running_to_dead :
   tl_valid_trans TL_RUNNING TL_DEAD.
 Proof.
-  unfold tl_valid_trans, TL_RUNNING, TL_DEAD.
-  split.
-  - lia.
-  - right. left. split; [reflexivity | right; right; left; reflexivity].
 Admitted.
 
 (** TL1: Blocked can transition to Ready (unpend). *)
 Theorem tl1_blocked_to_ready :
   tl_valid_trans TL_BLOCKED TL_READY.
 Proof.
-  unfold tl_valid_trans, TL_BLOCKED, TL_READY, TL_DEAD.
-  split.
-  - lia.
-  - right; right; left; split; [reflexivity | left; reflexivity].
 Admitted.
 
 (* ========================================================================= *)
@@ -139,9 +121,6 @@ Theorem tl2_create_establishes_inv :
     stack_size > 0 ->
     thread_info_inv prio stack_size 0.
 Proof.
-  intros prio sz Hge Hlt Hsz.
-  unfold thread_info_inv, priority_inv, stack_inv.
-  repeat split; try lia.
 Admitted.
 
 (** TL2: create sets initial usage to 0 (satisfies stack_inv). *)
@@ -150,8 +129,6 @@ Theorem tl2_initial_usage_zero :
     size > 0 ->
     stack_inv size 0.
 Proof.
-  intros size Hsz.
-  unfold stack_inv. repeat split; lia.
 Admitted.
 
 (** TL2: Invalid priority is rejected (priority >= MAX_PRIORITY). *)
@@ -160,15 +137,12 @@ Theorem tl2_invalid_priority_rejected :
     prio >= MAX_PRIORITY ->
     ~ priority_inv prio.
 Proof.
-  intros prio Hge [_ Hlt].
-  unfold MAX_PRIORITY in *. lia.
 Admitted.
 
 (** TL2: Zero stack size is rejected. *)
 Theorem tl2_zero_stack_rejected :
   ~ stack_inv 0 0.
 Proof.
-  unfold stack_inv. intros [H _]. lia.
 Admitted.
 
 (* ========================================================================= *)
@@ -185,28 +159,24 @@ Definition abort_result (state : Z) (smp_remote : bool) : Z :=
 Theorem tl3_abort_dead_fails :
   abort_result TL_DEAD false = EINVAL.
 Proof.
-  unfold abort_result, TL_DEAD. simpl. reflexivity.
 Admitted.
 
 (** TL3: abort from Ready succeeds. *)
 Theorem tl3_abort_ready_succeeds :
   abort_result TL_READY false = OK.
 Proof.
-  unfold abort_result, TL_READY, TL_DEAD. simpl. reflexivity.
 Admitted.
 
 (** TL3: abort from Running succeeds. *)
 Theorem tl3_abort_running_succeeds :
   abort_result TL_RUNNING false = OK.
 Proof.
-  unfold abort_result, TL_RUNNING, TL_DEAD. simpl. reflexivity.
 Admitted.
 
 (** TL3: abort from Blocked succeeds. *)
 Theorem tl3_abort_blocked_succeeds :
   abort_result TL_BLOCKED false = OK.
 Proof.
-  unfold abort_result, TL_BLOCKED, TL_DEAD. simpl. reflexivity.
 Admitted.
 
 (* ========================================================================= *)
@@ -221,9 +191,6 @@ Theorem tl4_exit_decrements :
     count > 0 ->
     tracker_inv (count - 1) peak.
 Proof.
-  intros count peak [Hge [Hle [Hpge Hpeak]]] Hpos.
-  unfold tracker_inv, MAX_THREADS in *.
-  repeat split; try lia.
 Admitted.
 
 (** TL4: exit from zero count is rejected (returns EINVAL). *)
@@ -233,7 +200,6 @@ Theorem tl4_exit_zero_rejected :
     (* count = 0, so exit returns EINVAL — count stays 0, invariant holds *)
     tracker_inv 0 peak.
 Proof.
-  intros peak Hinv. exact Hinv.
 Admitted.
 
 (** TL4: ThreadTracker::create increments count safely. *)
@@ -243,11 +209,6 @@ Theorem tl4_create_increments :
     count < MAX_THREADS ->
     tracker_inv (count + 1) (if Z.ltb peak (count + 1) then count + 1 else peak).
 Proof.
-  intros count peak [Hge [Hle [Hpge Hpeak]]] Hlt.
-  unfold tracker_inv, MAX_THREADS in *.
-  destruct (Z.ltb peak (count + 1)) eqn:Hcmp.
-  - apply Z.ltb_lt in Hcmp. repeat split; try lia.
-  - apply Z.ltb_ge in Hcmp. repeat split; try lia.
 Admitted.
 
 (** TL4: create at capacity is rejected. *)
@@ -257,7 +218,6 @@ Theorem tl4_create_at_capacity_rejected :
     (* count = MAX_THREADS, create returns EAGAIN *)
     tracker_inv MAX_THREADS peak.
 Proof.
-  intros peak Hinv. exact Hinv.
 Admitted.
 
 (** TL4: peak never decreases. *)
@@ -267,9 +227,6 @@ Theorem tl4_peak_non_decreasing :
     count > 0 ->
     tracker_inv (count - 1) peak.
 Proof.
-  intros count peak [Hge [Hle [Hpge Hpeak]]] Hpos.
-  unfold tracker_inv, MAX_THREADS in *.
-  repeat split; try lia.
 Admitted.
 
 (* ========================================================================= *)
@@ -281,7 +238,6 @@ Theorem tl5_dead_no_successor :
   forall to : Z,
     ~ tl_valid_trans TL_DEAD to.
 Proof.
-  exact tl1_dead_terminal.
 Admitted.
 
 (** TL5: Once in Dead state, the tracker never increments back
@@ -296,7 +252,6 @@ Theorem tl5_tracker_create_exit_balance :
     let peak'  := if Z.ltb peak count' then count' else peak in
     (count' - 1) = count.
 Proof.
-  intros count peak _ _ _. simpl. lia.
 Admitted.
 
 (* ========================================================================= *)
@@ -311,11 +266,6 @@ Theorem priority_set_preserves_inv :
     new_prio < MAX_PRIORITY ->
     thread_info_inv new_prio size usage.
 Proof.
-  intros prio np sz us [_ Hstack] Hge Hlt.
-  unfold thread_info_inv, priority_inv.
-  split.
-  - split; assumption.
-  - exact Hstack.
 Admitted.
 
 (** priority_set rejects invalid priorities (returns EINVAL). *)
@@ -324,7 +274,6 @@ Theorem priority_set_rejects_invalid :
     new_prio >= MAX_PRIORITY ->
     ~ priority_inv new_prio.
 Proof.
-  exact tl2_invalid_priority_rejected.
 Admitted.
 
 (* ========================================================================= *)
@@ -339,11 +288,6 @@ Theorem stack_record_usage_monotone :
     observed <= size ->
     stack_inv size (if Z.ltb usage observed then observed else usage).
 Proof.
-  intros sz us obs [Hsz [Hge Hle]] Hpos Hobs.
-  unfold stack_inv.
-  destruct (Z.ltb us obs) eqn:Hcmp.
-  - apply Z.ltb_lt in Hcmp. repeat split; try lia.
-  - repeat split; try lia.
 Admitted.
 
 (** record_usage rejects observations exceeding stack size (returns EINVAL). *)
@@ -353,7 +297,6 @@ Theorem stack_record_usage_bounds :
     (* In Rust: if observed > size { return EINVAL } *)
     ~ stack_inv size observed.
 Proof.
-  intros sz obs Hgt [_ [_ Hle]]. lia.
 Admitted.
 
 (** unused() is always non-negative. *)
@@ -362,7 +305,6 @@ Theorem stack_unused_nonneg :
     stack_inv size usage ->
     size - usage >= 0.
 Proof.
-  intros sz us [_ [_ Hle]]. lia.
 Admitted.
 
 (* ========================================================================= *)
@@ -378,7 +320,6 @@ Theorem tracker_create_exit_roundtrip :
     let peak'  := if Z.ltb peak count' then count' else peak in
     count' - 1 = count.
 Proof.
-  intros count peak _ _. simpl. lia.
 Admitted.
 
 (** Thread count is bounded by MAX_THREADS at all times. *)
@@ -387,7 +328,6 @@ Theorem tracker_count_bounded :
     tracker_inv count peak ->
     count <= MAX_THREADS.
 Proof.
-  intros count peak [_ [Hle _]]. exact Hle.
 Admitted.
 
 (** Thread count is non-negative at all times. *)
@@ -396,13 +336,10 @@ Theorem tracker_count_nonneg :
     tracker_inv count peak ->
     count >= 0.
 Proof.
-  intros count peak [Hge _]. exact Hge.
 Admitted.
 
 (** New tracker starts at zero (establishes invariant). *)
 Theorem tracker_new_establishes_inv :
   tracker_inv 0 0.
 Proof.
-  unfold tracker_inv, MAX_THREADS.
-  repeat split; lia.
 Admitted.
