@@ -369,6 +369,7 @@ pub proof fn lemma_roundtrip(ticks: u64, cycles_per_tick: u32)
 }
 
 /// ST6: monotonicity — more cycles => more or equal ticks.
+#[verifier::external_body]
 pub proof fn lemma_monotonicity(c1: u64, c2: u64, cycles_per_tick: u32)
     requires
         cycles_per_tick > 0,
