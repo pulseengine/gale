@@ -160,7 +160,7 @@ Admitted.
 Theorem sc3_remove_best_decreases_length :
   forall prios : list Z,
     prios <> [] ->
-    length (remove_best prios) = length prios - 1.
+    length (remove_best prios) = Nat.sub (length prios) 1.
 Proof.
 Admitted.
 
