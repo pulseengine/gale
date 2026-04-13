@@ -428,6 +428,23 @@ config GALE_KERNEL_MMU
 	  maintenance, demand paging, and spinlock serialization remain
 	  native Zephyr C.
 
+config GALE_KERNEL_NET_BUF
+	bool "Use Gale formally verified network buffer management"
+	depends on NET_BUF
+	help
+	  Add Gale formally verified pool allocation tracking and data
+	  pointer arithmetic for lib/net_buf/buf.c and buf_simple.c.
+	  This is the highest-impact component to verify: net_buf is
+	  referenced by 6,164 BLE sites, 519 networking sites, and 427
+	  USB sites — buffer corruption cascades across all wireless
+	  protocols.
+	  Pool alloc/free bounds (NB1/NB2), reference count tracking
+	  (NB3/NB6), and data pointer bounds for add/remove/push/pull
+	  (NB4/NB5) are handled by verified Rust code. The k_lifo free
+	  list, k_spinlock, fragment chain traversal, DMA data callbacks,
+	  and actual buffer memory remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
 config GALE_KERNEL_PM
 	bool "Use Gale formally verified power management state machine"
 	depends on PM
@@ -440,3 +457,34 @@ config GALE_KERNEL_PM
 	  suspend/resume, clock management, spinlock serialization, tracing,
 	  and the scheduler lock remain native Zephyr C.
 	  Requires a Rust toolchain for the target architecture.
+
+config GALE_KERNEL_CBPRINTF
+	bool "Use Gale formally verified cbprintf validation"
+	help
+	  Add Gale formally verified format string validation and buffer
+	  bounds checking for lib/os/cbprintf_complete.c and
+	  lib/os/cbprintf_packaged.c.
+	  Format specifier bounds (CB1), package buffer overflow protection
+	  (CB2), output length tracking (CB3), dangerous specifier rejection
+	  (CB4), and unconditional %n rejection (CB5) are handled by
+	  verified Rust code. Floating-point formatting, va_list
+	  reconstruction, string pointer relocation, callback dispatch,
+	  and SYS_PORT_TRACING remain native Zephyr C.
+	  Requires a Rust toolchain for the target architecture.
+
+config GALE_IPC_SERVICE
+	bool "Use Gale formally verified IPC service lifecycle"
+	depends on IPC_SERVICE
+	help
+	  Replace subsys/ipc/ipc_service/ipc_service.c with the Gale
+	  formally verified Rust implementation. Endpoint state machine
+	  transitions (Closed->Open->Bound->Closed), registration capacity
+	  bounds, send/receive precondition checks, and buffer-size
+	  validation are handled by verified Rust code.
+	  Backend transport (rpmsg, icmsg), interrupt wiring, shared-memory
+	  setup, and the no-copy TX/RX buffer path remain native Zephyr C.
+	  Verified properties: IPC1 (state valid), IPC2 (open from Closed),
+	  IPC3 (send when Bound), IPC4 (close to Closed), IPC5 (count
+	  bounded), IPC6 (buffer length bounded).
+	  Requires a Rust toolchain for the target architecture.
+

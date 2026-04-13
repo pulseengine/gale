@@ -70,6 +70,9 @@ VERUS_SRCS = [
     "src/mpu.rs",
     "src/usage.rs",
     "src/mmu.rs",
+    "src/net_buf.rs",
+    "src/cbprintf.rs",
+    "src/ipc.rs",
 ]
 
 PLAIN_SRCS = ["//plain:srcs"]

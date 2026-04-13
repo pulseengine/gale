@@ -24,5 +24,7 @@ pub const EBADF: i32 = -9;
 pub const EADDRINUSE: i32 = -112;
 /// Resource deadlock would occur.
 pub const EDEADLK: i32 = -45;
+/// Operation already in progress / already done.
+pub const EALREADY: i32 = -114;
 /// Success return value.
 pub const OK: i32 = 0;

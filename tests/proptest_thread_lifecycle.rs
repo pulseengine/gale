@@ -9,7 +9,17 @@
 
 use gale::error::*;
 use gale::priority::MAX_PRIORITY;
-use gale::thread_lifecycle::{MAX_THREADS, StackInfo, ThreadInfo, ThreadTracker};
+use gale::thread_lifecycle::{
+    MAX_THREADS, StackInfo, ThreadInfo, ThreadTracker,
+    THREAD_STATE_SUSPENDED,
+    SUSPEND_PROCEED, SUSPEND_ALREADY_SUSPENDED,
+    RESUME_PROCEED, RESUME_NOT_SUSPENDED,
+    PRIO_SET_PROCEED, PRIO_SET_REJECT,
+    STACK_SPACE_PROCEED, STACK_SPACE_REJECT,
+    DEADLINE_PROCEED, DEADLINE_REJECT,
+    suspend_decide, resume_decide, priority_set_decide,
+    stack_space_decide, deadline_decide,
+};
 use proptest::prelude::*;
 
 proptest! {
@@ -233,5 +243,112 @@ proptest! {
             expected -= 1;
         }
         prop_assert_eq!(t.active_count(), expected);
+    }
+
+    // =================================================================
+    // suspend_decide property tests
+    // =================================================================
+
+    /// TH7: suspend is idempotent — already-suspended threads return ALREADY_SUSPENDED.
+    #[test]
+    fn suspend_idempotent(state in 0u8..=255) {
+        let d = suspend_decide(state);
+        if (state & THREAD_STATE_SUSPENDED) != 0 {
+            prop_assert_eq!(d.action, SUSPEND_ALREADY_SUSPENDED);
+        } else {
+            prop_assert_eq!(d.action, SUSPEND_PROCEED);
+        }
+    }
+
+    /// TH8: resume is idempotent — non-suspended threads return NOT_SUSPENDED.
+    #[test]
+    fn resume_idempotent(state in 0u8..=255) {
+        let d = resume_decide(state);
+        if (state & THREAD_STATE_SUSPENDED) == 0 {
+            prop_assert_eq!(d.action, RESUME_NOT_SUSPENDED);
+        } else {
+            prop_assert_eq!(d.action, RESUME_PROCEED);
+        }
+    }
+
+    /// Suspend and resume are complementary for all states.
+    #[test]
+    fn suspend_resume_complement(state in 0u8..=255) {
+        let s = suspend_decide(state);
+        let r = resume_decide(state);
+        let sp = s.action == SUSPEND_PROCEED;
+        let rp = r.action == RESUME_PROCEED;
+        prop_assert_ne!(sp, rp);
+    }
+
+    // =================================================================
+    // priority_set_decide property tests
+    // =================================================================
+
+    /// TH1: valid priorities always PROCEED.
+    #[test]
+    fn priority_set_decide_valid(prio in 0u32..MAX_PRIORITY) {
+        let d = priority_set_decide(prio);
+        prop_assert_eq!(d.action, PRIO_SET_PROCEED);
+        prop_assert_eq!(d.ret, OK);
+    }
+
+    /// TH1: invalid priorities always REJECT.
+    #[test]
+    fn priority_set_decide_invalid(prio in MAX_PRIORITY..=u32::MAX) {
+        let d = priority_set_decide(prio);
+        prop_assert_eq!(d.action, PRIO_SET_REJECT);
+        prop_assert_eq!(d.ret, EINVAL);
+    }
+
+    // =================================================================
+    // stack_space_decide property tests
+    // =================================================================
+
+    /// TH4: unused_estimate is always <= stack_size when PROCEED.
+    #[test]
+    fn stack_space_decide_unused_bounded(
+        size in 1u32..=100_000,
+        usage in 0u32..=100_000
+    ) {
+        let si = StackInfo::init(0x1000, size).unwrap();
+        // Only record valid usage (bounded by size)
+        let mut si = si;
+        if usage <= size {
+            si.record_usage(usage);
+        }
+        let d = stack_space_decide(si, true);
+        prop_assert_eq!(d.action, STACK_SPACE_PROCEED);
+        prop_assert!(d.unused_estimate <= size, "TH4: unused_estimate > size");
+    }
+
+    /// Unmapped stack always rejects.
+    #[test]
+    fn stack_space_decide_rejects_unmapped(size in 1u32..=10_000) {
+        let si = StackInfo::init(0x1000, size).unwrap();
+        let d = stack_space_decide(si, false);
+        prop_assert_eq!(d.action, STACK_SPACE_REJECT);
+        prop_assert_eq!(d.ret, EINVAL);
+    }
+
+    // =================================================================
+    // deadline_decide property tests
+    // =================================================================
+
+    /// TD1: positive deadlines always PROCEED with clamped == input.
+    #[test]
+    fn deadline_decide_positive_valid(deadline in 1i32..=i32::MAX) {
+        let d = deadline_decide(deadline);
+        prop_assert_eq!(d.action, DEADLINE_PROCEED);
+        prop_assert_eq!(d.ret, OK);
+        prop_assert_eq!(d.clamped_deadline, deadline);
+    }
+
+    /// TD3: non-positive deadlines always REJECT.
+    #[test]
+    fn deadline_decide_nonpositive_rejected(deadline in i32::MIN..=0i32) {
+        let d = deadline_decide(deadline);
+        prop_assert_eq!(d.action, DEADLINE_REJECT);
+        prop_assert_eq!(d.ret, EINVAL);
     }
 }

@@ -227,3 +227,187 @@ impl ThreadTracker {
         self.count > 0
     }
 }
+/// Decision for k_thread_suspend.
+///
+/// sched.c z_impl_k_thread_suspend:
+///   if (unlikely(z_is_thread_suspended(thread))) { return; }
+///   z_thread_halt(thread, key, false);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SuspendDecision {
+    /// Action: 0=PROCEED (call z_thread_halt), 1=ALREADY_SUSPENDED (no-op)
+    pub action: u8,
+}
+pub const SUSPEND_PROCEED: u8 = 0;
+pub const SUSPEND_ALREADY_SUSPENDED: u8 = 1;
+/// Thread state flag: thread is suspended (from kernel_structs.h _THREAD_SUSPENDED = BIT(1)).
+pub const THREAD_STATE_SUSPENDED: u8 = 0x02;
+/// Decide whether to proceed with k_thread_suspend.
+///
+/// TH7: Suspending an already-suspended thread is a no-op (idempotent).
+///      This prevents double-suspend corruption.
+///
+/// Source: sched.c:491-522 z_impl_k_thread_suspend
+pub fn suspend_decide(thread_state: u8) -> SuspendDecision {
+    if (thread_state & THREAD_STATE_SUSPENDED) != 0 {
+        SuspendDecision {
+            action: SUSPEND_ALREADY_SUSPENDED,
+        }
+    } else {
+        SuspendDecision {
+            action: SUSPEND_PROCEED,
+        }
+    }
+}
+/// Decision for k_thread_resume.
+///
+/// sched.c z_impl_k_thread_resume:
+///   if (unlikely(!z_is_thread_suspended(thread))) { return; }
+///   z_mark_thread_as_not_suspended(thread);
+///   ready_thread(thread);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResumeDecision {
+    /// Action: 0=PROCEED (ready the thread), 1=NOT_SUSPENDED (no-op)
+    pub action: u8,
+}
+pub const RESUME_PROCEED: u8 = 0;
+pub const RESUME_NOT_SUSPENDED: u8 = 1;
+/// Decide whether to proceed with k_thread_resume.
+///
+/// TH8: Resuming a non-suspended thread is a no-op (idempotent).
+///      This prevents spurious wake-ups.
+///
+/// Source: sched.c:533-551 z_impl_k_thread_resume
+pub fn resume_decide(thread_state: u8) -> ResumeDecision {
+    if (thread_state & THREAD_STATE_SUSPENDED) == 0 {
+        ResumeDecision {
+            action: RESUME_NOT_SUSPENDED,
+        }
+    } else {
+        ResumeDecision {
+            action: RESUME_PROCEED,
+        }
+    }
+}
+/// Decision for k_thread_priority_set.
+///
+/// sched.c z_impl_k_thread_priority_set:
+///   Z_ASSERT_VALID_PRIO(prio, NULL)
+///   z_thread_prio_set(thread, prio)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PrioritySetDecision {
+    /// Action: 0=PROCEED (call z_thread_prio_set), 1=REJECT (-EINVAL)
+    pub action: u8,
+    /// Error code: 0 (OK) or -EINVAL
+    pub ret: i32,
+}
+pub const PRIO_SET_PROCEED: u8 = 0;
+pub const PRIO_SET_REJECT: u8 = 1;
+/// Decide whether to proceed with k_thread_priority_set.
+///
+/// TH1: Priority must be in valid range [0, MAX_PRIORITY).
+/// TH2: Reject out-of-range priority before modifying thread state.
+///
+/// Source: sched.c:1009-1023 z_impl_k_thread_priority_set
+pub fn priority_set_decide(new_priority: u32) -> PrioritySetDecision {
+    if new_priority >= MAX_PRIORITY {
+        PrioritySetDecision {
+            action: PRIO_SET_REJECT,
+            ret: EINVAL,
+        }
+    } else {
+        PrioritySetDecision {
+            action: PRIO_SET_PROCEED,
+            ret: OK,
+        }
+    }
+}
+/// Decision for k_thread_stack_space_get.
+///
+/// thread.c z_impl_k_thread_stack_space_get:
+///   #ifdef CONFIG_THREAD_STACK_MEM_MAPPED
+///     if (thread->stack_info.mapped.addr == NULL) { return -EINVAL; }
+///   z_stack_space_get(thread->stack_info.start, thread->stack_info.size, unused_ptr)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StackSpaceDecision {
+    /// Action: 0=PROCEED (query the stack), 1=REJECT (stack not queryable)
+    pub action: u8,
+    /// Error code: 0 (OK) or -EINVAL
+    pub ret: i32,
+    /// Expected unused bytes (valid only when action=PROCEED and stack fully unused).
+    /// Set to stack_size when stack is uninitialized (no usage recorded).
+    pub unused_estimate: u32,
+}
+pub const STACK_SPACE_PROCEED: u8 = 0;
+pub const STACK_SPACE_REJECT: u8 = 1;
+/// Decide whether k_thread_stack_space_get can proceed and estimate unused space.
+///
+/// Uses the verified StackInfo watermark to provide a conservative bound.
+/// The actual unused bytes require inspecting the 0xAA fill pattern in C;
+/// this model computes the upper bound: size - usage_watermark.
+///
+/// TH4: unused_estimate <= stack_size (bounded by StackInfo invariant).
+///
+/// Source: thread.c:1067-1078 z_impl_k_thread_stack_space_get
+pub fn stack_space_decide(
+    stack: StackInfo,
+    stack_mapped_valid: bool,
+) -> StackSpaceDecision {
+    if !stack_mapped_valid {
+        return StackSpaceDecision {
+            action: STACK_SPACE_REJECT,
+            ret: EINVAL,
+            unused_estimate: 0,
+        };
+    }
+    let unused_estimate = stack.unused();
+    StackSpaceDecision {
+        action: STACK_SPACE_PROCEED,
+        ret: OK,
+        unused_estimate,
+    }
+}
+/// Decision for k_thread_deadline_set.
+///
+/// sched.c z_impl_k_thread_deadline_set:
+///   deadline = clamp(deadline, 0, INT_MAX)
+///   newdl = k_cycle_get_32() + deadline
+///
+/// z_vrfy_k_thread_deadline_set (userspace):
+///   if (deadline <= 0) return -EINVAL
+///
+/// We model the userspace validation: deadline must be positive.
+/// The absolute deadline (now + deadline) is computed in C; overflow
+/// of the cycle counter is a platform concern outside our model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeadlineDecision {
+    /// Action: 0=PROCEED, 1=REJECT (-EINVAL)
+    pub action: u8,
+    /// Error code: 0 or -EINVAL
+    pub ret: i32,
+    /// Clamped deadline value (saturated to [0, i32::MAX]).
+    pub clamped_deadline: i32,
+}
+pub const DEADLINE_PROCEED: u8 = 0;
+pub const DEADLINE_REJECT: u8 = 1;
+/// Decide whether a deadline value is valid and compute its clamped form.
+///
+/// TD1: deadline must be > 0 for userspace callers.
+/// TD2: clamped_deadline == deadline for valid inputs in [1, i32::MAX].
+/// TD3: zero or negative deadlines are rejected.
+///
+/// Source: sched.c:1063-1095 z_impl_k_thread_deadline_set + z_vrfy_*
+pub fn deadline_decide(deadline: i32) -> DeadlineDecision {
+    if deadline <= 0 {
+        DeadlineDecision {
+            action: DEADLINE_REJECT,
+            ret: EINVAL,
+            clamped_deadline: 0,
+        }
+    } else {
+        DeadlineDecision {
+            action: DEADLINE_PROCEED,
+            ret: OK,
+            clamped_deadline: deadline,
+        }
+    }
+}

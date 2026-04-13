@@ -464,6 +464,312 @@ pub proof fn lemma_stack_conservation(usage: u32, size: u32)
 {
 }
 
+// =====================================================================
+// Thread Suspend/Resume Decisions
+// =====================================================================
+
+/// Decision for k_thread_suspend.
+///
+/// sched.c z_impl_k_thread_suspend:
+///   if (unlikely(z_is_thread_suspended(thread))) { return; }
+///   z_thread_halt(thread, key, false);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SuspendDecision {
+    /// Action: 0=PROCEED (call z_thread_halt), 1=ALREADY_SUSPENDED (no-op)
+    pub action: u8,
+}
+
+pub const SUSPEND_PROCEED: u8 = 0;
+pub const SUSPEND_ALREADY_SUSPENDED: u8 = 1;
+
+/// Thread state flag: thread is suspended (from kernel_structs.h _THREAD_SUSPENDED = BIT(1)).
+pub const THREAD_STATE_SUSPENDED: u8 = 0x02;
+
+/// Decide whether to proceed with k_thread_suspend.
+///
+/// TH7: Suspending an already-suspended thread is a no-op (idempotent).
+///      This prevents double-suspend corruption.
+///
+/// Source: sched.c:491-522 z_impl_k_thread_suspend
+pub fn suspend_decide(thread_state: u8) -> (d: SuspendDecision)
+    ensures
+        // Already suspended → no-op
+        (thread_state & THREAD_STATE_SUSPENDED) != 0 ==> d.action == SUSPEND_ALREADY_SUSPENDED,
+        // Not suspended → proceed
+        (thread_state & THREAD_STATE_SUSPENDED) == 0 ==> d.action == SUSPEND_PROCEED,
+{
+    if (thread_state & THREAD_STATE_SUSPENDED) != 0 {
+        SuspendDecision { action: SUSPEND_ALREADY_SUSPENDED }
+    } else {
+        SuspendDecision { action: SUSPEND_PROCEED }
+    }
+}
+
+/// Decision for k_thread_resume.
+///
+/// sched.c z_impl_k_thread_resume:
+///   if (unlikely(!z_is_thread_suspended(thread))) { return; }
+///   z_mark_thread_as_not_suspended(thread);
+///   ready_thread(thread);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResumeDecision {
+    /// Action: 0=PROCEED (ready the thread), 1=NOT_SUSPENDED (no-op)
+    pub action: u8,
+}
+
+pub const RESUME_PROCEED: u8 = 0;
+pub const RESUME_NOT_SUSPENDED: u8 = 1;
+
+/// Decide whether to proceed with k_thread_resume.
+///
+/// TH8: Resuming a non-suspended thread is a no-op (idempotent).
+///      This prevents spurious wake-ups.
+///
+/// Source: sched.c:533-551 z_impl_k_thread_resume
+pub fn resume_decide(thread_state: u8) -> (d: ResumeDecision)
+    ensures
+        // Not suspended → no-op
+        (thread_state & THREAD_STATE_SUSPENDED) == 0 ==> d.action == RESUME_NOT_SUSPENDED,
+        // Suspended → proceed
+        (thread_state & THREAD_STATE_SUSPENDED) != 0 ==> d.action == RESUME_PROCEED,
+{
+    if (thread_state & THREAD_STATE_SUSPENDED) == 0 {
+        ResumeDecision { action: RESUME_NOT_SUSPENDED }
+    } else {
+        ResumeDecision { action: RESUME_PROCEED }
+    }
+}
+
+// =====================================================================
+// Priority Set Decision
+// =====================================================================
+
+/// Decision for k_thread_priority_set.
+///
+/// sched.c z_impl_k_thread_priority_set:
+///   Z_ASSERT_VALID_PRIO(prio, NULL)
+///   z_thread_prio_set(thread, prio)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PrioritySetDecision {
+    /// Action: 0=PROCEED (call z_thread_prio_set), 1=REJECT (-EINVAL)
+    pub action: u8,
+    /// Error code: 0 (OK) or -EINVAL
+    pub ret: i32,
+}
+
+pub const PRIO_SET_PROCEED: u8 = 0;
+pub const PRIO_SET_REJECT: u8 = 1;
+
+/// Decide whether to proceed with k_thread_priority_set.
+///
+/// TH1: Priority must be in valid range [0, MAX_PRIORITY).
+/// TH2: Reject out-of-range priority before modifying thread state.
+///
+/// Source: sched.c:1009-1023 z_impl_k_thread_priority_set
+pub fn priority_set_decide(new_priority: u32) -> (d: PrioritySetDecision)
+    ensures
+        // Invalid priority → reject
+        new_priority >= MAX_PRIORITY ==> {
+            &&& d.action == PRIO_SET_REJECT
+            &&& d.ret == EINVAL
+        },
+        // Valid priority → proceed
+        new_priority < MAX_PRIORITY ==> {
+            &&& d.action == PRIO_SET_PROCEED
+            &&& d.ret == OK
+        },
+{
+    if new_priority >= MAX_PRIORITY {
+        PrioritySetDecision { action: PRIO_SET_REJECT, ret: EINVAL }
+    } else {
+        PrioritySetDecision { action: PRIO_SET_PROCEED, ret: OK }
+    }
+}
+
+// =====================================================================
+// Stack Space Query Decision
+// =====================================================================
+
+/// Decision for k_thread_stack_space_get.
+///
+/// thread.c z_impl_k_thread_stack_space_get:
+///   #ifdef CONFIG_THREAD_STACK_MEM_MAPPED
+///     if (thread->stack_info.mapped.addr == NULL) { return -EINVAL; }
+///   z_stack_space_get(thread->stack_info.start, thread->stack_info.size, unused_ptr)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StackSpaceDecision {
+    /// Action: 0=PROCEED (query the stack), 1=REJECT (stack not queryable)
+    pub action: u8,
+    /// Error code: 0 (OK) or -EINVAL
+    pub ret: i32,
+    /// Expected unused bytes (valid only when action=PROCEED and stack fully unused).
+    /// Set to stack_size when stack is uninitialized (no usage recorded).
+    pub unused_estimate: u32,
+}
+
+pub const STACK_SPACE_PROCEED: u8 = 0;
+pub const STACK_SPACE_REJECT: u8 = 1;
+
+/// Decide whether k_thread_stack_space_get can proceed and estimate unused space.
+///
+/// Uses the verified StackInfo watermark to provide a conservative bound.
+/// The actual unused bytes require inspecting the 0xAA fill pattern in C;
+/// this model computes the upper bound: size - usage_watermark.
+///
+/// TH4: unused_estimate <= stack_size (bounded by StackInfo invariant).
+///
+/// Source: thread.c:1067-1078 z_impl_k_thread_stack_space_get
+pub fn stack_space_decide(stack: StackInfo, stack_mapped_valid: bool) -> (d: StackSpaceDecision)
+    requires
+        stack.inv(),
+    ensures
+        // Unmapped stack (mem-mapped config) → reject
+        !stack_mapped_valid ==> {
+            &&& d.action == STACK_SPACE_REJECT
+            &&& d.ret == EINVAL
+        },
+        // Valid stack → proceed with upper-bound estimate
+        stack_mapped_valid ==> {
+            &&& d.action == STACK_SPACE_PROCEED
+            &&& d.ret == OK
+            &&& d.unused_estimate == stack.size - stack.usage
+            // TH4: estimate is bounded
+            &&& d.unused_estimate <= stack.size
+        },
+{
+    if !stack_mapped_valid {
+        return StackSpaceDecision {
+            action: STACK_SPACE_REJECT,
+            ret: EINVAL,
+            unused_estimate: 0,
+        };
+    }
+
+    // unused() is proven bounded in StackInfo::inv()
+    let unused_estimate = stack.unused();
+
+    StackSpaceDecision {
+        action: STACK_SPACE_PROCEED,
+        ret: OK,
+        unused_estimate,
+    }
+}
+
+// =====================================================================
+// Deadline Validation
+// =====================================================================
+
+/// Decision for k_thread_deadline_set.
+///
+/// sched.c z_impl_k_thread_deadline_set:
+///   deadline = clamp(deadline, 0, INT_MAX)
+///   newdl = k_cycle_get_32() + deadline
+///
+/// z_vrfy_k_thread_deadline_set (userspace):
+///   if (deadline <= 0) return -EINVAL
+///
+/// We model the userspace validation: deadline must be positive.
+/// The absolute deadline (now + deadline) is computed in C; overflow
+/// of the cycle counter is a platform concern outside our model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeadlineDecision {
+    /// Action: 0=PROCEED, 1=REJECT (-EINVAL)
+    pub action: u8,
+    /// Error code: 0 or -EINVAL
+    pub ret: i32,
+    /// Clamped deadline value (saturated to [0, i32::MAX]).
+    pub clamped_deadline: i32,
+}
+
+pub const DEADLINE_PROCEED: u8 = 0;
+pub const DEADLINE_REJECT: u8 = 1;
+
+/// Decide whether a deadline value is valid and compute its clamped form.
+///
+/// TD1: deadline must be > 0 for userspace callers.
+/// TD2: clamped_deadline == deadline for valid inputs in [1, i32::MAX].
+/// TD3: zero or negative deadlines are rejected.
+///
+/// Source: sched.c:1063-1095 z_impl_k_thread_deadline_set + z_vrfy_*
+pub fn deadline_decide(deadline: i32) -> (d: DeadlineDecision)
+    ensures
+        // Non-positive deadline → reject
+        deadline <= 0 ==> {
+            &&& d.action == DEADLINE_REJECT
+            &&& d.ret == EINVAL
+        },
+        // Positive deadline → proceed with clamped value
+        deadline > 0 ==> {
+            &&& d.action == DEADLINE_PROCEED
+            &&& d.ret == OK
+            &&& d.clamped_deadline == deadline
+        },
+{
+    if deadline <= 0 {
+        DeadlineDecision {
+            action: DEADLINE_REJECT,
+            ret: EINVAL,
+            clamped_deadline: 0,
+        }
+    } else {
+        DeadlineDecision {
+            action: DEADLINE_PROCEED,
+            ret: OK,
+            clamped_deadline: deadline,
+        }
+    }
+}
+
+// =====================================================================
+// Additional proofs for new decision functions
+// =====================================================================
+
+/// TH7: suspend_decide is idempotent — already-suspended threads are never double-suspended.
+pub proof fn lemma_suspend_idempotent(state: u8)
+    ensures
+        // If the thread is suspended, suspending it again returns ALREADY_SUSPENDED.
+        (state & THREAD_STATE_SUSPENDED) != 0 ==>
+            suspend_decide(state).action == SUSPEND_ALREADY_SUSPENDED,
+{
+}
+
+/// TH8: resume_decide is idempotent — non-suspended threads are never spuriously woken.
+pub proof fn lemma_resume_idempotent(state: u8)
+    ensures
+        // If the thread is not suspended, resuming it is a no-op.
+        (state & THREAD_STATE_SUSPENDED) == 0 ==>
+            resume_decide(state).action == RESUME_NOT_SUSPENDED,
+{
+}
+
+/// Suspend and resume are complementary: if suspend says PROCEED, resume will say PROCEED after.
+pub proof fn lemma_suspend_resume_complement(state: u8)
+    ensures
+        // If not currently suspended (suspend would PROCEED), then after state gets
+        // SUSPENDED set, resume will PROCEED.
+        (state & THREAD_STATE_SUSPENDED) == 0 ==> {
+            let after_suspend = state | THREAD_STATE_SUSPENDED;
+            resume_decide(after_suspend).action == RESUME_PROCEED
+        },
+{
+}
+
+/// TD3: deadline_decide rejects zero.
+pub proof fn lemma_deadline_rejects_zero()
+    ensures
+        deadline_decide(0i32).action == DEADLINE_REJECT,
+{
+}
+
+/// TD1: deadline_decide accepts positive deadlines.
+pub proof fn lemma_deadline_accepts_positive(deadline: i32)
+    requires deadline > 0,
+    ensures
+        deadline_decide(deadline).action == DEADLINE_PROCEED,
+        deadline_decide(deadline).clamped_deadline == deadline,
+{
+}
+
 /// Priority range: all valid priorities are below MAX_PRIORITY.
 pub proof fn lemma_priority_range()
     ensures

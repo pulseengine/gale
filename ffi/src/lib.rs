@@ -4083,6 +4083,215 @@ pub extern "C" fn gale_k_thread_join_decide(
     }
 }
 
+// ---- Phase 2: Suspend / Resume / Priority-set / Stack-space / Deadline ----
+
+/// Thread state flag: thread is suspended (_THREAD_SUSPENDED = BIT(1)).
+const THREAD_STATE_SUSPENDED: u8 = 0x02;
+
+/// Decision struct for k_thread_suspend.
+#[repr(C)]
+pub struct GaleThreadSuspendDecision {
+    /// Action: 0=PROCEED, 1=ALREADY_SUSPENDED (no-op)
+    pub action: u8,
+}
+
+pub const GALE_THREAD_SUSPEND_PROCEED: u8 = 0;
+pub const GALE_THREAD_SUSPEND_ALREADY_SUSPENDED: u8 = 1;
+
+/// Decide whether to proceed with k_thread_suspend.
+///
+/// sched.c:491-522 z_impl_k_thread_suspend:
+///   if (unlikely(z_is_thread_suspended(thread))) { return; }
+///
+/// TH7: Suspending an already-suspended thread is idempotent (no-op).
+///
+/// Arguments:
+///   thread_state: thread_base.thread_state flags
+#[cfg(feature = "thread_lifecycle")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_thread_suspend_decide(
+    thread_state: u8,
+) -> GaleThreadSuspendDecision {
+    if (thread_state & THREAD_STATE_SUSPENDED) != 0 {
+        GaleThreadSuspendDecision { action: GALE_THREAD_SUSPEND_ALREADY_SUSPENDED }
+    } else {
+        GaleThreadSuspendDecision { action: GALE_THREAD_SUSPEND_PROCEED }
+    }
+}
+
+/// Decision struct for k_thread_resume.
+#[repr(C)]
+pub struct GaleThreadResumeDecision {
+    /// Action: 0=PROCEED (ready the thread), 1=NOT_SUSPENDED (no-op)
+    pub action: u8,
+}
+
+pub const GALE_THREAD_RESUME_PROCEED: u8 = 0;
+pub const GALE_THREAD_RESUME_NOT_SUSPENDED: u8 = 1;
+
+/// Decide whether to proceed with k_thread_resume.
+///
+/// sched.c:533-551 z_impl_k_thread_resume:
+///   if (unlikely(!z_is_thread_suspended(thread))) { return; }
+///
+/// TH8: Resuming a non-suspended thread is idempotent (no-op).
+///
+/// Arguments:
+///   thread_state: thread_base.thread_state flags
+#[cfg(feature = "thread_lifecycle")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_thread_resume_decide(
+    thread_state: u8,
+) -> GaleThreadResumeDecision {
+    if (thread_state & THREAD_STATE_SUSPENDED) == 0 {
+        GaleThreadResumeDecision { action: GALE_THREAD_RESUME_NOT_SUSPENDED }
+    } else {
+        GaleThreadResumeDecision { action: GALE_THREAD_RESUME_PROCEED }
+    }
+}
+
+/// Decision struct for k_thread_priority_set.
+#[repr(C)]
+pub struct GaleThreadPrioritySetDecision {
+    /// Action: 0=PROCEED (call z_thread_prio_set), 1=REJECT (-EINVAL)
+    pub action: u8,
+    /// Return code: 0 (OK) or -EINVAL
+    pub ret: i32,
+}
+
+pub const GALE_THREAD_PRIO_SET_PROCEED: u8 = 0;
+pub const GALE_THREAD_PRIO_SET_REJECT: u8 = 1;
+
+/// Decide whether to proceed with k_thread_priority_set.
+///
+/// sched.c:1009-1023 z_impl_k_thread_priority_set:
+///   Z_ASSERT_VALID_PRIO(prio, NULL)
+///
+/// TH1: Priority must be in valid range [0, MAX_PRIORITY).
+/// TH2: Reject out-of-range priority before modifying thread state.
+///
+/// Arguments:
+///   new_priority: proposed new priority value
+#[cfg(feature = "thread_lifecycle")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_thread_priority_set_decide(
+    new_priority: u32,
+) -> GaleThreadPrioritySetDecision {
+    if new_priority >= MAX_PRIORITY {
+        GaleThreadPrioritySetDecision {
+            action: GALE_THREAD_PRIO_SET_REJECT,
+            ret: EINVAL,
+        }
+    } else {
+        GaleThreadPrioritySetDecision {
+            action: GALE_THREAD_PRIO_SET_PROCEED,
+            ret: OK,
+        }
+    }
+}
+
+/// Decision struct for k_thread_stack_space_get.
+#[repr(C)]
+pub struct GaleThreadStackSpaceDecision {
+    /// Action: 0=PROCEED (query the stack), 1=REJECT (stack not queryable)
+    pub action: u8,
+    /// Return code: 0 (OK) or -EINVAL
+    pub ret: i32,
+    /// Upper-bound estimate of unused bytes (stack_size - usage_watermark).
+    /// Valid only when action=PROCEED. Always <= stack_size.
+    pub unused_estimate: u32,
+}
+
+pub const GALE_THREAD_STACK_SPACE_PROCEED: u8 = 0;
+pub const GALE_THREAD_STACK_SPACE_REJECT: u8 = 1;
+
+/// Decide whether k_thread_stack_space_get can proceed.
+///
+/// thread.c:1067-1078 z_impl_k_thread_stack_space_get:
+///   if (mapped.addr == NULL) { return -EINVAL; }
+///   z_stack_space_get(start, size, unused_ptr)
+///
+/// TH4: unused_estimate <= stack_size.
+///
+/// Arguments:
+///   stack_size:         usable stack size in bytes (must be > 0)
+///   stack_usage:        high-watermark usage in bytes (<= stack_size)
+///   stack_mapped_valid: 1 if stack is accessible (pass 1 for non-mem-mapped)
+#[cfg(feature = "thread_lifecycle")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_thread_stack_space_decide(
+    stack_size: u32,
+    stack_usage: u32,
+    stack_mapped_valid: u32,
+) -> GaleThreadStackSpaceDecision {
+    if stack_size == 0 {
+        return GaleThreadStackSpaceDecision {
+            action: GALE_THREAD_STACK_SPACE_REJECT,
+            ret: EINVAL,
+            unused_estimate: 0,
+        };
+    }
+    if stack_mapped_valid == 0 {
+        return GaleThreadStackSpaceDecision {
+            action: GALE_THREAD_STACK_SPACE_REJECT,
+            ret: EINVAL,
+            unused_estimate: 0,
+        };
+    }
+    let usage = if stack_usage > stack_size { stack_size } else { stack_usage };
+    #[allow(clippy::arithmetic_side_effects)]
+    let unused_estimate = stack_size - usage;
+    GaleThreadStackSpaceDecision {
+        action: GALE_THREAD_STACK_SPACE_PROCEED,
+        ret: OK,
+        unused_estimate,
+    }
+}
+
+/// Decision struct for k_thread_deadline_set.
+#[repr(C)]
+pub struct GaleThreadDeadlineDecision {
+    /// Action: 0=PROCEED, 1=REJECT (-EINVAL)
+    pub action: u8,
+    /// Return code: 0 (OK) or -EINVAL
+    pub ret: i32,
+    /// Clamped deadline value (== deadline for valid positive inputs).
+    pub clamped_deadline: i32,
+}
+
+pub const GALE_THREAD_DEADLINE_PROCEED: u8 = 0;
+pub const GALE_THREAD_DEADLINE_REJECT: u8 = 1;
+
+/// Decide whether a deadline value is valid for k_thread_deadline_set.
+///
+/// sched.c:1063-1095 z_impl_k_thread_deadline_set + z_vrfy_k_thread_deadline_set:
+///   z_vrfy: if (deadline <= 0) return -EINVAL
+///
+/// TD1: deadline must be > 0.
+/// TD3: zero or negative deadlines are rejected with -EINVAL.
+///
+/// Arguments:
+///   deadline: proposed deadline in cycles (must be > 0)
+#[cfg(feature = "thread_lifecycle")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_k_thread_deadline_decide(
+    deadline: i32,
+) -> GaleThreadDeadlineDecision {
+    if deadline <= 0 {
+        GaleThreadDeadlineDecision {
+            action: GALE_THREAD_DEADLINE_REJECT,
+            ret: EINVAL,
+            clamped_deadline: 0,
+        }
+    } else {
+        GaleThreadDeadlineDecision {
+            action: GALE_THREAD_DEADLINE_PROCEED,
+            ret: OK,
+            clamped_deadline: deadline,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // FFI exports — work (work item state machine)
 // ---------------------------------------------------------------------------
@@ -10206,4 +10415,905 @@ pub extern "C" fn gale_pm_transition_valid(from_state: u8, to_state: u8) -> u8 {
         Err(_) => return 0,
     };
     if state_transition_valid(from, to) { 1 } else { 0 }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — net_buf (pool allocation tracking + data pointer arithmetic)
+// ---------------------------------------------------------------------------
+//
+// These pure functions provide verified alloc/free/ref/data-operation decisions
+// for lib/net_buf/buf.c and lib/net_buf/buf_simple.c.
+//
+// Source mapping:
+//   net_buf_alloc / net_buf_alloc_len  -> gale_net_buf_alloc_decide
+//   net_buf_unref                      -> gale_net_buf_free_decide
+//   net_buf_ref                        -> gale_net_buf_ref_decide
+//   net_buf_simple_add                 -> gale_net_buf_add_decide
+//   net_buf_simple_remove_mem          -> gale_net_buf_remove_decide
+//   net_buf_simple_push                -> gale_net_buf_push_decide
+//   net_buf_simple_pull                -> gale_net_buf_pull_decide
+//
+// Verified properties:
+//   NB1: alloc never exceeds pool capacity (0 <= allocated <= capacity)
+//   NB2: free returns buffer to pool (allocated decrements correctly)
+//   NB3: ref count tracks owners (ref_count >= 1 while in use)
+//   NB4: data bounds: head_offset + len <= size (no overflow)
+//   NB5: push/pull preserve bounds (headroom and tailroom checks)
+//   NB6: no double-free (ref_count must be >= 1 to unref)
+
+/// Decision for net_buf pool alloc.
+#[repr(C)]
+pub struct GaleNetBufAllocDecision {
+    /// New allocated count on success.
+    pub new_allocated: u16,
+    /// 0 = OK (proceed with alloc), -ENOMEM = pool exhausted.
+    pub rc: i32,
+}
+
+/// Decide a net_buf pool allocation.
+///
+/// NB1: success when allocated < capacity (allocated increments by 1).
+/// NB1: returns ENOMEM when pool is exhausted.
+///
+/// Arguments:
+///   allocated: current number of buffers in use
+///   capacity:  total pool size (buf_count)
+///
+/// Verified: NB1 (bounds), no overflow.
+#[cfg(feature = "net_buf")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_net_buf_alloc_decide(
+    allocated: u16,
+    capacity: u16,
+) -> GaleNetBufAllocDecision {
+    use gale::net_buf::alloc_decide;
+    match alloc_decide(allocated, capacity) {
+        Ok(new_alloc) => GaleNetBufAllocDecision { new_allocated: new_alloc, rc: OK },
+        Err(e)        => GaleNetBufAllocDecision { new_allocated: allocated, rc: e },
+    }
+}
+
+/// Decide a net_buf pool free (unref to pool).
+///
+/// NB2: success when allocated > 0 (allocated decrements by 1).
+/// NB6: returns EINVAL if allocated == 0 (double-free guard).
+///
+/// Arguments:
+///   allocated: current number of buffers in use
+///
+/// Verified: NB2 (free decrements), NB6 (no double-free).
+#[cfg(feature = "net_buf")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_net_buf_free_decide(
+    allocated: u16,
+) -> i32 {
+    use gale::net_buf::free_decide;
+    match free_decide(allocated) {
+        Ok(_)  => OK,
+        Err(e) => e,
+    }
+}
+
+/// Decision for net_buf ref/unref operations.
+#[repr(C)]
+pub struct GaleNetBufRefDecision {
+    /// New ref_count value.
+    pub new_ref_count: u8,
+    /// 1 if buffer should be returned to pool (ref_count reached 0), 0 otherwise.
+    pub should_free: u8,
+    /// 0 = OK, -EINVAL = double-unref attempted, -EOVERFLOW = ref overflow.
+    pub rc: i32,
+}
+
+/// Decide a net_buf_ref (increment reference count).
+///
+/// NB3: ref_count tracks owners. Saturates at u8::MAX (EOVERFLOW).
+///
+/// Arguments:
+///   ref_count: current reference count (must be >= 1)
+///
+/// Verified: NB3 (ref count monotone increment), no overflow.
+#[cfg(feature = "net_buf")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_net_buf_ref_decide(
+    ref_count: u8,
+) -> GaleNetBufRefDecision {
+    use gale::net_buf::ref_decide;
+    match ref_decide(ref_count) {
+        Ok(new_ref) => GaleNetBufRefDecision { new_ref_count: new_ref, should_free: 0, rc: OK },
+        Err(e)      => GaleNetBufRefDecision { new_ref_count: ref_count, should_free: 0, rc: e },
+    }
+}
+
+/// Decide a net_buf_unref (decrement reference count).
+///
+/// NB3: decrements ref_count. Returns should_free=1 when count reaches 0.
+/// NB6: returns EINVAL if ref_count is already 0 (double-free guard).
+///
+/// Arguments:
+///   ref_count: current reference count
+///
+/// Verified: NB3 (ref count tracks owners), NB6 (no double-free).
+#[cfg(feature = "net_buf")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_net_buf_unref_decide(
+    ref_count: u8,
+) -> GaleNetBufRefDecision {
+    use gale::net_buf::unref_decide;
+    match unref_decide(ref_count) {
+        Ok((new_ref, should_free)) => GaleNetBufRefDecision {
+            new_ref_count: new_ref,
+            should_free: if should_free { 1 } else { 0 },
+            rc: OK,
+        },
+        Err(e) => GaleNetBufRefDecision { new_ref_count: ref_count, should_free: 0, rc: e },
+    }
+}
+
+/// Decision for net_buf data operations (add/remove/push/pull).
+#[repr(C)]
+pub struct GaleNetBufDataDecision {
+    /// New head_offset after operation.
+    pub new_head_offset: u16,
+    /// New len after operation.
+    pub new_len: u16,
+    /// 0 = OK, -ENOMEM = no tailroom, -EINVAL = no headroom or len underflow.
+    pub rc: i32,
+}
+
+/// Decide a net_buf_simple_add (append bytes at tail).
+///
+/// NB4: new head_offset + new_len <= size.
+/// NB5: tailroom decreases by bytes.
+///
+/// Arguments:
+///   head_offset: current data pointer offset from __buf
+///   len:         current data length
+///   size:        total buffer size
+///   bytes:       number of bytes to add
+///
+/// Verified: NB4 (bounds), NB5 (tailroom check), no overflow.
+#[cfg(feature = "net_buf")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_net_buf_add_decide(
+    head_offset: u16,
+    len: u16,
+    size: u16,
+    bytes: u16,
+) -> GaleNetBufDataDecision {
+    use gale::net_buf::add_decide;
+    match add_decide(head_offset, len, size, bytes) {
+        Ok(new_len) => GaleNetBufDataDecision { new_head_offset: head_offset, new_len, rc: OK },
+        Err(e)      => GaleNetBufDataDecision { new_head_offset: head_offset, new_len: len, rc: e },
+    }
+}
+
+/// Decide a net_buf_simple_remove_mem (remove bytes from tail).
+///
+/// NB4/NB5: len decrements, head_offset unchanged.
+///
+/// Arguments:
+///   head_offset: current data pointer offset (returned unchanged)
+///   len:         current data length
+///   bytes:       number of bytes to remove
+///
+/// Verified: NB4 (bounds), NB5 (len >= bytes check), no underflow.
+#[cfg(feature = "net_buf")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_net_buf_remove_decide(
+    head_offset: u16,
+    len: u16,
+    bytes: u16,
+) -> GaleNetBufDataDecision {
+    use gale::net_buf::remove_decide;
+    match remove_decide(len, bytes) {
+        Ok(new_len) => GaleNetBufDataDecision { new_head_offset: head_offset, new_len, rc: OK },
+        Err(e)      => GaleNetBufDataDecision { new_head_offset: head_offset, new_len: len, rc: e },
+    }
+}
+
+/// Decide a net_buf_simple_push (prepend bytes at head).
+///
+/// NB4: (head_offset - bytes) + (len + bytes) == head_offset + len <= size.
+/// NB5: headroom check (head_offset >= bytes).
+///
+/// Arguments:
+///   head_offset: current data pointer offset from __buf
+///   len:         current data length
+///   bytes:       number of bytes to push
+///
+/// Verified: NB4 (bounds preserved), NB5 (headroom >= bytes), no underflow.
+#[cfg(feature = "net_buf")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_net_buf_push_decide(
+    head_offset: u16,
+    len: u16,
+    bytes: u16,
+) -> GaleNetBufDataDecision {
+    use gale::net_buf::push_decide;
+    match push_decide(head_offset, len, bytes) {
+        Ok((new_head, new_len)) => GaleNetBufDataDecision { new_head_offset: new_head, new_len, rc: OK },
+        Err(e)                  => GaleNetBufDataDecision { new_head_offset: head_offset, new_len: len, rc: e },
+    }
+}
+
+/// Decide a net_buf_simple_pull (consume bytes from head).
+///
+/// NB4: (head_offset + bytes) + (len - bytes) == head_offset + len <= size.
+/// NB5: len >= bytes check.
+///
+/// Arguments:
+///   head_offset: current data pointer offset from __buf
+///   len:         current data length
+///   size:        total buffer size (for postcondition)
+///   bytes:       number of bytes to pull
+///
+/// Verified: NB4 (bounds preserved), NB5 (len >= bytes), no underflow.
+#[cfg(feature = "net_buf")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_net_buf_pull_decide(
+    head_offset: u16,
+    len: u16,
+    size: u16,
+    bytes: u16,
+) -> GaleNetBufDataDecision {
+    use gale::net_buf::pull_decide;
+    match pull_decide(head_offset, len, size, bytes) {
+        Ok((new_head, new_len)) => GaleNetBufDataDecision { new_head_offset: new_head, new_len, rc: OK },
+        Err(e)                  => GaleNetBufDataDecision { new_head_offset: head_offset, new_len: len, rc: e },
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — net_buf
+// ---------------------------------------------------------------------------
+
+#[cfg(all(kani, feature = "net_buf"))]
+mod kani_net_buf_proofs {
+    use super::*;
+
+    /// NB1: alloc_decide never returns new_allocated > capacity.
+    #[kani::proof]
+    fn net_buf_alloc_bounded() {
+        let allocated: u16 = kani::any();
+        let capacity: u16 = kani::any();
+        kani::assume(capacity > 0);
+        kani::assume(allocated <= capacity);
+        let d = gale_net_buf_alloc_decide(allocated, capacity);
+        if d.rc == OK {
+            assert!(d.new_allocated <= capacity);
+            assert!(d.new_allocated == allocated + 1);
+        } else {
+            assert!(allocated == capacity);
+        }
+    }
+
+    /// NB2: free_decide never underflows.
+    #[kani::proof]
+    fn net_buf_free_no_underflow() {
+        let allocated: u16 = kani::any();
+        let rc = gale_net_buf_free_decide(allocated);
+        if rc == OK {
+            assert!(allocated > 0);
+        } else {
+            assert!(allocated == 0);
+        }
+    }
+
+    /// NB3: ref_decide increments by exactly 1.
+    #[kani::proof]
+    fn net_buf_ref_increments_by_one() {
+        let ref_count: u8 = kani::any();
+        let d = gale_net_buf_ref_decide(ref_count);
+        if d.rc == OK {
+            assert!(d.new_ref_count == ref_count + 1);
+        }
+    }
+
+    /// NB6: unref_decide rejects zero ref_count.
+    #[kani::proof]
+    fn net_buf_unref_double_free_rejected() {
+        let d = gale_net_buf_unref_decide(0);
+        assert!(d.rc == EINVAL);
+    }
+
+    /// NB4: add_decide preserves head_offset + new_len <= size.
+    #[kani::proof]
+    fn net_buf_add_bounds_preserved() {
+        let head_offset: u16 = kani::any();
+        let len: u16 = kani::any();
+        let size: u16 = kani::any();
+        let bytes: u16 = kani::any();
+        kani::assume(size > 0 && size <= 1024);
+        kani::assume(head_offset as u32 + len as u32 <= size as u32);
+        let d = gale_net_buf_add_decide(head_offset, len, size, bytes);
+        if d.rc == OK {
+            assert!(head_offset as u32 + d.new_len as u32 <= size as u32);
+        }
+    }
+
+    /// NB4: push_decide preserves bounds.
+    #[kani::proof]
+    fn net_buf_push_bounds_preserved() {
+        let head_offset: u16 = kani::any();
+        let len: u16 = kani::any();
+        let size: u16 = kani::any();
+        let bytes: u16 = kani::any();
+        kani::assume(size > 0 && size <= 1024);
+        kani::assume(head_offset as u32 + len as u32 <= size as u32);
+        let d = gale_net_buf_push_decide(head_offset, len, bytes);
+        if d.rc == OK {
+            assert!(d.new_head_offset as u32 + d.new_len as u32 <= size as u32);
+        }
+    }
+
+    /// NB4: pull_decide preserves bounds.
+    #[kani::proof]
+    fn net_buf_pull_bounds_preserved() {
+        let head_offset: u16 = kani::any();
+        let len: u16 = kani::any();
+        let size: u16 = kani::any();
+        let bytes: u16 = kani::any();
+        kani::assume(size > 0 && size <= 1024);
+        kani::assume(head_offset as u32 + len as u32 <= size as u32);
+        let d = gale_net_buf_pull_decide(head_offset, len, size, bytes);
+        if d.rc == OK {
+            assert!(d.new_head_offset as u32 + d.new_len as u32 <= size as u32);
+        }
+    }
+
+    /// NB5: push-pull roundtrip restores original state.
+    #[kani::proof]
+    fn net_buf_push_pull_roundtrip() {
+        let head_offset: u16 = kani::any();
+        let len: u16 = kani::any();
+        let size: u16 = kani::any();
+        let bytes: u16 = kani::any();
+        kani::assume(size > 0 && size <= 1024);
+        kani::assume(head_offset as u32 + len as u32 <= size as u32);
+        let push = gale_net_buf_push_decide(head_offset, len, bytes);
+        if push.rc == OK {
+            let pull = gale_net_buf_pull_decide(
+                push.new_head_offset, push.new_len, size, bytes);
+            if pull.rc == OK {
+                assert!(pull.new_head_offset == head_offset);
+                assert!(pull.new_len == len);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — cbprintf (format string and buffer validation)
+// ---------------------------------------------------------------------------
+//
+// These pure functions replace the safety-critical validation paths in
+// Zephyr's cbprintf subsystem:
+//
+//   cbprintf_complete.c   format specifier parsing and validation
+//   cbprintf_packaged.c   argument packaging buffer bounds
+//   cbprintf_complete.c   output byte counter tracking
+//
+// Verified by Verus (SMT/Z3):
+//   CB1: FormatSpec fields are within representable bounds
+//   CB2: PackageState never exceeds buffer capacity
+//   CB3: OutputState length tracking is monotone and bounded
+//   CB4: Dangerous conversion specifiers are rejected
+//   CB5: %n is always rejected regardless of context
+
+/// Maximum output length constant — mirrors gale::cbprintf::MAX_OUTPUT_LEN.
+const CBPRINTF_MAX_OUTPUT_LEN: usize = usize::MAX / 2;
+
+/// Validate a single printf conversion specifier character.
+///
+/// CB4 + CB5: %n (ASCII 110) and unknown specifiers are always rejected.
+///
+/// Arguments:
+///   specifier_char: ASCII character (e.g. b'd', b's', b'n')
+///
+/// Returns:
+///   0        — specifier is safe
+///   -EINVAL  — specifier is %n or unrecognised
+#[cfg(feature = "cbprintf")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_cbprintf_validate_specifier(specifier_char: u8) -> i32 {
+    use gale::cbprintf::validate_specifier_char;
+    validate_specifier_char(specifier_char)
+}
+
+/// Validate format specifier bounds: width, precision, and flag combination.
+///
+/// CB1: width and precision must fit in [0, INT_MAX].
+/// CB4: Invalid specifiers are rejected.
+/// CB5: %n is always rejected.
+///
+/// Arguments:
+///   specifier_char: ASCII conversion character
+///   width_value:    width from format string (0 if not present)
+///   prec_value:     precision from format string (0 if not present)
+///   flag_dash:      1 if '-' flag present
+///   flag_zero:      1 if '0' flag present
+///
+/// Returns:
+///   0        — valid specifier
+///   -EINVAL  — specifier rejected or out of bounds
+#[cfg(feature = "cbprintf")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_cbprintf_validate_format_spec(
+    specifier_char: u8,
+    width_value:    u32,
+    prec_value:     u32,
+    flag_dash:      u8,
+    flag_zero:      u8,
+) -> i32 {
+    use gale::cbprintf::{
+        ConversionSpecifier, FormatSpec, LengthModifier, validate_format_spec,
+    };
+
+    let spec = match specifier_char {
+        b'd' | b'i' => ConversionSpecifier::SignedInt,
+        b'u'        => ConversionSpecifier::UnsignedInt,
+        b'o'        => ConversionSpecifier::Octal,
+        b'x' | b'X' => ConversionSpecifier::Hex,
+        b'c'        => ConversionSpecifier::Char,
+        b's'        => ConversionSpecifier::String,
+        b'p'        => ConversionSpecifier::Pointer,
+        b'%'        => ConversionSpecifier::Percent,
+        b'n'        => ConversionSpecifier::WriteBack,
+        _           => ConversionSpecifier::Invalid,
+    };
+
+    let fs = FormatSpec::new(
+        flag_dash != 0,  // flag_dash
+        false,           // flag_plus  (not modelled at FFI boundary)
+        false,           // flag_space
+        false,           // flag_hash
+        flag_zero != 0,  // flag_zero
+        width_value > 0, // width_present
+        false,           // width_star
+        width_value,
+        prec_value > 0,  // prec_present
+        false,           // prec_star
+        prec_value,
+        LengthModifier::None,
+        spec,
+    );
+
+    match validate_format_spec(&fs) {
+        Ok(()) => 0,
+        Err(e) => e,
+    }
+}
+
+/// Check whether writing `size` bytes into the package buffer would overflow.
+///
+/// CB2: package buffer never overflows — returns -ENOMEM if it would.
+///
+/// Arguments:
+///   pos:      current write position in the buffer
+///   capacity: total buffer capacity in bytes
+///   size:     bytes about to be written
+///
+/// Returns:
+///   0       — write is safe
+///   -ENOMEM — write would overflow the buffer
+#[cfg(feature = "cbprintf")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_cbprintf_package_bounds_check(
+    pos:      usize,
+    capacity: usize,
+    size:     usize,
+) -> i32 {
+    use gale::cbprintf::{PackageState, package_bounds_check};
+
+    // Clamp capacity to MAX_PACKAGE_BUF — values larger than that are
+    // rejected by the model invariant.
+    let cap = if capacity > gale::cbprintf::MAX_PACKAGE_BUF {
+        gale::cbprintf::MAX_PACKAGE_BUF
+    } else {
+        capacity
+    };
+
+    // Construct a PackageState at the given position.
+    // If pos > cap the buffer is already invalid; treat as overflow.
+    if pos > cap {
+        return ENOMEM;
+    }
+
+    let state = PackageState { pos, capacity: cap };
+
+    match package_bounds_check(state, size) {
+        Ok(_) => 0,
+        Err(e) => e,
+    }
+}
+
+/// Accumulate output bytes with overflow detection.
+///
+/// CB3: output length is tracked accurately; saturates instead of wrapping.
+///
+/// Arguments:
+///   count:     current byte count
+///   n:         bytes being added
+///   out_count: receives the updated byte count (saturated on overflow)
+///
+/// Returns:
+///   0          — success, *out_count is the new total
+///   -EOVERFLOW — saturation occurred, *out_count == MAX_OUTPUT_LEN
+#[cfg(feature = "cbprintf")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_cbprintf_output_add(
+    count:     usize,
+    n:         usize,
+    out_count: *mut usize,
+) -> i32 {
+    use gale::cbprintf::{OutputState, output_bounds_check};
+
+    if out_count.is_null() {
+        return EINVAL;
+    }
+
+    // Clamp input count to MAX_OUTPUT_LEN to preserve invariant.
+    let clamped_count = if count > CBPRINTF_MAX_OUTPUT_LEN {
+        CBPRINTF_MAX_OUTPUT_LEN
+    } else {
+        count
+    };
+
+    let state = OutputState { count: clamped_count, overflow: false };
+    let next = output_bounds_check(state, n);
+
+    // SAFETY: null check above; caller owns the pointed-to usize.
+    unsafe {
+        *out_count = next.count;
+    }
+
+    if next.overflow {
+        // -EOVERFLOW = -75 (POSIX)
+        -75_i32
+    } else {
+        0
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI exports — ipc (IPC service endpoint lifecycle)
+// ---------------------------------------------------------------------------
+//
+// These functions replace the validation and state-machine logic from:
+//
+//   ipc_service.c:17-39   ipc_service_open_instance
+//   ipc_service.c:41-63   ipc_service_close_instance
+//   ipc_service.c:65-88   ipc_service_register_endpoint
+//   ipc_service.c:90-120  ipc_service_deregister_endpoint
+//   ipc_service.c:123-145 ipc_service_send
+//   ipc_service.c:147-169 ipc_service_send_critical
+//   ipc_service.c:171-198 ipc_service_get_tx_buffer_size
+//
+// Verified by Verus (SMT/Z3):
+//   IPC1: Endpoint state is always a valid variant
+//   IPC2: Open only from Closed
+//   IPC3: send/send_critical only when Bound
+//   IPC4: Close always returns to Closed
+//   IPC5: Endpoint count bounded by MAX_ENDPOINTS
+//   IPC6: Buffer length in [1, MAX_MSG_LEN]
+
+/// State constants — must match GALE_IPC_STATE_* in gale_ipc.h.
+const IPC_STATE_CLOSED: u32 = 0;
+const IPC_STATE_OPEN: u32   = 1;
+const IPC_STATE_BOUND: u32  = 2;
+
+fn u32_to_ipc_state(raw: u32) -> Option<gale::ipc::IpcEndpointState> {
+    use gale::ipc::IpcEndpointState;
+    match raw {
+        s if s == IPC_STATE_CLOSED => Some(IpcEndpointState::Closed),
+        s if s == IPC_STATE_OPEN   => Some(IpcEndpointState::Open),
+        s if s == IPC_STATE_BOUND  => Some(IpcEndpointState::Bound),
+        _                          => None,
+    }
+}
+
+/// Decide whether the IPC instance may be opened.
+///
+/// ipc_service.c:17-39.
+///
+/// SAFETY: Pure function, no pointer dereferences.
+#[cfg(feature = "ipc")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_ipc_open_decide(instance_valid: bool) -> i32 {
+    use gale::ipc::IpcServiceState;
+    IpcServiceState::open_decide(instance_valid)
+}
+
+/// Decide whether the IPC instance may be closed.
+///
+/// ipc_service.c:41-63.
+///
+/// SAFETY: Pure function, no pointer dereferences.
+#[cfg(feature = "ipc")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_ipc_close_decide(instance_valid: bool) -> i32 {
+    use gale::ipc::IpcServiceState;
+    IpcServiceState::close_decide(instance_valid)
+}
+
+/// Decide whether an endpoint may be registered.
+///
+/// ipc_service.c:65-88.
+///
+/// SAFETY: `new_count_out` must be a valid non-null pointer.
+///         Called under Zephyr's IPC service lock — no concurrent access.
+#[cfg(feature = "ipc")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_ipc_register_decide(
+    params_valid:     bool,
+    registered_count: u32,
+    max_endpoints:    u32,
+    new_count_out:    *mut u32,
+) -> i32 {
+    use gale::ipc::{IpcServiceState, MAX_ENDPOINTS};
+
+    if new_count_out.is_null() {
+        return -22; // EINVAL
+    }
+    if max_endpoints > MAX_ENDPOINTS {
+        return -22; // EINVAL
+    }
+
+    let mut svc = IpcServiceState {
+        registered_count,
+        max_endpoints,
+    };
+    let result = svc.register_decide(params_valid);
+    // SAFETY: pointer validated above; called under IPC lock.
+    unsafe { *new_count_out = svc.registered_count; }
+    result
+}
+
+/// Decide whether an endpoint may be deregistered.
+///
+/// ipc_service.c:90-120.
+///
+/// SAFETY: `new_count_out` must be a valid non-null pointer.
+///         Called under Zephyr's IPC service lock — no concurrent access.
+#[cfg(feature = "ipc")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_ipc_deregister_decide(
+    endpoint_valid:      bool,
+    endpoint_registered: bool,
+    registered_count:    u32,
+    max_endpoints:       u32,
+    new_count_out:       *mut u32,
+) -> i32 {
+    use gale::ipc::{IpcServiceState, MAX_ENDPOINTS};
+
+    if new_count_out.is_null() {
+        return -22; // EINVAL
+    }
+    if max_endpoints > MAX_ENDPOINTS {
+        return -22; // EINVAL
+    }
+
+    let mut svc = IpcServiceState {
+        registered_count,
+        max_endpoints,
+    };
+    let result = svc.deregister_decide(endpoint_valid, endpoint_registered);
+    // SAFETY: pointer validated above; called under IPC lock.
+    unsafe { *new_count_out = svc.registered_count; }
+    result
+}
+
+/// Decide whether a send operation is valid.
+///
+/// ipc_service.c:123-145.
+///
+/// SAFETY: Pure function, no pointer dereferences.
+#[cfg(feature = "ipc")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_ipc_send_decide(
+    endpoint_valid:      bool,
+    endpoint_registered: bool,
+    state:               u32,
+    len:                 u32,
+) -> i32 {
+    use gale::ipc::send_decide;
+    let s = match u32_to_ipc_state(state) {
+        Some(s) => s,
+        None    => return -22, // EINVAL — unknown state
+    };
+    send_decide(endpoint_valid, endpoint_registered, s, len)
+}
+
+/// Decide whether a critical send is valid.
+///
+/// ipc_service.c:147-169 (identical preconditions to send).
+///
+/// SAFETY: Pure function, no pointer dereferences.
+#[cfg(feature = "ipc")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_ipc_send_critical_decide(
+    endpoint_valid:      bool,
+    endpoint_registered: bool,
+    state:               u32,
+    len:                 u32,
+) -> i32 {
+    use gale::ipc::send_critical_decide;
+    let s = match u32_to_ipc_state(state) {
+        Some(s) => s,
+        None    => return -22, // EINVAL
+    };
+    send_critical_decide(endpoint_valid, endpoint_registered, s, len)
+}
+
+/// Validate a receive operation.
+///
+/// SAFETY: Pure function, no pointer dereferences.
+#[cfg(feature = "ipc")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_ipc_receive_decide(
+    endpoint_valid:      bool,
+    endpoint_registered: bool,
+    state:               u32,
+    len:                 u32,
+) -> i32 {
+    use gale::ipc::receive_decide;
+    let s = match u32_to_ipc_state(state) {
+        Some(s) => s,
+        None    => return -22, // EINVAL
+    };
+    receive_decide(endpoint_valid, endpoint_registered, s, len)
+}
+
+/// Validate a TX buffer-size query.
+///
+/// ipc_service.c:171-198.
+///
+/// SAFETY: Pure function, no pointer dereferences.
+#[cfg(feature = "ipc")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_ipc_validate_buffer_size(
+    endpoint_valid:      bool,
+    endpoint_registered: bool,
+    reported_size:       u32,
+) -> i32 {
+    use gale::ipc::validate_buffer_size;
+    validate_buffer_size(endpoint_valid, endpoint_registered, reported_size)
+}
+
+/// Validate a Closed->Open state transition.
+///
+/// SAFETY: `new_state_out` must be a valid non-null pointer.
+#[cfg(feature = "ipc")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_ipc_transition_open(
+    current_state: u32,
+    new_state_out: *mut u32,
+) -> i32 {
+    use gale::ipc::IpcEndpointState;
+
+    if new_state_out.is_null() {
+        return -22; // EINVAL
+    }
+    let state = match u32_to_ipc_state(current_state) {
+        Some(s) => s,
+        None    => return -22,
+    };
+    if state == IpcEndpointState::Closed {
+        // SAFETY: pointer validated above.
+        unsafe { *new_state_out = IPC_STATE_OPEN; }
+        0 // OK
+    } else {
+        -114 // EALREADY
+    }
+}
+
+/// Validate an Open->Bound state transition.
+///
+/// SAFETY: `new_state_out` must be a valid non-null pointer.
+#[cfg(feature = "ipc")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_ipc_transition_bound(
+    current_state: u32,
+    new_state_out: *mut u32,
+) -> i32 {
+    use gale::ipc::IpcEndpointState;
+
+    if new_state_out.is_null() {
+        return -22; // EINVAL
+    }
+    let state = match u32_to_ipc_state(current_state) {
+        Some(s) => s,
+        None    => return -22,
+    };
+    if state == IpcEndpointState::Open {
+        // SAFETY: pointer validated above.
+        unsafe { *new_state_out = IPC_STATE_BOUND; }
+        0 // OK
+    } else {
+        -22 // EINVAL
+    }
+}
+
+/// Force the endpoint to Closed (deregister or error path).
+///
+/// Always succeeds.
+///
+/// SAFETY: `new_state_out` must be a valid non-null pointer.
+#[cfg(feature = "ipc")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_ipc_transition_close(new_state_out: *mut u32) -> i32 {
+    if new_state_out.is_null() {
+        return -22; // EINVAL
+    }
+    // SAFETY: pointer validated above.
+    unsafe { *new_state_out = IPC_STATE_CLOSED; }
+    0 // OK
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — IPC service
+// ---------------------------------------------------------------------------
+
+#[cfg(all(kani, feature = "ipc"))]
+mod kani_ipc_proofs {
+    use super::*;
+
+    /// IPC2: open from Closed succeeds and yields Open.
+    #[kani::proof]
+    fn ipc_open_from_closed_ok() {
+        let mut out: u32 = 99;
+        let r = gale_ipc_transition_open(IPC_STATE_CLOSED, &mut out);
+        assert!(r == 0);
+        assert!(out == IPC_STATE_OPEN);
+    }
+
+    /// IPC2: open from Open is rejected.
+    #[kani::proof]
+    fn ipc_double_open_rejected() {
+        let mut out: u32 = 99;
+        let r = gale_ipc_transition_open(IPC_STATE_OPEN, &mut out);
+        assert!(r != 0);
+    }
+
+    /// IPC3: send requires Bound state.
+    #[kani::proof]
+    fn ipc_send_requires_bound() {
+        let r_closed = gale_ipc_send_decide(true, true, IPC_STATE_CLOSED, 64);
+        assert!(r_closed != 0);
+        let r_open = gale_ipc_send_decide(true, true, IPC_STATE_OPEN, 64);
+        assert!(r_open != 0);
+        let r_bound = gale_ipc_send_decide(true, true, IPC_STATE_BOUND, 64);
+        assert!(r_bound == 0);
+    }
+
+    /// IPC4: close always yields Closed.
+    #[kani::proof]
+    fn ipc_close_always_closed() {
+        let mut out: u32 = 99;
+        let r = gale_ipc_transition_close(&mut out);
+        assert!(r == 0);
+        assert!(out == IPC_STATE_CLOSED);
+    }
+
+    /// IPC6: zero-length send rejected.
+    #[kani::proof]
+    fn ipc_send_zero_len_rejected() {
+        let r = gale_ipc_send_decide(true, true, IPC_STATE_BOUND, 0);
+        assert!(r != 0);
+    }
+
+    /// IPC6: send over MAX_MSG_LEN rejected.
+    #[kani::proof]
+    fn ipc_send_over_max_rejected() {
+        let r = gale_ipc_send_decide(true, true, IPC_STATE_BOUND, 4097);
+        assert!(r != 0);
+    }
+
+    /// Null pointer guard: register with null count_out returns EINVAL.
+    #[kani::proof]
+    fn ipc_register_null_out_einval() {
+        let r = gale_ipc_register_decide(true, 0, 4, core::ptr::null_mut());
+        assert!(r == -22);
+    }
 }

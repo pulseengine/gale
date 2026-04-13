@@ -159,6 +159,8 @@ set(GALE_FEATURE_MAP
   CONFIG_GALE_KERNEL_CPU_MASK cpu_mask
   CONFIG_GALE_KERNEL_USAGE usage
   CONFIG_GALE_KERNEL_PM pm
+  CONFIG_GALE_KERNEL_NET_BUF net_buf
+  CONFIG_GALE_KERNEL_CBPRINTF cbprintf
 )
 list(LENGTH GALE_FEATURE_MAP _map_len)
 math(EXPR _map_end "${_map_len} - 1")
@@ -2397,3 +2399,191 @@ zephyr_library_link_libraries(${GALE_FFI_LIB})
 add_dependencies(gale_pm gale_ffi_build)
 
 endif() # CONFIG_GALE_KERNEL_PM
+
+# ==========================================================================
+# Gale IPC service — formally verified endpoint lifecycle
+# ==========================================================================
+#
+# Replaces subsys/ipc/ipc_service/ipc_service.c: endpoint state machine
+# transitions, registration capacity bounds, send/receive precondition
+# checks, and buffer-size validation are handled by verified Rust code.
+# Backend transport (rpmsg, icmsg), interrupt wiring, and shared-memory
+# setup remain native Zephyr C.
+
+if(CONFIG_GALE_IPC_SERVICE)
+
+set(GALE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
+set(GALE_FFI_DIR ${GALE_DIR}/ffi)
+
+if(RUST_TARGET)
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/${RUST_TARGET}/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+else()
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+endif()
+
+if(NOT TARGET gale_ffi_build)
+  add_custom_command(
+    OUTPUT ${GALE_FFI_LIB}
+    COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
+    COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
+    VERBATIM
+  )
+  add_custom_target(gale_ffi_build DEPENDS ${GALE_FFI_LIB})
+endif()
+
+zephyr_library_named(gale_ipc_service)
+zephyr_library_sources(gale_ipc.c)
+zephyr_library_include_directories(${GALE_DIR}/ffi/include)
+zephyr_library_include_directories(
+  ${ZEPHYR_BASE}/subsys/ipc
+  ${ZEPHYR_BASE}/include
+)
+zephyr_library_link_libraries(${GALE_FFI_LIB})
+add_dependencies(gale_ipc_service gale_ffi_build)
+
+endif() # CONFIG_GALE_IPC_SERVICE
+
+# ==========================================================================
+# Gale net_buf — formally verified pool allocation and data pointer arithmetic
+# ==========================================================================
+#
+# Provides verified pool alloc/free bounds (NB1/NB2), reference count
+# tracking (NB3/NB6), and data pointer bounds for add/remove/push/pull
+# (NB4/NB5) for lib/net_buf/buf.c and lib/net_buf/buf_simple.c.
+#
+# Does NOT replace buf.c. Provides validated wrapper helpers that call
+# Rust-verified decision functions before performing net_buf operations.
+#
+# Requires CONFIG_NET_BUF.
+
+if(CONFIG_GALE_KERNEL_NET_BUF)
+
+set(GALE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
+set(GALE_FFI_DIR ${GALE_DIR}/ffi)
+
+if(RUST_TARGET)
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/${RUST_TARGET}/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+else()
+  set(GALE_FFI_LIB ${GALE_FFI_DIR}/target/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+endif()
+
+if(NOT TARGET gale_ffi_build)
+  add_custom_command(
+    OUTPUT ${GALE_FFI_LIB}
+    COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
+    COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
+    VERBATIM
+  )
+  add_custom_target(gale_ffi_build DEPENDS ${GALE_FFI_LIB})
+endif()
+
+zephyr_library_named(gale_net_buf)
+zephyr_library_sources(gale_net_buf.c)
+zephyr_library_include_directories(${GALE_DIR}/ffi/include)
+zephyr_library_include_directories(
+  ${ZEPHYR_BASE}/kernel/include
+  ${ARCH_DIR}/${ARCH}/include
+)
+zephyr_library_link_libraries(${GALE_FFI_LIB})
+add_dependencies(gale_net_buf gale_ffi_build)
+
+endif() # CONFIG_GALE_KERNEL_NET_BUF
+
+# ==========================================================================
+# Gale cbprintf — verified format string and buffer validation
+# ==========================================================================
+
+if(CONFIG_GALE_KERNEL_CBPRINTF)
+
+set(GALE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
+
+# --------------------------------------------------------------------------
+# Determine Rust target triple (shared, idempotent)
+# --------------------------------------------------------------------------
+if(NOT DEFINED RUST_TARGET)
+  if(CONFIG_CPU_CORTEX_M0 OR CONFIG_CPU_CORTEX_M0PLUS)
+    set(RUST_TARGET "thumbv6m-none-eabi")
+  elseif(CONFIG_CPU_CORTEX_M3)
+    set(RUST_TARGET "thumbv7m-none-eabi")
+  elseif(CONFIG_CPU_CORTEX_M4 OR CONFIG_CPU_CORTEX_M7)
+    if(CONFIG_FPU)
+      set(RUST_TARGET "thumbv7em-none-eabihf")
+    else()
+      set(RUST_TARGET "thumbv7em-none-eabi")
+    endif()
+  elseif(CONFIG_CPU_CORTEX_M33 OR CONFIG_CPU_CORTEX_M55 OR CONFIG_CPU_CORTEX_M85)
+    if(CONFIG_FPU)
+      set(RUST_TARGET "thumbv8m.main-none-eabihf")
+    else()
+      set(RUST_TARGET "thumbv8m.main-none-eabi")
+    endif()
+  elseif(CONFIG_CPU_CORTEX_R5)
+    set(RUST_TARGET "armv7r-none-eabihf")
+  elseif(CONFIG_RISCV)
+    if(CONFIG_64BIT)
+      set(RUST_TARGET "riscv64imac-unknown-none-elf")
+    else()
+      set(RUST_TARGET "riscv32imac-unknown-none-elf")
+    endif()
+  elseif(CONFIG_X86)
+    if(CONFIG_64BIT)
+      set(RUST_TARGET "x86_64-unknown-none")
+    else()
+      set(RUST_TARGET "i686-unknown-none")
+    endif()
+  else()
+    set(RUST_TARGET "")
+  endif()
+endif()
+
+# --------------------------------------------------------------------------
+# Build Rust static library via cargo (shared target, idempotent)
+# --------------------------------------------------------------------------
+set(GALE_FFI_DIR ${GALE_DIR}/ffi)
+
+if(RUST_TARGET)
+  set(CARGO_TARGET_ARGS --target ${RUST_TARGET})
+  set(GALE_FFI_LIB
+    ${GALE_FFI_DIR}/target/${RUST_TARGET}/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+else()
+  set(CARGO_TARGET_ARGS "")
+  set(GALE_FFI_LIB
+    ${GALE_FFI_DIR}/target/${GALE_CARGO_PROFILE_DIR}/libgale_ffi.a)
+endif()
+
+if(NOT TARGET gale_ffi_build)
+  add_custom_command(
+    OUTPUT ${GALE_FFI_LIB}
+    COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_ENV} ${GALE_CARGO_RUSTFLAGS_ENV}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      ${GALE_CARGO_FEATURE_ARGS}
+      --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    DEPENDS
+      ${GALE_FFI_DIR}/Cargo.toml
+      ${GALE_FFI_DIR}/src/lib.rs
+    COMMENT "Building Gale FFI static library [cbprintf]"
+    VERBATIM
+  )
+  add_custom_target(gale_ffi_build DEPENDS ${GALE_FFI_LIB})
+endif()
+
+# --------------------------------------------------------------------------
+# C shim — bridges Zephyr cbprintf validation to Gale Rust FFI
+# --------------------------------------------------------------------------
+zephyr_library_named(gale_cbprintf)
+zephyr_library_sources(gale_cbprintf.c)
+zephyr_library_include_directories(${GALE_DIR}/ffi/include)
+zephyr_library_include_directories(
+  ${ZEPHYR_BASE}/kernel/include
+  ${ARCH_DIR}/${ARCH}/include
+)
+zephyr_library_link_libraries(${GALE_FFI_LIB})
+add_dependencies(gale_cbprintf gale_ffi_build)
+
+endif() # CONFIG_GALE_KERNEL_CBPRINTF

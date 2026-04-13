@@ -4,12 +4,23 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
-    clippy::arithmetic_side_effects
+    clippy::arithmetic_side_effects,
+    clippy::shadow_unrelated
 )]
 
 use gale::error::*;
 use gale::priority::MAX_PRIORITY;
-use gale::thread_lifecycle::{MAX_THREADS, StackInfo, ThreadInfo, ThreadTracker};
+use gale::thread_lifecycle::{
+    MAX_THREADS, StackInfo, ThreadInfo, ThreadTracker,
+    THREAD_STATE_SUSPENDED,
+    SUSPEND_PROCEED, SUSPEND_ALREADY_SUSPENDED,
+    RESUME_PROCEED, RESUME_NOT_SUSPENDED,
+    PRIO_SET_PROCEED, PRIO_SET_REJECT,
+    STACK_SPACE_PROCEED, STACK_SPACE_REJECT,
+    DEADLINE_PROCEED, DEADLINE_REJECT,
+    suspend_decide, resume_decide, priority_set_decide,
+    stack_space_decide, deadline_decide,
+};
 
 // =====================================================================
 // StackInfo tests
@@ -319,4 +330,248 @@ fn thread_lifecycle_full_scenario() {
     // Verify thread 2 was not modified
     assert_eq!(t2.priority_get(), 5);
     assert_eq!(t2.stack.get_size(), 4096);
+}
+
+// =====================================================================
+// suspend_decide tests
+// =====================================================================
+
+#[test]
+fn suspend_decide_not_suspended_returns_proceed() {
+    let d = suspend_decide(0x00);
+    assert_eq!(d.action, SUSPEND_PROCEED);
+}
+
+#[test]
+fn suspend_decide_already_suspended_returns_noop() {
+    let d = suspend_decide(THREAD_STATE_SUSPENDED);
+    assert_eq!(d.action, SUSPEND_ALREADY_SUSPENDED);
+}
+
+#[test]
+fn suspend_decide_combined_flags_with_suspended() {
+    // SUSPENDED bit set along with other flags
+    let d = suspend_decide(THREAD_STATE_SUSPENDED | 0x01);
+    assert_eq!(d.action, SUSPEND_ALREADY_SUSPENDED);
+}
+
+#[test]
+fn suspend_decide_other_flags_no_suspended() {
+    // Various flags without SUSPENDED bit
+    for state in [0x01u8, 0x04, 0x08, 0x10] {
+        let d = suspend_decide(state);
+        assert_eq!(d.action, SUSPEND_PROCEED, "state={state:#x}");
+    }
+}
+
+// =====================================================================
+// resume_decide tests
+// =====================================================================
+
+#[test]
+fn resume_decide_suspended_returns_proceed() {
+    let d = resume_decide(THREAD_STATE_SUSPENDED);
+    assert_eq!(d.action, RESUME_PROCEED);
+}
+
+#[test]
+fn resume_decide_not_suspended_returns_noop() {
+    let d = resume_decide(0x00);
+    assert_eq!(d.action, RESUME_NOT_SUSPENDED);
+}
+
+#[test]
+fn resume_decide_combined_flags_with_suspended() {
+    let d = resume_decide(THREAD_STATE_SUSPENDED | 0x04);
+    assert_eq!(d.action, RESUME_PROCEED);
+}
+
+#[test]
+fn suspend_and_resume_are_complementary_exhaustive() {
+    for state in 0u8..=255 {
+        let s = suspend_decide(state);
+        let r = resume_decide(state);
+        // Exactly one should say PROCEED for any given state
+        let suspend_proceeds = s.action == SUSPEND_PROCEED;
+        let resume_proceeds = r.action == RESUME_PROCEED;
+        assert_ne!(
+            suspend_proceeds, resume_proceeds,
+            "complementary check failed for state={state:#x}"
+        );
+    }
+}
+
+// =====================================================================
+// priority_set_decide tests
+// =====================================================================
+
+#[test]
+fn priority_set_decide_valid_range_proceeds() {
+    for prio in 0u32..MAX_PRIORITY {
+        let d = priority_set_decide(prio);
+        assert_eq!(d.action, PRIO_SET_PROCEED, "prio={prio}");
+        assert_eq!(d.ret, OK);
+    }
+}
+
+#[test]
+fn priority_set_decide_max_priority_rejects() {
+    let d = priority_set_decide(MAX_PRIORITY);
+    assert_eq!(d.action, PRIO_SET_REJECT);
+    assert_eq!(d.ret, EINVAL);
+}
+
+#[test]
+fn priority_set_decide_over_max_rejects() {
+    let d = priority_set_decide(MAX_PRIORITY + 100);
+    assert_eq!(d.action, PRIO_SET_REJECT);
+    assert_eq!(d.ret, EINVAL);
+}
+
+#[test]
+fn priority_set_decide_boundary_max_minus_one() {
+    let d = priority_set_decide(MAX_PRIORITY - 1);
+    assert_eq!(d.action, PRIO_SET_PROCEED);
+    assert_eq!(d.ret, OK);
+}
+
+// =====================================================================
+// stack_space_decide tests
+// =====================================================================
+
+#[test]
+fn stack_space_decide_valid_no_usage() {
+    let si = StackInfo::init(0x2000, 4096).unwrap();
+    let d = stack_space_decide(si, true);
+    assert_eq!(d.action, STACK_SPACE_PROCEED);
+    assert_eq!(d.ret, OK);
+    assert_eq!(d.unused_estimate, 4096);
+}
+
+#[test]
+fn stack_space_decide_with_usage() {
+    let mut si = StackInfo::init(0x2000, 4096).unwrap();
+    si.record_usage(1024);
+    let d = stack_space_decide(si, true);
+    assert_eq!(d.action, STACK_SPACE_PROCEED);
+    assert_eq!(d.ret, OK);
+    #[allow(clippy::arithmetic_side_effects)]
+    let expected = 4096 - 1024;
+    assert_eq!(d.unused_estimate, expected);
+}
+
+#[test]
+fn stack_space_decide_full_usage() {
+    let mut si = StackInfo::init(0x2000, 512).unwrap();
+    si.record_usage(512);
+    let d = stack_space_decide(si, true);
+    assert_eq!(d.action, STACK_SPACE_PROCEED);
+    assert_eq!(d.unused_estimate, 0);
+}
+
+#[test]
+fn stack_space_decide_rejects_unmapped() {
+    let si = StackInfo::init(0x2000, 4096).unwrap();
+    let d = stack_space_decide(si, false);
+    assert_eq!(d.action, STACK_SPACE_REJECT);
+    assert_eq!(d.ret, EINVAL);
+}
+
+#[test]
+fn stack_space_decide_unused_never_exceeds_size() {
+    for size in [64u32, 256, 1024, 8192] {
+        let mut si = StackInfo::init(0x1000, size).unwrap();
+        for usage in [0u32, 1, size / 4, size / 2, size] {
+            si.record_usage(usage);
+            let d = stack_space_decide(si, true);
+            assert_eq!(d.action, STACK_SPACE_PROCEED);
+            assert!(d.unused_estimate <= size, "TH4: unused > size");
+        }
+    }
+}
+
+// =====================================================================
+// deadline_decide tests
+// =====================================================================
+
+#[test]
+fn deadline_decide_positive_proceeds() {
+    for deadline in [1i32, 100, 10_000, i32::MAX] {
+        let d = deadline_decide(deadline);
+        assert_eq!(d.action, DEADLINE_PROCEED, "deadline={deadline}");
+        assert_eq!(d.ret, OK);
+        assert_eq!(d.clamped_deadline, deadline);
+    }
+}
+
+#[test]
+fn deadline_decide_zero_rejects() {
+    let d = deadline_decide(0);
+    assert_eq!(d.action, DEADLINE_REJECT);
+    assert_eq!(d.ret, EINVAL);
+}
+
+#[test]
+fn deadline_decide_negative_rejects() {
+    for deadline in [-1i32, -100, i32::MIN] {
+        let d = deadline_decide(deadline);
+        assert_eq!(d.action, DEADLINE_REJECT, "deadline={deadline}");
+        assert_eq!(d.ret, EINVAL);
+    }
+}
+
+#[test]
+fn deadline_decide_clamped_equals_input_for_valid() {
+    let d = deadline_decide(42);
+    assert_eq!(d.clamped_deadline, 42);
+}
+
+// =====================================================================
+// Cross-component: suspend/resume state transitions
+// =====================================================================
+
+#[test]
+fn suspend_resume_state_machine() {
+    // Start: not suspended (state=0x00)
+    let mut state: u8 = 0x00;
+
+    // Suspend: should PROCEED
+    let d = suspend_decide(state);
+    assert_eq!(d.action, SUSPEND_PROCEED);
+    state |= THREAD_STATE_SUSPENDED;
+
+    // Suspend again: should be ALREADY_SUSPENDED
+    let d = suspend_decide(state);
+    assert_eq!(d.action, SUSPEND_ALREADY_SUSPENDED);
+
+    // Resume: should PROCEED
+    let d = resume_decide(state);
+    assert_eq!(d.action, RESUME_PROCEED);
+    state &= !THREAD_STATE_SUSPENDED;
+
+    // Resume again: should be NOT_SUSPENDED
+    let d = resume_decide(state);
+    assert_eq!(d.action, RESUME_NOT_SUSPENDED);
+}
+
+// =====================================================================
+// Cross-component: priority set with ThreadInfo
+// =====================================================================
+
+#[test]
+fn priority_set_decide_then_thread_info_set() {
+    let mut ti = ThreadInfo::new(1, 10, 0x1000, 4096).unwrap();
+
+    // Use decide first
+    let d = priority_set_decide(5);
+    assert_eq!(d.action, PRIO_SET_PROCEED);
+    if d.action == PRIO_SET_PROCEED {
+        assert_eq!(ti.priority_set(5), OK);
+        assert_eq!(ti.priority_get(), 5);
+    }
+
+    // Invalid: decide then don't set
+    let d = priority_set_decide(MAX_PRIORITY);
+    assert_eq!(d.action, PRIO_SET_REJECT);
+    assert_eq!(ti.priority_get(), 5); // unchanged
 }

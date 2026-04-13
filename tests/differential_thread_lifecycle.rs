@@ -246,3 +246,297 @@ fn thread_create_exit_roundtrip() {
         }
     }
 }
+
+// =====================================================================
+// FFI replicas — new decision functions
+// =====================================================================
+
+const THREAD_STATE_SUSPENDED: u8 = 0x02;
+
+/// Replica of gale_k_thread_suspend_decide.
+fn ffi_thread_suspend_decide(thread_state: u8) -> u8 {
+    if (thread_state & THREAD_STATE_SUSPENDED) != 0 {
+        1 // ALREADY_SUSPENDED
+    } else {
+        0 // PROCEED
+    }
+}
+
+/// Replica of gale_k_thread_resume_decide.
+fn ffi_thread_resume_decide(thread_state: u8) -> u8 {
+    if (thread_state & THREAD_STATE_SUSPENDED) == 0 {
+        1 // NOT_SUSPENDED
+    } else {
+        0 // PROCEED
+    }
+}
+
+/// Replica of gale_k_thread_priority_set_decide.
+fn ffi_thread_priority_set_decide(new_priority: u32) -> (u8, i32) {
+    if new_priority >= MAX_PRIORITY {
+        (1, EINVAL) // REJECT
+    } else {
+        (0, OK) // PROCEED
+    }
+}
+
+/// Replica of gale_k_thread_stack_space_decide.
+fn ffi_thread_stack_space_decide(
+    stack_size: u32,
+    stack_usage: u32,
+    stack_mapped_valid: u32,
+) -> (u8, i32, u32) {
+    if stack_size == 0 {
+        return (1, EINVAL, 0); // REJECT
+    }
+    if stack_mapped_valid == 0 {
+        return (1, EINVAL, 0); // REJECT
+    }
+    let usage = if stack_usage > stack_size { stack_size } else { stack_usage };
+    #[allow(clippy::arithmetic_side_effects)]
+    let unused = stack_size - usage;
+    (0, OK, unused) // PROCEED
+}
+
+/// Replica of gale_k_thread_deadline_decide.
+fn ffi_thread_deadline_decide(deadline: i32) -> (u8, i32, i32) {
+    if deadline <= 0 {
+        (1, EINVAL, 0) // REJECT
+    } else {
+        (0, OK, deadline) // PROCEED
+    }
+}
+
+// =====================================================================
+// Differential tests: suspend_decide
+// =====================================================================
+
+#[test]
+fn thread_suspend_decide_not_suspended_proceeds() {
+    // States without the SUSPENDED bit
+    for state in [0x00u8, 0x01, 0x04, 0x08, 0x10, 0xFD] {
+        let action = ffi_thread_suspend_decide(state);
+        assert_eq!(action, 0, "should PROCEED: state={state:#x}");
+    }
+}
+
+#[test]
+fn thread_suspend_decide_already_suspended_noop() {
+    // States with the SUSPENDED bit set (0x02)
+    for state in [0x02u8, 0x03, 0x06, 0x0A, 0xFF] {
+        let action = ffi_thread_suspend_decide(state);
+        assert_eq!(action, 1, "should be ALREADY_SUSPENDED: state={state:#x}");
+    }
+}
+
+#[test]
+fn thread_suspend_decide_exhaustive() {
+    for state in 0u8..=255 {
+        let action = ffi_thread_suspend_decide(state);
+        if (state & THREAD_STATE_SUSPENDED) != 0 {
+            assert_eq!(action, 1, "ALREADY_SUSPENDED: state={state:#x}");
+        } else {
+            assert_eq!(action, 0, "PROCEED: state={state:#x}");
+        }
+    }
+}
+
+// =====================================================================
+// Differential tests: resume_decide
+// =====================================================================
+
+#[test]
+fn thread_resume_decide_suspended_proceeds() {
+    for state in [0x02u8, 0x03, 0x06, 0x0A, 0xFF] {
+        let action = ffi_thread_resume_decide(state);
+        assert_eq!(action, 0, "should PROCEED: state={state:#x}");
+    }
+}
+
+#[test]
+fn thread_resume_decide_not_suspended_noop() {
+    for state in [0x00u8, 0x01, 0x04, 0x08, 0xFD] {
+        let action = ffi_thread_resume_decide(state);
+        assert_eq!(action, 1, "should be NOT_SUSPENDED: state={state:#x}");
+    }
+}
+
+#[test]
+fn thread_resume_decide_exhaustive() {
+    for state in 0u8..=255 {
+        let action = ffi_thread_resume_decide(state);
+        if (state & THREAD_STATE_SUSPENDED) != 0 {
+            assert_eq!(action, 0, "PROCEED: state={state:#x}");
+        } else {
+            assert_eq!(action, 1, "NOT_SUSPENDED: state={state:#x}");
+        }
+    }
+}
+
+// =====================================================================
+// Differential tests: suspend/resume complementarity
+// =====================================================================
+
+#[test]
+fn suspend_resume_are_complementary() {
+    // If suspend says PROCEED (not suspended), then after we set SUSPENDED bit,
+    // resume must say PROCEED.
+    for state in 0u8..=255 {
+        let suspend_action = ffi_thread_suspend_decide(state);
+        let resume_action = ffi_thread_resume_decide(state);
+        // Exactly one of them should say PROCEED
+        let suspend_proceeds = suspend_action == 0;
+        let resume_proceeds = resume_action == 0;
+        assert_ne!(
+            suspend_proceeds, resume_proceeds,
+            "suspend and resume must have opposite PROCEED/no-op for state={state:#x}"
+        );
+    }
+}
+
+// =====================================================================
+// Differential tests: priority_set_decide
+// =====================================================================
+
+#[test]
+fn thread_priority_set_decide_valid_proceeds() {
+    for priority in 0u32..MAX_PRIORITY {
+        let (action, ret) = ffi_thread_priority_set_decide(priority);
+        assert_eq!(action, 0, "should PROCEED: priority={priority}");
+        assert_eq!(ret, OK);
+    }
+}
+
+#[test]
+fn thread_priority_set_decide_invalid_rejects() {
+    for priority in [MAX_PRIORITY, MAX_PRIORITY + 1, u32::MAX] {
+        let (action, ret) = ffi_thread_priority_set_decide(priority);
+        assert_eq!(action, 1, "should REJECT: priority={priority}");
+        assert_eq!(ret, EINVAL);
+    }
+}
+
+#[test]
+fn thread_priority_set_decide_boundary() {
+    let (action, ret) = ffi_thread_priority_set_decide(MAX_PRIORITY - 1);
+    assert_eq!(action, 0);
+    assert_eq!(ret, OK);
+
+    let (action, ret) = ffi_thread_priority_set_decide(MAX_PRIORITY);
+    assert_eq!(action, 1);
+    assert_eq!(ret, EINVAL);
+}
+
+// =====================================================================
+// Differential tests: stack_space_decide
+// =====================================================================
+
+#[test]
+fn thread_stack_space_decide_valid() {
+    let (action, ret, unused) = ffi_thread_stack_space_decide(4096, 512, 1);
+    assert_eq!(action, 0); // PROCEED
+    assert_eq!(ret, OK);
+    #[allow(clippy::arithmetic_side_effects)]
+    let expected = 4096 - 512;
+    assert_eq!(unused, expected);
+}
+
+#[test]
+fn thread_stack_space_decide_zero_usage() {
+    let (action, ret, unused) = ffi_thread_stack_space_decide(2048, 0, 1);
+    assert_eq!(action, 0);
+    assert_eq!(ret, OK);
+    assert_eq!(unused, 2048);
+}
+
+#[test]
+fn thread_stack_space_decide_full_usage() {
+    let (action, ret, unused) = ffi_thread_stack_space_decide(1024, 1024, 1);
+    assert_eq!(action, 0);
+    assert_eq!(ret, OK);
+    assert_eq!(unused, 0);
+}
+
+#[test]
+fn thread_stack_space_decide_over_usage_clamped() {
+    // usage > size should be clamped: unused = 0
+    let (action, ret, unused) = ffi_thread_stack_space_decide(1024, 2000, 1);
+    assert_eq!(action, 0);
+    assert_eq!(ret, OK);
+    assert_eq!(unused, 0);
+}
+
+#[test]
+fn thread_stack_space_decide_rejects_zero_size() {
+    let (action, ret, _) = ffi_thread_stack_space_decide(0, 0, 1);
+    assert_eq!(action, 1); // REJECT
+    assert_eq!(ret, EINVAL);
+}
+
+#[test]
+fn thread_stack_space_decide_rejects_unmapped() {
+    let (action, ret, _) = ffi_thread_stack_space_decide(4096, 0, 0);
+    assert_eq!(action, 1); // REJECT
+    assert_eq!(ret, EINVAL);
+}
+
+#[test]
+fn thread_stack_space_decide_unused_bounded_by_size() {
+    for size in [64u32, 256, 1024, 4096, u32::MAX / 2] {
+        for usage in [0u32, 1, size / 2, size, size + 1] {
+            let (action, ret, unused) = ffi_thread_stack_space_decide(size, usage, 1);
+            assert_eq!(action, 0);
+            assert_eq!(ret, OK);
+            assert!(
+                unused <= size,
+                "TH4 violated: unused={unused} > size={size}, usage={usage}"
+            );
+        }
+    }
+}
+
+// =====================================================================
+// Differential tests: deadline_decide
+// =====================================================================
+
+#[test]
+fn thread_deadline_decide_positive_proceeds() {
+    for deadline in [1i32, 100, 1000, i32::MAX] {
+        let (action, ret, clamped) = ffi_thread_deadline_decide(deadline);
+        assert_eq!(action, 0, "should PROCEED: deadline={deadline}");
+        assert_eq!(ret, OK);
+        assert_eq!(clamped, deadline);
+    }
+}
+
+#[test]
+fn thread_deadline_decide_zero_rejects() {
+    let (action, ret, _) = ffi_thread_deadline_decide(0);
+    assert_eq!(action, 1); // REJECT
+    assert_eq!(ret, EINVAL);
+}
+
+#[test]
+fn thread_deadline_decide_negative_rejects() {
+    for deadline in [-1i32, -100, i32::MIN] {
+        let (action, ret, _) = ffi_thread_deadline_decide(deadline);
+        assert_eq!(action, 1, "should REJECT: deadline={deadline}");
+        assert_eq!(ret, EINVAL);
+    }
+}
+
+#[test]
+fn thread_deadline_decide_boundary_one() {
+    let (action, ret, clamped) = ffi_thread_deadline_decide(1);
+    assert_eq!(action, 0);
+    assert_eq!(ret, OK);
+    assert_eq!(clamped, 1);
+}
+
+#[test]
+fn thread_deadline_decide_clamped_equals_input_for_valid() {
+    for deadline in [1i32, 42, 1000, 100_000, i32::MAX] {
+        let (_, _, clamped) = ffi_thread_deadline_decide(deadline);
+        assert_eq!(clamped, deadline, "clamped should equal input for valid deadline={deadline}");
+    }
+}
