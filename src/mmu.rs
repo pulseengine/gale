@@ -115,7 +115,7 @@ pub open spec fn size_valid_spec(size: u32, page_size: u32) -> bool {
 
 /// MM5: size + 2*page_size does not overflow u32.
 pub open spec fn guard_total_fits_spec(size: u32, page_size: u32) -> bool {
-    (size as u64) + 2u64 * (page_size as u64) <= u32::MAX as u64
+    (size as int) + 2int * (page_size as int) <= u32::MAX as int
 }
 
 // =========================================================================
@@ -240,7 +240,7 @@ pub open spec fn align_result_valid_spec(r: AlignResult, addr: u32, size: u32, a
 pub fn region_align_decide(addr: u32, size: u32, align: u32) -> (result: AlignResult)
     requires
         align > 0,
-        addr as u64 + size as u64 <= u32::MAX as u64,
+        addr as int + size as int <= u32::MAX as int,
     ensures
         result.aligned_addr as int <= addr as int,
         result.addr_offset == addr - result.aligned_addr,
@@ -272,15 +272,15 @@ pub struct VirtRegion {
 }
 
 impl VirtRegion {
-    /// Spec: end address (exclusive), computed as u64 to avoid overflow.
-    pub open spec fn end_spec(&self) -> u64 {
-        self.base as u64 + self.size as u64
+    /// Spec: end address (exclusive), computed as int to avoid overflow.
+    pub open spec fn end_spec(&self) -> int {
+        self.base as int + self.size as int
     }
 
     /// Spec: two regions overlap iff their intervals intersect.
     pub open spec fn overlaps_spec(&self, other: &VirtRegion) -> bool {
-        self.end_spec() > other.base as u64
-        && other.end_spec() > self.base as u64
+        self.end_spec() > other.base as int
+        && other.end_spec() > self.base as int
     }
 
     /// Runtime overlap check (MM7).
@@ -348,7 +348,7 @@ pub fn validate_unmap_request(addr: u32, size: u32, page_size: u32) -> (result: 
     requires page_size > 0,
     ensures
         result ==> {
-            &&& addr as u64 >= page_size as u64
+            &&& addr as int >= page_size as int
             &&& size_valid_spec(size, page_size)
             &&& guard_total_fits_spec(size, page_size)
         },
@@ -407,8 +407,8 @@ pub proof fn lemma_overlap_symmetric(a: VirtRegion, b: VirtRegion)
 pub proof fn lemma_adjacent_no_overlap(base: u32, size: u32)
     requires
         size > 0,
-        base as u64 + size as u64 <= u32::MAX as u64,
-        base as u64 + size as u64 + size as u64 <= u32::MAX as u64,
+        base as int + size as int <= u32::MAX as int,
+        base as int + size as int + size as int <= u32::MAX as int,
     ensures {
         let r1 = VirtRegion { base, size };
         let r2 = VirtRegion { base: (base + size), size };
@@ -429,7 +429,7 @@ pub proof fn lemma_guard_total_conservative(size: u32, page_size: u32)
         page_size > 0,
         guard_total_fits_spec(size, page_size),
     ensures
-        (size as u64) + 2u64 * (page_size as u64) <= u32::MAX as u64,
+        (size as int) + 2int * (page_size as int) <= u32::MAX as int,
 {
 }
 
@@ -465,7 +465,7 @@ pub fn unmap_request_decide(addr: u32, size: u32, page_size: u32) -> (result: i3
     requires page_size > 0,
     ensures
         result == 0 ==> {
-            &&& addr as u64 >= page_size as u64
+            &&& addr as int >= page_size as int
             &&& size_valid_spec(size, page_size)
             &&& guard_total_fits_spec(size, page_size)
         },
