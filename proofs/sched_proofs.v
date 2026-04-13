@@ -38,12 +38,9 @@ Definition same_prio (a b : Z) : Prop := a = b.
     (highest priority first = smallest value first). *)
 Fixpoint sorted_asc (l : list Z) : Prop :=
   match l with
-  | []        => True
-  | x :: rest =>
-    match rest with
-    | []     => True
-    | y :: _ => x <= y /\ sorted_asc rest
-    end
+  | []                      => True
+  | [_]                     => True
+  | x :: ((y :: _) as rest) => x <= y /\ sorted_asc rest
   end.
 
 (** The run queue invariant: the list is sorted ascending. *)
@@ -102,7 +99,7 @@ Theorem sc1_best_is_minimum :
     sorted_asc (p :: [l]) ->
     p <= l.
 Proof.
-  intros p l [Hle _]. exact Hle.
+  intros p l Hsort. simpl in Hsort. destruct Hsort as [Hle _]. exact Hle.
 Qed.
 
 (** SC1: General: head of sorted list is <= every element. *)
@@ -116,7 +113,7 @@ Proof.
   induction t as [|y rest IH].
   - intros x Hin. inversion Hin.
   - intros x Hin.
-    destruct Hsort as [Hle Hrest].
+    simpl in Hsort. destruct Hsort as [Hle Hrest].
     destruct Hin as [-> | Hin2].
     + (* x = y: h <= y directly *)
       exact Hle.
@@ -162,19 +159,24 @@ Proof.
       * (* rest empty: [x; p] — need x <= p /\ True *)
         simpl. split; [lia | exact I].
       * (* rest = y :: rest2 *)
-        simpl.
+        simpl. simpl in Hsort.
         destruct Hsort as [Hxy Hrest].
         (* IH : sorted_asc (y :: rest2) -> sorted_asc (insert_sorted p (y :: rest2)) *)
         specialize (IH Hrest).
-        (* Goal: x <= y (from Hxy) /\ sorted_asc (insert_sorted p (y :: rest2)) (from IH) *)
-        simpl in IH |- *.
+        (* Case split on Z.leb p y to evaluate insert_sorted p (y :: rest2) *)
         destruct (Z.leb p y) eqn:Hleb2.
         -- (* p <= y: insert_sorted p (y :: rest2) = p :: y :: rest2 *)
-           (* IH : p <= y /\ sorted_asc (y :: rest2) which is sorted_asc (p :: y :: rest2) *)
-           (* Goal: x <= p /\ sorted_asc (p :: y :: rest2) *)
+           (* simpl reduces insert_sorted using Hleb2: Z.leb p y = true *)
+           simpl in IH |- *.
+           (* IH : sorted_asc (p :: y :: rest2), reduced further to p <= y /\ ... *)
+           (* goal: sorted_asc (x :: p :: y :: rest2) = x <= p /\ ... *)
            apply Z.leb_le in Hleb2.
            split; [lia | exact IH].
-        -- (* p > y: IH : x <= y /\ sorted_asc (insert_sorted p rest2) — possibly *)
+        -- (* p > y: insert_sorted p (y :: rest2) = y :: insert_sorted p rest2 *)
+           (* simpl reduces insert_sorted using Hleb2: Z.leb p y = false *)
+           simpl in IH |- *.
+           (* IH : sorted_asc (y :: insert_sorted p rest2) *)
+           (* goal: sorted_asc (x :: y :: insert_sorted p rest2) = x <= y /\ ... *)
            split; [exact Hxy | exact IH].
 Qed.
 

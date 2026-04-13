@@ -103,7 +103,7 @@ Proof.
   unfold tl_valid_trans, TL_RUNNING, TL_BLOCKED, TL_DEAD.
   split.
   - lia.
-  - right. left. split; [reflexivity | right. left. reflexivity].
+  - right. left. split; [reflexivity | right; left; reflexivity].
 Qed.
 
 (** TL1: Running can transition to Dead (abort from running). *)
@@ -113,7 +113,7 @@ Proof.
   unfold tl_valid_trans, TL_RUNNING, TL_DEAD.
   split.
   - lia.
-  - right. left. split; [reflexivity | right. right. left. reflexivity].
+  - right. left. split; [reflexivity | right; right; left; reflexivity].
 Qed.
 
 (** TL1: Blocked can transition to Ready (unpend). *)
@@ -123,7 +123,7 @@ Proof.
   unfold tl_valid_trans, TL_BLOCKED, TL_READY, TL_DEAD.
   split.
   - lia.
-  - right. right. left. split; [reflexivity | left. reflexivity].
+  - right; right; left; split; [reflexivity | left; reflexivity].
 Qed.
 
 (* ========================================================================= *)

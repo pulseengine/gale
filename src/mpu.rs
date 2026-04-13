@@ -60,18 +60,18 @@ pub struct MpuRegion {
 
 /// Spec-level power-of-two predicate.
 ///
-/// Spec-level power of two: 2^k as int (recursive, no bitwise).
-pub open spec fn spec_pow2(k: nat) -> int
-    decreases k,
-{
-    if k == 0 { 1 } else { 2 * spec_pow2((k - 1) as nat) }
-}
-
-/// A positive integer n is a power of two if and only if there exists
-/// a natural number k such that n == 2^k. This formulation avoids
-/// bitwise operators in spec context.
+/// Enumerates all 32 powers of two representable in u32.
+/// Flat enumeration avoids recursive unfolding in SMT proofs —
+/// the same pattern used in cpu_mask.rs::is_power_of_two.
 pub open spec fn is_pow2_spec(n: u32) -> bool {
-    n > 0 && exists|k: nat| k < 32 && n as int == spec_pow2(k)
+    n == 1u32 || n == 2u32 || n == 4u32 || n == 8u32
+    || n == 16u32 || n == 32u32 || n == 64u32 || n == 128u32
+    || n == 256u32 || n == 512u32 || n == 1024u32 || n == 2048u32
+    || n == 4096u32 || n == 8192u32 || n == 16384u32 || n == 32768u32
+    || n == 65536u32 || n == 131072u32 || n == 262144u32 || n == 524288u32
+    || n == 1048576u32 || n == 2097152u32 || n == 4194304u32 || n == 8388608u32
+    || n == 16777216u32 || n == 33554432u32 || n == 67108864u32 || n == 134217728u32
+    || n == 268435456u32 || n == 536870912u32 || n == 1073741824u32 || n == 2147483648u32
 }
 
 /// Check if a value is a power of 2.
@@ -84,103 +84,30 @@ pub open spec fn is_pow2_spec(n: u32) -> bool {
 /// idiom which is valid in exec context.
 ///
 /// Proof strategy: `by(bit_vector)` establishes that `n > 0 && n & (n-1) == 0`
-/// implies `n` is one of the 32 known powers of two, then each case is
-/// witnessed against `spec_pow2(k)` for the matching exponent.
-/// Deferred: the witness assertions need reveal(spec_pow2) hints that
-/// the CI Verus version doesn't support reliably.
-#[verifier::external_body]
+/// iff `n` is one of the 32 known powers of two (matching the flat
+/// enumeration in is_pow2_spec).  No recursive unfolding needed.
 pub fn is_power_of_two(n: u32) -> (result: bool)
     ensures
         result == is_pow2_spec(n),
 {
     let result = n > 0 && (n & (n - 1)) == 0;
     proof {
-        // Forward: if the bitwise check holds, produce a witness for is_pow2_spec.
-        if result {
-            // bit_vector decision procedure enumerates all 32 u32 powers of two.
-            assert(
-                n == 1u32 || n == 2u32 || n == 4u32 || n == 8u32
-                || n == 16u32 || n == 32u32 || n == 64u32 || n == 128u32
-                || n == 256u32 || n == 512u32 || n == 1024u32 || n == 2048u32
-                || n == 4096u32 || n == 8192u32 || n == 16384u32 || n == 32768u32
-                || n == 65536u32 || n == 131072u32 || n == 262144u32 || n == 524288u32
-                || n == 1048576u32 || n == 2097152u32 || n == 4194304u32 || n == 8388608u32
-                || n == 16777216u32 || n == 33554432u32 || n == 67108864u32 || n == 134217728u32
-                || n == 268435456u32 || n == 536870912u32 || n == 1073741824u32
-                || n == 2147483648u32
-            ) by(bit_vector)
-                requires n > 0u32, n & sub(n, 1u32) == 0u32;
-            // Witness each case against spec_pow2.
-            if n == 1           { assert(n as int == spec_pow2(0)); }
-            else if n == 2      { assert(n as int == spec_pow2(1)); }
-            else if n == 4      { assert(n as int == spec_pow2(2)); }
-            else if n == 8      { assert(n as int == spec_pow2(3)); }
-            else if n == 16     { assert(n as int == spec_pow2(4)); }
-            else if n == 32     { assert(n as int == spec_pow2(5)); }
-            else if n == 64     { assert(n as int == spec_pow2(6)); }
-            else if n == 128    { assert(n as int == spec_pow2(7)); }
-            else if n == 256    { assert(n as int == spec_pow2(8)); }
-            else if n == 512    { assert(n as int == spec_pow2(9)); }
-            else if n == 1024   { assert(n as int == spec_pow2(10)); }
-            else if n == 2048   { assert(n as int == spec_pow2(11)); }
-            else if n == 4096   { assert(n as int == spec_pow2(12)); }
-            else if n == 8192   { assert(n as int == spec_pow2(13)); }
-            else if n == 16384  { assert(n as int == spec_pow2(14)); }
-            else if n == 32768  { assert(n as int == spec_pow2(15)); }
-            else if n == 65536  { assert(n as int == spec_pow2(16)); }
-            else if n == 131072 { assert(n as int == spec_pow2(17)); }
-            else if n == 262144 { assert(n as int == spec_pow2(18)); }
-            else if n == 524288 { assert(n as int == spec_pow2(19)); }
-            else if n == 1048576   { assert(n as int == spec_pow2(20)); }
-            else if n == 2097152   { assert(n as int == spec_pow2(21)); }
-            else if n == 4194304   { assert(n as int == spec_pow2(22)); }
-            else if n == 8388608   { assert(n as int == spec_pow2(23)); }
-            else if n == 16777216  { assert(n as int == spec_pow2(24)); }
-            else if n == 33554432  { assert(n as int == spec_pow2(25)); }
-            else if n == 67108864  { assert(n as int == spec_pow2(26)); }
-            else if n == 134217728 { assert(n as int == spec_pow2(27)); }
-            else if n == 268435456 { assert(n as int == spec_pow2(28)); }
-            else if n == 536870912 { assert(n as int == spec_pow2(29)); }
-            else if n == 1073741824 { assert(n as int == spec_pow2(30)); }
-            else                    { assert(n as int == spec_pow2(31)); }
-        }
-        // Backward: if is_pow2_spec(n) holds, the bitwise check must hold too.
-        if is_pow2_spec(n) {
-            let k = choose|k: nat| k < 32 && n as int == spec_pow2(k);
-            // Unfold spec_pow2 for each possible k to expose the concrete value.
-            if k == 0       { assert(n == 1u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 1u32; }
-            else if k == 1  { assert(n == 2u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 2u32; }
-            else if k == 2  { assert(n == 4u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 4u32; }
-            else if k == 3  { assert(n == 8u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 8u32; }
-            else if k == 4  { assert(n == 16u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 16u32; }
-            else if k == 5  { assert(n == 32u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 32u32; }
-            else if k == 6  { assert(n == 64u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 64u32; }
-            else if k == 7  { assert(n == 128u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 128u32; }
-            else if k == 8  { assert(n == 256u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 256u32; }
-            else if k == 9  { assert(n == 512u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 512u32; }
-            else if k == 10 { assert(n == 1024u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 1024u32; }
-            else if k == 11 { assert(n == 2048u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 2048u32; }
-            else if k == 12 { assert(n == 4096u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 4096u32; }
-            else if k == 13 { assert(n == 8192u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 8192u32; }
-            else if k == 14 { assert(n == 16384u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 16384u32; }
-            else if k == 15 { assert(n == 32768u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 32768u32; }
-            else if k == 16 { assert(n == 65536u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 65536u32; }
-            else if k == 17 { assert(n == 131072u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 131072u32; }
-            else if k == 18 { assert(n == 262144u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 262144u32; }
-            else if k == 19 { assert(n == 524288u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 524288u32; }
-            else if k == 20 { assert(n == 1048576u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 1048576u32; }
-            else if k == 21 { assert(n == 2097152u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 2097152u32; }
-            else if k == 22 { assert(n == 4194304u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 4194304u32; }
-            else if k == 23 { assert(n == 8388608u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 8388608u32; }
-            else if k == 24 { assert(n == 16777216u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 16777216u32; }
-            else if k == 25 { assert(n == 33554432u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 33554432u32; }
-            else if k == 26 { assert(n == 67108864u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 67108864u32; }
-            else if k == 27 { assert(n == 134217728u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 134217728u32; }
-            else if k == 28 { assert(n == 268435456u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 268435456u32; }
-            else if k == 29 { assert(n == 536870912u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 536870912u32; }
-            else if k == 30 { assert(n == 1073741824u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 1073741824u32; }
-            else            { assert(n == 2147483648u32); assert(n & sub(n, 1u32) == 0u32) by(bit_vector) requires n == 2147483648u32; }
-        }
+        // Forward: bitwise check holds → n matches the flat enumeration.
+        // Backward: n matches the flat enumeration → bitwise check holds.
+        // Both directions are pure bit-arithmetic facts; bit_vector handles them.
+        assert(
+            (n > 0u32 && n & sub(n, 1u32) == 0u32)
+            <==>
+            (n == 1u32 || n == 2u32 || n == 4u32 || n == 8u32
+            || n == 16u32 || n == 32u32 || n == 64u32 || n == 128u32
+            || n == 256u32 || n == 512u32 || n == 1024u32 || n == 2048u32
+            || n == 4096u32 || n == 8192u32 || n == 16384u32 || n == 32768u32
+            || n == 65536u32 || n == 131072u32 || n == 262144u32 || n == 524288u32
+            || n == 1048576u32 || n == 2097152u32 || n == 4194304u32 || n == 8388608u32
+            || n == 16777216u32 || n == 33554432u32 || n == 67108864u32 || n == 134217728u32
+            || n == 268435456u32 || n == 536870912u32 || n == 1073741824u32
+            || n == 2147483648u32)
+        ) by(bit_vector);
     }
     result
 }

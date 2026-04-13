@@ -217,7 +217,7 @@ Theorem hp5_double_free_rejected :
     (* The guard triggers the error path *)
     total <= free.
 Proof.
-  intros tot fr [Hge] _ _. exact Hge.
+  intros tot fr Hge _ _. unfold double_free_guard in Hge. lia.
 Qed.
 
 (** HP5: after a valid alloc, double_free_guard is false
