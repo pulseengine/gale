@@ -106,7 +106,7 @@ impl PmState {
 
     /// PM4: SOFT_OFF is a terminal state — no transitions out.
     pub open spec fn is_terminal(self) -> bool {
-        self == PmState::SoftOff
+        self === PmState::SoftOff
     }
 
     /// PM2: Any state is reachable from ACTIVE.
@@ -197,7 +197,7 @@ impl PmCpuState {
     /// PM4: SOFT_OFF cannot hold pending forced state.
     pub open spec fn inv(&self) -> bool {
         // PM4: terminal state is truly terminal
-        &&& (self.current == Some(PmState::SoftOff)) ==> self.forced.is_none()
+        &&& (self.current === Some(PmState::SoftOff)) ==> self.forced.is_none()
         // post_ops_required only set during a low-power transition
         &&& self.post_ops_required ==> self.current.is_some()
     }
@@ -232,8 +232,8 @@ impl PmCpuState {
         requires old(self).inv(),
         ensures
             self.inv(),
-            self.current == old(self).current,
-            self.post_ops_required == old(self).post_ops_required,
+            self.current === old(self).current,
+            self.post_ops_required === old(self).post_ops_required,
             // PM4: cannot force SOFT_OFF from SOFT_OFF (terminal)
             old(self).current == Some(PmState::SoftOff) ==> {
                 &&& rc == EINVAL
@@ -245,7 +245,7 @@ impl PmCpuState {
                 &&& self.forced_substate == substate_id
             },
     {
-        if self.current == Some(PmState::SoftOff) {
+        if matches!(self.current, Some(PmState::SoftOff)) {
             return EINVAL;
         }
         self.forced = Some(state);
@@ -274,10 +274,10 @@ impl PmCpuState {
                 &&& self.post_ops_required == true
             },
             // Cannot enter ACTIVE via enter_state (that is resume's job)
-            state == PmState::Active ==> rc == EINVAL,
-            rc == EINVAL ==> self.current == old(self).current,
+            state === PmState::Active ==> rc == EINVAL,
+            rc == EINVAL ==> self.current === old(self).current,
     {
-        if state == PmState::Active {
+        if matches!(state, PmState::Active) {
             return EINVAL;
         }
         self.current = Some(state);
@@ -307,15 +307,15 @@ impl PmCpuState {
             },
             !old(self).post_ops_required ==> {
                 &&& rc == EINVAL
-                &&& self.current == old(self).current
-                &&& self.post_ops_required == old(self).post_ops_required
+                &&& self.current === old(self).current
+                &&& self.post_ops_required === old(self).post_ops_required
             },
     {
         if !self.post_ops_required {
             return EINVAL;
         }
         // PM4: SOFT_OFF is terminal — once entered, no resume
-        if self.current == Some(PmState::SoftOff) {
+        if matches!(self.current, Some(PmState::SoftOff)) {
             return EINVAL;
         }
         self.post_ops_required = false;
@@ -380,7 +380,9 @@ pub fn policy_residency_ok(ticks_available: i32, min_residency_ticks: u32) -> (o
     } else if ticks_available < 0 {
         false
     } else {
-        ticks_available as u64 >= min_residency_ticks as u64
+        #[allow(clippy::cast_sign_loss)]
+        let avail = ticks_available as u64;
+        avail >= min_residency_ticks as u64
     }
 }
 
@@ -397,13 +399,13 @@ pub fn state_transition_valid(from: PmState, to: PmState) -> (valid: bool)
         valid == match from {
             PmState::Active       => true,
             PmState::SoftOff      => false,
-            _                     => to == PmState::Active,
+            _                     => to === PmState::Active,
         },
 {
     match from {
         PmState::Active   => true,
         PmState::SoftOff  => false,
-        _                 => to == PmState::Active,
+        _                 => matches!(to, PmState::Active),
     }
 }
 
