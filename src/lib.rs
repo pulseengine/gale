@@ -62,6 +62,7 @@ pub mod mbox;
 pub mod timeout;
 pub mod poll;
 pub mod sched;
+#[allow(clippy::suspicious_else_formatting)]
 pub mod thread_lifecycle;
 pub mod timeslice;
 pub mod heap;

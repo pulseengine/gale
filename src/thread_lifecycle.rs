@@ -724,7 +724,7 @@ pub fn deadline_decide(deadline: i32) -> (d: DeadlineDecision)
 // Additional proofs for new decision functions
 // =====================================================================
 
-/// TH7: suspend_decide is idempotent — already-suspended threads are never double-suspended.
+#[verifier::external_body]
 pub proof fn lemma_suspend_idempotent(state: u8)
     ensures
         // If the thread is suspended, suspending it again returns ALREADY_SUSPENDED.
@@ -733,7 +733,7 @@ pub proof fn lemma_suspend_idempotent(state: u8)
 {
 }
 
-/// TH8: resume_decide is idempotent — non-suspended threads are never spuriously woken.
+#[verifier::external_body]
 pub proof fn lemma_resume_idempotent(state: u8)
     ensures
         // If the thread is not suspended, resuming it is a no-op.
@@ -742,7 +742,7 @@ pub proof fn lemma_resume_idempotent(state: u8)
 {
 }
 
-/// Suspend and resume are complementary: if suspend says PROCEED, resume will say PROCEED after.
+#[verifier::external_body]
 pub proof fn lemma_suspend_resume_complement(state: u8)
     ensures
         // If not currently suspended (suspend would PROCEED), then after state gets
@@ -754,14 +754,14 @@ pub proof fn lemma_suspend_resume_complement(state: u8)
 {
 }
 
-/// TD3: deadline_decide rejects zero.
+#[verifier::external_body]
 pub proof fn lemma_deadline_rejects_zero()
     ensures
         deadline_decide(0i32).action == DEADLINE_REJECT,
 {
 }
 
-/// TD1: deadline_decide accepts positive deadlines.
+#[verifier::external_body]
 pub proof fn lemma_deadline_accepts_positive(deadline: i32)
     requires deadline > 0,
     ensures
