@@ -72,7 +72,7 @@ VERUS_SRCS = [
     "src/mmu.rs",
     "src/net_buf.rs",
     "src/ipc.rs",
-    # cbprintf excluded: Verus doesn't support byte literals (b'n', b'd')
+    "src/cbprintf.rs",
 ]
 
 PLAIN_SRCS = ["//plain:srcs"]
