@@ -235,11 +235,11 @@ impl IpcServiceState {
         params_valid: bool,
     ) -> (result: i32)
         requires
-            self.inv(),
+            old(self).inv(),
         ensures
             self.inv(),
             !params_valid ==> result == EINVAL,
-            params_valid && self.registered_count == self.max_endpoints
+            params_valid && old(self).registered_count == old(self).max_endpoints
                 ==> result == ENOMEM,
             params_valid && old(self).registered_count < old(self).max_endpoints
                 ==> result == OK,
@@ -289,7 +289,7 @@ impl IpcServiceState {
         endpoint_registered: bool,
     ) -> (result: i32)
         requires
-            self.inv(),
+            old(self).inv(),
         ensures
             self.inv(),
             !endpoint_valid ==> result == EINVAL,
@@ -490,7 +490,7 @@ impl IpcEndpoint {
     #[verifier::external_body]
     pub fn transition_open(&mut self) -> (result: i32)
         requires
-            self.inv(),
+            old(self).inv(),
         ensures
             self.inv(),
             old(self).state == IpcEndpointState::Closed ==> {
@@ -516,7 +516,7 @@ impl IpcEndpoint {
     #[verifier::external_body]
     pub fn transition_bound(&mut self) -> (result: i32)
         requires
-            self.inv(),
+            old(self).inv(),
         ensures
             self.inv(),
             old(self).state == IpcEndpointState::Open ==> {
@@ -542,7 +542,7 @@ impl IpcEndpoint {
     #[verifier::external_body]
     pub fn transition_close(&mut self) -> (result: i32)
         requires
-            self.inv(),
+            old(self).inv(),
         ensures
             self.inv(),
             result == OK,
