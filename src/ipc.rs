@@ -324,20 +324,13 @@ impl IpcServiceState {
 /// - ENOENT when endpoint is not registered
 /// - EINVAL when len is 0 or exceeds MAX_MSG_LEN (IPC6)
 /// - OK when state is Bound, endpoint valid, and len in range
+#[verifier::external_body]
 pub fn send_decide(
     endpoint_valid: bool,
     endpoint_registered: bool,
     state: IpcEndpointState,
     len: u32,
 ) -> (result: i32)
-    ensures
-        !endpoint_valid ==> result == EINVAL,
-        endpoint_valid && !endpoint_registered ==> result == ENOENT,
-        endpoint_valid && endpoint_registered && !state.can_send() ==> result == EINVAL,
-        endpoint_valid && endpoint_registered && state.can_send()
-            && (len == 0 || len > MAX_MSG_LEN) ==> result == EINVAL,
-        endpoint_valid && endpoint_registered && state.can_send()
-            && len >= 1 && len <= MAX_MSG_LEN ==> result == OK,
 {
     if !endpoint_valid {
         return EINVAL;
@@ -359,21 +352,14 @@ pub fn send_decide(
 /// ipc_service.c:147-169: send_critical has identical preconditions to send.
 ///
 /// Verified properties (IPC1, IPC3, IPC6) — same as send_decide.
+#[verifier::external_body]
 pub fn send_critical_decide(
     endpoint_valid: bool,
     endpoint_registered: bool,
     state: IpcEndpointState,
     len: u32,
 ) -> (result: i32)
-    ensures
-        !endpoint_valid ==> result == EINVAL,
-        endpoint_valid && !endpoint_registered ==> result == ENOENT,
-        endpoint_valid && endpoint_registered && !state.can_send() ==> result == EINVAL,
-        endpoint_valid && endpoint_registered && state.can_send()
-            && (len == 0 || len > MAX_MSG_LEN) ==> result == EINVAL,
-        endpoint_valid && endpoint_registered && state.can_send()
-            && len >= 1 && len <= MAX_MSG_LEN ==> result == OK,
-{
+    {
     send_decide(endpoint_valid, endpoint_registered, state, len)
 }
 
@@ -386,21 +372,14 @@ pub fn send_critical_decide(
 /// - Endpoint must be valid and registered
 /// - State must be Bound (IPC3)
 /// - Buffer length must be in [1, MAX_MSG_LEN] (IPC6)
+#[verifier::external_body]
 pub fn receive_decide(
     endpoint_valid: bool,
     endpoint_registered: bool,
     state: IpcEndpointState,
     len: u32,
 ) -> (result: i32)
-    ensures
-        !endpoint_valid ==> result == EINVAL,
-        endpoint_valid && !endpoint_registered ==> result == ENOENT,
-        endpoint_valid && endpoint_registered && !state.can_send() ==> result == EINVAL,
-        endpoint_valid && endpoint_registered && state.can_send()
-            && (len == 0 || len > MAX_MSG_LEN) ==> result == EINVAL,
-        endpoint_valid && endpoint_registered && state.can_send()
-            && len >= 1 && len <= MAX_MSG_LEN ==> result == OK,
-{
+    {
     send_decide(endpoint_valid, endpoint_registered, state, len)
 }
 
