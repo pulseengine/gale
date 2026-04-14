@@ -502,7 +502,7 @@ impl IpcEndpoint {
                 &&& self.state == old(self).state
             },
     {
-        if self.state == IpcEndpointState::Closed {
+        if matches!(self.state, IpcEndpointState::Closed) {
             self.state = IpcEndpointState::Open;
             OK
         } else {
@@ -528,7 +528,7 @@ impl IpcEndpoint {
                 &&& self.state == old(self).state
             },
     {
-        if self.state == IpcEndpointState::Open {
+        if matches!(self.state, IpcEndpointState::Open) {
             self.state = IpcEndpointState::Bound;
             OK
         } else {
@@ -569,15 +569,20 @@ impl IpcEndpoint {
             result == (self.state === IpcEndpointState::Open
                        || self.state === IpcEndpointState::Bound),
     {
-        self.state == IpcEndpointState::Open
-            || self.state == IpcEndpointState::Bound
+        match self.state {
+            IpcEndpointState::Open | IpcEndpointState::Bound => true,
+            _ => false,
+        }
     }
 
     /// True when data transfer is permitted (IPC3).
     pub fn can_send(&self) -> (result: bool)
-        ensures result == self.state.can_send(),
+        ensures result == (self.state === IpcEndpointState::Bound),
     {
-        self.state == IpcEndpointState::Bound
+        match self.state {
+            IpcEndpointState::Bound => true,
+            _ => false,
+        }
     }
 }
 

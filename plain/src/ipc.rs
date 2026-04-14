@@ -285,7 +285,7 @@ impl IpcEndpoint {
     ///
     /// Verified: IPC2 — open only allowed from Closed.
     pub fn transition_open(&mut self) -> i32 {
-        if self.state == IpcEndpointState::Closed {
+        if matches!(self.state, IpcEndpointState::Closed) {
             self.state = IpcEndpointState::Open;
             OK
         } else {
@@ -296,7 +296,7 @@ impl IpcEndpoint {
     ///
     /// Verified: state advances from Open to Bound only.
     pub fn transition_bound(&mut self) -> i32 {
-        if self.state == IpcEndpointState::Open {
+        if matches!(self.state, IpcEndpointState::Open) {
             self.state = IpcEndpointState::Bound;
             OK
         } else {
@@ -316,10 +316,16 @@ impl IpcEndpoint {
     }
     /// True when the endpoint is registered (Open or Bound).
     pub fn is_registered(&self) -> bool {
-        self.state == IpcEndpointState::Open || self.state == IpcEndpointState::Bound
+        match self.state {
+            IpcEndpointState::Open | IpcEndpointState::Bound => true,
+            IpcEndpointState::Closed => false,
+        }
     }
     /// True when data transfer is permitted (IPC3).
     pub fn can_send(&self) -> bool {
-        self.state == IpcEndpointState::Bound
+        match self.state {
+            IpcEndpointState::Bound => true,
+            IpcEndpointState::Closed | IpcEndpointState::Open => false,
+        }
     }
 }
