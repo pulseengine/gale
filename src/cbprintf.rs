@@ -553,7 +553,7 @@ pub proof fn lemma_writeback_always_rejected()
 /// are rejected. Returns 0 on success, -EINVAL on rejection.
 pub fn validate_specifier_char(ch: u8) -> (result: i32)
     ensures
-        ch == b'n' ==> result != 0,
+        ch == 110u8 ==> result != 0,  // 110 == b'n'
 {
     let spec = match ch {
         b'd' | b'i' => ConversionSpecifier::SignedInt,
