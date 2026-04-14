@@ -493,11 +493,11 @@ impl IpcEndpoint {
             old(self).inv(),
         ensures
             self.inv(),
-            old(self).state == IpcEndpointState::Closed ==> {
+            old(self).state === IpcEndpointState::Closed ==> {
                 &&& result == OK
-                &&& self.state == IpcEndpointState::Open
+                &&& self.state === IpcEndpointState::Open
             },
-            old(self).state != IpcEndpointState::Closed ==> {
+            old(self).state !== IpcEndpointState::Closed ==> {
                 &&& result == EALREADY
                 &&& self.state == old(self).state
             },
@@ -519,11 +519,11 @@ impl IpcEndpoint {
             old(self).inv(),
         ensures
             self.inv(),
-            old(self).state == IpcEndpointState::Open ==> {
+            old(self).state === IpcEndpointState::Open ==> {
                 &&& result == OK
-                &&& self.state == IpcEndpointState::Bound
+                &&& self.state === IpcEndpointState::Bound
             },
-            old(self).state != IpcEndpointState::Open ==> {
+            old(self).state !== IpcEndpointState::Open ==> {
                 &&& result == EINVAL
                 &&& self.state == old(self).state
             },
@@ -546,7 +546,7 @@ impl IpcEndpoint {
         ensures
             self.inv(),
             result == OK,
-            self.state == IpcEndpointState::Closed,
+            self.state === IpcEndpointState::Closed,
     {
         self.state = IpcEndpointState::Closed;
         OK
@@ -566,8 +566,8 @@ impl IpcEndpoint {
     /// True when the endpoint is registered (Open or Bound).
     pub fn is_registered(&self) -> (result: bool)
         ensures
-            result == (self.state == IpcEndpointState::Open
-                       || self.state == IpcEndpointState::Bound),
+            result == (self.state === IpcEndpointState::Open
+                       || self.state === IpcEndpointState::Bound),
     {
         self.state == IpcEndpointState::Open
             || self.state == IpcEndpointState::Bound
