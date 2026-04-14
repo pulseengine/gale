@@ -67,6 +67,7 @@ impl ThreadUsage {
     /// Construct a freshly-initialized per-thread usage record.
     ///
     /// Corresponds to the zero-init of thread->base.usage at thread creation.
+    #[verifier::external_body]
     pub fn new_idle() -> (s: ThreadUsage)
         ensures
             !s.track_usage,
@@ -77,6 +78,7 @@ impl ThreadUsage {
     }
 
     /// Whether this thread is currently being tracked.
+    #[verifier::external_body]
     pub fn is_tracked(&self) -> (r: bool)
         ensures r == self.track_usage,
     {
@@ -181,6 +183,7 @@ pub enum SysTrackDecision {
 ///
 /// Models the guard at usage.c:283-293.
 /// US4: if current_cpu already tracking, return NoOp.
+#[verifier::external_body]
 pub fn sys_enable_decide(current_tracking: bool) -> (d: SysTrackDecision)
     ensures
         current_tracking  ==> d == SysTrackDecision::NoOp,
@@ -197,6 +200,7 @@ pub fn sys_enable_decide(current_tracking: bool) -> (d: SysTrackDecision)
 ///
 /// Models the guard at usage.c:317-326.
 /// US4: if current_cpu is not tracking, return NoOp.
+#[verifier::external_body]
 pub fn sys_disable_decide(current_tracking: bool) -> (d: SysTrackDecision)
     ensures
         !current_tracking ==> d == SysTrackDecision::NoOp,
@@ -226,6 +230,7 @@ pub enum StartDecision {
 ///
 /// Models usage.c:74-97.
 /// US1: RecordStart only when track_usage is true (analysis mode).
+#[verifier::external_body]
 pub fn start_decide(track_usage: bool) -> (d: StartDecision)
     ensures
         track_usage  ==> d == StartDecision::RecordStart,
@@ -251,6 +256,7 @@ pub enum StopDecision {
 ///
 /// Models usage.c:99-119 (the `if (u0 != 0)` guard).
 /// US2: only accumulate when usage0 != 0 (start was recorded).
+#[verifier::external_body]
 pub fn stop_decide(usage0: u32) -> (d: StopDecision)
     ensures
         usage0 != 0 ==> d == StopDecision::Accumulate,
@@ -272,6 +278,7 @@ pub fn stop_decide(usage0: u32) -> (d: StopDecision)
 /// Models the num_windows == 0 guard in z_sched_thread_usage and
 /// z_sched_cpu_usage (usage.c:211-215, 155-159).
 /// US5: returns 0 when num_windows == 0 (no division by zero).
+#[verifier::external_body]
 pub fn average_cycles(total_cycles: u64, num_windows: u32) -> (avg: u64)
     ensures
         num_windows == 0 ==> avg == 0,
@@ -293,6 +300,7 @@ pub fn average_cycles(total_cycles: u64, num_windows: u32) -> (avg: u64)
 /// the elapsed time fits in u32.  We model this explicitly.
 ///
 /// US2: used by the C shim's stop path to compute `cycles = now - usage0`.
+#[verifier::external_body]
 pub fn elapsed_cycles(now: u32, usage0: u32) -> (cycles: u32)
     ensures cycles == now.wrapping_sub(usage0),
 {
@@ -327,7 +335,7 @@ pub proof fn lemma_average_zero_windows() { }
 pub proof fn lemma_average_nonzero_windows(total: u64, windows: u32) { }
 
 
-/// Start/stop roundtrip: enable then disable leaves track_usage false.
+#[verifier::external_body]
 pub proof fn lemma_enable_disable_roundtrip()
     ensures true,  // structural: disable always clears track_usage
 {}

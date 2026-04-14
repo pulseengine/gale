@@ -190,12 +190,6 @@ pub fn validate_unmap_request(addr: u32, size: u32, page_size: u32) -> bool {
 pub fn validate_update_flags(size: u32, flags: u32, page_size: u32) -> bool {
     validate_size(size, page_size) && validate_flags_known(flags)
 }
-/// MM1: zero size fails validation regardless of alignment.
-/// MM2: user+uninit combination is always invalid.
-/// MM7: overlap is symmetric.
-/// MM7: adjacent regions do not overlap.
-/// MM3: no cache policy bits set is a valid (uncached system-default) state.
-/// MM5: guard page total overflow check is conservative.
 /// Decide whether a map request is valid.
 ///
 /// MM1, MM2, MM5.  Returns 0 on success, negative errno on failure.

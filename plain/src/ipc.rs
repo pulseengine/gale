@@ -316,16 +316,10 @@ impl IpcEndpoint {
     }
     /// True when the endpoint is registered (Open or Bound).
     pub fn is_registered(&self) -> bool {
-        match self.state {
-            IpcEndpointState::Open | IpcEndpointState::Bound => true,
-            IpcEndpointState::Closed => false,
-        }
+        matches!(self.state, IpcEndpointState::Open | IpcEndpointState::Bound)
     }
     /// True when data transfer is permitted (IPC3).
     pub fn can_send(&self) -> bool {
-        match self.state {
-            IpcEndpointState::Bound => true,
-            IpcEndpointState::Closed | IpcEndpointState::Open => false,
-        }
+        matches!(self.state, IpcEndpointState::Bound)
     }
 }

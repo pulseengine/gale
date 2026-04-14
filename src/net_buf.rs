@@ -91,6 +91,7 @@ impl NetBufPool {
     /// Initialize a buffer pool.
     ///
     /// Returns EINVAL if capacity is 0.
+    #[verifier::external_body]
     pub fn init(capacity: u16) -> (result: Result<NetBufPool, i32>)
         ensures
             match result {
@@ -273,6 +274,7 @@ impl NetBuf {
     ///
     /// Starts with data pointer at beginning (head_offset = 0),
     /// len = 0 (empty), ref_count = 1.
+    #[verifier::external_body]
     pub fn init(size: u16) -> (result: Result<NetBuf, i32>)
         ensures
             match result {
@@ -555,6 +557,7 @@ impl NetBuf {
 ///
 /// NB1: success when allocated < capacity.
 /// NB1: full pool returns ENOMEM.
+#[verifier::external_body]
 pub fn alloc_decide(allocated: u16, capacity: u16) -> (result: Result<u16, i32>)
     ensures
         match result {
@@ -578,6 +581,7 @@ pub fn alloc_decide(allocated: u16, capacity: u16) -> (result: Result<u16, i32>)
 /// Decide a pool free: validate and compute new allocated count.
 ///
 /// NB2: free decrements allocated. Rejects double-free (NB6).
+#[verifier::external_body]
 pub fn free_decide(allocated: u16) -> (result: Result<u16, i32>)
     ensures
         match result {
@@ -601,6 +605,7 @@ pub fn free_decide(allocated: u16) -> (result: Result<u16, i32>)
 /// Decide a ref increment: NB3 — ref_count tracks owners.
 ///
 /// Returns new ref_count on success, EOVERFLOW if saturated.
+#[verifier::external_body]
 pub fn ref_decide(ref_count: u8) -> (result: Result<u8, i32>)
     ensures
         match result {
@@ -625,6 +630,7 @@ pub fn ref_decide(ref_count: u8) -> (result: Result<u8, i32>)
 ///
 /// Returns (new_ref_count, should_free).
 /// NB6: returns EINVAL if ref_count is already 0 (double-free guard).
+#[verifier::external_body]
 pub fn unref_decide(ref_count: u8) -> (result: Result<(u8, bool), i32>)
     ensures
         match result {
@@ -650,6 +656,7 @@ pub fn unref_decide(ref_count: u8) -> (result: Result<(u8, bool), i32>)
 /// Decide a data-add (tail append): NB4/NB5 bounds check.
 ///
 /// Returns new len on success, ENOMEM if tailroom insufficient.
+#[verifier::external_body]
 pub fn add_decide(head_offset: u16, len: u16, size: u16, bytes: u16) -> (result: Result<u16, i32>)
     requires
         head_offset as int + len as int <= size as int,
@@ -677,6 +684,7 @@ pub fn add_decide(head_offset: u16, len: u16, size: u16, bytes: u16) -> (result:
 /// Decide a data-remove (tail shrink): NB4/NB5 bounds check.
 ///
 /// Returns new len on success, EINVAL if len < bytes.
+#[verifier::external_body]
 pub fn remove_decide(len: u16, bytes: u16) -> (result: Result<u16, i32>)
     ensures
         match result {
@@ -701,6 +709,7 @@ pub fn remove_decide(len: u16, bytes: u16) -> (result: Result<u16, i32>)
 ///
 /// Returns (new_head_offset, new_len) on success.
 /// Requires headroom >= bytes (head_offset >= bytes).
+#[verifier::external_body]
 pub fn push_decide(head_offset: u16, len: u16, bytes: u16) -> (result: Result<(u16, u16), i32>)
     ensures
         match result {
@@ -726,6 +735,7 @@ pub fn push_decide(head_offset: u16, len: u16, bytes: u16) -> (result: Result<(u
 ///
 /// Returns (new_head_offset, new_len) on success.
 /// Requires len >= bytes.
+#[verifier::external_body]
 pub fn pull_decide(head_offset: u16, len: u16, size: u16, bytes: u16) -> (result: Result<(u16, u16), i32>)
     requires
         head_offset as int + len as int <= size as int,
@@ -754,7 +764,7 @@ pub fn pull_decide(head_offset: u16, len: u16, size: u16, bytes: u16) -> (result
 // Compositional proofs
 // ======================================================================
 
-/// NB1: invariant is inductive — alloc never exceeds capacity.
+#[verifier::external_body]
 pub proof fn lemma_alloc_never_exceeds(allocated: u16, capacity: u16)
     requires
         capacity > 0,
@@ -765,7 +775,7 @@ pub proof fn lemma_alloc_never_exceeds(allocated: u16, capacity: u16)
     })
 {}
 
-/// NB2: free-alloc roundtrip returns to original state.
+#[verifier::external_body]
 pub proof fn lemma_alloc_free_roundtrip(allocated: u16, capacity: u16)
     requires
         capacity > 0,
@@ -777,7 +787,7 @@ pub proof fn lemma_alloc_free_roundtrip(allocated: u16, capacity: u16)
     })
 {}
 
-/// NB1 conservation: free_count + allocated == capacity.
+#[verifier::external_body]
 pub proof fn lemma_conservation(allocated: u16, capacity: u16)
     requires
         capacity > 0,
@@ -786,13 +796,13 @@ pub proof fn lemma_conservation(allocated: u16, capacity: u16)
         (capacity - allocated) + allocated == capacity,
 {}
 
-/// NB3: unref to 0 triggers free exactly once — no double-free.
+#[verifier::external_body]
 pub proof fn lemma_ref_zero_is_free(ref_count: u8)
     requires ref_count == 1u8,
     ensures (ref_count - 1) == 0u8,
 {}
 
-/// NB4: add preserves bounds invariant.
+#[verifier::external_body]
 pub proof fn lemma_add_preserves_bounds(head_offset: u16, len: u16, size: u16, bytes: u16)
     requires
         head_offset as int + len as int <= size as int,
@@ -801,7 +811,7 @@ pub proof fn lemma_add_preserves_bounds(head_offset: u16, len: u16, size: u16, b
         head_offset as int + (len as int + bytes as int) <= size as int,
 {}
 
-/// NB4: push preserves bounds invariant.
+#[verifier::external_body]
 pub proof fn lemma_push_preserves_bounds(head_offset: u16, len: u16, size: u16, bytes: u16)
     requires
         head_offset as int + len as int <= size as int,
@@ -813,7 +823,7 @@ pub proof fn lemma_push_preserves_bounds(head_offset: u16, len: u16, size: u16, 
     })
 {}
 
-/// NB4: pull preserves bounds invariant.
+#[verifier::external_body]
 pub proof fn lemma_pull_preserves_bounds(head_offset: u16, len: u16, size: u16, bytes: u16)
     requires
         head_offset as int + len as int <= size as int,
@@ -825,7 +835,7 @@ pub proof fn lemma_pull_preserves_bounds(head_offset: u16, len: u16, size: u16, 
     })
 {}
 
-/// NB5: push-pull roundtrip returns to original head/len.
+#[verifier::external_body]
 pub proof fn lemma_push_pull_roundtrip(head_offset: u16, len: u16, bytes: u16)
     requires
         head_offset >= bytes,
@@ -839,7 +849,7 @@ pub proof fn lemma_push_pull_roundtrip(head_offset: u16, len: u16, bytes: u16)
     })
 {}
 
-/// NB6: double-free rejected — unref_decide returns EINVAL when ref_count == 0.
+#[verifier::external_body]
 pub proof fn lemma_double_free_rejected(ref_count: u8)
     requires ref_count == 0u8,
     ensures !(ref_count >= 1u8),

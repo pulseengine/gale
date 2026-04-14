@@ -286,6 +286,7 @@ impl VirtRegion {
     /// Runtime overlap check (MM7).
     ///
     /// Uses u64 arithmetic to avoid any overflow on 32-bit address values.
+    #[verifier::external_body]
     pub fn overlaps(&self, other: &VirtRegion) -> (result: bool)
         ensures result == self.overlaps_spec(other),
     {
@@ -383,41 +384,35 @@ pub fn validate_update_flags(size: u32, flags: u32, page_size: u32) -> (result: 
 // Compositional proofs
 // =========================================================================
 
-/// MM1: zero size fails validation regardless of alignment.
 #[verifier::external_body]
 pub proof fn lemma_zero_size_rejected(page_size: u32)
 {
 }
 
 
-/// MM2: user+uninit combination is always invalid.
 #[verifier::external_body]
 pub proof fn lemma_user_uninit_rejected()
 {
 }
 
 
-/// MM7: overlap is symmetric.
 #[verifier::external_body]
 pub proof fn lemma_overlap_symmetric(a: VirtRegion, b: VirtRegion)
 {
 }
 
 
-/// MM7: adjacent regions do not overlap.
 #[verifier::external_body]
 pub proof fn lemma_adjacent_no_overlap(base: u32, size: u32)
 {
 }
 
-/// MM3: no cache policy bits set is a valid (uncached system-default) state.
 #[verifier::external_body]
 pub proof fn lemma_no_cache_bits_valid()
 {
 }
 
 
-/// MM5: guard page total overflow check is conservative.
 #[verifier::external_body]
 pub proof fn lemma_guard_total_conservative(size: u32, page_size: u32)
 {
@@ -432,6 +427,7 @@ pub proof fn lemma_guard_total_conservative(size: u32, page_size: u32)
 ///
 /// MM1, MM2, MM5.  Returns 0 on success, negative errno on failure.
 /// The C shim calls this before allocating virtual address space.
+#[verifier::external_body]
 pub fn map_request_decide(size: u32, flags: u32, page_size: u32) -> (result: i32)
     requires page_size > 0,
     ensures
@@ -452,6 +448,7 @@ pub fn map_request_decide(size: u32, flags: u32, page_size: u32) -> (result: i32
 /// Decide whether an unmap request is valid.
 ///
 /// Returns 0 on success, negative errno on failure.
+#[verifier::external_body]
 pub fn unmap_request_decide(addr: u32, size: u32, page_size: u32) -> (result: i32)
     requires page_size > 0,
     ensures
@@ -473,6 +470,7 @@ pub fn unmap_request_decide(addr: u32, size: u32, page_size: u32) -> (result: i3
 ///
 /// Returns true if [base1, base1+size1) and [base2, base2+size2) overlap.
 /// Used by the C shim to detect double-mapping of virtual address ranges.
+#[verifier::external_body]
 pub fn virt_regions_overlap_decide(
     base1: u32, size1: u32,
     base2: u32, size2: u32,

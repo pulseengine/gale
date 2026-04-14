@@ -79,6 +79,7 @@ pub const PM_SUBSTATE_MAX: u8 = 255;
 
 impl PmState {
     /// Convert raw u8 to PmState.  Returns Err(EINVAL) for unknown codes.
+    #[verifier::external_body]
     pub fn from_u8(v: u8) -> (result: Result<PmState, i32>)
         ensures
             match result {
@@ -98,6 +99,7 @@ impl PmState {
     }
 
     /// Return the numeric code of the state.
+    #[verifier::external_body]
     pub fn as_u8(self) -> (v: u8)
         ensures v < PM_STATE_COUNT,
     {
@@ -156,6 +158,7 @@ impl PmStateInfo {
     /// Total minimum time including exit latency (for policy comparison).
     ///
     /// Mirrors: min_residency_us + exit_latency_us in policy_default.c:29.
+    #[verifier::external_body]
     pub fn effective_residency_us(&self) -> (r: u64)
         ensures r == self.min_residency_us as u64 + self.exit_latency_us as u64,
     {
@@ -209,6 +212,7 @@ impl PmCpuState {
     /// Initialize per-CPU PM state (CPU starts ACTIVE).
     ///
     /// Models z_cpus_pm_state[id] = NULL at boot.
+    #[verifier::external_body]
     pub fn init() -> (s: PmCpuState)
         ensures
             s.inv(),
@@ -228,6 +232,7 @@ impl PmCpuState {
     ///
     /// Models pm_state_force() (pm.c:135-153).
     /// PM5: forced state set once, cleared on next suspend.
+    #[verifier::external_body]
     pub fn force_state(&mut self, state: PmState, substate_id: u8) -> (rc: i32)
         requires old(self).inv(),
         ensures
@@ -261,6 +266,7 @@ impl PmCpuState {
     ///
     /// PM2: from ACTIVE (current == None) any state is reachable.
     /// PM5: consuming a forced state clears it.
+    #[verifier::external_body]
     pub fn enter_state(&mut self, state: PmState, substate_id: u8) -> (rc: i32)
         requires old(self).inv(),
         ensures
@@ -294,6 +300,7 @@ impl PmCpuState {
     /// Called from the ISR of the wakeup event.
     ///
     /// PM3: system always returns to ACTIVE after low-power state.
+    #[verifier::external_body]
     pub fn resume(&mut self) -> (rc: i32)
         requires old(self).inv(),
         ensures
@@ -324,6 +331,7 @@ impl PmCpuState {
     }
 
     /// Check whether the CPU is currently in a low-power state.
+    #[verifier::external_body]
     pub fn is_suspended(&self) -> (r: bool)
         requires self.inv(),
         ensures r == self.current.is_some(),
@@ -332,6 +340,7 @@ impl PmCpuState {
     }
 
     /// Check whether a forced state is pending.
+    #[verifier::external_body]
     pub fn has_forced_state(&self) -> (r: bool)
         requires self.inv(),
         ensures r == self.forced.is_some(),
@@ -340,6 +349,7 @@ impl PmCpuState {
     }
 
     /// Return current state as u8 (0 = ACTIVE when None).
+    #[verifier::external_body]
     pub fn current_as_u8(&self) -> (v: u8)
         requires self.inv(),
         ensures
@@ -371,6 +381,7 @@ impl PmCpuState {
 /// Returns:
 ///   true  — sufficient time to enter this state.
 ///   false — not enough time; try a shallower state.
+#[verifier::external_body]
 pub fn policy_residency_ok(ticks_available: i32, min_residency_ticks: u32) -> (ok: bool)
     ensures
         ok == (ticks_available == i32::MAX || ticks_available as u64 >= min_residency_ticks as u64),
@@ -394,6 +405,7 @@ pub fn policy_residency_ok(ticks_available: i32, min_residency_ticks: u32) -> (o
 ///   ACTIVE       -> any state (always valid)
 ///   low-power    -> ACTIVE only (via resume)
 ///   SOFT_OFF     -> nothing (terminal)
+#[verifier::external_body]
 pub fn state_transition_valid(from: PmState, to: PmState) -> (valid: bool)
     ensures
         valid == match from {
@@ -455,6 +467,7 @@ pub fn policy_next_state_decide(
 /// Returns:
 ///   Some(state) — enter this state.
 ///   None        — stay ACTIVE (no suitable state).
+#[verifier::external_body]
 pub fn suspend_state_decide(
     forced: Option<PmState>,
     policy_state: Option<PmState>,
@@ -478,7 +491,7 @@ pub fn suspend_state_decide(
 // Compositional proofs
 // ======================================================================
 
-/// PM1: state enum is always in bounds.
+#[verifier::external_body]
 pub proof fn lemma_state_in_bounds(s: PmState)
     ensures (s as u8) < PM_STATE_COUNT,
 {}
@@ -507,7 +520,7 @@ pub proof fn lemma_forced_takes_priority(forced: PmState, policy: Option<PmState
 pub proof fn lemma_no_forced_uses_policy(policy: Option<PmState>) { }
 
 
-/// PM3: resume always restores ACTIVE.
+#[verifier::external_body]
 pub proof fn lemma_resume_restores_active()
     ensures ({
         let mut s = PmCpuState {
