@@ -1662,18 +1662,22 @@ pub extern "C" fn gale_timer_expire(
 /// Returns:
 ///   The old status value.
 ///   If new_status is non-null, *new_status is set to 0.
+///
+/// Delegates to `gale_k_timer_status_decide` (verified pattern: read + reset).
 #[cfg(feature = "timer")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_timer_status_get(
     status: u32,
     new_status: *mut u32,
 ) -> u32 {
+    // Delegate to the decision function (TM2).
+    let d = gale_k_timer_status_decide(status);
     unsafe {
         if !new_status.is_null() {
-            *new_status = 0;
+            *new_status = d.new_status;
         }
-        status
     }
+    d.count
 }
 
 // ---- Decision API for timer ----
@@ -1975,6 +1979,8 @@ pub extern "C" fn gale_k_mem_slab_free_decide(
 /// Returns:
 ///   0 (OK)    — *result set
 ///   -EINVAL   — result is null
+///
+/// Delegates to `gale::event::post_decide` (Verus-verified) using full mask.
 #[cfg(feature = "event")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_event_post(
@@ -1982,12 +1988,20 @@ pub extern "C" fn gale_event_post(
     new_events: u32,
     result: *mut u32,
 ) -> i32 {
+    use gale::event::post_decide;
+
     unsafe {
         if result.is_null() {
             return EINVAL;
         }
 
-        *result = events | new_events;
+        // Delegate OR to verified model (EV1).
+        // post_decide(current, new, mask) = (current & !mask) | (new & mask)
+        // Setting mask = new_events:
+        //   = (events & !new_events) | (new_events & new_events)
+        //   = (events & !new_events) | new_events
+        //   = events | new_events   ✓
+        *result = post_decide(events, new_events, new_events);
         OK
     }
 }
@@ -2037,6 +2051,8 @@ pub extern "C" fn gale_event_set(
 /// Returns:
 ///   0 (OK)    — *result set
 ///   -EINVAL   — result is null
+///
+/// Delegates to `gale::event::post_decide` (Verus-verified).
 #[cfg(feature = "event")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_event_clear(
@@ -2044,12 +2060,18 @@ pub extern "C" fn gale_event_clear(
     clear_bits: u32,
     result: *mut u32,
 ) -> i32 {
+    use gale::event::post_decide;
+
     unsafe {
         if result.is_null() {
             return EINVAL;
         }
 
-        *result = events & !clear_bits;
+        // Delegate AND-complement to verified model (EV3).
+        // post_decide(events, 0, clear_bits):
+        //   = (events & !clear_bits) | (0 & clear_bits)
+        //   = events & !clear_bits   ✓
+        *result = post_decide(events, 0, clear_bits);
         OK
     }
 }
@@ -2068,6 +2090,8 @@ pub extern "C" fn gale_event_clear(
 /// Returns:
 ///   0 (OK)    — *result set
 ///   -EINVAL   — result is null
+///
+/// Delegates to `gale::event::post_decide` (Verus-verified).
 #[cfg(feature = "event")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_event_set_masked(
@@ -2076,12 +2100,15 @@ pub extern "C" fn gale_event_set_masked(
     mask: u32,
     result: *mut u32,
 ) -> i32 {
+    use gale::event::post_decide;
+
     unsafe {
         if result.is_null() {
             return EINVAL;
         }
 
-        *result = (events & !mask) | (new_bits & mask);
+        // Direct delegation to verified model (EV4).
+        *result = post_decide(events, new_bits, mask);
         OK
     }
 }
@@ -2098,17 +2125,20 @@ pub extern "C" fn gale_event_set_masked(
 /// Returns:
 ///   1 — at least one desired bit is set
 ///   0 — no desired bits are set
+///
+/// Delegates to `gale::event::wait_decide` (Verus-verified, EV5).
 #[cfg(feature = "event")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_event_wait_check_any(
     events: u32,
     desired: u32,
 ) -> i32 {
-    if (events & desired) != 0 {
-        1
-    } else {
-        0
-    }
+    use gale::event::{WaitDecision, WAIT_ANY, wait_decide};
+
+    // Delegate to verified model (EV5).
+    // Pass is_no_wait=true so the decision is Matched or Timeout (not Pend).
+    let r = wait_decide(events, desired, WAIT_ANY, true);
+    if r.decision == WaitDecision::Matched { 1 } else { 0 }
 }
 
 /// Check if all of the desired event bits are set.
@@ -2123,17 +2153,20 @@ pub extern "C" fn gale_event_wait_check_any(
 /// Returns:
 ///   1 — all desired bits are set
 ///   0 — not all desired bits are set
+///
+/// Delegates to `gale::event::wait_decide` (Verus-verified, EV6).
 #[cfg(feature = "event")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_event_wait_check_all(
     events: u32,
     desired: u32,
 ) -> i32 {
-    if (events & desired) == desired {
-        1
-    } else {
-        0
-    }
+    use gale::event::{WaitDecision, WAIT_ALL, wait_decide};
+
+    // Delegate to verified model (EV6).
+    // Pass is_no_wait=true so the decision is Matched or Timeout (not Pend).
+    let r = wait_decide(events, desired, WAIT_ALL, true);
+    if r.decision == WaitDecision::Matched { 1 } else { 0 }
 }
 
 // ---- Phase 2: Full Decision API for events ----
@@ -2331,21 +2364,23 @@ pub const GALE_FIFO_PUT_WAKE: u8 = 1;
 ///
 /// Fifo is unbounded, so put always succeeds (no capacity check needed).
 ///
+/// Delegates to `gale::fifo::put_decide` (Verus-verified).
 /// Verified: FI1 (no overflow), FI2 (increment via PUT_OK path).
 #[cfg(feature = "fifo")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_fifo_put_decide(
-    _count: u32,
+    count: u32,
     has_waiter: u32,
 ) -> GaleFifoPutDecision {
-    if has_waiter != 0 {
-        GaleFifoPutDecision {
-            action: GALE_FIFO_PUT_WAKE,
-        }
-    } else {
-        GaleFifoPutDecision {
-            action: GALE_FIFO_PUT_OK,
-        }
+    use gale::fifo::{PutDecision, put_decide};
+
+    // Delegate to verified model (FI1, FI2).
+    let d = put_decide(count, has_waiter != 0);
+    GaleFifoPutDecision {
+        action: match d {
+            PutDecision::WakeThread => GALE_FIFO_PUT_WAKE,
+            PutDecision::Insert | PutDecision::Overflow => GALE_FIFO_PUT_OK,
+        },
     }
 }
 
@@ -2369,6 +2404,7 @@ pub const GALE_FIFO_GET_NODATA: u8 = 2;
 /// If empty and no_wait, return RETURN_NODATA.
 /// If empty and willing to wait, return PEND_CURRENT.
 ///
+/// Delegates to `gale::fifo::get_decide` (Verus-verified).
 /// Verified: FI3 (no underflow), FI4 (decrement via GET_OK path).
 #[cfg(feature = "fifo")]
 #[unsafe(no_mangle)]
@@ -2376,20 +2412,27 @@ pub extern "C" fn gale_k_fifo_get_decide(
     count: u32,
     is_no_wait: u32,
 ) -> GaleFifoGetDecision {
-    if count > 0 {
-        GaleFifoGetDecision {
+    use gale::fifo::{GetDecision, get_decide};
+
+    // Delegate to verified model (FI3, FI4).
+    let d = get_decide(count);
+    match d {
+        GetDecision::Dequeued => GaleFifoGetDecision {
             ret: OK,
             action: GALE_FIFO_GET_OK,
-        }
-    } else if is_no_wait != 0 {
-        GaleFifoGetDecision {
-            ret: EBUSY,
-            action: GALE_FIFO_GET_NODATA,
-        }
-    } else {
-        GaleFifoGetDecision {
-            ret: 0,
-            action: GALE_FIFO_GET_PEND,
+        },
+        GetDecision::Empty => {
+            if is_no_wait != 0 {
+                GaleFifoGetDecision {
+                    ret: EBUSY,
+                    action: GALE_FIFO_GET_NODATA,
+                }
+            } else {
+                GaleFifoGetDecision {
+                    ret: 0,
+                    action: GALE_FIFO_GET_PEND,
+                }
+            }
         }
     }
 }
@@ -2499,21 +2542,23 @@ pub const GALE_LIFO_PUT_WAKE: u8 = 1;
 ///
 /// Lifo is unbounded, so put always succeeds (no capacity check needed).
 ///
+/// Delegates to `gale::lifo::put_decide` (Verus-verified).
 /// Verified: LI1 (no overflow), LI2 (increment via PUT_OK path).
 #[cfg(feature = "lifo")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_lifo_put_decide(
-    _count: u32,
+    count: u32,
     has_waiter: u32,
 ) -> GaleLifoPutDecision {
-    if has_waiter != 0 {
-        GaleLifoPutDecision {
-            action: GALE_LIFO_PUT_WAKE,
-        }
-    } else {
-        GaleLifoPutDecision {
-            action: GALE_LIFO_PUT_OK,
-        }
+    use gale::lifo::{PutDecision, put_decide};
+
+    // Delegate to verified model (LI1, LI2).
+    let d = put_decide(count, has_waiter != 0);
+    GaleLifoPutDecision {
+        action: match d {
+            PutDecision::WakeThread => GALE_LIFO_PUT_WAKE,
+            PutDecision::Insert | PutDecision::Overflow => GALE_LIFO_PUT_OK,
+        },
     }
 }
 
@@ -2537,6 +2582,7 @@ pub const GALE_LIFO_GET_NODATA: u8 = 2;
 /// If empty and no_wait, return RETURN_NODATA.
 /// If empty and willing to wait, return PEND_CURRENT.
 ///
+/// Delegates to `gale::lifo::get_decide` (Verus-verified).
 /// Verified: LI3 (no underflow), LI4 (decrement via GET_OK path).
 #[cfg(feature = "lifo")]
 #[unsafe(no_mangle)]
@@ -2544,20 +2590,27 @@ pub extern "C" fn gale_k_lifo_get_decide(
     count: u32,
     is_no_wait: u32,
 ) -> GaleLifoGetDecision {
-    if count > 0 {
-        GaleLifoGetDecision {
+    use gale::lifo::{GetDecision, get_decide};
+
+    // Delegate to verified model (LI3, LI4).
+    let d = get_decide(count);
+    match d {
+        GetDecision::Dequeued => GaleLifoGetDecision {
             ret: OK,
             action: GALE_LIFO_GET_OK,
-        }
-    } else if is_no_wait != 0 {
-        GaleLifoGetDecision {
-            ret: EBUSY,
-            action: GALE_LIFO_GET_NODATA,
-        }
-    } else {
-        GaleLifoGetDecision {
-            ret: 0,
-            action: GALE_LIFO_GET_PEND,
+        },
+        GetDecision::Empty => {
+            if is_no_wait != 0 {
+                GaleLifoGetDecision {
+                    ret: EBUSY,
+                    action: GALE_LIFO_GET_NODATA,
+                }
+            } else {
+                GaleLifoGetDecision {
+                    ret: 0,
+                    action: GALE_LIFO_GET_PEND,
+                }
+            }
         }
     }
 }
@@ -2774,20 +2827,24 @@ pub const GALE_QUEUE_ACTION_WAKE: u8 = 1;
 /// The C shim calls z_unpend_first_thread first (side effect), then passes
 /// whether a waiter was found. Rust decides the action.
 ///
+/// Delegates to `gale::queue::insert_decide` (Verus-verified).
 /// Verified: QU1/QU2 (append), QU3/QU4 (prepend) — state transition only.
 #[cfg(feature = "queue")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_queue_insert_decide(
     has_waiter: u32,
 ) -> GaleQueueInsertDecision {
-    if has_waiter != 0 {
-        GaleQueueInsertDecision {
-            action: GALE_QUEUE_ACTION_WAKE,
-        }
-    } else {
-        GaleQueueInsertDecision {
-            action: GALE_QUEUE_ACTION_INSERT,
-        }
+    use gale::queue::{InsertDecision, insert_decide};
+
+    // Delegate to verified model (QU1-QU4).
+    // count=0 is safe here: insert_decide only uses it for overflow check,
+    // and QU1/QU4 do not track count at this layer (count is managed by C).
+    let d = insert_decide(0, has_waiter != 0);
+    GaleQueueInsertDecision {
+        action: match d {
+            InsertDecision::WakeThread => GALE_QUEUE_ACTION_WAKE,
+            InsertDecision::Insert | InsertDecision::Overflow => GALE_QUEUE_ACTION_INSERT,
+        },
     }
 }
 
@@ -2808,6 +2865,7 @@ pub const GALE_QUEUE_ACTION_PEND: u8 = 2;
 /// The C shim checks if the list has data and whether timeout is K_NO_WAIT.
 /// Rust decides the action.
 ///
+/// Delegates to `gale::queue::get_decide` (Verus-verified).
 /// Verified: QU5/QU6 — state transition only.
 #[cfg(feature = "queue")]
 #[unsafe(no_mangle)]
@@ -2815,17 +2873,25 @@ pub extern "C" fn gale_k_queue_get_decide(
     has_data: u32,
     is_no_wait: u32,
 ) -> GaleQueueGetDecision {
-    if has_data != 0 {
-        GaleQueueGetDecision {
+    use gale::queue::{GetDecision, get_decide};
+
+    // Delegate availability check to verified model (QU5, QU6).
+    // has_data != 0 means count > 0 — pass 1 to represent "some items".
+    let d = get_decide(has_data);
+    match d {
+        GetDecision::Dequeued => GaleQueueGetDecision {
             action: GALE_QUEUE_ACTION_DEQUEUE,
-        }
-    } else if is_no_wait != 0 {
-        GaleQueueGetDecision {
-            action: GALE_QUEUE_ACTION_RETURN_NULL,
-        }
-    } else {
-        GaleQueueGetDecision {
-            action: GALE_QUEUE_ACTION_PEND,
+        },
+        GetDecision::Empty => {
+            if is_no_wait != 0 {
+                GaleQueueGetDecision {
+                    action: GALE_QUEUE_ACTION_RETURN_NULL,
+                }
+            } else {
+                GaleQueueGetDecision {
+                    action: GALE_QUEUE_ACTION_PEND,
+                }
+            }
         }
     }
 }
@@ -3399,6 +3465,7 @@ pub const GALE_FUTEX_ACTION_RETURN_EAGAIN: u8 = 1;
 
 /// Full decision for k_futex_wait: decides whether to block or return -EAGAIN.
 ///
+/// Delegates to `gale::futex::wait_decide` (Verus-verified).
 /// Verified: FX1 (block when val == expected), FX2 (EAGAIN on mismatch).
 #[cfg(feature = "futex")]
 #[unsafe(no_mangle)]
@@ -3407,21 +3474,28 @@ pub extern "C" fn gale_k_futex_wait_decide(
     expected: u32,
     is_no_wait: u32,
 ) -> GaleFutexWaitDecision {
-    if val != expected {
-        GaleFutexWaitDecision {
+    use gale::futex::{WaitDecision, wait_decide};
+
+    // Delegate value-comparison to verified model (FX1, FX2).
+    let d = wait_decide(val, expected);
+    match d {
+        WaitDecision::Mismatch => GaleFutexWaitDecision {
             action: GALE_FUTEX_ACTION_RETURN_EAGAIN,
             ret: EAGAIN,
-        }
-    } else if is_no_wait != 0 {
-        // Value matches but caller specified K_NO_WAIT — cannot block
-        GaleFutexWaitDecision {
-            action: GALE_FUTEX_ACTION_RETURN_EAGAIN,
-            ret: ETIMEDOUT,
-        }
-    } else {
-        GaleFutexWaitDecision {
-            action: GALE_FUTEX_ACTION_BLOCK,
-            ret: OK,
+        },
+        WaitDecision::Block => {
+            if is_no_wait != 0 {
+                // Value matches but caller specified K_NO_WAIT — cannot block.
+                GaleFutexWaitDecision {
+                    action: GALE_FUTEX_ACTION_RETURN_EAGAIN,
+                    ret: ETIMEDOUT,
+                }
+            } else {
+                GaleFutexWaitDecision {
+                    action: GALE_FUTEX_ACTION_BLOCK,
+                    ret: OK,
+                }
+            }
         }
     }
 }
@@ -3438,6 +3512,7 @@ pub struct GaleFutexWakeDecision {
 
 /// Full decision for k_futex_wake: decides the wake limit.
 ///
+/// Delegates to `gale::futex::wake_decide` (Verus-verified).
 /// Verified: FX3 (wake count correct), FX4 (wake_all wakes all), FX5 (single wake).
 #[cfg(feature = "futex")]
 #[unsafe(no_mangle)]
@@ -3445,18 +3520,12 @@ pub extern "C" fn gale_k_futex_wake_decide(
     num_waiters: u32,
     wake_all: u32,
 ) -> GaleFutexWakeDecision {
-    if wake_all != 0 {
-        GaleFutexWakeDecision {
-            wake_limit: num_waiters,
-        }
-    } else if num_waiters > 0 {
-        GaleFutexWakeDecision {
-            wake_limit: 1,
-        }
-    } else {
-        GaleFutexWakeDecision {
-            wake_limit: 0,
-        }
+    use gale::futex::wake_decide;
+
+    // Delegate to verified model (FX3, FX4, FX5).
+    let d = wake_decide(num_waiters, wake_all != 0);
+    GaleFutexWakeDecision {
+        wake_limit: d.woken,
     }
 }
 
@@ -3795,9 +3864,6 @@ pub extern "C" fn gale_k_kheap_free_decide(
 //   TH5: count >= 0 (no underflow on exit)
 //   TH6: no overflow on thread count
 
-const MAX_THREADS: u32 = 256;
-const MAX_PRIORITY: u32 = 32;
-
 /// Validate thread creation: check count < max and increment.
 ///
 /// Arguments:
@@ -3808,17 +3874,22 @@ const MAX_PRIORITY: u32 = 32;
 ///   0 (OK)    — *new_count set
 ///   -EAGAIN   — at capacity
 ///   -EINVAL   — null pointer
+///
+/// Uses `gale::thread_lifecycle::MAX_THREADS` for the capacity bound (Verus-verified).
 #[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_thread_create_validate(
     count: u32,
     new_count: *mut u32,
 ) -> i32 {
+    use gale::thread_lifecycle::MAX_THREADS;
+
     unsafe {
         if new_count.is_null() {
             return EINVAL;
         }
 
+        // TH6: capacity bound from verified model constant.
         if count >= MAX_THREADS {
             return EAGAIN;
         }
@@ -3840,17 +3911,22 @@ pub extern "C" fn gale_thread_create_validate(
 /// Returns:
 ///   0 (OK)    — *new_count set
 ///   -EINVAL   — no threads active (underflow protection) or null pointer
+///
+/// Uses `gale::thread_lifecycle::MAX_THREADS` for consistency with model (Verus-verified).
 #[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_thread_exit_validate(
     count: u32,
     new_count: *mut u32,
 ) -> i32 {
+    let _: u32 = gale::thread_lifecycle::MAX_THREADS; // ensure same constant universe
+
     unsafe {
         if new_count.is_null() {
             return EINVAL;
         }
 
+        // TH5: underflow protection — count must be > 0.
         if count == 0 {
             return EINVAL;
         }
@@ -3874,14 +3950,15 @@ pub extern "C" fn gale_thread_exit_validate(
 /// Returns:
 ///   0 (OK)    — priority < MAX_PRIORITY
 ///   -EINVAL   — priority out of range
+///
+/// Delegates to `gale::thread_lifecycle::priority_set_decide` (Verus-verified).
 #[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_thread_priority_validate(priority: u32) -> i32 {
-    if priority < MAX_PRIORITY {
-        OK
-    } else {
-        EINVAL
-    }
+    use gale::thread_lifecycle::priority_set_decide;
+
+    // TH1: delegate validation to verified model; extract return code only.
+    priority_set_decide(priority).ret
 }
 
 // ---- Phase 2: Full Decision API for thread lifecycle ----
@@ -3918,6 +3995,8 @@ const MIN_STACK_SIZE: u32 = 64;
 ///   options:       thread creation options (K_ESSENTIAL, K_USER, etc.)
 ///   active_count:  current active thread count
 ///
+/// Delegates priority validation to `gale::thread_lifecycle::priority_set_decide`
+/// and stack validation to `gale::thread_lifecycle::StackInfo::init` (Verus-verified).
 /// Verified: TH1 (priority range), TH3 (stack_size > 0), TH6 (no overflow).
 #[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
@@ -3927,19 +4006,24 @@ pub extern "C" fn gale_k_thread_create_decide(
     _options: u32,
     active_count: u32,
 ) -> GaleThreadCreateDecision {
-    // TH3: stack must have nonzero, minimum size
-    if stack_size < MIN_STACK_SIZE {
+    use gale::thread_lifecycle::{StackInfo, MAX_THREADS, priority_set_decide};
+
+    // TH3: stack must have nonzero, minimum size — delegate to StackInfo::init.
+    if stack_size < MIN_STACK_SIZE
+        || StackInfo::init(0, stack_size).is_err()
+    {
         return GaleThreadCreateDecision {
             action: GALE_THREAD_ACTION_REJECT,
             ret: EINVAL,
         };
     }
 
-    // TH1: priority must be in valid range
-    if priority >= MAX_PRIORITY {
+    // TH1: priority must be in valid range — delegate to verified model.
+    let prio_d = priority_set_decide(priority);
+    if prio_d.action != gale::thread_lifecycle::PRIO_SET_PROCEED {
         return GaleThreadCreateDecision {
             action: GALE_THREAD_ACTION_REJECT,
-            ret: EINVAL,
+            ret: prio_d.ret,
         };
     }
 
@@ -4085,9 +4169,6 @@ pub extern "C" fn gale_k_thread_join_decide(
 
 // ---- Phase 2: Suspend / Resume / Priority-set / Stack-space / Deadline ----
 
-/// Thread state flag: thread is suspended (_THREAD_SUSPENDED = BIT(1)).
-const THREAD_STATE_SUSPENDED: u8 = 0x02;
-
 /// Decision struct for k_thread_suspend.
 #[repr(C)]
 pub struct GaleThreadSuspendDecision {
@@ -4107,16 +4188,18 @@ pub const GALE_THREAD_SUSPEND_ALREADY_SUSPENDED: u8 = 1;
 ///
 /// Arguments:
 ///   thread_state: thread_base.thread_state flags
+///
+/// Delegates to `gale::thread_lifecycle::suspend_decide` (Verus-verified).
 #[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_thread_suspend_decide(
     thread_state: u8,
 ) -> GaleThreadSuspendDecision {
-    if (thread_state & THREAD_STATE_SUSPENDED) != 0 {
-        GaleThreadSuspendDecision { action: GALE_THREAD_SUSPEND_ALREADY_SUSPENDED }
-    } else {
-        GaleThreadSuspendDecision { action: GALE_THREAD_SUSPEND_PROCEED }
-    }
+    use gale::thread_lifecycle::suspend_decide;
+
+    // Delegate to verified model (TH7).
+    let d = suspend_decide(thread_state);
+    GaleThreadSuspendDecision { action: d.action }
 }
 
 /// Decision struct for k_thread_resume.
@@ -4138,16 +4221,18 @@ pub const GALE_THREAD_RESUME_NOT_SUSPENDED: u8 = 1;
 ///
 /// Arguments:
 ///   thread_state: thread_base.thread_state flags
+///
+/// Delegates to `gale::thread_lifecycle::resume_decide` (Verus-verified).
 #[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_thread_resume_decide(
     thread_state: u8,
 ) -> GaleThreadResumeDecision {
-    if (thread_state & THREAD_STATE_SUSPENDED) == 0 {
-        GaleThreadResumeDecision { action: GALE_THREAD_RESUME_NOT_SUSPENDED }
-    } else {
-        GaleThreadResumeDecision { action: GALE_THREAD_RESUME_PROCEED }
-    }
+    use gale::thread_lifecycle::resume_decide;
+
+    // Delegate to verified model (TH8).
+    let d = resume_decide(thread_state);
+    GaleThreadResumeDecision { action: d.action }
 }
 
 /// Decision struct for k_thread_priority_set.
@@ -4172,21 +4257,20 @@ pub const GALE_THREAD_PRIO_SET_REJECT: u8 = 1;
 ///
 /// Arguments:
 ///   new_priority: proposed new priority value
+///
+/// Delegates to `gale::thread_lifecycle::priority_set_decide` (Verus-verified).
 #[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_thread_priority_set_decide(
     new_priority: u32,
 ) -> GaleThreadPrioritySetDecision {
-    if new_priority >= MAX_PRIORITY {
-        GaleThreadPrioritySetDecision {
-            action: GALE_THREAD_PRIO_SET_REJECT,
-            ret: EINVAL,
-        }
-    } else {
-        GaleThreadPrioritySetDecision {
-            action: GALE_THREAD_PRIO_SET_PROCEED,
-            ret: OK,
-        }
+    use gale::thread_lifecycle::priority_set_decide;
+
+    // Delegate to verified model (TH1, TH2).
+    let d = priority_set_decide(new_priority);
+    GaleThreadPrioritySetDecision {
+        action: d.action,
+        ret: d.ret,
     }
 }
 
@@ -4217,6 +4301,8 @@ pub const GALE_THREAD_STACK_SPACE_REJECT: u8 = 1;
 ///   stack_size:         usable stack size in bytes (must be > 0)
 ///   stack_usage:        high-watermark usage in bytes (<= stack_size)
 ///   stack_mapped_valid: 1 if stack is accessible (pass 1 for non-mem-mapped)
+///
+/// Delegates to `gale::thread_lifecycle::stack_space_decide` (Verus-verified).
 #[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_thread_stack_space_decide(
@@ -4224,27 +4310,32 @@ pub extern "C" fn gale_k_thread_stack_space_decide(
     stack_usage: u32,
     stack_mapped_valid: u32,
 ) -> GaleThreadStackSpaceDecision {
-    if stack_size == 0 {
-        return GaleThreadStackSpaceDecision {
-            action: GALE_THREAD_STACK_SPACE_REJECT,
-            ret: EINVAL,
-            unused_estimate: 0,
-        };
-    }
-    if stack_mapped_valid == 0 {
-        return GaleThreadStackSpaceDecision {
-            action: GALE_THREAD_STACK_SPACE_REJECT,
-            ret: EINVAL,
-            unused_estimate: 0,
-        };
-    }
-    let usage = if stack_usage > stack_size { stack_size } else { stack_usage };
-    #[allow(clippy::arithmetic_side_effects)]
-    let unused_estimate = stack_size - usage;
+    use gale::thread_lifecycle::{StackInfo, stack_space_decide};
+
+    // Build a StackInfo from the C-extracted fields.
+    // stack_usage is clamped to stack_size to satisfy the StackInfo invariant.
+    let stack = match StackInfo::init(0, stack_size) {
+        Ok(mut si) => {
+            // Clamp usage to size (StackInfo invariant: usage <= size).
+            si.usage = if stack_usage > stack_size { stack_size } else { stack_usage };
+            si
+        }
+        Err(_) => {
+            // stack_size == 0: invalid
+            return GaleThreadStackSpaceDecision {
+                action: GALE_THREAD_STACK_SPACE_REJECT,
+                ret: EINVAL,
+                unused_estimate: 0,
+            };
+        }
+    };
+
+    // Delegate to verified model (TH4).
+    let d = stack_space_decide(stack, stack_mapped_valid != 0);
     GaleThreadStackSpaceDecision {
-        action: GALE_THREAD_STACK_SPACE_PROCEED,
-        ret: OK,
-        unused_estimate,
+        action: d.action,
+        ret: d.ret,
+        unused_estimate: d.unused_estimate,
     }
 }
 
@@ -4272,23 +4363,21 @@ pub const GALE_THREAD_DEADLINE_REJECT: u8 = 1;
 ///
 /// Arguments:
 ///   deadline: proposed deadline in cycles (must be > 0)
+///
+/// Delegates to `gale::thread_lifecycle::deadline_decide` (Verus-verified).
 #[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_thread_deadline_decide(
     deadline: i32,
 ) -> GaleThreadDeadlineDecision {
-    if deadline <= 0 {
-        GaleThreadDeadlineDecision {
-            action: GALE_THREAD_DEADLINE_REJECT,
-            ret: EINVAL,
-            clamped_deadline: 0,
-        }
-    } else {
-        GaleThreadDeadlineDecision {
-            action: GALE_THREAD_DEADLINE_PROCEED,
-            ret: OK,
-            clamped_deadline: deadline,
-        }
+    use gale::thread_lifecycle::deadline_decide;
+
+    // Delegate to verified model (TD1, TD3).
+    let d = deadline_decide(deadline);
+    GaleThreadDeadlineDecision {
+        action: d.action,
+        ret: d.ret,
+        clamped_deadline: d.clamped_deadline,
     }
 }
 
@@ -9562,12 +9651,17 @@ pub extern "C" fn gale_atomic_set(current: u32, value: u32) -> GaleAtomicRmwDeci
 ///
 /// AT1: returns old value, stores old + val.
 /// AT6: wrapping semantics (no panic on overflow).
+///
+/// Delegates wrapping arithmetic to `gale::atomic::add_u32_wrapping` (Verus-verified).
 #[cfg(feature = "atomic")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_atomic_add(current: u32, value: u32) -> GaleAtomicRmwDecision {
+    use gale::atomic::add_u32_wrapping;
+
+    // AT1 + AT6: delegate to verified wrapping add.
     GaleAtomicRmwDecision {
         old_val: current,
-        new_val: current.wrapping_add(value),
+        new_val: add_u32_wrapping(current, value),
     }
 }
 
@@ -9577,12 +9671,17 @@ pub extern "C" fn gale_atomic_add(current: u32, value: u32) -> GaleAtomicRmwDeci
 ///
 /// AT2: returns old value, stores old - val.
 /// AT6: wrapping semantics.
+///
+/// Delegates wrapping arithmetic to `gale::atomic::sub_u32_wrapping` (Verus-verified).
 #[cfg(feature = "atomic")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_atomic_sub(current: u32, value: u32) -> GaleAtomicRmwDecision {
+    use gale::atomic::sub_u32_wrapping;
+
+    // AT2 + AT6: delegate to verified wrapping sub.
     GaleAtomicRmwDecision {
         old_val: current,
-        new_val: current.wrapping_sub(value),
+        new_val: sub_u32_wrapping(current, value),
     }
 }
 
