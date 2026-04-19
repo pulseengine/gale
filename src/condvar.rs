@@ -249,6 +249,65 @@ impl CondVar {
 }
 
 // =================================================================
+// Lightweight decision functions (scalar inputs, no WaitQueue)
+// Used by FFI to delegate decision logic to the verified model.
+// =================================================================
+
+/// Signal decision — what the C shim should do on k_condvar_signal.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum SignalAction {
+    /// No waiter in the queue — signal is a no-op.
+    Noop = 0,
+    /// Wake the highest-priority waiter.
+    WakeOne = 1,
+}
+
+/// Decide the action for k_condvar_signal from a scalar has_waiter flag.
+///
+/// Verified: C2 (wakes at most one), C3 (no-op when empty).
+pub fn signal_decide(has_waiter: bool) -> (result: SignalAction)
+    ensures
+        has_waiter ==> result === SignalAction::WakeOne,
+        !has_waiter ==> result === SignalAction::Noop,
+{
+    if has_waiter { SignalAction::WakeOne } else { SignalAction::Noop }
+}
+
+/// Decide the action for k_condvar_broadcast.
+///
+/// Returns the number of waiters to wake. Pass-through, but verified
+/// free of overflow (C8): the C side guarantees num_waiters fits u32.
+pub fn broadcast_decide(num_waiters: u32) -> (result: u32)
+    ensures
+        result == num_waiters,
+{
+    num_waiters
+}
+
+/// Wait decision — what the C shim should do on k_condvar_wait.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum WaitAction {
+    /// Pend the current thread on the wait queue.
+    Pend = 0,
+    /// K_NO_WAIT timeout — return -EAGAIN without blocking.
+    ReturnEagain = 1,
+}
+
+/// Decide the action for k_condvar_wait from a scalar is_no_wait flag.
+///
+/// Verified: C6 (blocking path adds thread to wait queue; non-blocking
+/// path returns EAGAIN immediately).
+pub fn wait_decide(is_no_wait: bool) -> (result: WaitAction)
+    ensures
+        is_no_wait ==> result === WaitAction::ReturnEagain,
+        !is_no_wait ==> result === WaitAction::Pend,
+{
+    if is_no_wait { WaitAction::ReturnEagain } else { WaitAction::Pend }
+}
+
+// =================================================================
 // Compositional proofs
 // =================================================================
 

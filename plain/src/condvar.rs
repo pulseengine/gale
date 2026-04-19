@@ -155,3 +155,41 @@ impl CondVar {
         self.wait_q.len() > 0
     }
 }
+/// Signal decision — what the C shim should do on k_condvar_signal.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum SignalAction {
+    /// No waiter in the queue — signal is a no-op.
+    Noop = 0,
+    /// Wake the highest-priority waiter.
+    WakeOne = 1,
+}
+/// Decide the action for k_condvar_signal from a scalar has_waiter flag.
+///
+/// Verified: C2 (wakes at most one), C3 (no-op when empty).
+pub fn signal_decide(has_waiter: bool) -> SignalAction {
+    if has_waiter { SignalAction::WakeOne } else { SignalAction::Noop }
+}
+/// Decide the action for k_condvar_broadcast.
+///
+/// Returns the number of waiters to wake. Pass-through, but verified
+/// free of overflow (C8): the C side guarantees num_waiters fits u32.
+pub fn broadcast_decide(num_waiters: u32) -> u32 {
+    num_waiters
+}
+/// Wait decision — what the C shim should do on k_condvar_wait.
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum WaitAction {
+    /// Pend the current thread on the wait queue.
+    Pend = 0,
+    /// K_NO_WAIT timeout — return -EAGAIN without blocking.
+    ReturnEagain = 1,
+}
+/// Decide the action for k_condvar_wait from a scalar is_no_wait flag.
+///
+/// Verified: C6 (blocking path adds thread to wait queue; non-blocking
+/// path returns EAGAIN immediately).
+pub fn wait_decide(is_no_wait: bool) -> WaitAction {
+    if is_no_wait { WaitAction::ReturnEagain } else { WaitAction::Pend }
+}

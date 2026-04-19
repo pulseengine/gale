@@ -9455,11 +9455,12 @@ pub const GALE_CONDVAR_SIGNAL_WAKE_ONE: u8 = 1;
 #[cfg(feature = "condvar")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_condvar_signal_decide(has_waiter: u32) -> GaleCondvarSignalDecision {
-    if has_waiter != 0 {
-        GaleCondvarSignalDecision { action: GALE_CONDVAR_SIGNAL_WAKE_ONE }
-    } else {
-        GaleCondvarSignalDecision { action: GALE_CONDVAR_SIGNAL_NOOP }
-    }
+    use gale::condvar::{SignalAction, signal_decide};
+    let action = match signal_decide(has_waiter != 0) {
+        SignalAction::WakeOne => GALE_CONDVAR_SIGNAL_WAKE_ONE,
+        SignalAction::Noop => GALE_CONDVAR_SIGNAL_NOOP,
+    };
+    GaleCondvarSignalDecision { action }
 }
 
 /// Decision struct for k_condvar_broadcast.
@@ -9485,7 +9486,7 @@ pub struct GaleCondvarBroadcastDecision {
 pub extern "C" fn gale_k_condvar_broadcast_decide(
     num_waiters: u32,
 ) -> GaleCondvarBroadcastDecision {
-    GaleCondvarBroadcastDecision { woken: num_waiters }
+    GaleCondvarBroadcastDecision { woken: gale::condvar::broadcast_decide(num_waiters) }
 }
 
 /// Decision struct for k_condvar_wait.
@@ -9514,16 +9515,16 @@ pub const GALE_CONDVAR_WAIT_RETURN_EAGAIN: u8 = 1;
 #[cfg(feature = "condvar")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_condvar_wait_decide(is_no_wait: u32) -> GaleCondvarWaitDecision {
-    if is_no_wait != 0 {
-        GaleCondvarWaitDecision {
+    use gale::condvar::{WaitAction, wait_decide};
+    match wait_decide(is_no_wait != 0) {
+        WaitAction::ReturnEagain => GaleCondvarWaitDecision {
             action: GALE_CONDVAR_WAIT_RETURN_EAGAIN,
             ret: -11, // -EAGAIN
-        }
-    } else {
-        GaleCondvarWaitDecision {
+        },
+        WaitAction::Pend => GaleCondvarWaitDecision {
             action: GALE_CONDVAR_WAIT_PEND,
             ret: 0,
-        }
+        },
     }
 }
 

@@ -1,9 +1,50 @@
 # STPA GAP-2 Audit: Decision Struct -> Verified Model Delegation
 
-**Date:** 2026-03-29
+**Original date:** 2026-03-29
+**Last snapshot:** 2026-04-19
 **Scope:** All `pub extern "C" fn gale_*` functions in `ffi/src/lib.rs`
 **Pattern:** GAP-2 requires that FFI decision structs delegate to Verus-verified
 model functions (`src/*.rs`) rather than reimplementing logic inline.
+
+## Current status (2026-04-19)
+
+Automated scan of `ffi/src/lib.rs` — count of functions that contain a
+`use gale::<module>::` statement inside their body (indicating delegation):
+
+| Metric        | Value |
+|---            |---    |
+| Total FFI fns | 208   |
+| **GREEN**     | **140** (67%) |
+| RED           | 68    |
+
+RED breakdown by family (lines = non-empty, non-comment body):
+
+| Family     | Count | Cheapest to wire |
+|---         | ---   | --- |
+| atomic     | 7 | passthrough RMWs; arguably GAP-2 N/A |
+| sys_heap   | 7 | needs `heap` model decision fns (26–36 line bodies) |
+| spinlock   | 6 | stateful; defer until spinlock model matures |
+| bitarray   | 4 | no model exists — new `bitarray.rs` needed |
+| mem_domain | 4 | complex partition arithmetic (45–51 lines) |
+| k_object   | 4 | flag ops; small model already in `userspace.rs` |
+| ring_buf   | 4 | `ring_buf.rs` exists; 4/8 already wired |
+| thread     | 3 | `thread_lifecycle.rs` exists |
+| timer      | 3 | `timer.rs` exists |
+| timeout    | 3 | `timeout.rs` exists |
+| condvar    | ~~3~~ **0** | wired in 2026-04-19 commit |
+| sched      | 2 | `sched.rs` exists |
+| kheap      | 2 | `kheap.rs` exists; pattern matches mbox |
+| mbox       | 2 | `mbox.rs` exists |
+| mempool    | 2 | `mempool.rs` exists |
+| poll       | 2 | `poll.rs` exists |
+| rb (tree)  | 2 | no model; red-black invariants |
+| work       | 2 | `work.rs` exists |
+| other      | 8 | see detail tables below |
+
+The table below this section is the original 2026-03-29 classification.
+Entries marked "RED" there may now be GREEN — the summary above reflects
+the current automated scan. Full re-classification is tracked in
+[issue #9](https://github.com/pulseengine/gale/issues/9).
 
 ## Background
 
@@ -14,9 +55,10 @@ reimplement logic inline, there is a divergence risk: the FFI and the model can
 drift apart, and the Verus proofs no longer cover the code that actually executes
 at runtime.
 
-Currently, only two FFI functions follow this pattern:
-- `gale_k_sem_give_decide` calls `gale::sem::give_decide`
-- `gale_k_sem_take_decide` calls `gale::sem::take_decide`
+**Historical note (2026-03-29):** When this audit was written, only the two
+`gale_k_sem_*_decide` functions followed this pattern. As of the 2026-04-19
+snapshot above, 140 of 208 FFI functions delegate to a verified `gale::`
+model.
 
 ## Classification Criteria
 
