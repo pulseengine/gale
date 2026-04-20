@@ -373,7 +373,13 @@ jobs:
         run: |
           SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
           [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
-          echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
+          # SDK 1.0+ added a 'gnu' subdirectory under the SDK root for the GNU toolchain;
+          # older layouts had the arm-zephyr-eabi directly under the SDK root.
+          if [ -d "${SDK_DIR}/gnu/arm-zephyr-eabi/bin" ]; then
+            echo "${SDK_DIR}/gnu/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
+          else
+            echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
+          fi
 
       - name: Build baseline (stock Zephyr)
         run: |
