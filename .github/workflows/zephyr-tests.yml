@@ -152,7 +152,7 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
-          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement-rebase-test zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
           for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi && break || sleep 5; done
@@ -226,7 +226,7 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
-          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement-rebase-test zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
           for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi && break || sleep 5; done
@@ -309,7 +309,7 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
-          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement-rebase-test zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
           for attempt in 1 2 3; do west sdk install -t x86_64-zephyr-elf && break || sleep 5; done
@@ -364,7 +364,7 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
-          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement-rebase-test zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
           for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi && break || sleep 5; done
