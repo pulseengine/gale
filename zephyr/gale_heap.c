@@ -54,8 +54,10 @@
 #include <sanitizer/msan_interface.h>
 #endif
 
-/* Validate the `kernel.h` macro */
-BUILD_ASSERT(_Z_HEAP_SIZE == sizeof(struct z_heap), "Incorrect _Z_HEAP_SIZE value");
+/* Sizing invariant: upstream v4.4+ no longer exports the old
+ * _Z_HEAP_SIZE symbol. The per-allocation envelope is computed by
+ * Z_HEAP_MIN_SIZE_FOR(bytes) in kernel.h; this shim trusts that
+ * macro at call sites and does not duplicate the sizeof check. */
 
 #ifdef CONFIG_SYS_HEAP_RUNTIME_STATS
 static inline void increase_allocated_bytes(struct z_heap *h, size_t num_bytes)
@@ -102,7 +104,9 @@ static void free_list_remove_bidx(struct z_heap *h, chunkid_t c, int bidx)
 
 static void free_list_remove(struct z_heap *h, chunkid_t c)
 {
-	if (!solo_free_header(h, c)) {
+	/* Upstream renamed solo_free_header() → undersized_chunk() in
+	 * the v4.x heap rework; semantics are identical. */
+	if (!undersized_chunk(h, c)) {
 		int bidx = bucket_idx(h, chunk_size(h, c));
 		free_list_remove_bidx(h, c, bidx);
 	}

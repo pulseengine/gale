@@ -119,7 +119,11 @@ int z_impl_k_condvar_broadcast(struct k_condvar *condvar)
 	{
 		sys_dnode_t *node;
 
-		SYS_DLIST_FOR_EACH_NODE(&condvar->wait_q, node) {
+		/* _wait_q_t wraps a sys_dlist_t (non-scalable config) or
+		 * an rbtree (CONFIG_WAITQ_SCALABLE). We iterate the dlist
+		 * form — the rbtree case is not exercised by this shim.
+		 */
+		SYS_DLIST_FOR_EACH_NODE(&condvar->wait_q.waitq, node) {
 			num_waiters++;
 			/* Safety bound: Zephyr has a finite thread pool */
 			if (num_waiters > 256U) {
