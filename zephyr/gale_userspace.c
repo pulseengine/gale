@@ -658,6 +658,18 @@ void k_object_dump_error(int retval, const void *obj, struct k_object *ko,
 	}
 }
 
+/*
+ * Gale: k_object_access_check — thin wrapper around k_object_validate.
+ *
+ * Added upstream (>=v4.4) as a first-class syscall; our shim defers to
+ * k_object_validate (which already carries the full US1/US4/US5/US7
+ * verification path).
+ */
+int z_impl_k_object_access_check(const void *object)
+{
+	return k_object_validate(k_object_find(object), K_OBJ_ANY, _OBJ_INIT_ANY);
+}
+
 void z_impl_k_object_access_grant(const void *object, struct k_thread *thread)
 {
 	struct k_object *ko = k_object_find(object);
