@@ -438,10 +438,10 @@ fn add_decide_nb4_invariant() {
 fn push_decide_nb5_invariant() {
     let head_offset: u16 = 16;
     let len: u16 = 20;
-    let size: u16 = 64;
+    let size: u32 = 64;
     let bytes: u16 = 8;
     let (new_head, new_len) = push_decide(head_offset, len, bytes).unwrap();
-    assert!(new_head as u32 + new_len as u32 <= size as u32);
+    assert!(u32::from(new_head) + u32::from(new_len) <= size);
 }
 
 /// NB5: pull_decide preserves bounds.

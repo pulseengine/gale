@@ -168,6 +168,12 @@ pub fn ticks_to_cycles(ticks: u64, cycles_per_tick: u32) -> (result: Option<u64>
 ///   `#define MAX_TICKS (COUNTER_MAX / CYC_PER_TICK) - 1`
 ///
 /// Returns None if cycles_per_tick is 0.
+///
+/// clippy::manual_checked_ops suggests `checked_div`, but the three-case
+/// logic (None, quotient==0, quotient>0) does not fit the Option chain
+/// cleanly — and `cycles_per_tick == 0` is a Verus `ensures`-linked
+/// branch, so keeping the explicit form preserves proof structure.
+#[allow(clippy::manual_checked_ops)]
 pub fn max_ticks(cycles_per_tick: u32) -> (result: Option<u32>)
     ensures
         cycles_per_tick == 0 ==> result.is_none(),

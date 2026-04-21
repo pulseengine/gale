@@ -350,10 +350,8 @@ proptest! {
 
         for op in ops {
             match op {
-                RunQueueOp::Add { id, priority } => {
-                    if rq.count() < 64 {
-                        rq.add(thread_with_prio(id, priority));
-                    }
+                RunQueueOp::Add { id, priority } if rq.count() < 64 => {
+                    rq.add(thread_with_prio(id, priority));
                 }
                 RunQueueOp::RemoveBest => {
                     let _ = rq.remove_best();

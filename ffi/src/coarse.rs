@@ -93,8 +93,12 @@ pub extern "C" fn gale_sem_give_v2(state: *mut GaleSemState) -> i32 {
             return EINVAL;
         }
         let s = &mut *state;
-        if s.count != s.limit {
-            // Verified: count < limit <= u32::MAX, no overflow.
+        // U-1 (STPA): `count < limit`, not `count != limit`. A caller with
+        // corrupt state where count > limit (e.g., count=u32::MAX) would
+        // pass `!=` and then overflow on `count + 1`. The `<` form
+        // matches gale::sem::give_decide's precondition and invariant P1
+        // (0 <= count <= limit).
+        if s.count < s.limit {
             #[allow(clippy::arithmetic_side_effects)]
             {
                 s.count += 1;

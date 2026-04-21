@@ -606,7 +606,7 @@ fn sleep_rejects_non_running() {
         SchedThreadState::Aborting,
     ];
     for &state in &non_running {
-        assert!(sched_sleep(state).is_err(), "sleep should reject {state:?}",);
+        assert!(sched_sleep(state).is_err(), "sleep should reject {state:?}");
     }
 }
 
