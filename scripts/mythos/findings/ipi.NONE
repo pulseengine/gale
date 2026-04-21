@@ -1,0 +1,7 @@
+src/ipi.rs is pure mask computation; the real race/ordering logic
+(signal_pending_ipi / flag_ipi) is explicitly omitted per the file's
+header comment as "not safety-relevant for the mask decision." Self-IPI
+exclusion and offline-CPU checks are present. One documented scope gap:
+thread_is_preemptible / thread_is_metairq are omitted — this is declared,
+not hidden drift. IP2/IP3/IP5 have no Verus ensures but the file
+documents this honestly. No finding that survives the oracle requirement.

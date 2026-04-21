@@ -1,0 +1,65 @@
+# FILE: src/futex.rs — NO REPORTABLE FINDING
+
+## Investigation summary
+
+Prompt directed focus to the known TOCTOU in `zephyr/gale_futex.c:102` (read of
+`atomic_get(&futex->val)` outside the spinlock, fixed upstream in 10c974c9d5)
+and asked whether `src/futex.rs` encodes the pre-fix semantics (proof-code
+drift).
+
+## What src/futex.rs actually provides
+
+Two surfaces are exposed:
+
+1. Pure scalar decision helpers `wait_decide(val, expected)` and
+   `wake_decide(num_waiters, wake_all)`. These are the ONLY functions the C
+   shim calls (via `gale_k_futex_wait_decide` / `gale_k_futex_wake_decide` in
+   `ffi/src/lib.rs`). Their Verus specs
+   (`val == expected ==> Block`, etc.) are internally sound — they define pure
+   functions on the inputs they receive.
+2. Object-level `Futex::wait(&mut self, ...)` / `Futex::wake(&mut self, ...)`.
+   These are Rust-only; they are not reachable from the C shim. They take
+   `&mut self`, so Rust's borrow checker statically precludes any concurrent
+   access — no loom/Miri schedule can exhibit a data race on `Futex::val`.
+
+## Why the TOCTOU prior does not yield a reportable finding inside this file
+
+- The race lives entirely in `zephyr/gale_futex.c:102` (outside the permitted
+  scope). The Rust decision function receives whatever `u32` the shim hands it
+  and returns the correct decision for that input; its contract has no
+  atomicity obligation to violate.
+- `Futex` stores `val: u32` (not an atomic) and mutates through `&mut self`,
+  so no two-thread interleaving is expressible in the Rust model. loom /
+  shuttle / deterministic-scheduler harnesses cannot produce a failing trace
+  against `src/futex.rs`.
+- The file header comment (lines 10-15) declaring the spinlock "not
+  safety-relevant" is a weak spec choice that enables the drift, but weak-spec
+  commentary is not a failing Verus obligation. The existing ensures clauses
+  all verify on their own terms; there is no proof to make fail.
+
+## Oracle gate
+
+The prompt requires BOTH (1) a failing Kani/Verus/Rocq/Lean obligation AND
+(2) a failing property/unit test. I could not construct either half
+attributable to code inside `src/futex.rs`:
+
+- No Verus ensures in `src/futex.rs` is falsifiable — every postcondition is
+  either tautological (the pure deciders) or a consequence of `&mut self`
+  exclusivity (the object methods).
+- No loom / property / unit test can reproduce the TOCTOU against
+  `src/futex.rs`, because the file holds no atomic state and the object API is
+  single-owner.
+
+Per the discover-protocol's explicit rule ("Hallucinations are more expensive
+than silence"), the correct action is to abstain rather than fabricate a
+contrived oracle.
+
+## Note for issue #16 triage (out of scope, informational)
+
+The real vulnerability — `atomic_get` outside the spinlock in
+`zephyr/gale_futex.c:102` — is a genuine TOCTOU whose fix is the upstream
+Zephyr commit 10c974c9d5 (move the read inside `k_spin_lock`). Patching the
+shim is sufficient; `src/futex.rs` does not need to change. One could
+additionally strengthen the Rust-side doc comment on `wait_decide` to state
+"caller must ensure `val` is read under the same lock that protects the wait
+queue pend," but that is a documentation improvement, not a code bug.

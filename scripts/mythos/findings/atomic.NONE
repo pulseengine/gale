@@ -1,0 +1,77 @@
+# FILE: src/atomic.rs — NO REPORTABLE FINDING
+
+## Investigation summary
+
+Walked `src/atomic.rs` against the discover prompt priors (concurrency,
+overflow, interrupt reentrancy, proof drift, unsafe/raw-ptr, scheduler).
+File is intentionally scoped to **pure value-transformation arithmetic**:
+atomicity, IRQ masking, and the spinlock are all handled by C
+(`zephyr/gale_atomic.c`). Rust just takes `(current, value) -> (old, new)`
+decisions; the C shim is Extract / Decide / Apply.
+
+## Hypotheses explored and why each fell through
+
+1. **Counter overflow / wrap (CVE-2021-3580 prior).**
+   `add` / `sub` / `inc` / `dec` all route through `add_u32_wrapping` /
+   `sub_u32_wrapping`, whose Verus specs
+   `((a + b) % 2^32)` and `((a + 2^32 - b) % 2^32)` match `u32::wrapping_add`
+   / `wrapping_sub` exactly. Verified the corner cases
+   `(u32::MAX, 1) -> 0`, `(0, 1) sub -> u32::MAX`,
+   `(u32::MAX, u32::MAX) add -> u32::MAX - 1`. Spec and impl agree.
+
+2. **CAS semantic mismatch (AT3/AT4).**
+   Method `cas` checks `self.val == expected` before any mutation, so
+   `self.val == old(self).val` at the check. Ensures clauses cover both
+   branches (`val == expected ==> success ∧ self.val == new_value` and
+   `val != expected ==> !success ∧ self.val == old(self).val`). No missing
+   case; `expected == new_value` and `expected == self.val == new_value`
+   edge inputs still satisfy the ensures.
+
+3. **Proof-code drift on AT3/AT4/AT5/set-clear.**
+   `lemma_cas_semantics`, `lemma_test_and_set_always_one`, and
+   `lemma_set_clear` are **decorative tautologies** (`X ==> true`,
+   `1u32 == 1u32`, `0u32 == 0u32`). Their comments advertise ASIL-D
+   properties they do not actually encode. This is genuine proof-code
+   drift in spirit, but:
+   - The oracle gate requires a **failing** Verus obligation; a vacuous
+     ensures clause *passes* SMT, so there is no failing obligation to
+     produce.
+   - The method-level ensures on `cas`, `test_and_set`, `set`, `clear`
+     are non-vacuous and do encode the real semantics, so runtime
+     safety is not affected — the lemmas are redundant, not load-bearing.
+   Reportable as a proof-quality cleanup, not as a safety-relevant
+   vulnerability.
+
+4. **Concurrency / TOCTOU / ABA inside the Rust model.**
+   All operations take `&mut self`; Rust's borrow checker statically
+   forbids any concurrent access to `AtomicVal`. No loom / shuttle schedule
+   can produce a data race inside the Rust scope. The real ABA/TOCTOU
+   surface is the C shim's spinlock discipline, which is out of scope.
+
+5. **Interrupt reentrancy / IRQ leaks.**
+   No `unsafe`, no IRQ primitives, no allocation, no raw pointers in this
+   file. Nothing ISR-sensitive lives here.
+
+6. **`AtomicVal` being `Copy`** — a caller could operate on a copy rather
+   than the original. This is an API ergonomics hazard, but
+   `AtomicVal` is **not used in production**: `ffi/src/lib.rs` calls only
+   the two free functions `add_u32_wrapping` / `sub_u32_wrapping` and
+   never constructs an `AtomicVal`. Latent, not active.
+
+7. **32-bit u32 model vs 64-bit `atomic_t`.**
+   The file header notes `atomic_t` is `long` (64-bit on 64-bit targets);
+   the Rust model is u32-scoped. This is an acknowledged model
+   limitation, not a src/atomic.rs bug. Any truncation defect would live
+   in the C shim's `uint32_t` cast (`zephyr/gale_atomic.c:330` for
+   `z_impl_atomic_ptr_cas`), which is outside this file's scope.
+
+## Oracle gate
+
+Prompt demands BOTH (1) failing Kani / Verus / Rocq / Lean obligation
+AND (2) failing property or unit test. For every hypothesis above,
+either the Verus/Kani obligation **passes** (arithmetic is actually
+correct, or the obligation is vacuous-and-therefore-true) or the
+failing condition lives outside `src/atomic.rs`. I could not assemble
+both oracle halves for any bug attributable to this file without
+fabricating the harness — so per the protocol ("Hallucinations are
+more expensive than silence") I abstain.

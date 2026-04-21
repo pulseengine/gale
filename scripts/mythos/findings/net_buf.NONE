@@ -1,0 +1,6 @@
+Pure integer model with external_body stubs; concurrency, pointers, and
+fragment chains are deferred to C. Ref-count, alloc/free, push/pull,
+add/remove paths are all bounds-checked and gate on ref_count/allocated > 0,
+so the CVE-2023-5564 double-free class cannot be reached from within this
+file's scope. No safety-relevant vulnerability in src/net_buf.rs proper;
+any double-free would have to be in the companion C code.

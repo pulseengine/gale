@@ -1,0 +1,695 @@
+# STPA Step 2 (control structure) + Step 3 (UCAs) + Step 4 (loss scenarios).
+#
+# These artifacts close out the STPA analysis that artifacts/stpa.yaml
+# scopes out ("out of scope for this initial artifact and will be added
+# in a follow-on"). Seeded by the 2026-04-21 Mythos bug-hunt pass
+# (scripts/mythos/findings/): 10 confirmed proof-code drift or
+# FFI-boundary findings across the kernel primitive surface.
+
+artifacts:
+
+  # ── Step 2: Controllers (subset — only those implicated by the
+  #           Mythos findings; a full control-structure diagram is
+  #           pending) ──────────────────────────────────────────────────
+
+  - id: C-1
+    type: controller
+    title: Kernel scheduler (Gale)
+    status: draft
+    description: >
+      Selects the next thread to run. Composed of the Rust decision model
+      in src/sched.rs and the C dispatch path in zephyr/gale_sched.c.
+      Issues dispatch / preempt / requeue control actions. Its process
+      model is the per-CPU ready queue and the MetaIRQ-preempted state.
+    tags: [stpa, controller, scheduler]
+    fields:
+      type: automated
+      source-file: src/sched.rs
+      process-model:
+        - ready-queue
+        - current-thread-per-cpu
+        - metairq-preempted-state
+
+  - id: C-2
+    type: controller
+    title: Thread lifecycle manager
+    status: draft
+    description: >
+      Manages thread creation, priority assignment, and abort. Composed
+      of src/thread_lifecycle.rs + zephyr/gale_thread_lifecycle.c. Issues
+      create / set-priority / abort control actions.
+    tags: [stpa, controller, thread]
+    fields:
+      type: automated
+      source-file: src/thread_lifecycle.rs
+      process-model:
+        - thread-count
+        - per-thread-priority
+        - per-thread-state
+
+  - id: C-3
+    type: controller
+    title: Spinlock monitor
+    status: draft
+    description: >
+      Enforces mutual exclusion on kernel critical sections. Composed of
+      src/spinlock.rs (decision model) and src/spinlock_validate.rs
+      (run-time assertion). Issues acquire / release / validate-reentry
+      control actions. Safety-critical for every other primitive.
+    tags: [stpa, controller, spinlock]
+    fields:
+      type: automated
+      source-file: src/spinlock.rs
+      process-model:
+        - owner-tid-per-lock
+        - nest-count-per-lock
+        - per-cpu-held-mask
+
+  - id: C-4
+    type: controller
+    title: Semaphore controller
+    status: draft
+    description: >
+      Manages counting-semaphore state and wakeups. Composed of src/sem.rs
+      + ffi/src/coarse.rs + ffi/src/lib.rs. Issues give / take / wake
+      control actions.
+    tags: [stpa, controller, semaphore]
+    fields:
+      type: automated
+      source-file: src/sem.rs
+      process-model:
+        - sem-count
+        - sem-limit
+        - wait-queue-non-empty
+
+  - id: C-5
+    type: controller
+    title: Memory protection controllers (MPU + MMU)
+    status: draft
+    description: >
+      Enforces kernel / userspace memory isolation. Composed of src/mpu.rs
+      (ARMv7-M region validation) and src/mmu.rs (virtual address space).
+      Issues configure-region / validate-overlap / align-size control
+      actions.
+    tags: [stpa, controller, memory-protection]
+    fields:
+      type: automated
+      source-file: src/mpu.rs
+      process-model:
+        - active-region-set
+        - region-alignment-invariants
+        - page-table-coverage
+
+  - id: C-6
+    type: controller
+    title: Fault handler
+    status: draft
+    description: >
+      Classifies processor exceptions (Cortex-M CFSR/HFSR) and routes to
+      the appropriate recovery path. Composed of src/fault_decode.rs
+      and src/fatal.rs. Issues classify / halt / ignore control actions
+      based on fault category and context.
+    tags: [stpa, controller, fault]
+    fields:
+      type: automated
+      source-file: src/fault_decode.rs
+      process-model:
+        - cfsr-register-bits
+        - hfsr-register-bits
+        - isr-vs-thread-context
+        - panic-vs-oops-classification
+
+  - id: C-7
+    type: controller
+    title: Device init sequencer
+    status: draft
+    description: >
+      Drives the kernel boot sequence: initializes devices in dependency
+      order, publishes readiness state for dependents to query. Composed
+      of src/device_init.rs. Issues init / check-deps / publish-ready
+      control actions.
+    tags: [stpa, controller, device-init]
+    fields:
+      type: automated
+      source-file: src/device_init.rs
+      process-model:
+        - per-device-initialized-flag
+        - per-device-init-result
+        - dependency-graph
+
+  - id: C-8
+    type: controller
+    title: SMP coordinator
+    status: draft
+    description: >
+      Manages CPU online/offline transitions and the kernel-global
+      lock count used for SMP serialization. Composed of src/smp_state.rs
+      + ffi/src/lib.rs SMP shims.
+    tags: [stpa, controller, smp]
+    fields:
+      type: automated
+      source-file: src/smp_state.rs
+      process-model:
+        - per-cpu-active-flag
+        - global-lock-count
+        - per-cpu-lock-holder
+
+  # ── Step 3: Unsafe Control Actions ─────────────────────────────────────
+
+  - id: U-1
+    type: uca
+    title: Semaphore give increments count beyond limit
+    status: draft
+    description: >
+      Gale's coarse FFI shim gale_sem_give_v2 gates the increment with
+      count != limit instead of count < limit. A caller passing
+      count=u32::MAX, limit=5 passes the guard and triggers u32 overflow
+      (debug panic / release wrap to 0). Drifts from Verus give_decide's
+      contract (requires count <= limit) with no runtime enforcement.
+      Confirmed by Mythos run 2026-04-21; see
+      scripts/mythos/findings/ffi-coarse.md.
+    tags: [stpa, uca, semaphore, overflow, mythos-2026-04-21]
+    links:
+      - type: issued-by
+        target: C-4
+      - type: leads-to-hazard
+        target: H-3
+    fields:
+      uca-type: providing
+      control-action: sem-give
+      context: >
+        Caller passes an out-of-contract (count, limit) pair — which
+        Verus give_decide assumes away via `requires` but the FFI does
+        not runtime-check.
+      rationale: >
+        The proof establishes no-overflow only under the stated
+        precondition. The shim erases that precondition at the C ABI.
+
+  - id: U-2
+    type: uca
+    title: Device readiness published after failed init
+    status: draft
+    description: >
+      check_deps_satisfied (src/device_init.rs) examines only the
+      .initialized flag, not init_res. A device whose init function
+      returned non-zero but finished executing satisfies every
+      dependency check — dependents then initialize against broken
+      hardware. Contradicts SWREQ-DI-DI04. Confirmed
+      2026-04-21 (findings/device_init.md).
+    tags: [stpa, uca, device-init, mythos-2026-04-21]
+    links:
+      - type: issued-by
+        target: C-7
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      uca-type: providing
+      control-action: publish-device-ready
+      context: >
+        Device init returned an error code but the control flow already
+        latched `initialized = true`.
+      rationale: >
+        The readiness predicate must be the conjunction of "init ran" AND
+        "init succeeded"; the code checks only the first conjunct.
+
+  - id: U-3
+    type: uca
+    title: Fault classifier returns None for HFSR debug-monitor fault
+    status: draft
+    description: >
+      classify() in src/fault_decode.rs masks CFSR only, ignoring the
+      HFSR register entirely. A HardFault triggered purely by the
+      debug-monitor escalation (cfsr=0, hfsr=0x8000_0000) is classified
+      as FaultCategory::None — no recovery action fires and execution
+      continues on a corrupted state. The `ensures` clause bakes the
+      drift into the spec, so Verus passes. Confirmed 2026-04-21
+      (findings/fault_decode.md).
+    tags: [stpa, uca, fault, cortex-m, mythos-2026-04-21]
+    links:
+      - type: issued-by
+        target: C-6
+      - type: leads-to-hazard
+        target: H-5
+    fields:
+      uca-type: not-providing
+      control-action: classify-fault
+      context: >
+        HardFault with HFSR.DEBUGEVT=1 and CFSR=0.
+      rationale: >
+        Proof-code drift: the proof's ensures is silent on HFSR bits, so
+        the missing coverage is invisible to the SMT solver.
+
+  - id: U-4
+    type: uca
+    title: Fatal handler returns Ignore for KernelPanic in test-mode ISR
+    status: draft
+    description: >
+      FatalError::classify (src/fatal.rs:172) returns Ignore for the
+      input (KernelPanic, Isr, test_mode=true), violating the documented
+      FT2 invariant "panics always halt". The `ensures` weakens FT2 to
+      !test_mode and `lemma_panic_halts` is an `ensures true` stub, so
+      the oracle doesn't flag the regression; the differential test
+      replicates the bug on the FFI side, so cross-checking also passes.
+      Confirmed 2026-04-21 (findings/fatal.md).
+    tags: [stpa, uca, fatal, mythos-2026-04-21]
+    links:
+      - type: issued-by
+        target: C-6
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      uca-type: not-providing
+      control-action: halt-on-panic
+      context: >
+        Panic raised from ISR context with the ZTEST test-mode flag
+        active.
+      rationale: >
+        Test mode exists to allow tests to *observe* panics, not to
+        *resume* after them. Returning Ignore lets the C shim reset the
+        ISR and continue, leaving the kernel running on inconsistent
+        state.
+
+  - id: U-5
+    type: uca
+    title: MMU region aligner silently clamps on overflow
+    status: draft
+    description: >
+      region_align_decide (src/mmu.rs:240-256) rounds size up to a page
+      boundary; on overflow the computed aligned_size saturates at
+      u32::MAX rather than returning an error. `align_result_valid_spec`
+      exists but is orphaned — the function's `ensures` clause does not
+      reference it, so MM4 (size/alignment coverage invariant) is
+      unverified. validate_unmap_request additionally misses the
+      addr+size+page_size > u32::MAX wraparound. Confirmed 2026-04-21
+      (findings/mmu.md).
+    tags: [stpa, uca, mmu, overflow, mythos-2026-04-21]
+    links:
+      - type: issued-by
+        target: C-5
+      - type: leads-to-hazard
+        target: H-5
+    fields:
+      uca-type: providing
+      control-action: align-mapping-size
+      context: >
+        Size near u32::MAX, page_size > 1.
+      rationale: >
+        The clamp silently narrows the mapping; dependents that assume
+        the returned aligned_size covers the original range will under-
+        map and corrupt neighbours.
+
+  - id: U-6
+    type: uca
+    title: MPU region validator accepts arithmetically overlapping pair
+    status: draft
+    description: >
+      validate_region accepts (base=0x8000_0000, size=0x8000_0000) —
+      each field alone passes alignment, power-of-two, and size >=32
+      — but base+size overflows u32, violating regions_overlap's
+      `requires` clause. Because validate_region_set is
+      #[verifier::external_body], the drift is invisible to the prover.
+      In release the addition wraps to 0 and overlap returns false, so
+      userspace isolation is silently defeated. Confirmed 2026-04-21
+      (findings/mpu.md).
+    tags: [stpa, uca, mpu, overflow, mythos-2026-04-21]
+    links:
+      - type: issued-by
+        target: C-5
+      - type: leads-to-hazard
+        target: H-5
+    fields:
+      uca-type: not-providing
+      control-action: reject-overlapping-regions
+      context: >
+        Adversarial region pair whose individual fields are valid but
+        whose sum overflows.
+      rationale: >
+        external_body skips the SMT proof; the Rust callers rely on the
+        header contract, which is broken by the overflow.
+
+  - id: U-7
+    type: uca
+    title: SMP coordinator omits CPU identity from stop decision
+    status: draft
+    description: >
+      stop_cpu_decide (src/smp_state.rs) takes no cpu_id argument. SM3
+      ("CPU 0 must never stop while active > 1") therefore cannot be
+      expressed in the decision model, and the gale shim drops the id
+      parameter accordingly. Additionally, SM4's single
+      global_lock_count abstracts away the per-thread counter + atomic
+      + irq key triple that Zephyr actually maintains. Confirmed
+      2026-04-21 (findings/smp_state.md).
+    tags: [stpa, uca, smp, mythos-2026-04-21]
+    links:
+      - type: issued-by
+        target: C-8
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      uca-type: providing
+      control-action: stop-cpu
+      context: >
+        Stop requested for the bootstrap CPU while other CPUs are still
+        running.
+      rationale: >
+        The decision function's signature is too narrow; there is no
+        way to plumb cpu_id through without a model + shim change.
+
+  - id: U-8
+    type: uca
+    title: Spinlock collapses owner tid 0 onto unowned
+    status: draft
+    description: >
+      src/spinlock.rs models ownership as Option<u32>, but the FFI
+      layer (ffi/src/lib.rs:9860-9970) encodes "no owner" as the u32
+      value 0 — aliasing it with a legitimate thread id of 0. A thread
+      with tid=0 releasing a lock can pass SL4 post-condition checks
+      while the lock state remains "held", and SL1 mutual exclusion is
+      trivially violated. Kani harnesses mask this with assume(tid != 0).
+      Confirmed 2026-04-21 (findings/spinlock.md).
+    tags: [stpa, uca, spinlock, mythos-2026-04-21]
+    links:
+      - type: issued-by
+        target: C-3
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      uca-type: providing
+      control-action: release-spinlock
+      context: >
+        Caller thread has tid=0 (the sentinel value used by the FFI to
+        represent "no owner").
+      rationale: >
+        Model and shim disagree on the domain of the `owner` field.
+        The proof's preconditions erase the conflict rather than
+        resolving it.
+
+  - id: U-9
+    type: uca
+    title: Spinlock validator accepts same-CPU reacquire on cpu_id >= 4
+    status: draft
+    description: >
+      spin_lock_valid hardcodes CPU_MASK = 3 (assumes MP_MAX_NUM_CPUS
+      <= 4). Verus enforces cpu_id < 4 as a precondition, but the
+      `extern "C"` wrapper erases it — a caller with cpu_id=5 re-
+      acquiring the same lock is falsely reported safe
+      (5 & 3 == 1 ≠ 5), hiding a deadlock. No BUILD_ASSERT mirrors the
+      Verus precondition in the shim. Confirmed 2026-04-21
+      (findings/spinlock_validate.md).
+    tags: [stpa, uca, spinlock, smp, mythos-2026-04-21]
+    links:
+      - type: issued-by
+        target: C-3
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      uca-type: not-providing
+      control-action: reject-recursive-spinlock
+      context: >
+        CONFIG_MP_MAX_NUM_CPUS > 4 (or CONFIG_SPIN_VALIDATE=n masking
+        the upstream assertion).
+      rationale: >
+        Boundary erasure: a Verus `requires` has no compile-time or
+        runtime realization on the C side, so wrong-domain inputs flow
+        through silently.
+
+  - id: U-10
+    type: uca
+    title: Thread lifecycle accepts out-of-range priority, rejects coop
+    status: draft
+    description: >
+      priority_set_decide (src/thread_lifecycle.rs) and the FFI wrapper
+      gale_thread_priority_validate accept u32 values in [0, 32). Zephyr
+      specifies priority as a signed int in [-CONFIG_NUM_COOP_PRIORITIES,
+      CONFIG_NUM_PREEMPT_PRIORITIES): cooperative priority -1 (valid in
+      Zephyr) is rejected, while priority 20 (out-of-range when
+      NUM_PREEMPT=16) is admitted and produces an out-of-bounds scheduler
+      index. Signedness + range drift. Confirmed 2026-04-21
+      (findings/thread_lifecycle.md).
+    tags: [stpa, uca, thread, priority, mythos-2026-04-21]
+    links:
+      - type: issued-by
+        target: C-2
+      - type: leads-to-hazard
+        target: H-1
+    fields:
+      uca-type: providing
+      control-action: set-thread-priority
+      context: >
+        Zephyr application passes a cooperative priority (negative int)
+        or a value >= NUM_PREEMPT_PRIORITIES.
+      rationale: >
+        The Rust model's u32 domain is strictly smaller than Zephyr's
+        signed-int domain; the narrowing is silent at both ends.
+
+  # ── Step 4: Loss scenarios ────────────────────────────────────────────
+  # One scenario per confirmed UCA, linked back to the UCA and the
+  # hazard. All are process-model-flaw type — the controller's internal
+  # model does not match reality — except U-4/U-7 which are
+  # inadequate-control-algorithm.
+
+  - id: LS-1
+    type: loss-scenario
+    title: Saturating sem_give_v2 corrupts producer-consumer count
+    status: draft
+    description: >
+      A producer on a semaphore whose count reached u32::MAX (e.g. via
+      a leaked wake path) calls sem_give_v2. The FFI guard
+      count != limit passes (MAX != 5), count += 1 wraps to 0 in
+      release mode or panics in debug. Downstream take operations now
+      see count=0 and block on an empty wait queue although work is
+      outstanding. See scripts/mythos/findings/ffi-coarse.md §ORACLE
+      for the Kani harness that reproduces without the precondition
+      assumption, and §POC TEST for the unit reproducer.
+    tags: [stpa, loss-scenario, mythos-2026-04-21]
+    links:
+      - type: caused-by-uca
+        target: U-1
+      - type: leads-to-hazard
+        target: H-3
+    fields:
+      type: inadequate-control-algorithm
+      causal-factors:
+        - ffi-shim-re-implements-decision-logic
+        - verus-precondition-erased-at-extern-C
+
+  - id: LS-2
+    type: loss-scenario
+    title: Dependent subsystem initialized against broken device
+    status: draft
+    description: >
+      Device D's init returns error code E. init_device sets
+      D.initialized=true then branches on E (src/device_init.rs lines
+      255-275). A later dependent D' calls check_deps_satisfied which
+      checks only .initialized — returns true — and D' proceeds to
+      configure against broken hardware. See findings/device_init.md.
+    tags: [stpa, loss-scenario, mythos-2026-04-21]
+    links:
+      - type: caused-by-uca
+        target: U-2
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      type: process-model-flaw
+      process-model-flaw: >
+        The controller's process-model for "device ready" is a single
+        flag; the true ready-state is the conjunction of
+        initialized AND init_res==OK.
+      causal-factors:
+        - ran-to-success-conflated-with-ran
+
+  - id: LS-3
+    type: loss-scenario
+    title: Ignored HFSR debug-event fault continues on corrupted state
+    status: draft
+    description: >
+      ARM Cortex-M raises HardFault with HFSR.DEBUGEVT=1, CFSR=0
+      (debug-monitor escalation). classify() returns
+      FaultCategory::None. No recovery runs; execution continues on
+      corrupted processor state. See findings/fault_decode.md.
+    tags: [stpa, loss-scenario, mythos-2026-04-21]
+    links:
+      - type: caused-by-uca
+        target: U-3
+      - type: leads-to-hazard
+        target: H-5
+    fields:
+      type: process-model-flaw
+      process-model-flaw: >
+        The fault classifier's process-model includes only CFSR bits;
+        the HFSR register (which the ARM ARM treats as co-equal for
+        HardFault causation) is absent.
+      causal-factors:
+        - ensures-clause-matches-code-not-spec
+        - arm-arm-not-cited-in-proof
+
+  - id: LS-4
+    type: loss-scenario
+    title: Panic in test-mode ISR swallowed, execution resumed
+    status: draft
+    description: >
+      A panic condition fires during an ISR while ZTEST test-mode is
+      active. classify returns Ignore. The C shim restores ISR context
+      and returns, violating FT2 (panics halt). Subsequent code runs
+      on the state that triggered the panic. See findings/fatal.md.
+    tags: [stpa, loss-scenario, mythos-2026-04-21]
+    links:
+      - type: caused-by-uca
+        target: U-4
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      type: inadequate-control-algorithm
+      causal-factors:
+        - test-mode-widened-beyond-intended-scope
+        - proof-obligation-stubbed-as-ensures-true
+
+  - id: LS-5
+    type: loss-scenario
+    title: Under-sized memory mapping from silent align clamp
+    status: draft
+    description: >
+      Caller requests mapping of size near u32::MAX. region_align_decide
+      computes aligned_size clamped to u32::MAX — the original
+      requested range is no longer fully covered. A subsequent access
+      in the requested-but-unmapped tail traps (best case) or hits
+      adjacent memory (worst case). See findings/mmu.md.
+    tags: [stpa, loss-scenario, mythos-2026-04-21]
+    links:
+      - type: caused-by-uca
+        target: U-5
+      - type: leads-to-hazard
+        target: H-5
+    fields:
+      type: inadequate-control-algorithm
+      causal-factors:
+        - saturating-arithmetic-without-error-signal
+        - orphaned-spec-not-referenced-in-ensures
+
+  - id: LS-6
+    type: loss-scenario
+    title: Overlapping MPU regions silently admitted via arithmetic overflow
+    status: draft
+    description: >
+      Configuration code passes (base=0x8000_0000, size=0x8000_0000)
+      for two regions. validate_region passes each individually.
+      regions_overlap's precondition base+size <= u32::MAX is violated
+      but unchecked (external_body); the sum wraps to 0 and the
+      overlap predicate returns false. Both regions install; the
+      overlapping range has kernel and user permissions simultaneously.
+      See findings/mpu.md.
+    tags: [stpa, loss-scenario, mythos-2026-04-21]
+    links:
+      - type: caused-by-uca
+        target: U-6
+      - type: leads-to-hazard
+        target: H-5
+    fields:
+      type: process-model-flaw
+      process-model-flaw: >
+        regions_overlap assumes a precondition that a downstream
+        verifier never checks; the decision function's "valid" output
+        carries assumptions the caller cannot discharge.
+      causal-factors:
+        - external_body-hides-precondition
+        - per-field-validation-does-not-imply-pair-validation
+
+  - id: LS-7
+    type: loss-scenario
+    title: CPU 0 stopped, SMP kernel loses boot thread
+    status: draft
+    description: >
+      stop_cpu_decide is called for cpu_id=0 while other CPUs are
+      still running. Because the decision function doesn't know which
+      CPU is being stopped, it returns OK. The C-side shim proceeds to
+      halt the bootstrap CPU; scheduler state that was per-CPU on 0
+      (e.g. the idle thread) becomes inaccessible. See
+      findings/smp_state.md.
+    tags: [stpa, loss-scenario, mythos-2026-04-21]
+    links:
+      - type: caused-by-uca
+        target: U-7
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      type: inadequate-control-algorithm
+      causal-factors:
+        - decision-function-signature-insufficient
+        - abstraction-too-coarse
+
+  - id: LS-8
+    type: loss-scenario
+    title: Thread 0 bypasses spinlock ownership check
+    status: draft
+    description: >
+      Thread with tid=0 acquires a spinlock. FFI stores owner=0
+      (indistinguishable from "unowned"). A concurrent thread checks
+      is_held, sees 0, and acquires the same lock — mutual exclusion
+      violated. A subsequent release by either thread passes SL2/SL4
+      because the post-condition only checks that owner is now 0.
+      See findings/spinlock.md.
+    tags: [stpa, loss-scenario, mythos-2026-04-21]
+    links:
+      - type: caused-by-uca
+        target: U-8
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      type: process-model-flaw
+      process-model-flaw: >
+        Model uses Option<u32> with None as the "unowned" state;
+        FFI collapses None and Some(0) onto the same u32 encoding.
+      causal-factors:
+        - sentinel-value-aliases-legitimate-domain-element
+        - kani-assumes-away-the-conflict
+
+  - id: LS-9
+    type: loss-scenario
+    title: Validator clears deadlock scenario on cpu_id = 5
+    status: draft
+    description: >
+      On a board with CONFIG_MP_MAX_NUM_CPUS=6, thread on cpu_id=5
+      reacquires a lock it already holds. spin_lock_valid masks
+      cpu_id with CPU_MASK=3, sees 5 & 3 = 1 ≠ 5, and reports "not
+      held here." The debug assertion does not fire; the recursive
+      acquire proceeds and the CPU deadlocks on next release.
+      See findings/spinlock_validate.md.
+    tags: [stpa, loss-scenario, mythos-2026-04-21]
+    links:
+      - type: caused-by-uca
+        target: U-9
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      type: inadequate-control-algorithm
+      causal-factors:
+        - hardcoded-cpu-mask
+        - verus-precondition-without-c-assert
+
+  - id: LS-10
+    type: loss-scenario
+    title: Scheduler receives out-of-range priority, OOB array read
+    status: draft
+    description: >
+      Application calls k_thread_priority_set(t, 20) on a kernel with
+      NUM_PREEMPT=16. priority_set_decide accepts (20 < 32 = MAX).
+      Scheduler indexes its priority-queue array at 20 — out-of-bounds
+      read. See findings/thread_lifecycle.md. Companion case:
+      cooperative priority -1 is rejected by the u32 model but valid
+      in Zephyr — the application that depends on coop scheduling
+      cannot express it.
+    tags: [stpa, loss-scenario, mythos-2026-04-21]
+    links:
+      - type: caused-by-uca
+        target: U-10
+      - type: leads-to-hazard
+        target: H-1
+    fields:
+      type: process-model-flaw
+      process-model-flaw: >
+        The Rust model's priority domain is u32 in [0, 32); Zephyr's
+        is signed int in [-NCOOP, NPREEMPT). The two domains neither
+        contain nor are contained in one another.
+      causal-factors:
+        - type-narrowing-at-model-definition
+        - missing-signedness-in-validator
