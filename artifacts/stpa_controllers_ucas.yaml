@@ -693,3 +693,262 @@ artifacts:
       causal-factors:
         - type-narrowing-at-model-definition
         - missing-signedness-in-validator
+
+  # ── Step 5: Controller Constraints ────────────────────────────────────
+  # One CC per UCA (CC-n inverts U-n). Each CC states the obligation the
+  # controller must enforce at the concrete code site identified by the
+  # UCA, so reviewers can confirm the fix lands in the right place.
+
+  - id: CC-1
+    type: controller-constraint
+    title: Semaphore controller must reject count >= limit before incrementing
+    status: draft
+    description: >
+      The semaphore controller (C-4) MUST NOT increment the count when
+      count >= limit. gale_sem_give_v2 (ffi/src/coarse.rs) must guard
+      the increment with `count < limit` (not `count != limit`) and
+      return an overflow error / no-op when the precondition fails,
+      making the Verus give_decide requires-clause a runtime-enforced
+      invariant at the FFI boundary.
+    tags: [stpa, controller-constraint, semaphore, mythos-2026-04-21]
+    links:
+      - type: constrains-controller
+        target: C-4
+      - type: inverts-uca
+        target: U-1
+      - type: prevents
+        target: H-3
+    fields:
+      constraint: >
+        C-4 MUST reject sem-give whenever count >= limit, at the FFI
+        entry point before any arithmetic on count, so that the Verus
+        precondition `count <= limit` holds at every call site.
+
+  - id: CC-2
+    type: controller-constraint
+    title: Device init sequencer must require init_res==OK before publishing ready
+    status: draft
+    description: >
+      The device init sequencer (C-7) MUST NOT set or expose
+      `initialized = true` unless the device's init function returned
+      success. check_deps_satisfied in src/device_init.rs must test
+      the conjunction `initialized && init_res == OK` (or equivalent
+      readiness predicate) before reporting a dependency satisfied,
+      per SWREQ-DI-DI04.
+    tags: [stpa, controller-constraint, device-init, mythos-2026-04-21]
+    links:
+      - type: constrains-controller
+        target: C-7
+      - type: inverts-uca
+        target: U-2
+      - type: prevents
+        target: H-4
+    fields:
+      constraint: >
+        C-7 MUST publish device readiness only when init ran AND init
+        succeeded; check_deps_satisfied MUST evaluate both .initialized
+        and .init_res at every dependency query.
+
+  - id: CC-3
+    type: controller-constraint
+    title: Fault classifier must inspect HFSR in addition to CFSR
+    status: draft
+    description: >
+      The fault handler (C-6) MUST classify a HardFault whenever HFSR
+      indicates a fault cause (including HFSR.DEBUGEVT, FORCED, VECTTBL),
+      not just when CFSR bits are set. classify() in src/fault_decode.rs
+      must read HFSR and its `ensures` clause must cover the HFSR-only
+      case, so a (cfsr=0, hfsr=0x8000_0000) HardFault maps to a non-None
+      FaultCategory and triggers recovery.
+    tags: [stpa, controller-constraint, fault, cortex-m, mythos-2026-04-21]
+    links:
+      - type: constrains-controller
+        target: C-6
+      - type: inverts-uca
+        target: U-3
+      - type: prevents
+        target: H-5
+    fields:
+      constraint: >
+        C-6 MUST NOT return FaultCategory::None when any HFSR cause bit
+        is set; the classifier's process-model and its `ensures` clause
+        MUST include HFSR coverage.
+
+  - id: CC-4
+    type: controller-constraint
+    title: Fatal handler must halt on KernelPanic regardless of test-mode
+    status: draft
+    description: >
+      The fatal handler (C-6) MUST return Halt (never Ignore) for every
+      KernelPanic, in every context (Thread or ISR), irrespective of the
+      ZTEST test-mode flag. FatalError::classify (src/fatal.rs:172) must
+      enforce FT2 unconditionally, and lemma_panic_halts must carry a
+      non-trivial `ensures` that proves the Halt outcome.
+    tags: [stpa, controller-constraint, fatal, mythos-2026-04-21]
+    links:
+      - type: constrains-controller
+        target: C-6
+      - type: inverts-uca
+        target: U-4
+      - type: prevents
+        target: H-4
+    fields:
+      constraint: >
+        C-6 MUST classify (KernelPanic, *, *) as Halt; test-mode MUST NOT
+        weaken FT2. The proof obligation MUST prove the halt outcome
+        rather than `ensures true`.
+
+  - id: CC-5
+    type: controller-constraint
+    title: MMU aligner must signal overflow instead of clamping
+    status: draft
+    description: >
+      The memory-protection controller (C-5) MUST NOT return a silently
+      clamped aligned_size. region_align_decide (src/mmu.rs:240-256)
+      must return an explicit error (or Option::None) when rounding up
+      to page_size would exceed u32::MAX, and its `ensures` clause must
+      reference align_result_valid_spec so MM4 is verified end-to-end.
+      validate_unmap_request must also detect the addr+size+page_size
+      > u32::MAX wraparound.
+    tags: [stpa, controller-constraint, mmu, overflow, mythos-2026-04-21]
+    links:
+      - type: constrains-controller
+        target: C-5
+      - type: inverts-uca
+        target: U-5
+      - type: prevents
+        target: H-5
+    fields:
+      constraint: >
+        C-5 MUST NOT produce an aligned_size that does not cover the
+        requested range; overflow MUST surface as an error, and the
+        ensures clause MUST reference align_result_valid_spec.
+
+  - id: CC-6
+    type: controller-constraint
+    title: MPU validator must reject regions whose base+size overflows u32
+    status: draft
+    description: >
+      The memory-protection controller (C-5) MUST reject any region set
+      where any pair (base, size) satisfies base + size > u32::MAX
+      (checked arithmetic, not wrapping). validate_region_set must drop
+      #[verifier::external_body] or gain an equivalent SMT-verified
+      wrapper that discharges regions_overlap's precondition at the
+      call site rather than at the header-contract level.
+    tags: [stpa, controller-constraint, mpu, overflow, mythos-2026-04-21]
+    links:
+      - type: constrains-controller
+        target: C-5
+      - type: inverts-uca
+        target: U-6
+      - type: prevents
+        target: H-5
+    fields:
+      constraint: >
+        C-5 MUST provide verified end-to-end rejection of region pairs
+        whose address sum overflows; external_body MUST be removed or
+        matched by a runtime check that re-establishes the precondition.
+
+  - id: CC-7
+    type: controller-constraint
+    title: SMP coordinator must accept cpu_id on stop-CPU decisions
+    status: draft
+    description: >
+      The SMP coordinator (C-8) MUST NOT authorise stopping a CPU
+      without knowing which CPU is being stopped. stop_cpu_decide
+      (src/smp_state.rs) must take cpu_id as a parameter, SM3 must be
+      expressible (and expressed) as "cpu_id != 0 || active_cpus == 1",
+      and the FFI shim must plumb cpu_id through. SM4's
+      global_lock_count must refine to the per-thread counter + atomic
+      + irq key triple.
+    tags: [stpa, controller-constraint, smp, mythos-2026-04-21]
+    links:
+      - type: constrains-controller
+        target: C-8
+      - type: inverts-uca
+        target: U-7
+      - type: prevents
+        target: H-4
+    fields:
+      constraint: >
+        C-8 MUST take cpu_id as input to stop-CPU decisions and MUST
+        reject stopping cpu 0 while active_cpus > 1; the decision
+        model MUST NOT abstract away cpu identity.
+
+  - id: CC-8
+    type: controller-constraint
+    title: Spinlock must use a non-aliased encoding of "unowned"
+    status: draft
+    description: >
+      The spinlock monitor (C-3) MUST NOT encode "no owner" using a
+      value that can collide with a legitimate thread id. The FFI
+      layer (ffi/src/lib.rs:9860-9970) must represent Option::None
+      with a sentinel distinct from any valid tid (e.g. u32::MAX or a
+      separate `held: bool` field), and Kani harnesses must drop the
+      `assume(tid != 0)` workaround.
+    tags: [stpa, controller-constraint, spinlock, mythos-2026-04-21]
+    links:
+      - type: constrains-controller
+        target: C-3
+      - type: inverts-uca
+        target: U-8
+      - type: prevents
+        target: H-4
+    fields:
+      constraint: >
+        C-3 MUST encode owner state such that "unowned" and "owned by
+        tid=0" are distinguishable; the FFI representation MUST be a
+        bijection with the Rust Option<u32> model domain.
+
+  - id: CC-9
+    type: controller-constraint
+    title: Spinlock validator must enforce cpu_id domain at the C boundary
+    status: draft
+    description: >
+      The spinlock monitor (C-3) MUST NOT accept cpu_id values outside
+      the Verus-verified domain. The `extern "C"` wrapper around
+      spin_lock_valid must assert `cpu_id < MP_MAX_NUM_CPUS` and
+      `cpu_id <= CPU_MASK` at entry (BUILD_ASSERT for static, runtime
+      assertion for dynamic), and CPU_MASK must be derived from
+      CONFIG_MP_MAX_NUM_CPUS rather than hardcoded to 3.
+    tags: [stpa, controller-constraint, spinlock, smp, mythos-2026-04-21]
+    links:
+      - type: constrains-controller
+        target: C-3
+      - type: inverts-uca
+        target: U-9
+      - type: prevents
+        target: H-4
+    fields:
+      constraint: >
+        C-3 MUST realize the Verus `requires cpu_id < MP_MAX_NUM_CPUS`
+        as a compile-time or runtime assertion at the FFI boundary;
+        CPU_MASK MUST track CONFIG_MP_MAX_NUM_CPUS.
+
+  - id: CC-10
+    type: controller-constraint
+    title: Thread lifecycle must model Zephyr's signed priority domain
+    status: draft
+    description: >
+      The thread lifecycle manager (C-2) MUST NOT admit priorities
+      outside [-CONFIG_NUM_COOP_PRIORITIES, CONFIG_NUM_PREEMPT_PRIORITIES)
+      and MUST NOT reject cooperative (negative) priorities that Zephyr
+      considers valid. priority_set_decide (src/thread_lifecycle.rs)
+      and gale_thread_priority_validate must switch to i32 (or a
+      domain type matching Zephyr's signed range), and the upper bound
+      must track CONFIG_NUM_PREEMPT_PRIORITIES rather than the fixed
+      constant 32.
+    tags: [stpa, controller-constraint, thread, priority, mythos-2026-04-21]
+    links:
+      - type: constrains-controller
+        target: C-2
+      - type: inverts-uca
+        target: U-10
+      - type: prevents
+        target: H-1
+    fields:
+      constraint: >
+        C-2 MUST accept exactly the Zephyr priority domain
+        [-NCOOP, NPREEMPT); both the Rust model's type and the FFI
+        validator MUST be signed and MUST use the kconfig-derived
+        bounds, not the hardcoded 32.
