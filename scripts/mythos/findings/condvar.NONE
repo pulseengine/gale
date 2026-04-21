@@ -1,7 +1,0 @@
-No oracle-meeting finding in src/condvar.rs. The decide functions (signal/broadcast/wait)
-are locally correct for their stated scalar specs; lemma_* proof functions are empty
-(ensures true) which is doc drift but not a runtime bug. The real divergence — gale_condvar.c
-not unlocking the mutex on K_NO_WAIT (vs. upstream Zephyr) — is a shim/FFI bug reachable
-through src/condvar.rs's impoverished WaitAction enum, but the Rust-side model and tests
-cannot produce the required (failing Verus/Kani) + (failing unit test) pair entirely from
-src/condvar.rs.

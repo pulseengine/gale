@@ -1,0 +1,6 @@
+# Mythos-pipeline outputs are transient evidence, not durable artifacts.
+# The durable record of confirmed findings lives in artifacts/stpa_*.yaml
+# (UCAs, loss-scenarios). Re-run the pipeline to regenerate; line
+# numbers and verdicts go stale quickly.
+findings/
+ranking.json
