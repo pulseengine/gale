@@ -77,6 +77,12 @@ fn ffi_unmap_request_decide(addr: u32, size: u32, page_size: u32) -> i32 {
     if total > u32::MAX as u64 {
         return EINVAL;
     }
+    // U-5: addr + size + page_size must not overflow u32 (the "after"
+    // guard page must fit inside the 32-bit address space).
+    let end: u64 = addr as u64 + size as u64 + page_size as u64;
+    if end > u32::MAX as u64 {
+        return EINVAL;
+    }
     OK
 }
 

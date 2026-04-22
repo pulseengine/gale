@@ -232,27 +232,40 @@ pub open spec fn align_result_valid_spec(r: AlignResult, addr: u32, size: u32, a
 
 /// Compute the aligned address, offset, and size for a physical region.
 ///
-/// Safe: all arithmetic is done in u64 to catch overflow before truncating.
+/// Safe: all arithmetic is done in u64 to detect overflow before truncating.
+///
+/// Returns `None` when ROUND_UP(size + addr_offset, align) would exceed
+/// u32::MAX — previously this case silently clamped aligned_size to
+/// u32::MAX and returned a result that did NOT cover the original range
+/// (violating MM4).  The caller is expected to reject the request.
 ///
 /// Precondition: addr + size does not exceed u32::MAX (caller ensures this
 /// for physical addresses sourced from valid Zephyr page frames).
 #[verifier::external_body]
-pub fn region_align_decide(addr: u32, size: u32, align: u32) -> (result: AlignResult)
+pub fn region_align_decide(addr: u32, size: u32, align: u32) -> (result: Option<AlignResult>)
     requires
         align > 0,
         addr as int + size as int <= u32::MAX as int,
     ensures
-        result.aligned_addr as int <= addr as int,
-        result.addr_offset == addr - result.aligned_addr,
+        result.is_some() ==> align_result_valid_spec(result.unwrap(), addr, size, align),
 {
     let aligned_addr = (addr / align) * align;
     let addr_offset = addr - aligned_addr;
-    // ROUND_UP(size + addr_offset, align): compute in u64, clamp to u32
+    // ROUND_UP(size + addr_offset, align): compute in u64; if the rounded
+    // value exceeds u32::MAX, signal overflow by returning None instead
+    // of silently clamping.
     let raw: u64 = (size as u64 + addr_offset as u64 + align as u64 - 1u64)
         / align as u64
         * align as u64;
-    let aligned_size = if raw > u32::MAX as u64 { u32::MAX } else { raw as u32 };
-    AlignResult { aligned_addr, addr_offset, aligned_size }
+    if raw > u32::MAX as u64 {
+        None
+    } else {
+        Some(AlignResult {
+            aligned_addr,
+            addr_offset,
+            aligned_size: raw as u32,
+        })
+    }
 }
 
 // =========================================================================
@@ -344,6 +357,10 @@ pub fn validate_wxor(flags: u32) -> (result: bool)
 ///   - addr >= page_size (space for the "before" guard page)
 ///   - size > 0 and page-aligned
 ///   - size + 2*page_size does not overflow
+///   - addr + size + page_size does not exceed u32::MAX (the "after"
+///     guard page must fit inside the 32-bit address space — previously
+///     this wraparound was unchecked, so an addr near u32::MAX with a
+///     valid size could silently wrap into page 0).
 #[verifier::external_body]
 pub fn validate_unmap_request(addr: u32, size: u32, page_size: u32) -> (result: bool)
     requires page_size > 0,
@@ -352,11 +369,25 @@ pub fn validate_unmap_request(addr: u32, size: u32, page_size: u32) -> (result: 
             &&& addr as int >= page_size as int
             &&& size_valid_spec(size, page_size)
             &&& guard_total_fits_spec(size, page_size)
+            &&& addr as int + size as int + page_size as int <= u32::MAX as int
         },
 {
-    (addr as u64 >= page_size as u64)
-        && validate_size(size, page_size)
-        && validate_guard_total(size, page_size)
+    if (addr as u64) < (page_size as u64) {
+        return false;
+    }
+    if !validate_size(size, page_size) {
+        return false;
+    }
+    if !validate_guard_total(size, page_size) {
+        return false;
+    }
+    // Detect addr + size + page_size overflow using checked arithmetic.
+    // addr + size must fit, and that sum + page_size (for the "after" guard)
+    // must also fit in u32.
+    match addr.checked_add(size) {
+        None => false,
+        Some(end) => end.checked_add(page_size).is_some(),
+    }
 }
 
 // =========================================================================

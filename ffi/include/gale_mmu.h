@@ -72,11 +72,17 @@ int32_t gale_mmu_update_flags_decide(uint32_t size, uint32_t flags,
  * Decision struct for region alignment.
  *
  * Mirrors k_mem_region_align (mmu.c:1008-1021).
+ *
+ * Overflow signalling (UCA U-5):
+ *   aligned_size == 0 indicates the request overflowed u32 (the aligned
+ *   region would exceed the 32-bit address space) OR a precondition was
+ *   violated (align == 0, addr + size > u32::MAX).  Callers MUST check
+ *   aligned_size before using aligned_addr / addr_offset.
  */
 struct gale_mmu_align_result {
-    uint32_t aligned_addr;  /**< ROUND_DOWN(addr, align) */
-    uint32_t addr_offset;   /**< addr - aligned_addr     */
-    uint32_t aligned_size;  /**< ROUND_UP(size + addr_offset, align) */
+    uint32_t aligned_addr;  /**< ROUND_DOWN(addr, align); undefined if aligned_size==0 */
+    uint32_t addr_offset;   /**< addr - aligned_addr; undefined if aligned_size==0    */
+    uint32_t aligned_size;  /**< ROUND_UP(size + addr_offset, align); 0 signals error */
 };
 
 /**
@@ -86,7 +92,7 @@ struct gale_mmu_align_result {
  * @param size       Original size in bytes.
  * @param align      Alignment boundary (must be > 0).
  *
- * @return AlignResult with aligned_addr, addr_offset, aligned_size.
+ * @return AlignResult.  On overflow or invalid input, aligned_size == 0.
  */
 struct gale_mmu_align_result gale_mmu_region_align(uint32_t addr, uint32_t size,
                                                    uint32_t align);

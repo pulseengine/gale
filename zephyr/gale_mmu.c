@@ -116,6 +116,11 @@ int gale_k_mem_update_flags(void *addr, size_t size, uint32_t flags)
  *
  * Calls the Rust-verified alignment arithmetic and writes the result
  * back into the caller's out-parameters, matching the original ABI.
+ *
+ * UCA U-5: aligned_size == 0 in the Rust result indicates overflow.  We
+ * propagate this as *aligned_size = 0 so the caller (which ROUND_UP's
+ * a buddy allocation and then indexes into page tables) can reject the
+ * request instead of mapping a silently clamped region.
  */
 size_t gale_k_mem_region_align(uintptr_t *aligned_addr, size_t *aligned_size,
 			       uintptr_t addr, size_t size, size_t align)
@@ -124,6 +129,16 @@ size_t gale_k_mem_region_align(uintptr_t *aligned_addr, size_t *aligned_size,
 		gale_mmu_region_align((uint32_t)addr,
 				      (uint32_t)size,
 				      (uint32_t)align);
+
+	if (r.aligned_size == 0) {
+		/* Overflow or precondition violation — surface the zero so
+		 * the caller rejects the mapping.  aligned_addr is left as
+		 * the (meaningless) zero from the FFI sentinel struct.
+		 */
+		LOG_ERR("gale_mmu: region_align overflow "
+			"(addr=0x%lx size=%zu align=%zu)",
+			(unsigned long)addr, size, align);
+	}
 
 	if (aligned_addr != NULL) {
 		*aligned_addr = (uintptr_t)r.aligned_addr;

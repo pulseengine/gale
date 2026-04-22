@@ -283,6 +283,43 @@ fn unmap_overflow_rejected() {
     assert!(!validate_unmap_request(PS, u32::MAX, PS));
 }
 
+/// U-5: addr + size + page_size wraparound must be rejected.
+///
+/// Each component alone passes:
+///   - addr >= page_size
+///   - size is page-aligned and non-zero
+///   - size + 2*page_size fits (guard_total)
+///
+/// but addr + size + page_size > u32::MAX — the "after" guard page
+/// would wrap the 32-bit address space.
+#[test]
+fn unmap_addr_size_wraparound_rejected() {
+    // addr near the top, size one page below addr's room: addr + size + PS > u32::MAX
+    let addr = u32::MAX - PS;      // far above page_size — first check passes
+    let size = 2 * PS;              // small, page-aligned — MM1 passes
+    // size + 2*PS = 4*PS, well below u32::MAX — MM5 passes
+    // addr + size = u32::MAX + PS (wraps!) — the new check catches it.
+    assert!(!validate_unmap_request(addr, size, PS),
+        "addr+size+page_size wraparound must be rejected");
+}
+
+/// U-5: the maximum addr whose +size+page_size exactly fits is accepted.
+#[test]
+fn unmap_addr_size_boundary_accepted() {
+    // addr + size + page_size == u32::MAX exactly — must still be accepted.
+    // Pick size = PS, page_size = PS, so addr = u32::MAX - 2*PS.
+    // u32::MAX = 0xFFFF_FFFF; not page-aligned minus 2*PS either; use
+    // (u32::MAX - 2*PS + 1) as the boundary sum target.  We only need
+    // the wraparound check to NOT fire on a sum == u32::MAX.
+    let addr = u32::MAX - 2 * PS;
+    let size = PS;
+    // addr + size + PS = u32::MAX, exactly at the limit — must pass the
+    // wraparound check.  guard_total_fits_spec requires size+2*PS <=
+    // u32::MAX which also holds.  addr >= PS trivially.
+    assert!(validate_unmap_request(addr, size, PS),
+        "sum exactly at u32::MAX must be accepted");
+}
+
 // ==========================================================================
 // Update-flags validation
 // ==========================================================================
@@ -365,7 +402,7 @@ fn mm7_virt_region_method_matches_decide() {
 
 #[test]
 fn mm4_already_aligned_unchanged() {
-    let r = region_align_decide(0x2000, PS, PS);
+    let r = region_align_decide(0x2000, PS, PS).expect("fits in u32");
     assert_eq!(r.aligned_addr, 0x2000);
     assert_eq!(r.addr_offset, 0);
     assert_eq!(r.aligned_size, PS);
@@ -374,7 +411,7 @@ fn mm4_already_aligned_unchanged() {
 #[test]
 fn mm4_unaligned_addr_rounds_down() {
     // addr = 0x2100 with page_size = 0x1000: aligned_addr = 0x2000
-    let r = region_align_decide(0x2100, PS, PS);
+    let r = region_align_decide(0x2100, PS, PS).expect("fits in u32");
     assert_eq!(r.aligned_addr, 0x2000);
     assert_eq!(r.addr_offset, 0x100);
     // aligned_size covers [0x2000, 0x3100) -> rounds up to 0x2000
@@ -384,7 +421,7 @@ fn mm4_unaligned_addr_rounds_down() {
 
 #[test]
 fn mm4_zero_offset_addr_aligned() {
-    let r = region_align_decide(0x0000, 2 * PS, PS);
+    let r = region_align_decide(0x0000, 2 * PS, PS).expect("fits in u32");
     assert_eq!(r.aligned_addr, 0x0000);
     assert_eq!(r.addr_offset, 0);
     assert_eq!(r.aligned_size, 2 * PS);
@@ -395,11 +432,41 @@ fn mm4_align_result_covers_original_range() {
     let addr = 0x1234u32;
     let size = 0x1000u32;
     let align = 0x1000u32;
-    let r: AlignResult = region_align_decide(addr, size, align);
+    let r: AlignResult = region_align_decide(addr, size, align).expect("fits in u32");
     // aligned_addr <= addr
     assert!(r.aligned_addr <= addr);
     // aligned_addr + aligned_size >= addr + size
     assert!(r.aligned_addr as u64 + r.aligned_size as u64 >= addr as u64 + size as u64);
+}
+
+/// U-5: sizes whose rounded-up value would exceed u32::MAX must return
+/// None instead of silently clamping aligned_size to u32::MAX.
+#[test]
+fn mm4_overflow_returns_none() {
+    // addr aligned, size such that size + (align - 1) rounds past u32::MAX.
+    // Pick addr=0, size = u32::MAX - 1, align = PS (4096).
+    //   raw = ROUND_UP(u32::MAX - 1, 4096) = 0x1_0000_0000 > u32::MAX
+    let r = region_align_decide(0, u32::MAX - 1, PS);
+    assert!(r.is_none(), "overflow must surface as None, not a clamp");
+}
+
+/// U-5: previously region_align_decide would clamp aligned_size to
+/// u32::MAX on overflow, silently returning a region that did NOT cover
+/// the requested range.  After the fix, overflow returns None.
+#[test]
+fn mm4_overflow_clamp_is_gone() {
+    // Pick a size that, when rounded up to the page boundary, would
+    // exceed u32::MAX exactly.  u32::MAX = 0xFFFFFFFF; PS = 0x1000.
+    // size = u32::MAX - (PS - 1) - (PS - 2) chosen so that
+    // ROUND_UP(size + 0, PS) = 0x1_0000_0000 which overflows u32.
+    // Simplest: size = u32::MAX with addr=0 aligned.
+    // addr_offset = 0, raw = (u32::MAX + PS - 1) / PS * PS > u32::MAX.
+    let r = region_align_decide(0, u32::MAX, PS);
+    assert!(
+        r.is_none(),
+        "previously returned AlignResult{{aligned_size: u32::MAX}} — \
+         a short region silently under-covering the request"
+    );
 }
 
 // ==========================================================================

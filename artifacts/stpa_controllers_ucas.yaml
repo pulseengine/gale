@@ -272,7 +272,7 @@ artifacts:
   - id: U-5
     type: uca
     title: MMU region aligner silently clamps on overflow
-    status: draft
+    status: approved
     description: >
       region_align_decide (src/mmu.rs:240-256) rounds size up to a page
       boundary; on overflow the computed aligned_size saturates at
@@ -547,7 +547,7 @@ artifacts:
   - id: LS-5
     type: loss-scenario
     title: Under-sized memory mapping from silent align clamp
-    status: draft
+    status: approved
     description: >
       Caller requests mapping of size near u32::MAX. region_align_decide
       computes aligned_size clamped to u32::MAX — the original
@@ -801,7 +801,7 @@ artifacts:
   - id: CC-5
     type: controller-constraint
     title: MMU aligner must signal overflow instead of clamping
-    status: draft
+    status: approved
     description: >
       The memory-protection controller (C-5) MUST NOT return a silently
       clamped aligned_size. region_align_decide (src/mmu.rs:240-256)

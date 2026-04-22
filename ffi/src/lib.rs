@@ -10248,14 +10248,23 @@ pub extern "C" fn gale_usage_accumulate(total_cycles: *mut u64, cycles: u32) -> 
 // ---------------------------------------------------------------------------
 
 /// Decision result for region-align arithmetic.
+///
+/// `aligned_size == 0` signals an overflow error: the rounded-up total
+/// would exceed u32::MAX, so there is no valid aligned region to return.
+/// C callers MUST check `aligned_size != 0` before using the result.
+/// (Previously the implementation silently clamped aligned_size to
+/// u32::MAX, returning a region that did not cover the requested range —
+/// see UCA U-5 / LS-5 / CC-5.)
 #[repr(C)]
 #[cfg(feature = "mmu")]
 pub struct GaleMmuAlignResult {
-    /// Aligned (rounded-down) address.
+    /// Aligned (rounded-down) address.  Undefined when aligned_size == 0.
     pub aligned_addr: u32,
-    /// Offset from aligned_addr to the original addr.
+    /// Offset from aligned_addr to the original addr.  Undefined when
+    /// aligned_size == 0.
     pub addr_offset: u32,
-    /// Rounded-up total size covering the original range.
+    /// Rounded-up total size covering the original range.  Zero signals
+    /// overflow — the request cannot be satisfied.
     pub aligned_size: u32,
 }
 
@@ -10313,6 +10322,11 @@ pub extern "C" fn gale_mmu_update_flags_decide(size: u32, flags: u32, page_size:
 /// Compute page-aligned address, offset, and size for a physical region.
 ///
 /// mmu.c:1008-1021 (k_mem_region_align).
+///
+/// On overflow (ROUND_UP(size + addr_offset, align) > u32::MAX) or on
+/// precondition failure (align == 0, addr + size > u32::MAX), returns
+/// a result with `aligned_size == 0`.  C callers must check for the
+/// zero sentinel before using the other fields.  See UCA U-5.
 #[cfg(feature = "mmu")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_mmu_region_align(
@@ -10321,14 +10335,25 @@ pub extern "C" fn gale_mmu_region_align(
     align: u32,
 ) -> GaleMmuAlignResult {
     use gale::mmu::region_align_decide;
+    const ERR: GaleMmuAlignResult = GaleMmuAlignResult {
+        aligned_addr: 0,
+        addr_offset: 0,
+        aligned_size: 0,
+    };
     if align == 0 {
-        return GaleMmuAlignResult { aligned_addr: addr, addr_offset: 0, aligned_size: size };
+        return ERR;
     }
-    let r = region_align_decide(addr, size, align);
-    GaleMmuAlignResult {
-        aligned_addr: r.aligned_addr,
-        addr_offset: r.addr_offset,
-        aligned_size: r.aligned_size,
+    // region_align_decide requires addr + size <= u32::MAX.
+    if (addr as u64) + (size as u64) > u32::MAX as u64 {
+        return ERR;
+    }
+    match region_align_decide(addr, size, align) {
+        Some(r) => GaleMmuAlignResult {
+            aligned_addr: r.aligned_addr,
+            addr_offset: r.addr_offset,
+            aligned_size: r.aligned_size,
+        },
+        None => ERR,
     }
 }
 
