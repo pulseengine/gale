@@ -159,7 +159,7 @@ artifacts:
   - id: U-1
     type: uca
     title: Semaphore give increments count beyond limit
-    status: draft
+    status: approved
     description: >
       Gale's coarse FFI shim gale_sem_give_v2 gates the increment with
       count != limit instead of count < limit. A caller passing
@@ -188,7 +188,7 @@ artifacts:
   - id: U-2
     type: uca
     title: Device readiness published after failed init
-    status: draft
+    status: approved
     description: >
       check_deps_satisfied (src/device_init.rs) examines only the
       .initialized flag, not init_res. A device whose init function
@@ -215,7 +215,7 @@ artifacts:
   - id: U-3
     type: uca
     title: Fault classifier returns None for HFSR debug-monitor fault
-    status: draft
+    status: approved
     description: >
       classify() in src/fault_decode.rs masks CFSR only, ignoring the
       HFSR register entirely. A HardFault triggered purely by the
@@ -242,7 +242,7 @@ artifacts:
   - id: U-4
     type: uca
     title: Fatal handler returns Ignore for KernelPanic in test-mode ISR
-    status: draft
+    status: approved
     description: >
       FatalError::classify (src/fatal.rs:172) returns Ignore for the
       input (KernelPanic, Isr, test_mode=true), violating the documented
@@ -451,7 +451,7 @@ artifacts:
   - id: LS-1
     type: loss-scenario
     title: Saturating sem_give_v2 corrupts producer-consumer count
-    status: draft
+    status: approved
     description: >
       A producer on a semaphore whose count reached u32::MAX (e.g. via
       a leaked wake path) calls sem_give_v2. The FFI guard
@@ -476,7 +476,7 @@ artifacts:
   - id: LS-2
     type: loss-scenario
     title: Dependent subsystem initialized against broken device
-    status: draft
+    status: approved
     description: >
       Device D's init returns error code E. init_device sets
       D.initialized=true then branches on E (src/device_init.rs lines
@@ -501,7 +501,7 @@ artifacts:
   - id: LS-3
     type: loss-scenario
     title: Ignored HFSR debug-event fault continues on corrupted state
-    status: draft
+    status: approved
     description: >
       ARM Cortex-M raises HardFault with HFSR.DEBUGEVT=1, CFSR=0
       (debug-monitor escalation). classify() returns
@@ -526,7 +526,7 @@ artifacts:
   - id: LS-4
     type: loss-scenario
     title: Panic in test-mode ISR swallowed, execution resumed
-    status: draft
+    status: approved
     description: >
       A panic condition fires during an ISR while ZTEST test-mode is
       active. classify returns Ignore. The C shim restores ISR context
@@ -702,7 +702,7 @@ artifacts:
   - id: CC-1
     type: controller-constraint
     title: Semaphore controller must reject count >= limit before incrementing
-    status: draft
+    status: approved
     description: >
       The semaphore controller (C-4) MUST NOT increment the count when
       count >= limit. gale_sem_give_v2 (ffi/src/coarse.rs) must guard
@@ -727,7 +727,7 @@ artifacts:
   - id: CC-2
     type: controller-constraint
     title: Device init sequencer must require init_res==OK before publishing ready
-    status: draft
+    status: approved
     description: >
       The device init sequencer (C-7) MUST NOT set or expose
       `initialized = true` unless the device's init function returned
@@ -752,7 +752,7 @@ artifacts:
   - id: CC-3
     type: controller-constraint
     title: Fault classifier must inspect HFSR in addition to CFSR
-    status: draft
+    status: approved
     description: >
       The fault handler (C-6) MUST classify a HardFault whenever HFSR
       indicates a fault cause (including HFSR.DEBUGEVT, FORCED, VECTTBL),
@@ -777,7 +777,7 @@ artifacts:
   - id: CC-4
     type: controller-constraint
     title: Fatal handler must halt on KernelPanic regardless of test-mode
-    status: draft
+    status: approved
     description: >
       The fatal handler (C-6) MUST return Halt (never Ignore) for every
       KernelPanic, in every context (Thread or ISR), irrespective of the

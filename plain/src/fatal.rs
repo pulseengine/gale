@@ -94,6 +94,9 @@ impl FatalError {
     /// FT2: kernel panic always halts.
     /// FT3: recovery depends on reason, context, and test mode.
     pub fn classify(&self) -> RecoveryAction {
+        if matches!(self.reason, FatalReason::KernelPanic) {
+            return RecoveryAction::Halt;
+        }
         if !self.test_mode {
             match self.reason {
                 FatalReason::KernelPanic => RecoveryAction::Halt,
@@ -125,7 +128,7 @@ impl FatalError {
                         FatalReason::StackCheckFail => RecoveryAction::AbortThread,
                         FatalReason::CpuException => RecoveryAction::Ignore,
                         FatalReason::KernelOops => RecoveryAction::Ignore,
-                        FatalReason::KernelPanic => RecoveryAction::Ignore,
+                        FatalReason::KernelPanic => RecoveryAction::Halt,
                     }
                 }
                 FatalContext::Thread => RecoveryAction::AbortThread,

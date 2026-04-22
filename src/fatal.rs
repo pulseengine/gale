@@ -123,14 +123,23 @@ impl FatalError {
     pub fn classify(&self) -> (result: RecoveryAction)
         requires self.inv(),
         ensures
-            // FT2: panic always halts
-            self.reason === FatalReason::KernelPanic && !self.test_mode
+            // FT2: panic ALWAYS halts — test_mode does not weaken this.
+            // A panic indicates kernel invariant violation; resuming would
+            // run the rest of the system on state that triggered the panic.
+            self.reason === FatalReason::KernelPanic
                 ==> result === RecoveryAction::Halt,
             // ISR context in non-test mode generally halts
             self.context === FatalContext::Isr && !self.test_mode
                 && self.reason !== FatalReason::StackCheckFail
                 ==> result === RecoveryAction::Halt,
     {
+        // U-4 fix: KernelPanic halts unconditionally, before any
+        // test_mode branching. Previously test_mode + Isr + KernelPanic
+        // returned Ignore, letting the C shim resume after a panic.
+        if matches!(self.reason, FatalReason::KernelPanic) {
+            return RecoveryAction::Halt;
+        }
+
         if !self.test_mode {
             // Production mode
             match self.reason {
@@ -169,7 +178,11 @@ impl FatalError {
                         FatalReason::StackCheckFail => RecoveryAction::AbortThread,
                         FatalReason::CpuException => RecoveryAction::Ignore,
                         FatalReason::KernelOops => RecoveryAction::Ignore,
-                        FatalReason::KernelPanic => RecoveryAction::Ignore,
+                        // KernelPanic case is unreachable here — handled
+                        // by the unconditional early-return above (U-4).
+                        // Retained to satisfy exhaustiveness without
+                        // behaviourally depending on it.
+                        FatalReason::KernelPanic => RecoveryAction::Halt,
                     }
                 },
                 FatalContext::Thread => {

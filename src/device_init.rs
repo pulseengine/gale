@@ -329,9 +329,13 @@ impl DeviceInitState {
             decreases dev.num_deps - i,
         {
             let dep_id = dev.deps[i as usize];
-            // Look up the dependency in the device table
+            // Look up the dependency in the device table.
+            // U-2 fix: a dep whose init ran but FAILED (initialized=true,
+            // init_res!=0) must NOT satisfy the dependency. Match the
+            // readiness predicate used by is_device_ready().
             if (dep_id as usize) < devices.len() {
-                if !devices[dep_id as usize].initialized {
+                let d = &devices[dep_id as usize];
+                if !d.initialized || d.init_res != 0 {
                     return false;
                 }
             } else {

@@ -82,11 +82,12 @@ fn stack_check_always_aborts() {
 
 #[test]
 fn test_mode_isr_ignores() {
+    // U-4: KernelPanic is NOT in this list — a panic halts regardless
+    // of test mode. See test_mode_kernel_panic_halts below.
     let ignore_reasons = [
         FatalReason::CpuException,
         FatalReason::SpuriousIrq,
         FatalReason::KernelOops,
-        FatalReason::KernelPanic,
     ];
     for reason in &ignore_reasons {
         let e = FatalError::new(*reason, FatalContext::Isr, true);
@@ -99,6 +100,19 @@ fn test_mode_isr_ignores() {
 }
 
 #[test]
+fn test_mode_kernel_panic_halts() {
+    // U-4 regression check: panic always halts, even with test_mode=true.
+    for context in [FatalContext::Isr, FatalContext::Thread] {
+        let e = FatalError::new(FatalReason::KernelPanic, context, true);
+        assert_eq!(
+            e.classify(),
+            RecoveryAction::Halt,
+            "KernelPanic in {context:?} + test_mode must still halt"
+        );
+    }
+}
+
+#[test]
 fn test_mode_isr_stack_check_aborts() {
     let e = FatalError::new(FatalReason::StackCheckFail, FatalContext::Isr, true);
     assert_eq!(e.classify(), RecoveryAction::AbortThread);
@@ -106,12 +120,13 @@ fn test_mode_isr_stack_check_aborts() {
 
 #[test]
 fn test_mode_thread_always_aborts() {
+    // U-4: KernelPanic is NOT in this list — it halts regardless
+    // of context or test_mode.
     let all_reasons = [
         FatalReason::CpuException,
         FatalReason::SpuriousIrq,
         FatalReason::StackCheckFail,
         FatalReason::KernelOops,
-        FatalReason::KernelPanic,
     ];
     for reason in &all_reasons {
         let e = FatalError::new(*reason, FatalContext::Thread, true);

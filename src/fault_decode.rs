@@ -330,23 +330,30 @@ impl CortexMFault {
                 ==> result === FaultCategory::HardFault,
             (self.hfsr & HFSR_VECTTBL) != 0
                 ==> result === FaultCategory::HardFault,
+            // U-3 fix: DEBUGEVT (bit 31) also escalates to HardFault per the
+            // ARMv7-M architecture reference — a debug-monitor fault that
+            // couldn't be handled by the DebugMon handler re-enters as
+            // HardFault with HFSR.DEBUGEVT=1. Previously this class was
+            // silently classified as None and execution continued.
+            (self.hfsr & HFSR_DEBUGEVT) != 0
+                ==> result === FaultCategory::HardFault,
             // FH1: if no HFSR bits but MMFSR bits set, it's MemManage
-            (self.hfsr & (HFSR_FORCED | HFSR_VECTTBL)) == 0
+            (self.hfsr & (HFSR_FORCED | HFSR_VECTTBL | HFSR_DEBUGEVT)) == 0
                 && (self.cfsr & 0x0000_00FFu32) != 0
                 ==> result === FaultCategory::MemManage,
             // FH1: if no HFSR/MMFSR bits but BFSR bits set, it's BusFault
-            (self.hfsr & (HFSR_FORCED | HFSR_VECTTBL)) == 0
+            (self.hfsr & (HFSR_FORCED | HFSR_VECTTBL | HFSR_DEBUGEVT)) == 0
                 && (self.cfsr & 0x0000_00FFu32) == 0
                 && (self.cfsr & 0x0000_FF00u32) != 0
                 ==> result === FaultCategory::BusFault,
             // FH1: remaining CFSR bits -> UsageFault
-            (self.hfsr & (HFSR_FORCED | HFSR_VECTTBL)) == 0
+            (self.hfsr & (HFSR_FORCED | HFSR_VECTTBL | HFSR_DEBUGEVT)) == 0
                 && (self.cfsr & 0x0000_00FFu32) == 0
                 && (self.cfsr & 0x0000_FF00u32) == 0
                 && (self.cfsr & 0xFFFF_0000u32) != 0
                 ==> result === FaultCategory::UsageFault,
             // All clear -> None
-            (self.hfsr & (HFSR_FORCED | HFSR_VECTTBL)) == 0
+            (self.hfsr & (HFSR_FORCED | HFSR_VECTTBL | HFSR_DEBUGEVT)) == 0
                 && self.cfsr == 0
                 ==> result === FaultCategory::None,
     {
@@ -354,15 +361,24 @@ impl CortexMFault {
         let cfsr = self.cfsr;
 
         // Check HardFault first (highest priority)
-        if (hfsr & HFSR_FORCED) != 0 || (hfsr & HFSR_VECTTBL) != 0 {
+        if (hfsr & HFSR_FORCED) != 0
+            || (hfsr & HFSR_VECTTBL) != 0
+            || (hfsr & HFSR_DEBUGEVT) != 0
+        {
             proof {
-                // If either bit is set, the OR-mask is nonzero
+                // If any one of the three bits is set, the OR-mask is nonzero.
                 if (hfsr & HFSR_FORCED) != 0 {
-                    assert(hfsr & ((1u32 << 30u32) | (1u32 << 1u32)) != 0u32) by (bit_vector)
+                    assert(hfsr & ((1u32 << 30u32) | (1u32 << 1u32) | (1u32 << 31u32)) != 0u32)
+                        by (bit_vector)
                         requires hfsr & (1u32 << 30u32) != 0u32;
-                } else {
-                    assert(hfsr & ((1u32 << 30u32) | (1u32 << 1u32)) != 0u32) by (bit_vector)
+                } else if (hfsr & HFSR_VECTTBL) != 0 {
+                    assert(hfsr & ((1u32 << 30u32) | (1u32 << 1u32) | (1u32 << 31u32)) != 0u32)
+                        by (bit_vector)
                         requires hfsr & (1u32 << 1u32) != 0u32;
+                } else {
+                    assert(hfsr & ((1u32 << 30u32) | (1u32 << 1u32) | (1u32 << 31u32)) != 0u32)
+                        by (bit_vector)
+                        requires hfsr & (1u32 << 31u32) != 0u32;
                 }
             }
             FaultCategory::HardFault
@@ -494,18 +510,22 @@ impl CortexMFault {
 // Bitwise helper lemmas
 // ======================================================================
 
-/// If both individual HFSR bit tests are zero, the OR-mask test is also zero.
+/// If all three individual HFSR bit tests are zero, the combined OR-mask
+/// test is also zero.
 proof fn lemma_hfsr_split(hfsr: u32)
     requires
         hfsr & HFSR_FORCED == 0,
         hfsr & HFSR_VECTTBL == 0,
+        hfsr & HFSR_DEBUGEVT == 0,
     ensures
-        (hfsr & (HFSR_FORCED | HFSR_VECTTBL)) == 0,
+        (hfsr & (HFSR_FORCED | HFSR_VECTTBL | HFSR_DEBUGEVT)) == 0,
 {
-    assert((hfsr & ((1u32 << 30u32) | (1u32 << 1u32))) == 0u32) by (bit_vector)
+    assert((hfsr & ((1u32 << 30u32) | (1u32 << 1u32) | (1u32 << 31u32))) == 0u32)
+        by (bit_vector)
         requires
             hfsr & (1u32 << 30u32) == 0u32,
-            hfsr & (1u32 << 1u32) == 0u32;
+            hfsr & (1u32 << 1u32) == 0u32,
+            hfsr & (1u32 << 31u32) == 0u32;
 }
 
 /// If all three CFSR sub-register masks are zero, CFSR is zero.

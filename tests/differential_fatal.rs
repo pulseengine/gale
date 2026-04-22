@@ -28,6 +28,13 @@ fn ffi_fatal_decide(reason: u32, is_isr: bool, test_mode: bool) -> (u8, i32) {
         return (FATAL_ACTION_HALT, EINVAL);
     }
 
+    // U-4: KernelPanic (reason == 4) ALWAYS halts, irrespective of
+    // test_mode or is_isr. Any other path that lets a panic resume is
+    // a safety regression.
+    if reason == 4 {
+        return (FATAL_ACTION_HALT, 0);
+    }
+
     let action = if test_mode {
         if is_isr {
             if reason == 2 {
@@ -41,10 +48,7 @@ fn ffi_fatal_decide(reason: u32, is_isr: bool, test_mode: bool) -> (u8, i32) {
         }
     } else {
         // Production mode
-        if reason == 4 {
-            // KERNEL_PANIC
-            FATAL_ACTION_HALT
-        } else if reason == 2 {
+        if reason == 2 {
             // STACK_CHECK_FAIL
             FATAL_ACTION_ABORT_THREAD
         } else if is_isr {
