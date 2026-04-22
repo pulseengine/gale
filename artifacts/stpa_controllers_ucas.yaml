@@ -301,7 +301,7 @@ artifacts:
   - id: U-6
     type: uca
     title: MPU region validator accepts arithmetically overlapping pair
-    status: draft
+    status: approved
     description: >
       validate_region accepts (base=0x8000_0000, size=0x8000_0000) —
       each field alone passes alignment, power-of-two, and size >=32
@@ -569,7 +569,7 @@ artifacts:
   - id: LS-6
     type: loss-scenario
     title: Overlapping MPU regions silently admitted via arithmetic overflow
-    status: draft
+    status: approved
     description: >
       Configuration code passes (base=0x8000_0000, size=0x8000_0000)
       for two regions. validate_region passes each individually.
@@ -827,7 +827,7 @@ artifacts:
   - id: CC-6
     type: controller-constraint
     title: MPU validator must reject regions whose base+size overflows u32
-    status: draft
+    status: approved
     description: >
       The memory-protection controller (C-5) MUST reject any region set
       where any pair (base, size) satisfies base + size > u32::MAX

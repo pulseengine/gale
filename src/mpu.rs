@@ -128,19 +128,29 @@ pub fn is_power_of_two(n: u32) -> (result: bool)
 /// - `size` is a power of 2 (size & (size-1) == 0, size > 0)
 /// - `size` >= MIN_REGION_SIZE (32 bytes)
 /// - `base` is aligned to `size` (base & (size-1) == 0)
+/// - `base + size` does not overflow u32 (UCA U-6): each field alone
+///   can pass alignment / power-of-two / minimum-size checks while the
+///   pair sum wraps (e.g. base=0x8000_0000, size=0x8000_0000 wraps to
+///   0), violating regions_overlap's `requires` clause and silently
+///   defeating userspace isolation in release builds.
 pub fn validate_region(base: u32, size: u32) -> (result: bool)
+    ensures
+        result ==> base as int + size as int <= u32::MAX as int,
 {
     if size == 0 {
         return false;
     }
     // size > 0 here, so size - 1 does not underflow.
-    // Verus infers size >= 1 from size != 0 via LIA; sub(size, 1u32) is safe.
-    assert(size >= 1u32);
-    let size_minus_1 = sub(size, 1u32);
-    let power_of_two = (size & size_minus_1) == 0;
+    // Verus infers size >= 1 from size != 0 via LIA.
+    let power_of_two = (size & (size - 1)) == 0;
     let min_size = size >= MIN_REGION_SIZE;
-    let aligned = (base & size_minus_1) == 0;
-    power_of_two && min_size && aligned
+    let aligned = (base & (size - 1)) == 0;
+    // U-6: detect base + size overflow using checked arithmetic.  This
+    // re-establishes regions_overlap's `requires` clause at the per-
+    // region level, so the `external_body` on validate_region_set no
+    // longer masks the precondition drift.
+    let no_overflow = base.checked_add(size).is_some();
+    power_of_two && min_size && aligned && no_overflow
 }
 
 /// Check whether two MPU regions overlap in the address space.
@@ -182,10 +192,23 @@ pub fn regions_overlap(r1: &MpuRegion, r2: &MpuRegion) -> (result: bool)
 /// attributes would cause unpredictable behavior.
 ///
 /// `count` specifies how many entries in `regions` to validate.
+///
+/// U-6 / CC-6: this function remains `external_body` (the loop-invariant
+/// proof that every pair satisfies `regions_overlap`'s precondition is
+/// left to a follow-up), but each call to `regions_overlap` below is
+/// now guarded by a runtime `checked_add` precondition check that
+/// short-circuits to `false` on overflow.  Combined with
+/// `validate_region`'s own overflow check (which already rejects any
+/// region with base + size > u32::MAX before the pair loop runs), this
+/// makes it impossible for `regions_overlap` to be called with a
+/// precondition violation — even if an attacker crafts a region set
+/// where individual fields look innocuous.
 #[verifier::external_body]
 pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
 {
-    // Phase 1: Validate each region individually.
+    // Phase 1: Validate each region individually.  After this phase,
+    // every region ri in 0..count satisfies ri.base + ri.size <= u32::MAX
+    // (guaranteed by validate_region's overflow check — U-6).
     let mut i: u32 = 0;
     while i < count
     {
@@ -196,23 +219,35 @@ pub fn validate_region_set(regions: &[MpuRegion], count: u32) -> (result: bool)
         i = i + 1;
     }
 
-    // Phase 2: Check all pairs for overlap.
-    let mut i: u32 = 0;
-    while i < count
+    // Phase 2: Check all pairs for overlap.  Rebind as i2 so clippy's
+    // shadow-unrelated lint is happy on the plain mirror.
+    let mut i2: u32 = 0;
+    while i2 < count
     {
         let mut j: u32 = 0;
         while j < count
         {
-            if i != j {
-                let ri = &regions[i as usize];
+            if i2 != j {
+                let ri = &regions[i2 as usize];
                 let rj = &regions[j as usize];
+                // Defensive: re-establish regions_overlap's precondition
+                // at the call site (U-6, CC-6).  Phase 1 already rejects
+                // any region with base+size overflow, but an out-of-
+                // contract caller could theoretically mutate the slice
+                // between phases.  A fresh checked_add is cheap
+                // insurance.
+                if ri.base.checked_add(ri.size).is_none()
+                    || rj.base.checked_add(rj.size).is_none()
+                {
+                    return false;
+                }
                 if regions_overlap(ri, rj) {
                     return false;
                 }
             }
             j = j + 1;
         }
-        i = i + 1;
+        i2 = i2 + 1;
     }
 
     true

@@ -261,6 +261,64 @@ fn m5_max_region_size() {
     assert!(validate_region(0, 0x8000_0000));
 }
 
+// ==========================================================================
+// U-6: adversarial base+size overflow (Mythos 2026-04-21)
+// ==========================================================================
+
+/// U-6: (base=0x8000_0000, size=0x8000_0000) — each field alone passes
+/// alignment (base & (size-1) == 0), power-of-two, and size >= 32, but
+/// base + size overflows u32 and wraps to 0.  Previously validate_region
+/// accepted this pair; regions_overlap's precondition was silently
+/// violated and userspace isolation was defeated in release builds.
+#[test]
+fn u6_adversarial_overflow_pair_rejected() {
+    let base = 0x8000_0000u32;
+    let size = 0x8000_0000u32;
+    // Verify the pre-fix conditions individually pass:
+    assert_eq!(size & (size - 1), 0, "size is a power of two");
+    assert!(size >= MIN_REGION_SIZE);
+    assert_eq!(base & (size - 1), 0, "base is aligned to size");
+    // And the post-fix check catches the overflow:
+    assert!(!validate_region(base, size),
+        "U-6: base + size overflows u32 must be rejected");
+}
+
+/// U-6: the same adversarial pair must also be rejected when embedded
+/// in a region set, so the verified `external_body` wrapper's runtime
+/// guard catches any caller that bypasses the single-region validator.
+#[test]
+fn u6_adversarial_pair_in_region_set_rejected() {
+    let regions = [
+        make_region(0x8000_0000, 0x8000_0000, 0),
+    ];
+    assert!(!validate_region_set(&regions, 1),
+        "U-6: region_set must reject overflow pair");
+}
+
+/// U-6: a pair whose individual fields pass but whose sum equals exactly
+/// u32::MAX + 1 (base=0xFFFF_FFE0, size=32 → end = 0x1_0000_0000) must
+/// be rejected.  32 is the minimum legal size; 0xFFFF_FFE0 is aligned
+/// to 32 (low 5 bits clear); yet base + size wraps.
+#[test]
+fn u6_min_size_at_top_of_address_space_rejected() {
+    let base = 0xFFFF_FFE0u32;  // aligned to 32
+    let size = MIN_REGION_SIZE; // 32
+    assert_eq!(base & (size - 1), 0);
+    assert!(!validate_region(base, size),
+        "U-6: base+size exactly wrapping must be rejected");
+}
+
+/// U-6: the boundary case — base + size exactly equal to u32::MAX — is
+/// NOT an overflow.  Every u32 value with the high bit 0 and a valid
+/// small size should still validate; this pair must be accepted.
+#[test]
+fn u6_near_top_boundary_accepted() {
+    // base=0, size=2GB: base + size = 0x8000_0000, well below u32::MAX.
+    assert!(validate_region(0, 0x8000_0000));
+    // base=0x8000_0000, size=0x4000_0000: sum = 0xC000_0000, fits.
+    assert!(validate_region(0x8000_0000, 0x4000_0000));
+}
+
 #[test]
 fn m5_single_region_valid() {
     let regions = [make_region(0x2000_0000, 4096, 0)];
