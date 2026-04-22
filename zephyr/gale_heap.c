@@ -45,10 +45,13 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/sys/heap_listener.h>
 #include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
 #include <string.h>
 #include "heap.h"
 
 #include "gale_heap.h"
+
+LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
 
 #ifdef CONFIG_MSAN
 #include <sanitizer/msan_interface.h>
@@ -208,6 +211,28 @@ void sys_heap_free(struct sys_heap *heap, void *mem)
 	}
 	struct z_heap *h = heap->heap;
 	chunkid_t c = mem_to_chunkid(h, mem);
+
+	/*
+	 * SYS_HEAP_HARDENING_BASIC / _MODERATE — upstream lib/heap/heap.c:
+	 * 284-321. Surface upstream's structural checks before the Rust
+	 * decision runs. Use LOG_ERR + k_panic (upstream's pattern) rather
+	 * than __ASSERT: hardening must fire in release builds too, and
+	 * __ASSERT compiles out unless CONFIG_ASSERT=y.
+	 */
+	if (SYS_HEAP_HARDENING_BASIC && !chunk_used(h, c)) {
+		LOG_ERR("heap corruption (double free?) at %p", mem);
+		k_panic();
+	}
+	if (SYS_HEAP_HARDENING_BASIC &&
+	    left_chunk(h, right_chunk(h, c)) != c) {
+		LOG_ERR("heap corruption (buffer overflow?) at %p", mem);
+		k_panic();
+	}
+	if (SYS_HEAP_HARDENING_MODERATE &&
+	    right_chunk(h, left_chunk(h, c)) != c) {
+		LOG_ERR("heap corruption (left neighbor?) at %p", mem);
+		k_panic();
+	}
 
 	/* Extract: chunk state for Rust decision */
 	uint32_t is_used = chunk_used(h, c) ? 1U : 0U;
@@ -411,6 +436,26 @@ static bool inplace_realloc(struct sys_heap *heap, void *ptr, size_t bytes)
 	size_t align_gap = (uint8_t *)ptr - (uint8_t *)chunk_mem(h, c);
 
 	chunksz_t chunks_need = bytes_to_chunksz(h, bytes, align_gap);
+
+	/*
+	 * SYS_HEAP_HARDENING_BASIC / _MODERATE — upstream lib/heap/heap.c:
+	 * 556-569. Same structural checks as sys_heap_free, applied before
+	 * the Rust realloc decision runs. LOG_ERR + k_panic, not __ASSERT.
+	 */
+	if (SYS_HEAP_HARDENING_BASIC && !chunk_used(h, c)) {
+		LOG_ERR("heap corruption (not in use?) at %p", ptr);
+		k_panic();
+	}
+	if (SYS_HEAP_HARDENING_BASIC &&
+	    left_chunk(h, right_chunk(h, c)) != c) {
+		LOG_ERR("heap corruption (buffer overflow?) at %p", ptr);
+		k_panic();
+	}
+	if (SYS_HEAP_HARDENING_MODERATE &&
+	    right_chunk(h, left_chunk(h, c)) != c) {
+		LOG_ERR("heap corruption (left neighbor?) at %p", ptr);
+		k_panic();
+	}
 
 	/* Decide: Rust determines shrink/grow/copy strategy */
 	chunkid_t rc = right_chunk(h, c);
