@@ -27,7 +27,6 @@ env:
 jobs:
   llvm-lto-build:
     name: "LLVM LTO build + size comparison"
-    continue-on-error: true
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
@@ -225,7 +224,6 @@ jobs:
 
   llvm-lto-test:
     name: "llvm-lto-test"
-    continue-on-error: true
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
