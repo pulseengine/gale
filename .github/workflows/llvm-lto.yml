@@ -76,12 +76,19 @@ jobs:
         run: |
           SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
           [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
-          GCC="${SDK_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+          # SDK 1.0+ moved the GNU toolchain into a 'gnu' subdirectory.
+          # Fall back to the flat layout for SDK <1.0 compatibility.
+          if [ -d "${SDK_DIR}/gnu/arm-zephyr-eabi/bin" ]; then
+            ARM_BIN="${SDK_DIR}/gnu/arm-zephyr-eabi"
+          else
+            ARM_BIN="${SDK_DIR}/arm-zephyr-eabi"
+          fi
+          GCC="${ARM_BIN}/bin/arm-zephyr-eabi-gcc"
           GCC_LIB_DIR=$(dirname $("${GCC}" -print-libgcc-file-name -mcpu=cortex-m3 -mthumb))
-          PICOLIBC_DIR="${SDK_DIR}/arm-zephyr-eabi/arm-zephyr-eabi/lib/thumb/v7-m/nofp"
+          PICOLIBC_DIR="${ARM_BIN}/arm-zephyr-eabi/lib/thumb/v7-m/nofp"
           echo "LLD_LIBS=-L${GCC_LIB_DIR} -L${PICOLIBC_DIR}" >> "$GITHUB_ENV"
           echo "LIBRARY_PATH=${GCC_LIB_DIR}:${PICOLIBC_DIR}" >> "$GITHUB_ENV"
-          echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
+          echo "${ARM_BIN}/bin" >> "$GITHUB_PATH"
           echo "SDK: ${SDK_DIR}, GCC: ${GCC_LIB_DIR}"
 
       # --- Build 1: Baseline (GCC, stock Zephyr, no Gale) ---
@@ -283,12 +290,19 @@ jobs:
         run: |
           SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
           [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
-          GCC="${SDK_DIR}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+          # SDK 1.0+ moved the GNU toolchain into a 'gnu' subdirectory.
+          # Fall back to the flat layout for SDK <1.0 compatibility.
+          if [ -d "${SDK_DIR}/gnu/arm-zephyr-eabi/bin" ]; then
+            ARM_BIN="${SDK_DIR}/gnu/arm-zephyr-eabi"
+          else
+            ARM_BIN="${SDK_DIR}/arm-zephyr-eabi"
+          fi
+          GCC="${ARM_BIN}/bin/arm-zephyr-eabi-gcc"
           GCC_LIB_DIR=$(dirname $("${GCC}" -print-libgcc-file-name -mcpu=cortex-m3 -mthumb))
-          PICOLIBC_DIR="${SDK_DIR}/arm-zephyr-eabi/arm-zephyr-eabi/lib/thumb/v7-m/nofp"
+          PICOLIBC_DIR="${ARM_BIN}/arm-zephyr-eabi/lib/thumb/v7-m/nofp"
           echo "LLD_LIBS=-L${GCC_LIB_DIR} -L${PICOLIBC_DIR}" >> "$GITHUB_ENV"
           echo "LIBRARY_PATH=${GCC_LIB_DIR}:${PICOLIBC_DIR}" >> "$GITHUB_ENV"
-          echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
+          echo "${ARM_BIN}/bin" >> "$GITHUB_PATH"
 
       - name: Build and run test (LLVM+LTO)
         run: |
