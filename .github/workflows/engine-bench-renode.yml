@@ -127,9 +127,12 @@ jobs:
           ELF:           /tmp/engine-baseline-long/zephyr/zephyr.elf
           BENCH_CSV_OUT: /tmp/engine-baseline-long/output.csv
           GALE_ROOT:     ${{ github.workspace }}/gale
+        # Use $GITHUB_WORKSPACE as the cwd base (matches renode-tests.yml)
+        # — /tmp paths tripped robot-framework's `abspath('.')` call on
+        # container startup in an earlier attempt.
         run: |
-          mkdir -p /tmp/renode-baseline
-          cd /tmp/renode-baseline
+          mkdir -p "$GITHUB_WORKSPACE/renode-baseline"
+          cd "$GITHUB_WORKSPACE/renode-baseline"
           renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
 
       - name: Run gale in Renode
@@ -138,8 +141,8 @@ jobs:
           BENCH_CSV_OUT: /tmp/engine-gale-long/output.csv
           GALE_ROOT:     ${{ github.workspace }}/gale
         run: |
-          mkdir -p /tmp/renode-gale
-          cd /tmp/renode-gale
+          mkdir -p "$GITHUB_WORKSPACE/renode-gale"
+          cd "$GITHUB_WORKSPACE/renode-gale"
           renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
 
       - name: Render comparison report
@@ -163,7 +166,7 @@ jobs:
           path: |
             /tmp/engine-baseline-long/output.csv
             /tmp/engine-gale-long/output.csv
-            /tmp/renode-baseline/
-            /tmp/renode-gale/
+            renode-baseline/
+            renode-gale/
             /tmp/engine-comparison.md
           if-no-files-found: ignore
