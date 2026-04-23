@@ -1,0 +1,187 @@
+-- ---------------------------------------------------------------------------
+-- Gale counting semaphore — AADL v2.3 architectural model (SPAR dialect)
+-- ---------------------------------------------------------------------------
+-- Models the ISR -> sem_give -> handoff chain exercised by the
+-- benches/engine_control bench. The Rust source of truth lives in
+-- src/sem.rs (give_decide, take_decide). The C shim is in
+-- zephyr/gale_sem.c and emits SYS_PORT_TRACING_OBJ_FUNC_ENTER/EXIT
+-- events which the CTF stream (and the event-stream CSV) preserves.
+--
+-- Analysis this model is meant to feed:
+--   spar parse   safety/aadl/semaphore.aadl   -- structural check (v1)
+--   spar items   safety/aadl/semaphore.aadl
+--   spar instance --root Gale_Semaphore::Handoff_System.impl ...
+--   spar analyze --root Gale_Semaphore::Handoff_System.impl ...
+--       (latency, resource budgets, EMV2 fault propagation)
+--
+-- Traceability:
+--   STPA H-3   — Semaphore count overflow or underflow (count > limit)
+--   STPA U-1   — sem_give increments count beyond limit (Saturated path)
+--   Verus P1-3 — 0 <= count <= limit, limit > 0, give_decide trichotomy
+-- ---------------------------------------------------------------------------
+
+package Gale_Semaphore
+public
+
+  -- ------------------------------------------------------------------------
+  -- Data component: the semaphore itself.
+  -- Count_Max / Count_Current are declared as user properties (qualified
+  -- with the property set below so SPAR's parser accepts them as
+  -- record-style property associations).
+  -- ------------------------------------------------------------------------
+  data Sem
+    properties
+      Gale_Sem_Properties::Count_Max     => 1;
+      Gale_Sem_Properties::Count_Current => 0;
+      Gale_Sem_Properties::Count_Lower_Bound => 0;
+      Gale_Sem_Properties::Count_Upper_Bound => 1;
+  end Sem;
+
+  data implementation Sem.binary
+    properties
+      Gale_Sem_Properties::Count_Max     => 1;
+      Gale_Sem_Properties::Count_Upper_Bound => 1;
+  end Sem.binary;
+
+  data implementation Sem.counting
+    properties
+      Gale_Sem_Properties::Count_Max     => 16;
+      Gale_Sem_Properties::Count_Upper_Bound => 16;
+  end Sem.counting;
+
+  -- ------------------------------------------------------------------------
+  -- Subprogram: give_decide.
+  --
+  -- Corresponds to src/sem.rs::give_decide. The Compute_Execution_Time
+  -- range is the static WCET envelope the conformance oracle uses as its
+  -- upper/lower bound on observed handoff_cycles.
+  --
+  -- Values: derived from QEMU smoke runs (cortex_m3 @ 12 MHz). The
+  -- oracle scales these to observed cycles using the meta line
+  -- `cycles_per_sec` emitted by the bench.
+  -- ------------------------------------------------------------------------
+  subprogram Give_Decide
+    features
+      count      : in parameter;
+      limit      : in parameter;
+      has_waiter : in parameter;
+      decision   : out parameter;
+    properties
+      Compute_Execution_Time => 80 ns .. 6500 ns;
+  end Give_Decide;
+
+  subprogram implementation Give_Decide.rust
+  end Give_Decide.rust;
+
+  -- ------------------------------------------------------------------------
+  -- Thread: the semaphore caller (ISR context on the producer side).
+  -- ------------------------------------------------------------------------
+  thread Sem_Caller
+    features
+      isr_tick     : in event port;
+      sem_handle   : requires data access Sem;
+      handoff_done : out event port;
+    flows
+      give_flow : flow path isr_tick -> handoff_done;
+    properties
+      Dispatch_Protocol      => Sporadic;
+      Period                 => 1 ms;
+      Compute_Execution_Time => 80 ns .. 6500 ns;
+      Deadline               => 50 us;
+  end Sem_Caller;
+
+  thread implementation Sem_Caller.impl
+    calls
+      call_seq : {
+        give_call : subprogram Give_Decide.rust;
+      };
+  end Sem_Caller.impl;
+
+  -- ------------------------------------------------------------------------
+  -- Thread: the consumer / reader draining the handoff.
+  -- ------------------------------------------------------------------------
+  thread Sem_Reader
+    features
+      ready_in  : in event port;
+      processed : out event port;
+    flows
+      reader_flow : flow path ready_in -> processed;
+    properties
+      Dispatch_Protocol      => Sporadic;
+      Compute_Execution_Time => 200 ns .. 20 us;
+      Deadline               => 1 ms;
+  end Sem_Reader;
+
+  thread implementation Sem_Reader.impl
+  end Sem_Reader.impl;
+
+  -- ------------------------------------------------------------------------
+  -- Top-level system: the ISR -> handoff -> reader chain the bench runs.
+  -- ------------------------------------------------------------------------
+  system Handoff_System
+    features
+      crank_isr  : in event port;
+      step_done  : out event port;
+    flows
+      isr_to_handoff : flow path crank_isr -> step_done;
+  end Handoff_System;
+
+  system implementation Handoff_System.impl
+    subcomponents
+      sem      : data Sem.binary;
+      producer : thread Sem_Caller.impl;
+      consumer : thread Sem_Reader.impl;
+    connections
+      c_isr  : port crank_isr -> producer.isr_tick;
+      c_acc  : data access sem -> producer.sem_handle;
+      c_hand : port producer.handoff_done -> consumer.ready_in;
+      c_out  : port consumer.processed -> step_done;
+    flows
+      isr_to_handoff : end to end flow
+        producer.give_flow -> c_hand -> consumer.reader_flow;
+    properties
+      latency => 100 ns .. 120 us applies to isr_to_handoff;
+  end Handoff_System.impl;
+
+  -- ------------------------------------------------------------------------
+  -- EMV2 error annex. Parsed as opaque text by spar today; the three
+  -- error states correspond one-to-one with GiveDecision variants in
+  -- src/sem.rs:
+  --   WakeThread / Increment -> nominal (no propagation)
+  --   Saturated              -> error state (the U-1 / H-3 case)
+  -- ------------------------------------------------------------------------
+  annex EMV2 {**
+    error types
+      GaleSemErrors: type set { Saturated, CountOverflow };
+      Saturated: type;
+      CountOverflow: type extends Saturated;
+    end types;
+
+    error behavior GiveDecideBehavior
+    events
+      Saturate : error event;
+    states
+      WakeThread : initial state;
+      Increment  : state;
+      Saturated  : state;
+    transitions
+      nominal_to_sat : Increment -[ Saturate ]-> Saturated;
+    end behavior;
+  **};
+
+end Gale_Semaphore;
+
+-- ---------------------------------------------------------------------------
+-- Property set for gale-specific semaphore properties.
+-- ---------------------------------------------------------------------------
+property set Gale_Sem_Properties is
+
+  Count_Max : aadlinteger applies to (data);
+
+  Count_Current : aadlinteger applies to (data);
+
+  Count_Lower_Bound : aadlinteger applies to (data);
+
+  Count_Upper_Bound : aadlinteger applies to (data);
+
+end Gale_Sem_Properties;
