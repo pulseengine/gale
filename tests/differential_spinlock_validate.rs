@@ -309,3 +309,59 @@ fn spinlock_cpu_mask_bounds() {
             "SV6: all valid CPU IDs must fit in CPU_MASK: cpu={cpu_id}");
     }
 }
+
+// =====================================================================
+// U-9 / LS-9 regression: the Verus `requires cpu_id_valid(cpu)`
+// precondition (cpu < MAX_CPUS = 4) MUST hold at the FFI boundary. The
+// FFI-level fast-reject is proven by the Kani harnesses in
+// `ffi/src/lib.rs::kani_spinlock_validate_proofs::
+//  spinlock_{lock,unlock}_valid_rejects_oob_cpu_id` and exercised at
+// runtime by the unit tests below in `ffi/src/lib.rs`. This crate (the
+// `gale` model crate) cannot link the FFI staticlib's extern "C" symbols,
+// so the tests here assert the invariant the fix depends on — namely
+// that any cpu_id < MAX_CPUS satisfies the Verus precondition
+// `cpu_id_valid`, and any cpu_id >= MAX_CPUS does not.
+// =====================================================================
+
+/// Domain boundary the FFI fast-reject is built on: cpu_id < MAX_CPUS
+/// is exactly the Verus `cpu_id_valid` predicate. The shim's BUILD_ASSERT
+/// (`CONFIG_MP_MAX_NUM_CPUS <= 4`) and the runtime fast-reject in
+/// `gale_spin_{lock,unlock}_valid` / `gale_spin_lock_compute_owner`
+/// both key off this constant.
+#[test]
+fn u9_max_cpus_is_the_verus_domain_boundary() {
+    // If this ever changes, the BUILD_ASSERT in
+    // zephyr/gale_spinlock_validate.c MUST change in lockstep. Failing
+    // loudly here forces the developer to think about both sides.
+    assert_eq!(MAX_CPUS, 4,
+        "U-9/CC-9: MAX_CPUS defines the Verus cpu_id_valid domain; \
+         raising it requires (a) widening CPU_MASK to MAX_CPUS-1, (b) \
+         auditing thread-pointer alignment, and (c) updating the \
+         BUILD_ASSERT in zephyr/gale_spinlock_validate.c together.");
+    assert_eq!(CPU_MASK, (MAX_CPUS as usize) - 1,
+        "U-9: CPU_MASK must be MAX_CPUS-1 (power-of-two)");
+}
+
+#[test]
+fn u9_ls9_model_precondition_excludes_cpu_id_5() {
+    // LS-9 exact scenario: thread on cpu_id=5 reacquires a lock. The
+    // model's Verus precondition `cpu_id_valid(cpu) == cpu < MAX_CPUS`
+    // EXCLUDES cpu_id=5. Pre-fix, the FFI `extern "C"` wrapper erased
+    // that precondition and forwarded cpu_id=5 to `spin_lock_valid`
+    // anyway; `5 & 3 == 1 ≠ 5` returned "valid" and hid the deadlock.
+    // Post-fix, the wrapper fast-rejects cpu_id >= MAX_CPUS with 0
+    // before calling into the model. This test asserts the arithmetic
+    // behind LS-9 — if MAX_CPUS ever changes, the LS-9 witness changes
+    // with it and the scoping doc needs an update.
+    let oob_cpu: usize = 5;
+    assert!(oob_cpu >= (MAX_CPUS as usize),
+        "LS-9 witness cpu_id=5 must be outside the verified domain");
+    // Mask collision that hid the bug: 5 & 3 == 1.
+    let masked = oob_cpu & CPU_MASK;
+    assert_eq!(masked, 1,
+        "LS-9: (5 & CPU_MASK) == 1, which is why the pre-fix validator \
+         falsely reported 'not held here' for a same-CPU reacquire.");
+    assert_ne!(masked, oob_cpu,
+        "LS-9: the mask collision (5 & 3 == 1 ≠ 5) is the root cause \
+         the BUILD_ASSERT + fast-reject closes.");
+}

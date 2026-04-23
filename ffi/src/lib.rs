@@ -8896,13 +8896,33 @@ pub extern "C" fn gale_rb_validate_color_after_rotation(
 /// Check whether acquiring the spinlock is valid.
 ///
 /// Returns 1 (true) if valid, 0 (false) if the lock is already held by
-/// the same CPU (would deadlock).
+/// the same CPU (would deadlock), or 0 if `current_cpu_id` is outside the
+/// verified domain (`cpu_id < MAX_CPUS`).
+///
+/// # U-9 boundary guard
+///
+/// The Verus `spin_lock_valid` function has a `requires cpu_id_valid(cpu)`
+/// precondition (cpu < MAX_CPUS = 4). The `extern "C"` boundary would
+/// otherwise erase that precondition: a caller with `current_cpu_id = 5`
+/// re-acquiring the same lock would be falsely reported safe
+/// (`5 & 3 == 1 ≠ 5`), hiding a deadlock. This fast-reject realizes the
+/// Verus precondition at the C boundary (CC-9). The paired BUILD_ASSERT
+/// in `zephyr/gale_spinlock_validate.c` catches the misconfiguration at
+/// compile time; this runtime guard is defense-in-depth for the case
+/// where the shim is bypassed or the config is patched.
 ///
 /// Maps to z_spin_lock_valid() in spinlock_validate.c:10-20.
 #[cfg(feature = "spinlock_validate")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_spin_lock_valid(thread_cpu: usize, current_cpu_id: u32) -> i32 {
     use gale::spinlock_validate::*;
+    // U-9: reject out-of-domain cpu_id before the Verus call. Returning 0
+    // means "not valid to acquire" — the conservative answer when we
+    // cannot trust the input. Returning a negative errno here would be
+    // wrong: the C shim coerces via `!= 0` and would treat -22 as valid.
+    if current_cpu_id >= MAX_CPUS {
+        return 0;
+    }
     if spin_lock_valid(thread_cpu, current_cpu_id) {
         1
     } else {
@@ -8913,7 +8933,9 @@ pub extern "C" fn gale_spin_lock_valid(thread_cpu: usize, current_cpu_id: u32) -
 /// Check whether releasing the spinlock is valid.
 ///
 /// Returns 1 (true) if the stored owner matches the current (cpu | thread),
-/// 0 (false) otherwise.
+/// 0 (false) on mismatch or on out-of-domain `current_cpu_id`.
+///
+/// See `gale_spin_lock_valid` for the U-9 rationale on the cpu_id guard.
 ///
 /// Maps to z_spin_unlock_valid() in spinlock_validate.c:23-37.
 #[cfg(feature = "spinlock_validate")]
@@ -8924,6 +8946,11 @@ pub extern "C" fn gale_spin_unlock_valid(
     current_thread: usize,
 ) -> i32 {
     use gale::spinlock_validate::*;
+    // U-9: reject out-of-domain cpu_id before the Verus call. 0 = "owner
+    // mismatch" = conservative reject (see gale_spin_lock_valid above).
+    if current_cpu_id >= MAX_CPUS {
+        return 0;
+    }
     if spin_unlock_valid(thread_cpu, current_cpu_id, current_thread) {
         1
     } else {
@@ -8933,6 +8960,10 @@ pub extern "C" fn gale_spin_unlock_valid(
 
 /// Compute the owner tag for a spinlock (cpu_id | thread_ptr).
 ///
+/// On out-of-domain `current_cpu_id`, returns 0 (the "unowned" sentinel).
+/// This is a defensive fallback — the paired BUILD_ASSERT in the shim
+/// makes this path unreachable in a well-configured build.
+///
 /// Maps to z_spin_lock_set_owner() in spinlock_validate.c:39-43.
 #[cfg(feature = "spinlock_validate")]
 #[unsafe(no_mangle)]
@@ -8941,7 +8972,97 @@ pub extern "C" fn gale_spin_lock_compute_owner(
     current_thread: usize,
 ) -> usize {
     use gale::spinlock_validate::*;
+    // U-9: the Verus function `requires cpu_id_valid(current_cpu_id)`.
+    // Out-of-domain inputs cannot be encoded correctly (the low bits of
+    // cpu_id would collide with the thread pointer's alignment bits).
+    // Return 0 = "unowned" as the safest visible signal; the BUILD_ASSERT
+    // in the shim covers the static case.
+    if current_cpu_id >= MAX_CPUS {
+        return 0;
+    }
     spin_lock_compute_owner(current_cpu_id, current_thread)
+}
+
+// U-9 / LS-9 regression tests for the cpu_id fast-reject. These run under
+// plain `cargo test` (no Kani/Verus required) and exercise the public FFI
+// symbols directly from the same crate, so `unsafe_code = "deny"` does not
+// apply (these are safe calls into the extern "C" wrappers that happen to
+// live in the same crate). The matching Kani harnesses below cover all
+// cpu_id values symbolically.
+#[cfg(all(test, feature = "spinlock_validate"))]
+mod spinlock_validate_u9_tests {
+    use super::*;
+    use gale::spinlock_validate::{MAX_CPUS, CPU_MASK};
+
+    fn make_thread(n: usize) -> usize {
+        // Same helper as the differential test: aligned, non-zero.
+        (n + 1) * 4
+    }
+
+    #[test]
+    fn u9_lock_valid_rejects_cpu_id_5_ls9_reproduction() {
+        // LS-9: CONFIG_MP_MAX_NUM_CPUS=6 scenario. Pre-fix, cpu_id=5
+        // reacquiring its own lock passed through to the Verus fn with
+        // the precondition silently erased; `5 & 3 == 1 ≠ 5` returned
+        // 1 ("valid") and hid a self-deadlock.
+        let thread = make_thread(1);
+        let thread_cpu = thread | 5usize; // as if CPU=5 had set the owner
+        let ret = gale_spin_lock_valid(thread_cpu, 5);
+        assert_eq!(ret, 0,
+            "U-9/LS-9: cpu_id=5 must be rejected at the FFI boundary");
+    }
+
+    #[test]
+    fn u9_lock_valid_rejects_all_oob_cpu_ids() {
+        for cpu_id in MAX_CPUS..16 {
+            for &thread_cpu in &[0usize, 4, 8, 0x1000, 0x1001, 0x1002, 0x1003] {
+                let ret = gale_spin_lock_valid(thread_cpu, cpu_id);
+                assert_eq!(ret, 0,
+                    "U-9: cpu_id={cpu_id} thread_cpu={thread_cpu:#x} must \
+                     return 0 (not valid)");
+            }
+        }
+    }
+
+    #[test]
+    fn u9_unlock_valid_rejects_oob_cpu_id() {
+        let thread = make_thread(1);
+        for cpu_id in MAX_CPUS..16 {
+            let ret = gale_spin_unlock_valid(
+                thread | (cpu_id as usize & CPU_MASK),
+                cpu_id,
+                thread,
+            );
+            assert_eq!(ret, 0,
+                "U-9: spin_unlock_valid must reject cpu_id={cpu_id}");
+        }
+    }
+
+    #[test]
+    fn u9_compute_owner_returns_zero_on_oob_cpu_id() {
+        let thread = make_thread(1);
+        for cpu_id in MAX_CPUS..16 {
+            let owner = gale_spin_lock_compute_owner(cpu_id, thread);
+            assert_eq!(owner, 0,
+                "U-9: compute_owner must return unowned sentinel (0) on \
+                 cpu_id={cpu_id}");
+        }
+    }
+
+    #[test]
+    fn u9_normal_path_unchanged_after_fast_reject() {
+        // Guard rail: the fast-reject must not regress the happy path.
+        for cpu_id in 0..MAX_CPUS {
+            assert_eq!(gale_spin_lock_valid(0, cpu_id), 1,
+                "free lock on cpu_id={cpu_id} stays valid");
+            let t = make_thread(3);
+            let owner = gale_spin_lock_compute_owner(cpu_id, t);
+            assert_ne!(owner, 0,
+                "compute_owner on valid cpu_id={cpu_id} must not return 0");
+            assert_eq!(gale_spin_unlock_valid(owner, cpu_id, t), 1,
+                "unlock roundtrip on cpu_id={cpu_id} stays valid");
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -9216,6 +9337,49 @@ mod kani_spinlock_validate_proofs {
         kani::assume(thread != 0);
         kani::assume(thread & 3 == 0);
         let _ = gale_spin_lock_compute_owner(cpu_id, thread);
+    }
+
+    // U-9 regression harnesses: cpu_id outside the Verus-verified domain
+    // (cpu_id >= MAX_CPUS = 4) must be rejected at the FFI boundary so the
+    // model's `requires cpu_id_valid(cpu)` precondition is upheld in C.
+    // LS-9 scenario: thread on cpu_id=5 re-acquires a lock it already
+    // holds; 5 & 3 == 1 ≠ 5 would previously report "valid" and deadlock.
+
+    /// U-9 LS-9: spin_lock_valid must reject cpu_id >= MAX_CPUS.
+    /// The bugged path would forward cpu_id=5 to the Verus function,
+    /// violating its precondition and hiding the same-CPU deadlock.
+    #[kani::proof]
+    fn spinlock_lock_valid_rejects_oob_cpu_id() {
+        let cpu_id: u32 = kani::any();
+        kani::assume(cpu_id >= 4);
+        let thread_cpu: usize = kani::any();
+        let ret = gale_spin_lock_valid(thread_cpu, cpu_id);
+        assert!(ret == 0);
+    }
+
+    /// U-9 LS-9: spin_unlock_valid must reject cpu_id >= MAX_CPUS.
+    #[kani::proof]
+    fn spinlock_unlock_valid_rejects_oob_cpu_id() {
+        let cpu_id: u32 = kani::any();
+        kani::assume(cpu_id >= 4);
+        let thread_cpu: usize = kani::any();
+        let thread: usize = kani::any();
+        kani::assume(thread != 0);
+        kani::assume(thread & 3 == 0);
+        let ret = gale_spin_unlock_valid(thread_cpu, cpu_id, thread);
+        assert!(ret == 0);
+    }
+
+    /// U-9: compute_owner returns the unowned sentinel on OOB cpu_id.
+    #[kani::proof]
+    fn spinlock_compute_owner_rejects_oob_cpu_id() {
+        let cpu_id: u32 = kani::any();
+        kani::assume(cpu_id >= 4);
+        let thread: usize = kani::any();
+        kani::assume(thread != 0);
+        kani::assume(thread & 3 == 0);
+        let owner = gale_spin_lock_compute_owner(cpu_id, thread);
+        assert!(owner == 0);
     }
 }
 

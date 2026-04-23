@@ -387,7 +387,7 @@ artifacts:
   - id: U-9
     type: uca
     title: Spinlock validator accepts same-CPU reacquire on cpu_id >= 4
-    status: draft
+    status: approved
     description: >
       spin_lock_valid hardcodes CPU_MASK = 3 (assumes MP_MAX_NUM_CPUS
       <= 4). Verus enforces cpu_id < 4 as a precondition, but the
@@ -395,7 +395,12 @@ artifacts:
       acquiring the same lock is falsely reported safe
       (5 & 3 == 1 ≠ 5), hiding a deadlock. No BUILD_ASSERT mirrors the
       Verus precondition in the shim. Confirmed 2026-04-21
-      (findings/spinlock_validate.md).
+      (findings/spinlock_validate.md). Fixed 2026-04-23 via (a)
+      BUILD_ASSERT(CONFIG_MP_MAX_NUM_CPUS <= 4) in
+      zephyr/gale_spinlock_validate.c and (b) runtime fast-reject
+      `if current_cpu_id >= MAX_CPUS { return 0 }` at the three
+      gale_spin_*_valid FFI entry points, mirroring the Verus
+      `requires cpu_id_valid(cpu)` precondition at the C boundary.
     tags: [stpa, uca, spinlock, smp, mythos-2026-04-21]
     links:
       - type: issued-by
@@ -646,7 +651,7 @@ artifacts:
   - id: LS-9
     type: loss-scenario
     title: Validator clears deadlock scenario on cpu_id = 5
-    status: draft
+    status: approved
     description: >
       On a board with CONFIG_MP_MAX_NUM_CPUS=6, thread on cpu_id=5
       reacquires a lock it already holds. spin_lock_valid masks
@@ -903,7 +908,7 @@ artifacts:
   - id: CC-9
     type: controller-constraint
     title: Spinlock validator must enforce cpu_id domain at the C boundary
-    status: draft
+    status: approved
     description: >
       The spinlock monitor (C-3) MUST NOT accept cpu_id values outside
       the Verus-verified domain. The `extern "C"` wrapper around

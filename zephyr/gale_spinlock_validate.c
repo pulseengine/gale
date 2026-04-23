@@ -26,6 +26,23 @@
 
 #include "gale_spinlock_validate.h"
 
+/*
+ * U-9 / CC-9: mirror the Verus `requires cpu_id_valid(cpu)` precondition
+ * (cpu < MAX_CPUS = 4) at the C boundary. The owner encoding OR's the CPU
+ * ID into the low 2 bits of an aligned thread pointer; with more than 4
+ * CPUs those bits overflow into the thread pointer field and `& CPU_MASK`
+ * silently collapses distinct CPUs onto the same tag. A same-CPU reacquire
+ * on cpu_id >= 4 would then be reported "valid" and deadlock on release.
+ *
+ * If CONFIG_MP_MAX_NUM_CPUS is raised beyond 4, widen MAX_CPUS / CPU_MASK
+ * in src/spinlock_validate.rs, regenerate the plain/ mirror, and update
+ * this assertion together — they are a single ABI contract.
+ */
+BUILD_ASSERT(CONFIG_MP_MAX_NUM_CPUS <= 4,
+	     "gale_spinlock_validate assumes CPU_MASK fits 2 bits "
+	     "(MAX_CPUS = 4); update src/spinlock_validate.rs CPU_MASK "
+	     "and this assertion together.");
+
 bool z_spin_lock_valid(struct k_spinlock *l)
 {
 	uintptr_t thread_cpu = l->thread_cpu;
