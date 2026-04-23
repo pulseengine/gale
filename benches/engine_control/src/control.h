@@ -15,19 +15,23 @@
 #include <stdint.h>
 
 /* Per-ISR sample — what the "crank" writes to the ring buffer.
- * Three timestamps let us separate "pure algorithm" from "primitive
- * handoff" costs — only the latter should differ between baseline
- * and Gale builds. */
+ *
+ * Post-#25 (event-stream methodology): carries the pre-handoff cycle
+ * delta (algo_cycles) and the sweep-step index. The handoff cycle
+ * count is measured AFTER ring_buf_put + k_sem_give, at which point
+ * the sample is already in the ring — so it is published via a
+ * side-channel array (main.c: g_handoff_by_slot) keyed by seq. The
+ * reader pairs them up when emitting the event line. */
 struct crank_sample {
 	uint32_t angle_deg;        /* 0..719 for a 4-stroke cycle */
 	uint32_t rpm;              /* current engine speed */
+	uint32_t algo_cycles;      /* t_algo_end - t_entry, measured in ISR */
 	int16_t  spark_advance_deg;/* computed by control_step */
 	uint16_t fuel_duration_us; /* computed by control_step */
-	uint32_t t_entry;          /* cycle counter at ISR entry */
-	uint32_t t_algo_end;       /* after control_step() */
-	uint32_t t_exit;           /* after ring_buf_put + k_sem_give */
 	uint16_t drops_so_far;     /* monotonic ring-buffer drop count */
-	uint16_t seq;              /* sequence number (wraps) */
+	uint16_t seq;              /* sequence number (wraps); also indexes
+	                            * the handoff side-channel slot */
+	uint8_t  step;             /* sweep-step index (0..SWEEP_STEPS-1) */
 };
 
 /* Input vector sampled by the ISR from simulated sensors. */

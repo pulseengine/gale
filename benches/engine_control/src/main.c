@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: Apache-2.0
  * Copyright (c) 2026 PulseEngine
  *
- * Engine-control interrupt benchmark — main app.
+ * Engine-control interrupt benchmark — main app (event-stream edition).
  *
  * A k_timer callback (ISR context) simulates a crank-position sensor.
  * Each firing runs a pure-C engine-control algorithm (table lookups
@@ -11,21 +11,30 @@
  *
  * Two timings are recorded per interrupt:
  *
- *   algo_cycles  = t_algo_end - t_entry    # pure C algorithm
- *   handoff_cycles = t_exit - t_algo_end   # ring_buf + sem_give
+ *   algo_cycles    = t_algo_end - t_entry   # pure C algorithm
+ *   handoff_cycles = t_exit - t_algo_end    # ring_buf + sem_give
  *
- * Both histograms are maintained in ISR context (single-CPU, no lock
- * needed). At end-of-run the main thread dumps both as CSV.
+ * Methodology (post-#25):
+ *   The ISR no longer computes statistics. It records the two raw
+ *   cycle deltas per sample and the sweep-step index, then the
+ *   reader thread emits one CSV event line per sample to UART:
  *
- * Baseline vs Gale comparison is done OUTSIDE the firmware: build
- * twice (once without the overlay, once with `prj-gale.conf`), diff
- * the two CSVs via `compare.py`. Algo histogram should be identical
- * across builds (proves measurement isolation); handoff histogram is
- * the meaningful comparison (primitive overhead).
+ *     E,<seq>,<step>,<rpm>,<algo_cycles>,<handoff_cycles>
+ *
+ *   Off-target analyzer (analyze.py) groups events by RPM step and
+ *   computes median + bootstrap 95% CI + Mann-Whitney U p-value on
+ *   the per-step distributions. No on-target mean/min/max/histogram.
+ *
+ * Why: the in-ISR histogram approach had a mean-divisor mismatch
+ * (histogram totals diverged from reader `count`) and log-scale
+ * buckets masked sub-bucket shifts. Emitting raw events puts all
+ * statistics off the target where they can be recomputed and audited.
+ * See docs/research/engine-bench-methodology-review.md and #25.
  */
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/ring_buffer.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -34,12 +43,6 @@
 /* ------------------------------------------------------------- knobs */
 
 #define RING_CAPACITY_SAMPLES  256
-#define HISTOGRAM_BUCKETS      32
-#ifndef TOTAL_SAMPLES
-#define TOTAL_SAMPLES          150u  /* QEMU-friendly default; bump for
-                                      * hardware or long Renode runs via
-                                      *   -DTOTAL_SAMPLES=10000 in CMake. */
-#endif
 
 struct sweep_step {
 	uint32_t rpm;
@@ -68,6 +71,22 @@ static const struct sweep_step sweep[] = {
 #endif
 #define SWEEP_STEPS (sizeof(sweep) / sizeof(sweep[0]))
 
+/* TOTAL_SAMPLES must equal sum(sweep[].samples) so every step runs to
+ * completion. Computed at compile time from the sweep array to avoid
+ * the audit-flagged bug where TOTAL_SAMPLES=150 truncated the short
+ * sweep at step 2 of 5 (RPM 1000 + 2000 only). If you override via
+ * -DENGINE_BENCH_TOTAL_SAMPLES, make sure it matches sum(sweep[].samples)
+ * or accept that the sweep may terminate early. */
+#if defined(ENGINE_BENCH_SWEEP_long)
+#  ifndef TOTAL_SAMPLES
+#    define TOTAL_SAMPLES  7750u  /* sum of long sweep above */
+#  endif
+#else
+#  ifndef TOTAL_SAMPLES
+#    define TOTAL_SAMPLES  150u   /* 5 steps × 30 samples */
+#  endif
+#endif
+
 /* For a 4-stroke engine with one interrupt per crank degree:
  *   period_us = 60_000_000 / (rpm * 360) = 166_667 / rpm. */
 static inline uint32_t rpm_to_period_us(uint32_t rpm)
@@ -86,6 +105,7 @@ static struct k_sem   data_ready;
 RING_BUF_DECLARE(sample_ring, RING_CAPACITY_SAMPLES * sizeof(struct crank_sample));
 
 static volatile uint32_t g_rpm      = 500U;
+static volatile uint8_t  g_step     = 0U;    /* sweep index, written by driver */
 static volatile uint16_t g_load_pct = 45U;
 static volatile int16_t  g_coolant  = 85;
 static volatile uint8_t  g_knock    = 0;
@@ -95,23 +115,23 @@ static volatile uint16_t g_seq        = 0U;
 static volatile uint16_t g_drops      = 0U;
 static volatile uint32_t g_interrupts = 0U;
 
-/* Per-ISR histograms (log-scale buckets in cycles). */
-static uint32_t histo_algo[HISTOGRAM_BUCKETS];
-static uint32_t histo_handoff[HISTOGRAM_BUCKETS];
+/* Per-step "fire this many times then stop" limit. Written by the
+ * sweep driver before each step, decremented by the ISR. When it
+ * hits zero the ISR stops the timer so overshoot is bounded to the
+ * one extra shot that may have queued. Without this, high-RPM steps
+ * would fire hundreds of times before the driver's k_msleep(1) poll
+ * could notice the sample count had been reached. */
+static volatile uint32_t g_fire_budget = 0U;
 
-static uint32_t min_algo    = UINT32_MAX, max_algo    = 0;
-static uint32_t min_handoff = UINT32_MAX, max_handoff = 0;
-static uint64_t sum_algo    = 0,          sum_handoff = 0;
-
-static inline uint32_t bucket_of(uint32_t cycles)
-{
-	uint32_t b = 0;
-	while (cycles > 1U && b < (HISTOGRAM_BUCKETS - 1U)) {
-		cycles >>= 1;
-		b++;
-	}
-	return b;
-}
+/* Side-channel array for handoff_cycles. The ISR measures t_exit AFTER
+ * ring_buf_put (which is the point — handoff cost includes the put +
+ * sem_give). But by then the sample bytes are already in the ring, so
+ * we can't write handoff_cycles into the in-ring sample. We publish
+ * the measurement here, keyed by seq mod RING_CAPACITY_SAMPLES. SPSC
+ * ordering: the ISR always writes this slot before the reader can
+ * observe the matching ring entry (reader wakes on k_sem_give, which
+ * happens BEFORE t_exit is read). */
+static volatile uint32_t g_handoff_by_slot[RING_CAPACITY_SAMPLES];
 
 /* ---------------------------------------------------------------- ISR */
 
@@ -133,16 +153,18 @@ static void crank_isr(struct k_timer *t)
 
 	uint32_t t_algo_end = k_cycle_get_32();
 
+	uint32_t seq_snapshot = g_seq;
+	uint32_t algo_cycles = t_algo_end - t_entry;
+
 	struct crank_sample s = {
 		.angle_deg         = g_angle,
 		.rpm               = in.rpm,
+		.algo_cycles       = algo_cycles,
 		.spark_advance_deg = spark,
 		.fuel_duration_us  = fuel,
-		.t_entry           = t_entry,
-		.t_algo_end        = t_algo_end,
-		.t_exit            = 0U,
 		.drops_so_far      = g_drops,
-		.seq               = g_seq,
+		.seq               = (uint16_t)seq_snapshot,
+		.step              = g_step,
 	};
 
 	uint32_t wrote = ring_buf_put(&sample_ring, (uint8_t *)&s, sizeof(s));
@@ -153,32 +175,42 @@ static void crank_isr(struct k_timer *t)
 	}
 
 	uint32_t t_exit = k_cycle_get_32();
+	uint32_t handoff_cycles = t_exit - t_algo_end;
 
-	/* Histograms updated in ISR context. Single-CPU, no concurrent
-	 * readers: the reporter only reads AFTER all ISRs stop firing. */
-	uint32_t algo    = t_algo_end - t_entry;
-	uint32_t handoff = t_exit     - t_algo_end;
-
-	histo_algo[bucket_of(algo)]++;
-	histo_handoff[bucket_of(handoff)]++;
-	if (algo    < min_algo)    min_algo    = algo;
-	if (algo    > max_algo)    max_algo    = algo;
-	if (handoff < min_handoff) min_handoff = handoff;
-	if (handoff > max_handoff) max_handoff = handoff;
-	sum_algo    += algo;
-	sum_handoff += handoff;
+	/* Publish handoff into a side channel indexed by seq. The ring
+	 * buffer is SPSC: the consumer sees a sample only after this
+	 * ISR completes (it ran to k_sem_give already but the consumer
+	 * thread can't preempt ISR), so writing the slot here is still
+	 * before the consumer observes the matching sample. */
+	g_handoff_by_slot[seq_snapshot % RING_CAPACITY_SAMPLES] = handoff_cycles;
 
 	g_seq++;
 	g_angle = (g_angle + 1U) % 720U;
 	g_interrupts++;
+
+	if (g_fire_budget > 0U) {
+		g_fire_budget--;
+		if (g_fire_budget == 0U) {
+			/* Stop the timer from ISR context: k_timer_stop is
+			 * ISR-safe per Zephyr docs. This caps per-step
+			 * overshoot to 1 extra firing (the one already in
+			 * flight when we hit zero). */
+			k_timer_stop(&crank_timer);
+		}
+	}
 }
 
 /* ---------------------------------------------------------- reporter */
 
-/* Reader thread: required purely to make k_sem_give do real work.
- * We don't use the ring-buffer contents for measurement — histograms
- * live in ISR-updated globals. */
 static uint32_t count = 0;
+
+static void emit_event(const struct crank_sample *s)
+{
+	uint32_t handoff = g_handoff_by_slot[s->seq % RING_CAPACITY_SAMPLES];
+	printf("E,%u,%u,%u,%u,%u\n",
+	       (unsigned)s->seq, (unsigned)s->step, (unsigned)s->rpm,
+	       (unsigned)s->algo_cycles, (unsigned)handoff);
+}
 
 static void reader_loop(void)
 {
@@ -187,23 +219,14 @@ static void reader_loop(void)
 		struct crank_sample s;
 		while (ring_buf_get(&sample_ring, (uint8_t *)&s, sizeof(s))
 		       == sizeof(s)) {
+			emit_event(&s);
 			count++;
 			if (count >= TOTAL_SAMPLES) break;
 		}
 	}
 }
 
-static void dump_histogram(const char *tag, const uint32_t h[])
-{
-	for (uint32_t b = 0; b < HISTOGRAM_BUCKETS; b++) {
-		if (h[b] == 0) continue;
-		uint32_t lo = (b == 0) ? 0 : (1u << b);
-		uint32_t hi = (1u << (b + 1U)) - 1U;
-		printf("H,%s,%u,%u,%u,%u\n", tag, b, lo, hi, h[b]);
-	}
-}
-
-static void print_csv_report(void)
+static void print_csv_header(void)
 {
 	uint32_t hz = sys_clock_hw_cycles_per_sec();
 	printf("=== ENGINE-CONTROL BENCH RESULTS ===\n");
@@ -215,17 +238,14 @@ static void print_csv_report(void)
 #endif
 	);
 	printf("cycles_per_sec,%u\n", hz);
-	printf("samples,%u\n", count);
+	printf("target_samples,%u\n", TOTAL_SAMPLES);
+	printf("# event rows: E,<seq>,<step>,<rpm>,<algo_cycles>,<handoff_cycles>\n");
+}
+
+static void print_csv_footer(void)
+{
 	printf("drops,%u\n", g_drops);
-	printf("algo,min,%u\n",    min_algo);
-	printf("algo,max,%u\n",    max_algo);
-	printf("algo,mean,%llu\n", (unsigned long long)(sum_algo / count));
-	printf("handoff,min,%u\n",    min_handoff);
-	printf("handoff,max,%u\n",    max_handoff);
-	printf("handoff,mean,%llu\n", (unsigned long long)(sum_handoff / count));
-	printf("# histogram rows: tag,bucket,low_cycles,high_cycles,count\n");
-	dump_histogram("algo",    histo_algo);
-	dump_histogram("handoff", histo_handoff);
+	printf("samples,%u\n", count);
 	printf("=== END ===\n");
 }
 
@@ -234,33 +254,75 @@ static void print_csv_report(void)
 static void sweep_driver(void)
 {
 	for (size_t i = 0; i < SWEEP_STEPS; i++) {
+		g_step = (uint8_t)i;
 		g_rpm = sweep[i].rpm;
 		uint32_t period_us = rpm_to_period_us(g_rpm);
 		if (period_us == 0) period_us = 1;
-		printk("step %u/%u: rpm=%u period_us=%u\n",
-		       (unsigned)(i + 1), (unsigned)SWEEP_STEPS,
-		       (unsigned)g_rpm, (unsigned)period_us);
+
+		/* Set the ISR's fire-budget BEFORE starting the timer.
+		 * The ISR will self-stop after exactly sweep[i].samples
+		 * firings (bounded-overshoot design — cf. the audit which
+		 * flagged polling-based termination). */
+		uint32_t start_ints = g_interrupts;
+		g_fire_budget = sweep[i].samples;
 		k_timer_start(&crank_timer,
 			      K_USEC(period_us),
 			      K_USEC(period_us));
 
-		uint32_t start_ints = g_interrupts;
+		/* Wait for the ISR to self-stop. Budget = theoretical
+		 * duration + 2s floor for UART back-pressure that may
+		 * stretch the observed period. */
 		uint32_t budget_ms = sweep[i].samples * period_us / 1000U
 				     + 2000U;
 		uint32_t t0 = k_uptime_get_32();
-		while ((g_interrupts - start_ints) < sweep[i].samples) {
-			if (count >= TOTAL_SAMPLES) return;
+		bool budget_exceeded = false;
+		while (g_fire_budget > 0U) {
 			if ((k_uptime_get_32() - t0) > budget_ms) {
-				printk("  step %u budget %ums exceeded; ints=%u\n",
-				       (unsigned)(i + 1), budget_ms,
-				       (unsigned)(g_interrupts - start_ints));
+				budget_exceeded = true;
 				break;
 			}
-			k_msleep(10);
+			k_msleep(5);
 		}
+		/* Belt-and-suspenders: if we exited via the budget, the ISR
+		 * may still be armed; stop it here. k_timer_stop is
+		 * idempotent. */
+		k_timer_stop(&crank_timer);
+
+		/* Drain between steps — the reader emits events over UART
+		 * which is the slow path. Without this back-pressure the
+		 * ring fills and subsequent ISRs drop samples. We wait for
+		 * the reader to catch up (or give up after a generous
+		 * ceiling so a stuck UART doesn't hang CI forever). */
+		uint32_t drain_t0 = k_uptime_get_32();
+		uint32_t target = start_ints + sweep[i].samples;
+		bool drain_timeout = false;
+		while (count < target && count < g_interrupts) {
+			if ((k_uptime_get_32() - drain_t0) > 30000U) {
+				drain_timeout = true;
+				break;
+			}
+			k_msleep(5);
+		}
+
+		/* Now safe to emit step-completion marker: no ISR firing,
+		 * reader has drained, so no interleaving with event lines.
+		 * Using '#' prefix so analyze.py ignores these as comments. */
+		printf("# step %u/%u rpm=%u period_us=%u ints=%u count=%u%s%s\n",
+		       (unsigned)(i + 1), (unsigned)SWEEP_STEPS,
+		       (unsigned)g_rpm, (unsigned)period_us,
+		       (unsigned)(g_interrupts - start_ints),
+		       (unsigned)count,
+		       budget_exceeded ? " [budget_exceeded]" : "",
+		       drain_timeout   ? " [drain_timeout]"   : "");
 	}
-	/* Wait for drain. */
-	while (count < TOTAL_SAMPLES) {
+	/* Final drain. Cap at g_interrupts so we don't hang forever if a
+	 * step hit its budget and produced fewer than planned samples. */
+	uint32_t final_t0 = k_uptime_get_32();
+	while (count < TOTAL_SAMPLES && count < g_interrupts) {
+		if ((k_uptime_get_32() - final_t0) > 30000U) {
+			printk("final drain timeout; count=%u\n", (unsigned)count);
+			break;
+		}
 		k_msleep(5);
 	}
 }
@@ -272,11 +334,19 @@ int main(void)
 	k_sem_init(&data_ready, 0, K_SEM_MAX_LIMIT);
 	k_timer_init(&crank_timer, crank_isr, NULL);
 
+	/* Pre-header banner via printk: goes out BEFORE we start the
+	 * sweep thread / reader, so it can't interleave with event
+	 * lines. The CSV header follows immediately. */
 	printk("engine_control bench starting "
 	       "(target %u samples, %u sweep steps)\n",
 	       TOTAL_SAMPLES, (unsigned)SWEEP_STEPS);
 
 	k_thread_priority_set(k_current_get(), 5);
+
+	/* Emit CSV header BEFORE starting the sweep so stdout ordering
+	 * is deterministic: header, then events interleaved with sweep
+	 * progress printk, then footer. */
+	print_csv_header();
 
 	static K_THREAD_STACK_DEFINE(sweep_stack, 1024);
 	static struct k_thread sweep_thread;
@@ -287,6 +357,6 @@ int main(void)
 
 	reader_loop();
 	k_timer_stop(&crank_timer);
-	print_csv_report();
+	print_csv_footer();
 	return 0;
 }
