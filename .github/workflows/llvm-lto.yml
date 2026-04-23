@@ -353,7 +353,13 @@ jobs:
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf;${GALE_ROOT}/zephyr/gale_lto_overlay.conf" \
             -DCMAKE_EXE_LINKER_FLAGS="${LLD_LIBS}"
-          timeout 120 west build -t run 2>&1 | tee test.log
+          # `timeout 120 ... | tee` — timeout exits 124 when it SIGTERMs qemu
+          # (qemu_cortex_m3 runs don't self-terminate after the test suite
+          # prints PROJECT EXECUTION SUCCESSFUL; test runner doesn't drive
+          # a monitor-exit sequence). Under `set -e -o pipefail` the 124 would
+          # kill the step before the grep check, so swallow it with `|| true`
+          # and decide purely on the log contents.
+          timeout 120 west build -t run 2>&1 | tee test.log || true
           if grep -q "PROJECT EXECUTION SUCCESSFUL" test.log; then
             echo "PASS: ${PRIMITIVE}"
           else
