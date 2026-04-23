@@ -328,6 +328,26 @@ jobs:
             echo "QEMU_BIN_PATH=${SDK_DIR}/sysroots/x86_64-pokysdk-linux/usr/bin" >> "$GITHUB_ENV"
           fi
 
+      - name: "PROBE: locate qemu-system-arm (issue #24)"
+        if: matrix.primitive == 'semaphore'
+        run: |
+          echo "--- find qemu-system-arm ---"
+          find /root/zephyr-sdk-* -name 'qemu-system-arm' 2>/dev/null || echo none
+          echo "--- ls hosttools ---"
+          ls -la /root/zephyr-sdk-*/hosttools 2>/dev/null || echo no-hosttools
+          echo "--- ls SDK root ---"
+          ls /root/zephyr-sdk-*/ 2>/dev/null
+          echo "--- find tar.xz under SDK ---"
+          find /root/zephyr-sdk-* -maxdepth 3 -name '*.tar.*' 2>/dev/null || echo no-tars
+          echo "--- env ---"
+          env | grep -E 'QEMU|SDK' || echo no-env
+          echo "--- west sdk help ---"
+          west sdk --help 2>&1 | head -40 || echo no-west-sdk-help
+          echo "--- west sdk install help ---"
+          west sdk install --help 2>&1 | head -60 || echo no-install-help
+          echo "--- which qemu-system-arm ---"
+          which qemu-system-arm 2>&1 || echo not-on-path
+
       - name: Build and run test (LLVM+LTO)
         run: |
           . /root/.cargo/env
