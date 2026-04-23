@@ -65,6 +65,13 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
             | sh -s -- -y --default-toolchain stable
           . /root/.cargo/env
+          # stm32f4_disco uses a Cortex-M4F — gale's CMake picks
+          # thumbv7em-none-eabihf when CONFIG_FPU=y, otherwise the
+          # soft-float thumbv7em-none-eabi. The engine bench doesn't
+          # use floating point so CONFIG_FPU stays off by default and
+          # the soft-float target is what cargo ends up needing.
+          # Install both so either config works.
+          rustup target add thumbv7em-none-eabi
           rustup target add thumbv7em-none-eabihf
 
       - name: West init + update + SDK
