@@ -957,3 +957,101 @@ artifacts:
         [-NCOOP, NPREEMPT); both the Rust model's type and the FFI
         validator MUST be signed and MUST use the kconfig-derived
         bounds, not the hardcoded 32.
+
+  # ── 2026-04-23 extension: candidate UCAs surfaced by the extreme-
+  #    test-cases scoping brief (docs/research/extreme-test-cases.md).
+  #    All three follow the "narrow Verus domain vs wide C caller"
+  #    class that U-1/U-6/U-9 already instance — the precondition is
+  #    proved internally but not enforced at the FFI boundary.
+
+  - id: U-11
+    type: uca
+    title: Condvar broadcast_decide saturates silently at MAX_WAITERS
+    status: draft
+    description: >
+      src/wait_queue.rs:31 defines `MAX_WAITERS: u32 = 64` and Verus
+      proves `broadcast_decide` refuses to emit a woken count above
+      that (C8). The refusal is a silent no-op from the C caller's
+      perspective — there is no runtime signal back to the shim when
+      the 65th waiter attempts to join. A sem/mutex/condvar with
+      configured CONFIG_MAX_THREAD_BYTES > 64 can drop wake events
+      without observable error.
+      Surfaced 2026-04-23 by the extreme-test-cases scoping pass;
+      falls in the same "precondition erased at FFI" class as U-1
+      and U-9.
+    tags: [stpa, uca, condvar, wait-queue, precondition-erasure]
+    links:
+      - type: issued-by
+        target: C-3
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      uca-type: not-providing
+      control-action: wake-waiter
+      context: >
+        Caller attempts to enqueue a 65th waiter on a condvar/sem/mutex.
+      rationale: >
+        Verus proof covers the decision function only; the shim has no
+        BUILD_ASSERT tying CONFIG_MAX_THREAD_BYTES to MAX_WAITERS, nor
+        a runtime reject. Same pattern as U-9 (CPU_MASK) at a different
+        boundary.
+
+  - id: U-12
+    type: uca
+    title: Timer status counter ignores u32::MAX overflow return
+    status: draft
+    description: >
+      src/timer.rs:155-158 — `expire_decide` correctly returns an
+      error when `status == u32::MAX` (TM8 proof-obligation). The FFI
+      wrapper and C shim do not propagate this error to the caller as
+      a fault; instead they silently wrap the counter. A Zephyr
+      application polling `k_timer_status_sync` on a long-running
+      periodic timer gets a reused status value that looks like the
+      timer just fired once when in fact it expired u32::MAX+1 times.
+      Surfaced 2026-04-23.
+    tags: [stpa, uca, timer, overflow, precondition-erasure]
+    links:
+      - type: issued-by
+        target: C-1
+      - type: leads-to-hazard
+        target: H-6
+    fields:
+      uca-type: providing
+      control-action: publish-timer-status
+      context: >
+        Timer runs long enough that its status counter hits u32::MAX
+        and the caller next reads status.
+      rationale: >
+        Verus proves the model refuses to increment past u32::MAX; the
+        shim propagates the returned count without a fault/error
+        signal, so the caller cannot distinguish "one expiration" from
+        "~4 billion and counting."
+
+  - id: U-13
+    type: uca
+    title: Ring-buffer capacity widening hides caller-side misuse
+    status: draft
+    description: >
+      src/ring_buf.rs:294-296 widens tail/head arithmetic to u64 to
+      avoid u32 overflow on `tail + n`. The widening is internally
+      correct (RB2) — the sum fits in u64 so overflow is impossible.
+      But the FFI does not surface the case where `n > capacity` at
+      the boundary: a caller requesting more bytes than the buffer
+      can hold gets silently truncated rather than refused, masking
+      a caller bug that would otherwise produce a clear `-ENOSPC`.
+      Surfaced 2026-04-23 by the extreme-test-cases scan.
+    tags: [stpa, uca, ring-buf, precondition-erasure]
+    links:
+      - type: issued-by
+        target: C-3
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      uca-type: providing
+      control-action: ring-buf-put
+      context: >
+        Caller passes n > capacity to `ring_buf_put`.
+      rationale: >
+        The proof keeps internal state consistent, but the FFI shim
+        does not escalate caller-domain violations as faults; it
+        accepts the call and returns a truncated write count.
