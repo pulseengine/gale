@@ -19,6 +19,42 @@
 #        -DOVERLAY_CONFIG=<gale>/zephyr/gale_overlay.conf
 
 cmake_minimum_required(VERSION 3.20)
+
+# If CTF tracing-to-UART is enabled (via prj-ctf.conf overlay), QEMU
+# needs a second -serial entry to redirect uart1 (the chosen
+# zephyr,tracing-uart) to a capture file. Without this QEMU drops the
+# second UART silently. QEMU_EXTRA_FLAGS must be populated before
+# find_package(Zephyr) because qemu.cmake reads it during board setup.
+#
+# Detection is coarse: grep the passed OVERLAY_CONFIG for "prj-ctf"
+# (our filename convention). This avoids polluting default baseline /
+# gale CI runs (which don't pass prj-ctf.conf) with an extra capture
+# file in every build dir. An explicit -DENGINE_BENCH_CTF=y also works.
+if(BOARD MATCHES "qemu_.*")
+  set(_engine_ctf_enabled OFF)
+  if(ENGINE_BENCH_CTF)
+    set(_engine_ctf_enabled ON)
+  elseif(DEFINED OVERLAY_CONFIG AND "${OVERLAY_CONFIG}" MATCHES "prj-ctf")
+    set(_engine_ctf_enabled ON)
+  endif()
+
+  if(_engine_ctf_enabled)
+    list(APPEND QEMU_EXTRA_FLAGS -serial file:channel0_0)
+    # DT overlay binding zephyr,tracing-uart = &uart1. Kept out of the
+    # default bench boards/ dir so baseline + gale runs don't pick it
+    # up and silently mutate the DT chosen nodes.
+    if(NOT DEFINED DTC_OVERLAY_FILE)
+      set(DTC_OVERLAY_FILE
+          "${CMAKE_CURRENT_LIST_DIR}/tracing_ctf/qemu_cortex_m3.overlay")
+    else()
+      set(DTC_OVERLAY_FILE
+          "${DTC_OVERLAY_FILE};${CMAKE_CURRENT_LIST_DIR}/tracing_ctf/qemu_cortex_m3.overlay")
+    endif()
+    message(STATUS "engine_control: CTF tracing enabled — "
+                   "uart1 → <build>/channel0_0")
+  endif()
+endif()
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(gale_engine_control)
 

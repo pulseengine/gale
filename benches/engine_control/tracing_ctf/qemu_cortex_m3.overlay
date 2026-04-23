@@ -1,0 +1,26 @@
+/*
+ * Engine-control bench — qemu_cortex_m3 DT overlay for CTF tracing.
+ *
+ * Routes Zephyr's CTF tracing backend to uart1 (lm3s6965 has three UARTs;
+ * uart0 is the zephyr,console the bench CSV uses). With prj-ctf.conf +
+ * CONFIG_TRACING_BACKEND_UART, the CTF stream writes to this device and
+ * leaves the CSV on the console untouched.
+ *
+ * This overlay is appended by the bench's CMakeLists.txt when it
+ * detects a CTF build (OVERLAY_CONFIG contains "prj-ctf" or
+ * ENGINE_BENCH_CTF=y). Kept out of the boards/ auto-discovery path so
+ * non-CTF baseline/gale runs don't silently mutate the DT chosen nodes.
+ *
+ * NOTE: this also overrides the stock qemu_cortex_m3.dts chosen
+ * `zephyr,uart-pipe = &uart1`. The uart-pipe chosen node is used by
+ * networking SLIP / PPP samples; the bench doesn't enable CONFIG_NETWORKING
+ * so dropping uart-pipe is harmless. If a later variant of the bench
+ * needs networking, revisit this.
+ */
+
+/ {
+	chosen {
+		zephyr,tracing-uart = &uart1;
+		/delete-property/ zephyr,uart-pipe;
+	};
+};
