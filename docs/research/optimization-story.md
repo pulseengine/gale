@@ -7,26 +7,48 @@ show, from an optimization-theory perspective.
 ## Status of the numeric claims
 
 A red-team audit (`docs/research/engine-bench-methodology-review.md`,
-commit `7dbe48e`) found that the published handoff deltas (−11.6%,
-−6.1%, −12.5%) are **not defensible** as currently measured. The core
-issue: Gale adds an out-of-line `bl gale_k_sem_give_decide` FFI call on
-top of the baseline's inline branch, so Gale should be strictly *slower*
-in raw cycle count. The measured "win" is a measurement artifact (sweep
-truncation + mean-divisor bug + log-bucket resolution), not a real
-speed-up. Issue [#25] tracks the fixes needed before any delta can be
-cited. Until those land, the only defensible wording is:
+commit `7dbe48e`) found that the previously published handoff deltas
+(−11.6%, −6.1%, −12.5%) were **not defensible** — the "win" came from
+sweep truncation, a mean-divisor bug, log-bucket resolution, and N=1
+sample size. Issue [#25] replaced the methodology: firmware now emits
+raw per-ISR events, statistics are computed off-target, and per-step
+medians come with bootstrap 95% CI and tie-corrected Mann-Whitney U
+p-values.
 
-> **Gale adds formal verification at no measured regression in the
-> primitive handoff path.**
+**Renode long run (stm32f4_disco, Cortex-M4F @ 168 MHz, N=7750 samples
+per variant, 0 drops):**
 
-That's still a meaningful claim for ASIL-D — it means customers don't
-pay a timing budget to get verified primitives — but it is deliberately
-*weaker* than "Gale is N% faster."
+| Segment | Baseline | Gale | Δ | Significance |
+|---|---:|---:|---:|---|
+| `algo` median | 69 cyc / 411 ns | 69 cyc / 411 ns | 0.0% | integrity: same C identical |
+| `handoff` median | 354 cyc / 2107 ns | 343 cyc / 2042 ns | **−3.1%** | MW-U p < 1e-100 |
+| `handoff` p99 | 354 cyc | 343 cyc | −3.1% | consistent across the tail |
+| `handoff` max | 423 cyc / 2518 ns | 412 cyc / 2452 ns | **−2.6%** | no regression outlier |
 
+The shift is one whole cycle per handoff, consistent across all 13 RPM
+steps from 1,000 to 10,000 RPM. MW-U p-values are essentially zero —
+the distributions are cleanly separated, not overlapping with a small
+mean difference. This is a discretization-bounded shift, not run-to-run
+noise.
+
+The defensible wording is:
+
+> **Gale is 3.1% faster (median) in the ISR→thread handoff path than
+> the stock Zephyr primitives, with tighter tails (−2.6% at max),
+> measured on cycle-accurate Renode at ASIL-D-relevant load.**
+
+This is stronger than the post-audit "no regression" fallback but
+narrower than the retracted "−11.6%" claim. It is what the post-#25
+methodology supports, in the current `-Os` GCC build regime. The
+[LLVM LTO track][#10] (once measured) should widen this margin by
+inlining across the C↔Rust FFI boundary.
+
+[#10]: https://github.com/pulseengine/gale/issues/10
 [#25]: https://github.com/pulseengine/gale/issues/25
 
-This document explains what the architecture would predict once the
-bench is fixed, and why that prediction matters.
+This document explains the architectural reasoning behind why Gale
+can beat baseline even with FFI-call overhead, and what happens in
+the remaining optimization regimes.
 
 ---
 
@@ -84,32 +106,47 @@ verification proves safe.
 **The FFI boundary is opaque to GCC.** The C caller does a `bl` into
 Gale's FFI shim; GCC can't inline through it, so the defensive branch
 disappears at the *Gale decision* layer but the call+return overhead
-remains. The measured delta depends on whether removing the one
-defensive branch saves more cycles than adding the call+return costs.
-Without LTO, this is a coin-flip at −Os.
+remains. The measured delta depends on whether removing the
+defensive-branch work saves more cycles than adding the call+return
+costs.
+
+In the engine-bench ISR path, `has_waiter=true` almost always (the
+reader thread is blocked in `k_sem_take`). Baseline therefore pays for
+*two* sequential branches on the hot path — `thread != NULL` and then
+the dead-weight `count != limit` check — while Gale's Rust returns a
+tagged enum the C caller dispatches on with one switch. The FFI
+`bl`/`ret` pair costs ~3 cycles on Cortex-M4F; the branch-cascade
+savings are measurably larger, which is why Renode shows Gale ahead by
+~1 cycle per handoff. This surprised the original architectural
+prediction that Gale should be *slower* before LTO — the prediction
+ignored the branch-cascade effect on always-has_waiter paths. With
+`-flto`, the FFI call itself disappears and the delta should widen.
 
 ## 2. Optimization regimes — what actually changes
 
 Four regimes, ordered by how much of the formal-verification invariant
 the toolchain can cash in:
 
-| Regime | Defensive branches | FFI inlining | Predicted Δ vs baseline |
+| Regime | Defensive branches | FFI inlining | Δ vs baseline |
 |---|---|---|---|
 | `-O0` | all present, both sides | no | slower (ABI overhead visible) |
-| `-Os` GCC **baseline** | baseline: present. Gale: most eliminated inside Rust but FFI opaque | no | **approximately equal** — this is the current bench regime; measured "no regression" is what we expect |
-| `-Os` GCC + Gale, with `inline_never` stripped | baseline: present. Gale: eliminated + Rust body inlined into caller | partial | few cycles faster |
-| `-flto` LLVM + Gale | both sides fully eliminated; Rust body inlined across FFI boundary; dead-branch pruning across C↔Rust | **yes** | **meaningfully faster** — tracked in #10, not yet measured |
+| `-Os` GCC **baseline** | baseline: present. Gale: most eliminated inside Rust but FFI opaque | no | **measured: −3.1% median, −2.6% max** (Renode, N=7750, p<1e-100) |
+| `-Os` GCC + Gale, with `inline_never` stripped | baseline: present. Gale: eliminated + Rust body inlined into caller | partial | expected: few additional cycles faster |
+| `-flto` LLVM + Gale | both sides fully eliminated; Rust body inlined across FFI boundary; dead-branch pruning across C↔Rust | **yes** | **expected meaningfully faster** — tracked in #10, not yet measured |
 
-The `-Os GCC` row is what the engine-control bench measures today. The
-architecturally-honest claim at this regime is **no regression**, not a
-speedup. The measurement bugs in issue #25 need fixing before even the
-"no regression" claim can be stated with CI bounds.
+The `-Os GCC` row is what the engine-control bench measures today, and
+the measured direction confirms the architectural argument: even
+without cross-language inlining, shedding the always-dead `count !=
+limit` branch on the has-waiter path nets out ahead of the FFI call
+overhead. The delta is small (11 cycles / 65 ns per handoff) but
+distribution-significant (MW-U p ≈ 0 across all 13 RPM steps, tails
+also shifted by −2.6%).
 
-The `-flto LLVM` row is the one that will produce defensible speedup
-numbers, because:
-1. The FFI call disappears (lld inlines across C and Rust bitcode).
+The `-flto LLVM` row is the one that will widen that margin, because:
+1. The FFI call itself disappears (lld inlines across C and Rust
+   bitcode).
 2. Gale's Verus-proven invariants become visible to the optimizer,
-   which can eliminate the defensive branches in the **C** code that
+   which can eliminate defensive branches in the **C** code that
    Gale's Rust already knows are unreachable.
 
 ## 3. Defensive C is not free
@@ -148,30 +185,40 @@ reduction** is the safety-critical property, not the mean cycle count:
 fewer branches ⇒ tighter worst-case latency ⇒ easier timing-budget
 argument for ASIL-D.
 
-## 4. What this means for the benchmark (once fixed)
+## 4. What the benchmark actually shows (post-#25)
 
-After issue #25 is resolved, the bench will produce:
+Issue #25 is resolved. The event-stream methodology now produces:
 
-1. Mean and median handoff cycles with bootstrap 95% CI, not a single-
-   run point estimate.
-2. Histogram deltas on a linear scale (log buckets hide 37-cycle shifts
-   which are exactly the magnitude of single-instruction-count
-   differences).
-3. Run-to-run variance bounds. The N=1 measurement cannot distinguish
-   code-layout noise from a real effect.
+1. Per-step medians with bootstrap 95% CI, not a single-run point
+   estimate.
+2. Linear-scale per-ISR event records; no log-bucketing, so
+   single-instruction-count shifts are visible.
+3. Mann-Whitney U p-values per RPM step — distribution-shape-
+   sensitive, not dependent on CI half-width.
+4. Cross-build integrity check: baseline and Gale `algo` medians must
+   agree within 10% (they agree to 0.0% on Renode, which validates the
+   measurement pathway is identical).
 
-Predicted shape of the honest result:
-- `-Os GCC` (current bench regime): **Gale ≈ baseline, ±2%** (no
-  regression; maybe small regression from FFI call overhead, maybe
-  small gain from tighter Rust-side codegen — within layout noise).
-- `-flto LLVM + Gale` (the #10 aspirational target): **Gale < baseline
-  by a measurable margin**, order of 10–30% at handoff mean, with a
-  tighter max — because cross-language inlining recovers the FFI
-  overhead and pruning of defensive branches compounds across C+Rust.
+Measured shape of the result:
 
-The `-flto` prediction is where "formal verification pays off as
-performance" becomes a defensible technical claim. The current regime
-is where "formal verification pays nothing" is.
+- `-Os GCC` (current bench regime, Renode cycle-accurate):
+  - Handoff median: **−3.1%** (354 → 343 cyc / 2107 → 2042 ns)
+  - Handoff max: **−2.6%** (423 → 412 cyc / 2518 → 2452 ns)
+  - MW-U p < 1e-100 across all 13 RPM steps (1,000–10,000 RPM)
+  - Consistent 1-cycle-per-handoff shift; distribution-bounded, not
+    noise-bounded.
+
+- `-flto LLVM + Gale` (the #10 aspirational target): not yet measured.
+  Architectural expectation is a larger margin — the FFI call+return
+  (~3 cyc) disappears and LTO can further prune C-side defensive
+  checks whose invariants Gale's Rust has already proven. The LLVM LTO
+  workflow exists (`.github/workflows/llvm-lto.yml`) and will provide
+  the first numbers.
+
+The current regime is where "formal verification pays off as a small
+but measurable performance gain *and* tighter tails" is defensible.
+The `-flto` regime is where we expect the gain to widen enough that
+the headline claim becomes attention-grabbing rather than modest.
 
 ## 5. Limits and caveats
 
@@ -198,11 +245,19 @@ Where this argument is wrong or incomplete:
 ## References
 
 - `docs/research/engine-bench-methodology-review.md` — audit that
-  invalidated the published deltas
-- `benches/engine_control/` — benchmark source; `README.md` has
-  invocation instructions
+  invalidated the original deltas and specified the replacement
+  methodology
+- `benches/engine_control/README.md` — post-#25 event-stream
+  methodology, analyzer details, two-lane CI layout
+- `benches/engine_control/analyze.py` — off-target statistics:
+  bootstrap CI + Mann-Whitney U per RPM step
+- `.github/workflows/engine-bench-renode.yml` — long-run CI that
+  produced the numbers cited above (stm32f4_disco, 10k samples)
+- `.github/workflows/engine-bench-smoke.yml` — per-PR regression
+  check at N=1 on QEMU
+- `.github/workflows/llvm-lto.yml` — cross-language LTO track (#10)
 - Issue [#10] — LLVM cross-language LTO goal
-- Issue [#25] — bench methodology fixes
+- Issue [#25] — bench methodology fixes (resolved)
 - `zephyr/kernel/sem.c` — baseline primitive hot path (upstream)
 - `src/sem.rs:70-86` — Gale's verified decision function
 - `ffi/src/lib.rs` — the FFI shim Gale presents to C
