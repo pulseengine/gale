@@ -1,23 +1,29 @@
 #!/usr/bin/env bash
-# Engine-control benchmark — QEMU smoke run with regression asserts.
+# Engine-control benchmark — QEMU event-stream runner with regression
+# asserts.
 #
-# Runs the short (150-sample) version on qemu_cortex_m3 in both
-# baseline and gale configurations and asserts:
-#   - both builds succeed
-#   - both runs complete (produce "=== END ===")
-#   - neither run reports drops > 0
-#   - algo-mean matches across builds within 5% (measurement integrity)
-#   - handoff-mean is below a conservative ceiling
+# Post-#25 methodology: the firmware emits raw per-ISR event lines
+# (E,<seq>,<step>,<rpm>,<algo_cycles>,<handoff_cycles>). All statistics
+# are computed off-target by analyze.py. This script:
 #
-# Intended for CI: fast (~3 min in a warm container) and reliably
-# catches regressions in the ISR/primitive path without requiring
-# real hardware or Renode.
+#   1. Builds baseline + gale variants
+#   2. Runs each N times (default 1 for CI smoke; -n 20 for manual
+#      statistical power)
+#   3. Concatenates per-run event streams with a run-id prefix
+#   4. Invokes analyze.py which asserts:
+#        - sample count >= expected (no truncation)
+#        - drops == 0
+#        - algo distributions overlap across builds > 95% (integrity:
+#          same C code should produce the same algorithm timing)
+#        - no handoff sample exceeds 2x baseline p99 (regression guard)
+#      and prints a median + 95% bootstrap CI comparison table with
+#      Mann-Whitney U p-values per RPM step.
 #
 # Usage:
-#   scripts/dev-build-test.sh-style env required:
-#     ZEPHYR_BASE, ZEPHYR_SDK_INSTALL_DIR, GALE_ROOT (defaults if in
-#     the standard z/ workspace layout)
-#   ./run_qemu_bench.sh
+#   ./run_qemu_bench.sh [-n RUNS]
+#
+# Env (defaults for local z/ layout):
+#   ZEPHYR_BASE, ZEPHYR_SDK_INSTALL_DIR, GALE_ROOT, BUILD_ROOT
 
 set -euo pipefail
 
@@ -29,10 +35,26 @@ set -euo pipefail
 
 export ZEPHYR_BASE ZEPHYR_SDK_INSTALL_DIR
 
-# Regression thresholds — tune as data accumulates.
-readonly MAX_DROPS=0
-readonly MAX_HANDOFF_MEAN_CYCLES=800   # ~67 μs at 12 MHz QEMU; very loose
-readonly ALGO_MATCH_PCT=10             # algo mean deltas above this fail
+RUNS=1
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	-n) RUNS="$2"; shift 2;;
+	-h|--help)
+		echo "Usage: $0 [-n RUNS]"
+		exit 0;;
+	*)
+		echo "unknown arg: $1" >&2
+		exit 2;;
+	esac
+done
+
+# Per-run QEMU timeout. Firmware reaches `=== END ===` in ~30s for the
+# short sweep; QEMU doesn't halt on main-return (qemu_cortex_m3 has no
+# semihost-exit path in this Zephyr build), so we rely on SIGTERM from
+# `timeout` to stop the emulator. 60s covers the run + a healthy safety
+# margin. Bump for the long sweep (7750 samples) if you adapt this script
+# for stm32f4_disco. Renode has its own Robot timeout.
+readonly PER_RUN_TIMEOUT=60
 
 build() {
 	local name="$1"   # baseline | gale
@@ -43,9 +65,6 @@ build() {
 		extra+=( -DOVERLAY_CONFIG="${GALE_ROOT}/benches/engine_control/prj-gale.conf" )
 	fi
 	rm -rf "${dir}"
-	# Absolute -s path so this script works in any workspace layout
-	# (local z/ vs CI $GITHUB_WORKSPACE/gale). west still needs to
-	# find a zephyr installation via ZEPHYR_BASE.
 	west build -b qemu_cortex_m3 -d "${dir}" \
 	    -s "${GALE_ROOT}/benches/engine_control" \
 	    ${extra[@]+"--"} ${extra[@]+"${extra[@]}"} \
@@ -53,82 +72,44 @@ build() {
 	echo "==> built ${name}: ${dir}/zephyr/zephyr.elf"
 }
 
-run() {
-	local name="$1"
+run_one() {
+	# run_one <variant> <run_id> → appends to ${dir}/events.csv
+	local name="$1" run_id="$2"
 	local dir="${BUILD_ROOT}/engine-${name}"
-	local csv="${dir}/output.csv"
-	timeout 90 west build -d "${dir}" -t run >"${csv}" 2>&1 || true
-	echo "==> ran ${name}: ${csv}"
-}
-
-field() {
-	# field <csv> <key> — returns last comma-separated value, CR-stripped.
-	# QEMU UART output sprinkles \r into the console, so awk's $NF can
-	# include one; tr -d '\r' before the integer-comparison tests is
-	# what keeps macOS /bin/sh tests from erroring with "expected int".
-	local csv="$1" key="$2"
-	awk -F, -v k="${key}" '$1==k {print $NF; exit}' "${csv}" | tr -d '\r\n'
-}
-
-sub_field() {
-	# e.g. sub_field <csv> algo mean
-	local csv="$1" tag="$2" metric="$3"
-	awk -F, -v t="${tag}" -v m="${metric}" \
-	    '$1==t && $2==m {print $3; exit}' "${csv}" | tr -d '\r\n'
-}
-
-assert() {
-	local label="$1" cond="$2" expected="$3"
-	if ! eval "${cond}"; then
-		echo "FAIL [${label}]: ${cond} (expected ${expected})"
-		return 1
-	fi
-	echo "pass [${label}]"
+	local raw="${dir}/run${run_id}.raw"
+	local events="${dir}/events.csv"
+	timeout "${PER_RUN_TIMEOUT}" west build -d "${dir}" -t run \
+	    >"${raw}" 2>&1 || true
+	# Append to the combined events CSV with a run-id prefix on each
+	# event line. The analyzer uses this to distinguish runs while
+	# still pooling distributions across them.
+	python3 "${GALE_ROOT}/benches/engine_control/tag_events.py" \
+	    "${raw}" "${run_id}" "${name}" >>"${events}"
+	local raw_lines
+	raw_lines=$(wc -l <"${raw}" 2>/dev/null || echo 0)
+	echo "==> ran ${name} run ${run_id}: ${raw_lines} raw lines → ${events}"
 }
 
 main() {
 	build baseline
 	build gale
-	run   baseline
-	run   gale
 
-	local b="${BUILD_ROOT}/engine-baseline/output.csv"
-	local g="${BUILD_ROOT}/engine-gale/output.csv"
+	# Fresh combined event files
+	: > "${BUILD_ROOT}/engine-baseline/events.csv"
+	: > "${BUILD_ROOT}/engine-gale/events.csv"
 
-	# End marker present → run completed (not just hung).
-	grep -q "=== END ===" "${b}" || { echo "FAIL: baseline did not finish"; tail -20 "${b}"; exit 1; }
-	grep -q "=== END ===" "${g}" || { echo "FAIL: gale did not finish"; tail -20 "${g}"; exit 1; }
+	for r in $(seq 1 "${RUNS}"); do
+		run_one baseline "${r}"
+		run_one gale     "${r}"
+	done
 
-	local b_drops g_drops b_algo g_algo b_handoff g_handoff
-	b_drops=$(field "${b}"    drops)
-	g_drops=$(field "${g}"    drops)
-	b_algo=$(sub_field "${b}" algo    mean)
-	g_algo=$(sub_field "${g}" algo    mean)
-	b_handoff=$(sub_field "${b}" handoff mean)
-	g_handoff=$(sub_field "${g}" handoff mean)
+	local b="${BUILD_ROOT}/engine-baseline/events.csv"
+	local g="${BUILD_ROOT}/engine-gale/events.csv"
 
 	echo ""
-	echo "baseline: drops=${b_drops} algo_mean=${b_algo} handoff_mean=${b_handoff}"
-	echo "gale:     drops=${g_drops} algo_mean=${g_algo} handoff_mean=${g_handoff}"
-	echo ""
-
-	local rc=0
-	assert "baseline.drops<=${MAX_DROPS}" "[ ${b_drops} -le ${MAX_DROPS} ]" "<=${MAX_DROPS}" || rc=1
-	assert "gale.drops<=${MAX_DROPS}"     "[ ${g_drops} -le ${MAX_DROPS} ]" "<=${MAX_DROPS}" || rc=1
-	assert "baseline.handoff_mean<${MAX_HANDOFF_MEAN_CYCLES}" \
-	       "[ ${b_handoff} -lt ${MAX_HANDOFF_MEAN_CYCLES} ]" "<${MAX_HANDOFF_MEAN_CYCLES}" || rc=1
-	assert "gale.handoff_mean<${MAX_HANDOFF_MEAN_CYCLES}" \
-	       "[ ${g_handoff} -lt ${MAX_HANDOFF_MEAN_CYCLES} ]" "<${MAX_HANDOFF_MEAN_CYCLES}" || rc=1
-
-	# Algo mean delta within ALGO_MATCH_PCT. abs(g - b) / b * 100 < pct.
-	local diff=$(( g_algo > b_algo ? g_algo - b_algo : b_algo - g_algo ))
-	local pct=$(( diff * 100 / b_algo ))
-	assert "algo.match<${ALGO_MATCH_PCT}%" "[ ${pct} -lt ${ALGO_MATCH_PCT} ]" "<${ALGO_MATCH_PCT}%" || rc=1
-
-	echo ""
-	python3 "${GALE_ROOT}/benches/engine_control/compare.py" "${b}" "${g}"
-
-	exit "${rc}"
+	echo "==> analyze:"
+	python3 "${GALE_ROOT}/benches/engine_control/analyze.py" \
+	    --baseline "${b}" --gale "${g}" --runs "${RUNS}"
 }
 
 main "$@"

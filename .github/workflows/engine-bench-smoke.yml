@@ -1,16 +1,22 @@
 # Engine-control benchmark — QEMU smoke regression.
 #
 # Fast (~5 min) regression check. Builds both baseline and gale
-# variants of benches/engine_control, runs each on qemu_cortex_m3,
-# and asserts:
-#   - both runs reach the "=== END ===" marker
+# variants of benches/engine_control, runs each on qemu_cortex_m3
+# with the event-stream methodology (post-#25), and asserts:
+#   - both runs reach the `=== END ===` marker
 #   - drops == 0 in both
-#   - algo-mean matches across builds within 10% (measurement integrity)
-#   - handoff-mean stays under the 800-cycle ceiling (conservative)
+#   - baseline + gale each have >=95% of expected samples
+#   - algo median delta < 10% across builds (measurement integrity)
+#   - no handoff sample exceeds 2x baseline p99 (regression guard)
 #
 # The Renode long-run workflow (engine-bench-renode.yml) produces the
-# authoritative absolute-timing numbers; this smoke check exists only
-# to catch regressions fast on every PR.
+# authoritative absolute-timing numbers at N=10; this smoke check
+# exists to catch regressions fast on every PR at N=1.
+#
+# Methodology: firmware emits one CSV event line per ISR sample;
+# analyze.py computes median + 95% bootstrap CI + Mann-Whitney U
+# p-value per RPM step. See docs/research/engine-bench-methodology-review.md
+# and issue #25.
 #
 # Security: this workflow uses no untrusted GitHub event inputs
 # (issue title, PR body, commit message) in shell commands. Only
@@ -90,14 +96,18 @@ jobs:
           GALE_ROOT:        ${{ github.workspace }}/gale
         run: |
           . /root/.cargo/env
-          bash "$GALE_ROOT/benches/engine_control/run_qemu_bench.sh"
+          # N=1 for smoke: fast sanity check, not statistical power.
+          # Long runs at N=10 live in engine-bench-renode.yml.
+          bash "$GALE_ROOT/benches/engine_control/run_qemu_bench.sh" -n 1
 
-      - name: Upload CSVs for failure diagnosis
+      - name: Upload event streams for diagnosis
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: engine-bench-smoke-csv
+          name: engine-bench-smoke-events
           path: |
-            /tmp/engine-baseline/output.csv
-            /tmp/engine-gale/output.csv
+            /tmp/engine-baseline/events.csv
+            /tmp/engine-gale/events.csv
+            /tmp/engine-baseline/run*.raw
+            /tmp/engine-gale/run*.raw
           if-no-files-found: ignore

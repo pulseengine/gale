@@ -105,7 +105,6 @@ jobs:
           west build -b stm32f4_disco -d /tmp/engine-baseline-long \
             -s "$GALE_ROOT/benches/engine_control" \
             -- \
-              -DENGINE_BENCH_TOTAL_SAMPLES=10000 \
               -DENGINE_BENCH_SWEEP=long
 
       - name: Build gale (stm32f4_disco, long sweep, 10k samples)
@@ -119,7 +118,6 @@ jobs:
             -- \
               -DZEPHYR_EXTRA_MODULES="$GALE_ROOT" \
               -DOVERLAY_CONFIG="$GALE_ROOT/benches/engine_control/prj-gale.conf" \
-              -DENGINE_BENCH_TOTAL_SAMPLES=10000 \
               -DENGINE_BENCH_SWEEP=long
 
       - name: Run baseline in Renode
@@ -145,20 +143,62 @@ jobs:
           cd "$GITHUB_WORKSPACE/renode-gale"
           renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
 
+      - name: Tag events with run-id for analyzer
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          # The Renode robot writes a raw UART capture to output.csv.
+          # analyze.py expects per-line run-id + variant tags (the same
+          # format run_qemu_bench.sh produces). We apply that here so
+          # Renode and QEMU lanes share one analyzer.
+          python3 - <<'PY' \
+              /tmp/engine-baseline-long/output.csv baseline \
+              > /tmp/engine-baseline-long/events.csv
+          import sys
+          raw_path, variant = sys.argv[1], sys.argv[2]
+          with open(raw_path, 'rt', errors='replace') as f:
+              for line in f:
+                  line = line.rstrip('\r\n')
+                  if line.startswith('E,'):
+                      print(f"R1,{variant},{line}")
+                  elif line.startswith(('drops,', 'samples,', 'build,',
+                                        'cycles_per_sec,', 'target_samples,')):
+                      print(f"M,R1,{variant},{line}")
+                  elif line == '=== END ===':
+                      print(f"M,R1,{variant},END")
+          PY
+          python3 - <<'PY' \
+              /tmp/engine-gale-long/output.csv gale \
+              > /tmp/engine-gale-long/events.csv
+          import sys
+          raw_path, variant = sys.argv[1], sys.argv[2]
+          with open(raw_path, 'rt', errors='replace') as f:
+              for line in f:
+                  line = line.rstrip('\r\n')
+                  if line.startswith('E,'):
+                      print(f"R1,{variant},{line}")
+                  elif line.startswith(('drops,', 'samples,', 'build,',
+                                        'cycles_per_sec,', 'target_samples,')):
+                      print(f"M,R1,{variant},{line}")
+                  elif line == '=== END ===':
+                      print(f"M,R1,{variant},END")
+          PY
+
       - name: Render comparison report
         env:
           GALE_ROOT: ${{ github.workspace }}/gale
         run: |
-          python3 "$GALE_ROOT/benches/engine_control/compare.py" \
-            /tmp/engine-baseline-long/output.csv \
-            /tmp/engine-gale-long/output.csv \
-            > /tmp/engine-comparison.md
+          python3 "$GALE_ROOT/benches/engine_control/analyze.py" \
+            --baseline /tmp/engine-baseline-long/events.csv \
+            --gale     /tmp/engine-gale-long/events.csv \
+            --runs 1 \
+            > /tmp/engine-comparison.md || true
           {
             echo '## Engine bench long (Renode) — this run'
             cat /tmp/engine-comparison.md
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload CSVs + report
+      - name: Upload event streams + report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -166,6 +206,8 @@ jobs:
           path: |
             /tmp/engine-baseline-long/output.csv
             /tmp/engine-gale-long/output.csv
+            /tmp/engine-baseline-long/events.csv
+            /tmp/engine-gale-long/events.csv
             renode-baseline/
             renode-gale/
             /tmp/engine-comparison.md
