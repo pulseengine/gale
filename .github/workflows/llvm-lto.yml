@@ -96,6 +96,15 @@ jobs:
           echo "LLD_LIBS=-L${GCC_LIB_DIR} -L${PICOLIBC_DIR}" >> "$GITHUB_ENV"
           echo "LIBRARY_PATH=${GCC_LIB_DIR}:${PICOLIBC_DIR}" >> "$GITHUB_ENV"
           echo "${ARM_BIN}/bin" >> "$GITHUB_PATH"
+          # SDK 1.0+ moved qemu-system-arm to ${SDK_DIR}/hosttools/opt/qemu/bin/.
+          # Older SDKs kept it at ${SDK_DIR}/sysroots/x86_64-pokysdk-linux/usr/bin/.
+          # The LLVM toolchain variant doesn't auto-discover it — tell Zephyr
+          # explicitly via QEMU_BIN_PATH.
+          if [ -d "${SDK_DIR}/hosttools/opt/qemu/bin" ]; then
+            echo "QEMU_BIN_PATH=${SDK_DIR}/hosttools/opt/qemu/bin" >> "$GITHUB_ENV"
+          elif [ -d "${SDK_DIR}/sysroots/x86_64-pokysdk-linux/usr/bin" ]; then
+            echo "QEMU_BIN_PATH=${SDK_DIR}/sysroots/x86_64-pokysdk-linux/usr/bin" >> "$GITHUB_ENV"
+          fi
           echo "SDK: ${SDK_DIR}, GCC: ${GCC_LIB_DIR}"
 
       # --- Build 1: Baseline (GCC, stock Zephyr, no Gale) ---
@@ -309,6 +318,15 @@ jobs:
           echo "LLD_LIBS=-L${GCC_LIB_DIR} -L${PICOLIBC_DIR}" >> "$GITHUB_ENV"
           echo "LIBRARY_PATH=${GCC_LIB_DIR}:${PICOLIBC_DIR}" >> "$GITHUB_ENV"
           echo "${ARM_BIN}/bin" >> "$GITHUB_PATH"
+          # SDK 1.0+ moved qemu-system-arm to ${SDK_DIR}/hosttools/opt/qemu/bin/.
+          # Older SDKs kept it at ${SDK_DIR}/sysroots/x86_64-pokysdk-linux/usr/bin/.
+          # The LLVM toolchain variant doesn't auto-discover it — tell Zephyr
+          # explicitly via QEMU_BIN_PATH.
+          if [ -d "${SDK_DIR}/hosttools/opt/qemu/bin" ]; then
+            echo "QEMU_BIN_PATH=${SDK_DIR}/hosttools/opt/qemu/bin" >> "$GITHUB_ENV"
+          elif [ -d "${SDK_DIR}/sysroots/x86_64-pokysdk-linux/usr/bin" ]; then
+            echo "QEMU_BIN_PATH=${SDK_DIR}/sysroots/x86_64-pokysdk-linux/usr/bin" >> "$GITHUB_ENV"
+          fi
 
       - name: Build and run test (LLVM+LTO)
         run: |
