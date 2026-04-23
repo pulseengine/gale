@@ -1,0 +1,342 @@
+# Measurement Framework Requirements — Tracing + Test Measurement
+#
+# Purpose: declare as first-class ASIL-D engineering requirements that
+# any timing/performance claim published by Gale rests on a defensible
+# measurement methodology.  Motivated by the engine-control benchmark
+# methodology review (docs/research/engine-bench-methodology-review.md,
+# commit 7dbe48e) whose findings invalidated the first benchmark
+# attempt (tracked in issue #25).
+#
+# This file is methodology-focused — it governs HOW we measure, not
+# WHAT we measure.  Kernel primitive specifications live elsewhere
+# (requirements.yaml, zms_requirements.yaml, etc.).
+#
+# Hierarchy:
+#   STKH-MEAS-001 (stakeholder-req)
+#     → SYSREQ-MEAS-001 (system-req)
+#       → SWREQ-MEAS-MS01 (sw-req — raw event emission)
+#       → SWREQ-MEAS-MS02 (sw-req — statistical rigor, CI, significance)
+#       → SWREQ-MEAS-MS03 (sw-req — per-primitive attribution)
+#
+# Safety case hook:
+#   G-1 (top-level safety goal, safety_case.yaml)
+#     ← sub-goal — SG-MEAS-001 (this file)
+#
+# Finding (rationale for why these artifacts exist):
+#   FIND-MEAS-001 — on-target histogram methodology produced indefensible
+#   numerical claims (issue #25).
+
+artifacts:
+
+  # ── Finding: the motivating incident ─────────────────────────────────────
+
+  - id: FIND-MEAS-001
+    type: finding
+    title: "On-target histogram methodology produces indefensible timing claims"
+    status: draft
+    description: >
+      The first engine-control benchmark published handoff-mean deltas
+      (-11.6 % on QEMU smoke, -6.1 % / -12.5 % max on Renode long) whose
+      direction is inconsistent with the code diff: the Gale path adds an
+      out-of-line FFI call (gale_k_sem_give_decide) on top of the baseline
+      inline branch, so net instruction count in the hot path is
+      unambiguously higher in Gale, yet the reported mean is faster.
+
+      The adversarial methodology review in docs/research/
+      engine-bench-methodology-review.md enumerated six confirmed flaws:
+
+        F1  Mean divisor mismatch (sum_algo / count with count capped at
+            TOTAL_SAMPLES while sum_* continued to accumulate).
+        F2  Sweep did not span the advertised RPM range — short run hit
+            cap during step 2 of 5; long run over-weighted RPM=10000 by
+            ~22 %.
+        F3  Direction of the delta is implausible from the code diff
+            alone; the -11.6 % signal is attributable to layout / cache /
+            measurement-overhead asymmetries, not to Gale being faster.
+        F4  CONFIG_GALE_KERNEL_SPINLOCK_VALIDATE silently dropped (depends
+            on SMP which is not enabled).
+        F5  GALE_KERNEL_SPINLOCK and GALE_KERNEL_TIMER compiled but never
+            called — only k_sem_give differs at runtime.
+        F6  Histogram resolution inadequate — log2 buckets cannot resolve
+            a ~37-cycle mean shift at ~300 cycles.
+
+      Root cause is not any individual flaw but a methodology pattern:
+      aggregate statistics (mean, min, max) computed on-target inside the
+      ISR, single run per variant, no variance bound, histogram bucketed
+      in the firmware.  Any future timing claim following the same
+      pattern will face the same defensibility gap at ASIL-D assessor
+      review.
+
+      This finding is the motivating rationale for STKH-MEAS-001 /
+      SYSREQ-MEAS-001 / SWREQ-MEAS-MS01..03.  The methodology fix
+      (raw event stream + off-target statistics) is tracked in issue #25.
+    tags: [methodology, benchmark, measurement, issue-25, asil-d]
+    fields:
+      source: >
+        docs/research/engine-bench-methodology-review.md (commit 7dbe48e);
+        gale issue #25.
+      relevance: critical
+      action-required: true
+    links:
+      - type: informs
+        target: STKH-001
+      - type: generates
+        target: STKH-MEAS-001
+      - type: generates
+        target: SYSREQ-MEAS-001
+      - type: generates
+        target: SWREQ-MEAS-MS01
+      - type: generates
+        target: SWREQ-MEAS-MS02
+      - type: generates
+        target: SWREQ-MEAS-MS03
+
+  # ── Stakeholder requirement ──────────────────────────────────────────────
+
+  - id: STKH-MEAS-001
+    type: stakeholder-req
+    title: Defensible measurement framework for ASIL-D timing claims
+    status: draft
+    description: >
+      Any benchmark, timing, or performance number published by Gale and
+      used for ASIL-D certification, customer procurement, or regression
+      detection must be produced by a measurement framework whose
+      statistical properties are declared, reproducible, and suitable for
+      independent assessor review.
+
+      Audiences: vehicle-OEM and tier-1 supplier safety assessors (see
+      L-1..L-3 stakeholder fields in stpa.yaml) reviewing Gale's ASIL-D
+      safety case; customer procurement teams comparing Gale against
+      baseline Zephyr or competitor RTOS kernels; Gale's own CI pipeline
+      detecting performance regressions across commits.
+
+      The methodology pattern used for the first engine-control benchmark
+      (on-target histograms, single run, no variance bound — see
+      FIND-MEAS-001) produced numerically indefensible results; this
+      stakeholder requirement exists to prevent that pattern from
+      recurring.
+    tags: [methodology, measurement, benchmark, asil-d, procurement]
+    fields:
+      priority: must
+      source: >
+        ISO 26262 Part 8 Clause 9 — software verification evidence must be
+        reproducible and traceable.  Audience: vehicle-OEM, tier1-supplier,
+        regulatory-authority (see stpa.yaml L-1..L-3 stakeholder fields).
+        FIND-MEAS-001 / gale issue #25 (engine-bench methodology review,
+        commit 7dbe48e).
+    links:
+      - type: derives-from
+        target: STKH-001
+
+  # ── System requirement ──────────────────────────────────────────────────
+
+  - id: SYSREQ-MEAS-001
+    type: system-req
+    title: Benchmark framework with raw-event traceability and documented statistics
+    status: draft
+    description: >
+      Gale shall provide a benchmark framework whose measurements are
+      traceable to a raw event stream (timestamped per-sample records),
+      processed by a documented off-target statistical pipeline
+      (bootstrap confidence intervals, non-parametric significance
+      testing, multi-run variance), and whose outputs are suitable for
+      ASIL-D assessor review.
+
+      The framework shall be the sole path by which Gale publishes timing
+      or performance numbers in:
+        - the safety case / ASIL-D certification dossier,
+        - customer-facing procurement material,
+        - CI regression dashboards and release notes.
+
+      On-target computation of aggregate statistics (mean, min, max,
+      histogram bucketing inside the firmware) is prohibited for
+      published numbers — the on-target path produces only raw
+      timestamped events.
+    tags: [methodology, measurement, benchmark, framework, asil-d]
+    fields:
+      req-type: performance
+      priority: must
+      verification-criteria: >
+        Each published benchmark artifact carries:
+          1. a reference to the raw event stream (per-sample CSV or
+             equivalent) from which it was derived,
+          2. the off-target analysis script and its version,
+          3. N, bootstrap 95 % CI, and a non-parametric significance
+             test (e.g. Mann-Whitney U) vs the comparison baseline,
+          4. the build provenance (commit hash, toolchain, Kconfig set,
+             target, measurement overhead characterisation).
+        Absence of any of these disqualifies the number from external
+        citation.
+    links:
+      - type: derives-from
+        target: STKH-MEAS-001
+
+  # ── Software requirements ──────────────────────────────────────────────
+
+  - id: SWREQ-MEAS-MS01
+    type: sw-req
+    title: "MS1: raw timestamped event emission (no on-target aggregation)"
+    status: draft
+    description: >
+      Benchmark measurements shall emit timestamped raw events (one
+      record per measured event) to a post-processing pipeline.  The
+      on-target measurement path shall not compute aggregate statistics
+      (mean, min, max), shall not perform histogram bucketing, and shall
+      not filter or down-sample events based on value.
+
+      Event records carry at minimum: a monotonic timestamp, an event
+      tag identifying the call-site, and any tag-specific payload
+      required for off-target analysis.  Events are transported to the
+      host (serial, semihosting, RTT, or equivalent) without loss; loss
+      shall be detected and reported (sequence numbers or equivalent).
+
+      Rationale: FIND-MEAS-001 findings F1 (divisor mismatch) and F6
+      (histogram resolution inadequate) are both direct consequences of
+      aggregating on-target.  A raw event stream is the single design
+      change that closes both flaws and re-enables defensible
+      off-target reprocessing.
+    tags: [methodology, measurement, raw-events, asil-d]
+    fields:
+      req-type: performance
+      priority: must
+      verification-criteria: >
+        Integration test demonstrates: (a) benchmark run produces a raw
+        event CSV with one record per ISR-level event, (b) event count
+        matches g_interrupts exactly, (c) on-target code contains no
+        division / histogram / min / max computation on the measured
+        quantity.  Static inspection of ISR code plus end-to-end test
+        run.
+    links:
+      - type: derives-from
+        target: SYSREQ-MEAS-001
+
+  - id: SWREQ-MEAS-MS02
+    type: sw-req
+    title: "MS2: statistical rigor — N >= 30, bootstrap 95 % CI, Mann-Whitney U"
+    status: draft
+    description: >
+      Each published benchmark number shall be accompanied by:
+        (a) N >= 30 independent runs (separate executions, not just
+            samples within a single run) — chosen to support the central
+            limit theorem for bootstrap resampling and to expose
+            run-to-run variance that single-run data cannot reveal;
+        (b) a bootstrap 95 % confidence interval on the point estimate;
+        (c) a non-parametric significance test (Mann-Whitney U, or
+            equivalent distribution-free two-sample test) against the
+            comparison baseline with its p-value and effect size.
+
+      Claims of speedup / slowdown that do not survive the significance
+      test at alpha = 0.05 shall not be published as such; they shall be
+      reported as "no significant difference" with the observed point
+      estimate and CI.
+
+      Rationale: FIND-MEAS-001 flaw F3 (direction of the delta
+      implausible from code alone) combined with single-run-per-variant
+      measurement produced a -11.6 % headline that has no statistical
+      weight.  This requirement institutionalises the statistical gate
+      that should have rejected it.
+    tags: [methodology, measurement, statistics, asil-d]
+    fields:
+      req-type: performance
+      priority: must
+      verification-criteria: >
+        CI pipeline artifact bundle for each published benchmark
+        contains: per-run raw event files (N >= 30), the analysis script
+        output reporting point estimate + bootstrap 95 % CI + Mann-Whitney
+        U p-value + effect size (Cliff's delta or equivalent).  A
+        regression bot rejects pull requests that publish timing claims
+        lacking this bundle.
+    links:
+      - type: derives-from
+        target: SYSREQ-MEAS-001
+
+  - id: SWREQ-MEAS-MS03
+    type: sw-req
+    title: "MS3: per-primitive call-site attribution for raw events"
+    status: draft
+    description: >
+      Benchmark event streams shall be attributable to primitive-level
+      call-sites (per-kernel-object, per-function) so that per-path
+      analysis is defensible.  Each event record carries a tag
+      identifying:
+        - the kernel object type and instance (e.g. "k_sem#3"),
+        - the API entry point (e.g. "k_sem_give"),
+        - the implementation variant under measurement (baseline C vs
+          Gale Rust vs Gale/Kiln direct).
+
+      Aggregation across call-sites, across object instances, or across
+      API entry points is performed off-target in the analysis pipeline,
+      and the specific aggregation applied is recorded in the analysis
+      artifact.
+
+      Rationale: FIND-MEAS-001 flaw F5 (GALE_KERNEL_SPINLOCK and
+      GALE_KERNEL_TIMER compiled but never called) shows that naming a
+      Kconfig or a library does not demonstrate the corresponding code
+      path was exercised.  Per-call-site attribution closes that loop:
+      if no events carry the tag, the path was not exercised and the
+      claim is rejected at analysis time.
+    tags: [methodology, measurement, attribution, primitives, asil-d]
+    fields:
+      req-type: performance
+      priority: must
+      verification-criteria: >
+        Analysis script parses raw event stream, reports the set of
+        (object, entry-point, variant) tags observed, and fails the run
+        if any tag claimed by the benchmark configuration is absent.
+        Demonstrated by an end-to-end test where dropping a call site
+        from the firmware causes the analysis to flag the missing tag.
+    links:
+      - type: derives-from
+        target: SYSREQ-MEAS-001
+
+  # ── Safety case hook ────────────────────────────────────────────────────
+  #
+  # SG-MEAS-001 is a sub-goal of G-1 (top-level safety goal from
+  # safety_case.yaml).  It is intentionally a methodology goal, not an
+  # element-level goal: it covers HOW timing claims are produced, not
+  # the correctness of any individual primitive.
+  #
+  # At the time of writing, the safety-case graph in safety_case.yaml
+  # does not reference timing / performance — its sub-goals (G-2..G-5)
+  # cover arithmetic safety, state-machine correctness, deadlock
+  # freedom, and C↔Rust semantic equivalence.  SG-MEAS-001 fills the
+  # measurement-defensibility gap.
+  #
+  # Solution (evidence) is intentionally absent at status=draft.  Once
+  # the raw-event framework lands (issue #25), a safety-solution entry
+  # (e.g. Sn-MEAS-001) should be added pointing at the sw-integration-
+  # verification artifact that demonstrates the framework satisfies
+  # MS01..MS03.
+
+  - id: SG-MEAS-001
+    type: safety-goal
+    title: Gale timing claims used in ASIL-D certification are defensible
+    status: draft
+    description: >
+      Every timing or performance number Gale publishes in the safety
+      case, customer procurement material, or regression dashboard is
+      produced by the declared measurement framework (SYSREQ-MEAS-001),
+      with raw event traceability (SWREQ-MEAS-MS01), statistical rigor
+      (SWREQ-MEAS-MS02), and per-call-site attribution (SWREQ-MEAS-MS03).
+
+      Sub-goal of G-1: while G-2..G-5 argue that the kernel primitives
+      themselves are safe, SG-MEAS-001 argues that the quantitative
+      claims made about those primitives rest on an assessable
+      methodology.  A safety case that cites numerical evidence is only
+      as strong as the measurement producing those numbers.
+    tags: [safety, asil-d, measurement, methodology]
+    fields:
+      claim: >
+        All timing and performance claims published by Gale and used in
+        ASIL-D certification evidence are produced by the measurement
+        framework specified in SYSREQ-MEAS-001 and refined by
+        SWREQ-MEAS-MS01..MS03, with raw event stream, bootstrap 95 % CI,
+        non-parametric significance testing, and per-call-site
+        attribution.  Claims not satisfying this framework are not
+        admitted as safety-case evidence.
+      goal-type: operational
+      asil: D
+      undeveloped: true
+    links:
+      - type: sub-goal-of
+        target: G-1
