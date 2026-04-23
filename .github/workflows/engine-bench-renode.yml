@@ -37,6 +37,12 @@ concurrency:
   group: engine-bench-renode-${{ github.ref }}
   cancel-in-progress: false
 
+# Container default shell is dash; use bash so { ...; } >> file and
+# other brace-group / array patterns work reliably across scripts.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   long-run:
     runs-on: ubuntu-22.04

@@ -20,6 +20,14 @@ concurrency:
   group: llvm-lto-${{ github.ref }}
   cancel-in-progress: true
 
+# Container default shell is /bin/sh → dash on Ubuntu. Scripts in this
+# workflow use bash features (here-strings `<<<`, brace-group
+# redirection with arithmetic, `read` splitting). Make bash the default
+# so those don't surface as "Syntax error: redirection unexpected".
+defaults:
+  run:
+    shell: bash
+
 env:
   HOME: /root
   DOCKER_CONFIG: /tmp/.docker
