@@ -35,13 +35,29 @@
 
 #define RING_CAPACITY_SAMPLES  256
 #define HISTOGRAM_BUCKETS      32
-#define TOTAL_SAMPLES          150u  /* QEMU-friendly; bump for hardware */
+#ifndef TOTAL_SAMPLES
+#define TOTAL_SAMPLES          150u  /* QEMU-friendly default; bump for
+                                      * hardware or long Renode runs via
+                                      *   -DTOTAL_SAMPLES=10000 in CMake. */
+#endif
 
 struct sweep_step {
 	uint32_t rpm;
 	uint32_t samples;
 };
 
+#if defined(ENGINE_BENCH_SWEEP_long)
+/* Renode / real-hardware long run — more RPM stations, more samples
+ * each, captures the full idle→redline curve with statistical weight. */
+static const struct sweep_step sweep[] = {
+	{  500, 500 },   { 1000, 500 },   { 1500, 500 },
+	{ 2000, 1000 },  { 2500, 1000 },  { 3000, 1000 },
+	{ 4000, 1000 },  { 5000, 1000 },  { 6000,  500 },
+	{ 7000,  300 },  { 8000,  200 },  { 9000,  150 },
+	{10000,  100 },
+};
+#else
+/* QEMU smoke / short interactive run. */
 static const struct sweep_step sweep[] = {
 	{ 1000, 30 },
 	{ 2000, 30 },
@@ -49,6 +65,7 @@ static const struct sweep_step sweep[] = {
 	{ 6000, 30 },
 	{10000, 30 },
 };
+#endif
 #define SWEEP_STEPS (sizeof(sweep) / sizeof(sweep[0]))
 
 /* For a 4-stroke engine with one interrupt per crank degree:

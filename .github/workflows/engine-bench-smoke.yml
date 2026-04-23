@@ -1,0 +1,103 @@
+# Engine-control benchmark — QEMU smoke regression.
+#
+# Fast (~5 min) regression check. Builds both baseline and gale
+# variants of benches/engine_control, runs each on qemu_cortex_m3,
+# and asserts:
+#   - both runs reach the "=== END ===" marker
+#   - drops == 0 in both
+#   - algo-mean matches across builds within 10% (measurement integrity)
+#   - handoff-mean stays under the 800-cycle ceiling (conservative)
+#
+# The Renode long-run workflow (engine-bench-renode.yml) produces the
+# authoritative absolute-timing numbers; this smoke check exists only
+# to catch regressions fast on every PR.
+#
+# Security: this workflow uses no untrusted GitHub event inputs
+# (issue title, PR body, commit message) in shell commands. Only
+# github.workspace (filesystem path) and github.ref (concurrency key)
+# are referenced, both safe contexts.
+
+name: Engine bench smoke (QEMU)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'benches/engine_control/**'
+      - 'src/**'
+      - 'ffi/src/**'
+      - 'zephyr/**'
+      - '.github/workflows/engine-bench-smoke.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-bench-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      options: --user root
+    env:
+      HOME: /root
+      DOCKER_CONFIG: /tmp/.docker
+    steps:
+      - name: Checkout Gale
+        uses: actions/checkout@v4
+        with:
+          path: gale
+
+      - name: Install Rust + ARM target
+        run: |
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable
+          . /root/.cargo/env
+          rustup target add thumbv7m-none-eabi
+
+      - name: West init + update
+        run: |
+          pip3 install west
+          west init -m https://github.com/pulseengine/zephyr.git \
+            --mr gale/sem-replacement zephyr-workspace
+          cd zephyr-workspace
+          west update --narrow -o=--depth=1
+          for attempt in 1 2 3; do
+            west sdk install -t arm-zephyr-eabi && break || sleep 5
+          done
+
+      - name: Setup SDK paths
+        run: |
+          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d | head -1)
+          [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d | head -1)
+          if [ -d "${SDK_DIR}/gnu/arm-zephyr-eabi/bin" ]; then
+            echo "${SDK_DIR}/gnu/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
+          else
+            echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
+          fi
+          echo "ZEPHYR_SDK_INSTALL_DIR=${SDK_DIR}" >> "$GITHUB_ENV"
+
+      - name: Run QEMU smoke bench with regression asserts
+        env:
+          ZEPHYR_WORKSPACE: ${{ github.workspace }}/zephyr-workspace
+          ZEPHYR_BASE:      ${{ github.workspace }}/zephyr-workspace/zephyr
+          GALE_ROOT:        ${{ github.workspace }}/gale
+        run: |
+          . /root/.cargo/env
+          bash "$GALE_ROOT/benches/engine_control/run_qemu_bench.sh"
+
+      - name: Upload CSVs for failure diagnosis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-bench-smoke-csv
+          path: |
+            /tmp/engine-baseline/output.csv
+            /tmp/engine-gale/output.csv
+          if-no-files-found: ignore

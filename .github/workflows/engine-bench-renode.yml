@@ -1,0 +1,156 @@
+# Engine-control benchmark — Renode long run (cycle-accurate).
+#
+# This workflow produces the AUTHORITATIVE absolute-timing numbers
+# for the engine-control benchmark. Renode's cycle-accurate model of
+# stm32f4_disco (Cortex-M4F @ 168 MHz) reports latencies that match
+# real-hardware timing (within documented model fidelity), unlike
+# QEMU's fake 12 MHz counter.
+#
+# Sample count: 10,000 per build (vs 150 in the QEMU smoke). At
+# 60 kHz interrupt peak and Renode's ~0.3x realtime speed, one
+# complete sweep takes ~15–25 min per build, ~40 min total for both.
+#
+# Triggered:
+#   - workflow_dispatch (manual, e.g. before a release)
+#   - weekly cron (Sunday 02:00 UTC)
+# NOT on push or PR — too slow for per-commit feedback; that's what
+# engine-bench-smoke.yml is for.
+#
+# Artifacts:
+#   - engine-bench-renode-long: baseline + gale CSVs, Robot logs, report
+#
+# Security: no untrusted github.event.* inputs are shell-interpolated.
+# Only github.workspace (filesystem path) and github.ref (concurrency
+# key identifier) are referenced.
+
+name: Engine bench long (Renode)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-bench-renode-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  long-run:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      options: --user root
+    env:
+      HOME: /root
+      DOCKER_CONFIG: /tmp/.docker
+    steps:
+      - name: Checkout Gale
+        uses: actions/checkout@v4
+        with:
+          path: gale
+
+      - name: Install Rust + ARM target
+        run: |
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable
+          . /root/.cargo/env
+          rustup target add thumbv7em-none-eabihf
+
+      - name: West init + update + SDK
+        run: |
+          pip3 install west robotframework
+          west init -m https://github.com/pulseengine/zephyr.git \
+            --mr gale/sem-replacement zephyr-workspace
+          cd zephyr-workspace
+          west update --narrow -o=--depth=1
+          for attempt in 1 2 3; do
+            west sdk install -t arm-zephyr-eabi && break || sleep 5
+          done
+
+      - name: Setup SDK paths
+        run: |
+          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d | head -1)
+          [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d | head -1)
+          if [ -d "${SDK_DIR}/gnu/arm-zephyr-eabi/bin" ]; then
+            echo "${SDK_DIR}/gnu/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
+          else
+            echo "${SDK_DIR}/arm-zephyr-eabi/bin" >> "$GITHUB_PATH"
+          fi
+          echo "ZEPHYR_SDK_INSTALL_DIR=${SDK_DIR}" >> "$GITHUB_ENV"
+
+      - name: Build baseline (stm32f4_disco, long sweep, 10k samples)
+        env:
+          ZEPHYR_BASE: ${{ github.workspace }}/zephyr-workspace/zephyr
+          GALE_ROOT:   ${{ github.workspace }}/gale
+        run: |
+          . /root/.cargo/env
+          west build -b stm32f4_disco -d /tmp/engine-baseline-long \
+            -s "$GALE_ROOT/benches/engine_control" \
+            -- \
+              -DENGINE_BENCH_TOTAL_SAMPLES=10000 \
+              -DENGINE_BENCH_SWEEP=long
+
+      - name: Build gale (stm32f4_disco, long sweep, 10k samples)
+        env:
+          ZEPHYR_BASE: ${{ github.workspace }}/zephyr-workspace/zephyr
+          GALE_ROOT:   ${{ github.workspace }}/gale
+        run: |
+          . /root/.cargo/env
+          west build -b stm32f4_disco -d /tmp/engine-gale-long \
+            -s "$GALE_ROOT/benches/engine_control" \
+            -- \
+              -DZEPHYR_EXTRA_MODULES="$GALE_ROOT" \
+              -DOVERLAY_CONFIG="$GALE_ROOT/benches/engine_control/prj-gale.conf" \
+              -DENGINE_BENCH_TOTAL_SAMPLES=10000 \
+              -DENGINE_BENCH_SWEEP=long
+
+      - name: Run baseline in Renode
+        env:
+          ELF:           /tmp/engine-baseline-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/engine-baseline-long/output.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          mkdir -p /tmp/renode-baseline
+          cd /tmp/renode-baseline
+          renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
+
+      - name: Run gale in Renode
+        env:
+          ELF:           /tmp/engine-gale-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/engine-gale-long/output.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          mkdir -p /tmp/renode-gale
+          cd /tmp/renode-gale
+          renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
+
+      - name: Render comparison report
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          python3 "$GALE_ROOT/benches/engine_control/compare.py" \
+            /tmp/engine-baseline-long/output.csv \
+            /tmp/engine-gale-long/output.csv \
+            > /tmp/engine-comparison.md
+          {
+            echo '## Engine bench long (Renode) — this run'
+            cat /tmp/engine-comparison.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload CSVs + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-bench-renode-long
+          path: |
+            /tmp/engine-baseline-long/output.csv
+            /tmp/engine-gale-long/output.csv
+            /tmp/renode-baseline/
+            /tmp/renode-gale/
+            /tmp/engine-comparison.md
+          if-no-files-found: ignore

@@ -28,3 +28,18 @@ target_sources(app PRIVATE
   src/tables.c
 )
 target_include_directories(app PRIVATE src)
+
+# -DENGINE_BENCH_TOTAL_SAMPLES=N on the west build line becomes
+# -DTOTAL_SAMPLES=N to the compiler. Default is 150 (QEMU smoke-test
+# friendly); Renode long runs pass 10000+.
+if(DEFINED ENGINE_BENCH_TOTAL_SAMPLES)
+  target_compile_definitions(app PRIVATE
+    TOTAL_SAMPLES=${ENGINE_BENCH_TOTAL_SAMPLES}u)
+endif()
+
+# Sweep schedule override (same shape): -DENGINE_BENCH_SWEEP=long picks
+# a richer RPM profile; "short" is the default.
+if(DEFINED ENGINE_BENCH_SWEEP)
+  target_compile_definitions(app PRIVATE
+    ENGINE_BENCH_SWEEP_${ENGINE_BENCH_SWEEP}=1)
+endif()

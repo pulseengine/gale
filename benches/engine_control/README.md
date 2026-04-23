@@ -44,7 +44,27 @@ python3 compare.py /tmp/engine-baseline.csv /tmp/engine-gale.csv \
   > comparison.md
 ```
 
-## Sample output (QEMU qemu_cortex_m3)
+## Two CI lanes
+
+The benchmark runs in two distinct modes with different trade-offs:
+
+| Lane | Platform | Samples | Trigger | Purpose |
+|---|---|---|---|---|
+| **Smoke** (`engine-bench-smoke.yml`) | QEMU `qemu_cortex_m3` | 150 | every PR | regression check, ~5 min |
+| **Long** (`engine-bench-renode.yml`) | Renode `stm32f4_disco` | 10,000 | weekly + manual | authoritative numbers, ~40 min |
+
+The **smoke** lane asserts integrity (drops==0, algo-mean matches
+across builds within 10%, handoff-mean under a ceiling). Its QEMU
+numbers are not representative of hardware — QEMU emulates cycles
+rather than reflecting board timing — but the baseline-vs-gale
+*ratio* under identical QEMU conditions catches regressions.
+
+The **long** lane on Renode produces cycle-accurate numbers for
+Cortex-M4F @ 168 MHz that match real hardware within Renode's
+documented model fidelity. Those are the numbers worth citing in
+papers or customer docs.
+
+## Sample output (QEMU smoke, first data point)
 
 12 MHz emulated cycle counter, 150 samples across 5 RPM steps:
 
@@ -59,11 +79,6 @@ The algorithm-only timing is identical to 1-cycle noise (expected;
 same C binary). Gale's verified primitive chain is consistently
 faster and has a tighter max — the kind of bounded-latency property
 formal verification should deliver.
-
-Absolute QEMU numbers are not representative of hardware (QEMU
-emulates cycles rather than reflecting board timing); the comparison
-between the two builds under identical QEMU conditions is what's
-meaningful.
 
 ## What the benchmark exercises
 
