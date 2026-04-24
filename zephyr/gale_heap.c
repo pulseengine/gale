@@ -57,6 +57,59 @@ LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
 #include <sanitizer/msan_interface.h>
 #endif
 
+/*
+ * SYS_HEAP_HARDENING_FULL — per-chunk trailer canary. The trailer slot
+ * is reserved implicitly by upstream heap.h via CHUNK_TRAILER_SIZE, which
+ * is non-zero when CONFIG_SYS_HEAP_CANARIES is set. Every bytes_to_chunksz
+ * / min_chunk_size / chunk_usable_bytes call in this file therefore
+ * auto-accounts for the extra 8 bytes per chunk.
+ *
+ * These helpers mirror upstream lib/heap/heap.c:28-75 verbatim so the
+ * canary discipline (magic on alloc, POISON on free, verify on
+ * free/realloc/usable_size) is identical.
+ */
+#ifdef CONFIG_SYS_HEAP_CANARIES
+#define HEAP_CANARY_MAGIC 0x5A6B7C8D9EAFB0C1ULL
+#define HEAP_CANARY_POISON 0xDEADBEEFDEADBEEFULL
+
+static inline uint64_t compute_canary(struct z_heap *h, chunkid_t c)
+{
+	uintptr_t addr = (uintptr_t)&chunk_buf(h)[c];
+	chunksz_t size = chunk_size(h, c);
+
+	return (addr ^ size) ^ HEAP_CANARY_MAGIC;
+}
+
+static inline void set_chunk_canary(struct z_heap *h, chunkid_t c)
+{
+	chunk_trailer(h, c)->canary = compute_canary(h, c);
+}
+
+static inline void verify_chunk_canary(struct z_heap *h, chunkid_t c, void *mem)
+{
+	uint64_t expected = compute_canary(h, c);
+	uint64_t found = chunk_trailer(h, c)->canary;
+
+	if (found != expected) {
+		if (found == HEAP_CANARY_POISON) {
+			LOG_ERR("heap canary: double free at %p", mem);
+		} else {
+			LOG_ERR("heap canary: corruption at %p", mem);
+		}
+		k_panic();
+	}
+}
+
+static inline void poison_chunk_canary(struct z_heap *h, chunkid_t c)
+{
+	chunk_trailer(h, c)->canary = HEAP_CANARY_POISON;
+}
+#else
+#define set_chunk_canary(h, c) do { } while (false)
+#define verify_chunk_canary(h, c, mem) do { } while (false)
+#define poison_chunk_canary(h, c) do { } while (false)
+#endif /* CONFIG_SYS_HEAP_CANARIES */
+
 /* Sizing invariant: upstream v4.4+ no longer exports the old
  * _Z_HEAP_SIZE symbol. The per-allocation envelope is computed by
  * Z_HEAP_MIN_SIZE_FOR(bytes) in kernel.h; this shim trusts that
@@ -175,26 +228,33 @@ static void free_list_add(struct z_heap *h, chunkid_t c)
 }
 
 /*
- * SYS_HEAP_HARDENING_MODERATE — upstream lib/heap/heap.c:178-204.
+ * SYS_HEAP_HARDENING_MODERATE / _FULL — upstream lib/heap/heap.c:178-204.
  * Validate a free chunk's structural integrity before trusting its
  * header fields. Called before free list removal or merge operations.
  *
- * FULL-tier canary verification (upstream's left_trusted path at
- * heap.c:200-203) is omitted — FULL is deferred to the proof-refresh
- * PR per docs/research/heap-hardening-port-plan.md §3. The parameter
- * is kept for API parity so the FULL-tier call sites in this file
- * (future PR) will not need to change shape.
+ * @left_trusted: true if the left neighbor was already validated by the
+ *   caller (e.g. the chunk being freed), false if its canary should be
+ *   verified to detect overflow into this free chunk.
+ *
+ * Free chunks have no canary of their own, but their header can be
+ * corrupted by a buffer overflow from the used chunk to their left.
+ * Validating left's trailer canary before trusting hdr_F's metadata
+ * substitutes for a per-free-chunk canary: the overflow must corrupt
+ * trailer_L before reaching hdr_F.
  */
 static void free_chunk_check(struct z_heap *h, chunkid_t c, bool left_trusted)
 {
-	ARG_UNUSED(left_trusted);
-
 	if (SYS_HEAP_HARDENING_MODERATE &&
 	    (chunk_used(h, c) ||
 	     left_chunk(h, right_chunk(h, c)) != c ||
 	     right_chunk(h, left_chunk(h, c)) != c)) {
 		LOG_ERR("heap corruption (free chunk linkage)");
 		k_panic();
+	}
+
+	if (SYS_HEAP_HARDENING_FULL && !left_trusted) {
+		verify_chunk_canary(h, left_chunk(h, c),
+				    chunk_mem(h, left_chunk(h, c)));
 	}
 }
 
@@ -252,6 +312,13 @@ static void free_chunk(struct z_heap *h, chunkid_t c)
 		free_list_remove(h, lc);
 		merge_chunks(h, lc, c);
 		c = lc;
+	} else if (SYS_HEAP_HARDENING_FULL) {
+		/*
+		 * FULL: upstream heap.c:252-259. Left neighbor is used —
+		 * verify its canary to detect a left-side overflow that
+		 * corrupted our LEFT_SIZE header without touching our trailer.
+		 */
+		verify_chunk_canary(h, lc, chunk_mem(h, lc));
 	}
 
 	free_list_add(h, c);
@@ -293,6 +360,17 @@ void sys_heap_free(struct sys_heap *heap, void *mem)
 		k_panic();
 	}
 
+	/*
+	 * FULL: upstream heap.c:323-326. Verify this chunk's trailer canary
+	 * and then poison it: a subsequent double-free will read
+	 * HEAP_CANARY_POISON and fail with the "double free" branch inside
+	 * verify_chunk_canary.
+	 */
+	if (SYS_HEAP_HARDENING_FULL) {
+		verify_chunk_canary(h, c, mem);
+		poison_chunk_canary(h, c);
+	}
+
 	/* Extract: chunk state for Rust decision */
 	uint32_t is_used = chunk_used(h, c) ? 1U : 0U;
 	uint32_t bounds_ok = (left_chunk(h, right_chunk(h, c)) == c) ? 1U : 0U;
@@ -330,6 +408,13 @@ size_t sys_heap_usable_size(struct sys_heap *heap, void *mem)
 	size_t addr = (size_t)mem;
 	size_t chunk_base = (size_t)&chunk_buf(h)[c];
 	size_t chunk_sz = chunk_size(h, c) * CHUNK_UNIT;
+
+	/* FULL: upstream heap.c:351-353. usable_size is a read-only query
+	 * but still a canary verify opportunity since it implies the caller
+	 * still holds a valid allocation. */
+	if (SYS_HEAP_HARDENING_FULL) {
+		verify_chunk_canary(h, c, mem);
+	}
 
 	return chunk_sz - (addr - chunk_base);
 }
@@ -402,6 +487,10 @@ void *sys_heap_alloc(struct sys_heap *heap, size_t bytes)
 	}
 
 	set_chunk_used(h, c, true);
+	/* FULL: upstream heap.c:440-442. Write canary at chunk tail. */
+	if (SYS_HEAP_HARDENING_FULL) {
+		set_chunk_canary(h, c);
+	}
 
 	mem = chunk_mem(h, c);
 
@@ -459,9 +548,15 @@ void *sys_heap_aligned_alloc(struct sys_heap *heap, size_t align, size_t bytes)
 	mem = (uint8_t *) ROUND_UP(mem + rew, align) - rew;
 	chunk_unit_t *end = (chunk_unit_t *) ROUND_UP(mem + bytes, CHUNK_UNIT);
 
-	/* Get corresponding chunks */
+	/* Get corresponding chunks.
+	 *
+	 * FULL: upstream heap.c:514 adds CHUNK_TRAILER_SIZE so that the
+	 * computed c_end reserves room for the trailer slot. The macro
+	 * resolves to 0 when canaries are disabled, so the arithmetic is
+	 * identical at LEVEL<3.
+	 */
 	chunkid_t c = mem_to_chunkid(h, mem);
-	chunkid_t c_end = end - chunk_buf(h);
+	chunkid_t c_end = end - chunk_buf(h) + CHUNK_TRAILER_SIZE;
 	CHECK(c >= c0 && c  < c_end && c_end <= c0 + padded_sz);
 
 	/* Split and free unused prefix */
@@ -477,6 +572,10 @@ void *sys_heap_aligned_alloc(struct sys_heap *heap, size_t align, size_t bytes)
 	}
 
 	set_chunk_used(h, c, true);
+	/* FULL: upstream heap.c:530-532. */
+	if (SYS_HEAP_HARDENING_FULL) {
+		set_chunk_canary(h, c);
+	}
 
 #ifdef CONFIG_SYS_HEAP_RUNTIME_STATS
 	increase_allocated_bytes(h, chunksz_to_bytes(h, chunk_size(h, c)));
@@ -519,6 +618,10 @@ static bool inplace_realloc(struct sys_heap *heap, void *ptr, size_t bytes)
 		LOG_ERR("heap corruption (left neighbor?) at %p", ptr);
 		k_panic();
 	}
+	/* FULL: upstream heap.c:570-572. Validate canary before mutating. */
+	if (SYS_HEAP_HARDENING_FULL) {
+		verify_chunk_canary(h, c, ptr);
+	}
 
 	/* Decide: Rust determines shrink/grow/copy strategy */
 	chunkid_t rc = right_chunk(h, c);
@@ -544,6 +647,10 @@ static bool inplace_realloc(struct sys_heap *heap, void *ptr, size_t bytes)
 
 		split_chunks(h, c, c + chunks_need);
 		set_chunk_used(h, c, true);
+		/* FULL: upstream heap.c:596-598. New chunk size ⇒ new canary. */
+		if (SYS_HEAP_HARDENING_FULL) {
+			set_chunk_canary(h, c);
+		}
 		free_chunk(h, c + chunks_need);
 
 #ifdef CONFIG_SYS_HEAP_LISTENER
@@ -580,6 +687,10 @@ static bool inplace_realloc(struct sys_heap *heap, void *ptr, size_t bytes)
 
 		merge_chunks(h, c, rc);
 		set_chunk_used(h, c, true);
+		/* FULL: upstream heap.c:648-650. */
+		if (SYS_HEAP_HARDENING_FULL) {
+			set_chunk_canary(h, c);
+		}
 
 #ifdef CONFIG_SYS_HEAP_LISTENER
 		heap_listener_notify_alloc(HEAP_ID_FROM_POINTER(heap), ptr,
@@ -657,8 +768,15 @@ void sys_heap_init(struct sys_heap *heap, void *mem, size_t bytes)
 #endif
 
 	int nb_buckets = bucket_idx(h, heap_sz) + 1;
+	/*
+	 * FULL: upstream heap.c:766-768 adds CHUNK_TRAILER_SIZE to reserve
+	 * the canary slot at the tail of chunk 0. Macro resolves to 0 when
+	 * canaries are disabled, so LEVEL<3 keeps bit-for-bit the old
+	 * layout.
+	 */
 	chunksz_t chunk0_size = chunksz(sizeof(struct z_heap) +
-				     nb_buckets * sizeof(struct z_heap_bucket));
+				     nb_buckets * sizeof(struct z_heap_bucket)) +
+				CHUNK_TRAILER_SIZE;
 
 	__ASSERT(chunk0_size + min_chunk_size(h) <= heap_sz, "heap size is too small");
 
@@ -676,6 +794,10 @@ void sys_heap_init(struct sys_heap *heap, void *mem, size_t bytes)
 	set_chunk_size(h, 0, chunk0_size);
 	set_left_chunk_size(h, 0, 0);
 	set_chunk_used(h, 0, true);
+	/* FULL: upstream heap.c:780-782. Write initial chunk 0 canary. */
+	if (SYS_HEAP_HARDENING_FULL) {
+		set_chunk_canary(h, 0);
+	}
 
 	set_chunk_size(h, chunk0_size, heap_sz - chunk0_size);
 	set_left_chunk_size(h, chunk0_size, chunk0_size);

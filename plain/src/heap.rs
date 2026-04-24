@@ -45,6 +45,20 @@
 //!   HP6: aligned allocation respects alignment constraints
 //!   HP7: no overflow in size calculations
 //!   HP8: merge adjacent free chunks maintains invariant
+//!   HP9: reserved_bytes (allocated + trailers) <= capacity (FULL tier)
+//!
+//! Accounting convention (FULL tier / SYS_HEAP_HARDENING_LEVEL >= 3):
+//!   - `allocated_bytes` tracks *user-requested* bytes — what the caller
+//!     asked for via sys_heap_alloc(bytes).
+//!   - Per-chunk 8-byte trailer canaries (`CHUNK_TRAILER_BYTES`) are
+//!     reserved on the C side through `CHUNK_TRAILER_SIZE` in
+//!     bytes_to_chunksz / min_chunk_size / chunk_usable_bytes.
+//!   - The invariant `allocated_bytes + trailers <= capacity` holds
+//!     because the C sizing always reserves a trailer slot within the
+//!     chunk's physical footprint; see `reserved_bytes_spec` below.
+//!   - The C shim's `increase_allocated_bytes` uses `chunk_usable_bytes`
+//!     (upstream heap.c:447), which already subtracts the trailer, so
+//!     the runtime-stats counter stays consistent with this Rust model.
 use crate::error::*;
 /// Maximum number of individually tracked chunks.
 /// Real sys_heap can have many thousands; we track aggregate counts
@@ -52,6 +66,19 @@ use crate::error::*;
 pub const MAX_CHUNKS: u32 = 65535;
 /// Chunk unit size in bytes (matches CHUNK_UNIT = 8 in heap.h).
 pub const CHUNK_UNIT: u32 = 8;
+/// Per-chunk canary trailer size in bytes at SYS_HEAP_HARDENING_FULL
+/// (matches sizeof(struct z_heap_chunk_trailer) in heap.h when
+/// CONFIG_SYS_HEAP_CANARIES is set).
+///
+/// The C layout always reserves this many bytes at the tail of every
+/// chunk when FULL hardening is enabled; at lower levels the trailer
+/// is zero and the sizing collapses to the pre-FULL layout.
+///
+/// This model uses the FULL-tier worst-case value so proofs that
+/// mention trailer reservation remain sound regardless of the compile
+/// level. For LEVEL<3 the extra slack is benign (8 bytes of headroom
+/// per chunk).
+pub const CHUNK_TRAILER_BYTES: u32 = 8;
 /// State of an individual allocation slot for double-free detection.
 /// In the real sys_heap, this is the SIZE_AND_USED bit in each chunk header.
 /// We model it as an abstract token: each alloc returns a slot ID,
@@ -178,8 +205,16 @@ impl Heap {
     /// For the model, alignment affects the size request (padding).
     /// The actual alignment logic (ROUND_UP, prefix/suffix splitting)
     /// remains in C. We model the worst-case overhead:
-    ///   padded = bytes + align - gap, where gap = chunk_header_bytes.
-    /// This ensures enough contiguous space for alignment.
+    ///   padded = bytes + align - gap
+    /// where `gap = chunk_header_bytes` (model bound: CHUNK_UNIT).
+    ///
+    /// FULL-tier trailer note: when SYS_HEAP_HARDENING_FULL is active
+    /// the C bytes_to_chunksz adds CHUNK_TRAILER_SIZE on top of this,
+    /// but that extra slot lives inside the chunk's physical footprint
+    /// — it is reserved by the C sizing path, not counted against the
+    /// user-facing `allocated_bytes`. The u64 padded computation still
+    /// dominates the worst-case reservation, so the HP7 overflow guard
+    /// is unchanged.
     pub fn aligned_alloc(&mut self, bytes: u32, align: u32) -> Result<u32, i32> {
         if align == 0 || align <= CHUNK_UNIT {
             return self.alloc(bytes);
