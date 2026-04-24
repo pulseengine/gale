@@ -50,52 +50,14 @@ jobs:
       - name: clippy
         run: cargo clippy --all-targets
 
-  bazel:
-    name: "bazel test //... (${{ matrix.os }})"
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, macos-14]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: cachix/install-nix-action@v30
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: bazelisk cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/bazel
-            ~/.cache/bazelisk
-            ~/Library/Caches/bazel
-            ~/Library/Caches/bazelisk
-          key: bazel-${{ runner.os }}-${{ hashFiles('MODULE.bazel.lock', 'BUILD.bazel') }}
-          restore-keys: bazel-${{ runner.os }}-
-
-      - name: Run bazel test //...
-        # Exclude Verus/Rocq/Kani heavyweights — those have dedicated
-        # workflows (formal-verification.yml). Keep this fast enough to
-        # be a PR gate.
-        run: |
-          bazel test //... \
-            --build_tag_filters=-verus,-rocq,-kani \
-            --test_tag_filters=-verus,-rocq,-kani \
-            --test_output=errors \
-            --keep_going
-
-      - name: Upload bazel test logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bazel-testlogs-${{ matrix.os }}
-          path: bazel-testlogs/
-          retention-days: 14
-          if-no-files-found: ignore
+  # Note on Bazel coverage: `bazel test //...` requires the Nix-provisioned
+  # rules_rocq_rust / rules_lean toolchains (lake, mathlib) to even LOAD
+  # the tree, and Zephyr-dependent modules require rules_renode. That setup
+  # lives in .github/workflows/formal-verification.yml, which runs
+  # `bazel test //:verus_test` and the Rocq/Lean targets with Nix. A second
+  # `bazel test //...` here would duplicate that infra tax without adding
+  # signal — any Rust test reachable via cargo is already covered above,
+  # and the formal workflow handles the bazel-specific targets.
 
   gate:
     name: Verus-Strip Gate

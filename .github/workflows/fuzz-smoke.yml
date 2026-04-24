@@ -79,9 +79,17 @@ jobs:
       - name: Run fuzz target for 60s
         env:
           TARGET: ${{ matrix.target }}
+        # Force x86_64-unknown-linux-gnu: cargo-fuzz defaults to
+        # x86_64-unknown-linux-musl on Linux, whose statically-linked libc
+        # is incompatible with -Zsanitizer=address ("sanitizer is
+        # incompatible with statically linked libc, disable it using
+        # -C target-feature=-crt-static"). The GNU target has a dynamic
+        # libc and plays fine with ASan, which cargo-fuzz enables by
+        # default via libfuzzer-sys.
         run: |
           mkdir -p fuzz/artifacts fuzz/corpus
           cargo +nightly fuzz run "${TARGET}" \
+            --target x86_64-unknown-linux-gnu \
             -- -max_total_time=60 -print_final_stats=1
 
       - name: Upload crash artifacts
