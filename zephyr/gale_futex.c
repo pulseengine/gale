@@ -98,7 +98,20 @@ int z_impl_k_futex_wait(struct k_futex *futex, int expected,
 		return -EINVAL;
 	}
 
-	/* Extract: read the current atomic futex value */
+	/*
+	 * Acquire the wait-queue spinlock BEFORE sampling futex->val, so the
+	 * Extract->Decide step observes a value that cannot change before the
+	 * Apply step pends the thread. If the read happened outside the lock,
+	 * a concurrent waker could update val + call wake between our read and
+	 * our z_pend_curr: we would decide BLOCK on a stale value, pend on an
+	 * empty wait queue, and miss the wake (liveness bug — waiter hangs).
+	 *
+	 * Matches upstream Zephyr fix 10c974c9d5 ("futex: avoid TOCTOU on
+	 * wait value").
+	 */
+	key = k_spin_lock(&futex_data->lock);
+
+	/* Extract: read current atomic futex value inside the critical section */
 	uint32_t val = (uint32_t)atomic_get(&futex->val);
 
 	/* Decide: Rust determines whether to block or return */
@@ -108,10 +121,9 @@ int z_impl_k_futex_wait(struct k_futex *futex, int expected,
 
 	/* Apply: execute Rust's decision */
 	if (d.action != GALE_FUTEX_ACTION_BLOCK) {
+		k_spin_unlock(&futex_data->lock, key);
 		return d.ret;
 	}
-
-	key = k_spin_lock(&futex_data->lock);
 
 	ret = z_pend_curr(&futex_data->lock,
 			key, &futex_data->wait_q, timeout);

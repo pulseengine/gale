@@ -1055,3 +1055,79 @@ artifacts:
         The proof keeps internal state consistent, but the FFI shim
         does not escalate caller-domain violations as faults; it
         accepts the call and returns a truncated write count.
+
+  - id: U-14
+    type: uca
+    title: Futex wait samples value outside the wait-queue spinlock
+    status: draft
+    description: >
+      zephyr/gale_futex.c read `atomic_get(&futex->val)` before acquiring
+      `k_spin_lock(&futex_data->lock)`, then passed the stale value to
+      `gale_k_futex_wait_decide`. A concurrent waker updating val + calling
+      wake between the read and the pend step could set a value that should
+      have caused the decision to return (not block); the waiter would
+      instead pend on a now-empty wait queue and hang indefinitely.
+      Surfaced 2026-04-22 by the upstream-drift audit — matches upstream
+      Zephyr fix 10c974c9d5 which moved the atomic read inside the
+      critical section. The Verus proof on the decision function is
+      unaffected; the bug lives in the C-side Extract->Decide->Apply
+      boundary.
+      A new class from the precondition-erasure pattern: here the caller
+      supplies a *value* that was valid-at-observation-time but no longer
+      reflects the state the decision is acting on. Fixed in gale commit
+      of 2026-04-24.
+    tags: [stpa, uca, futex, wait-queue, lock-region-boundary]
+    links:
+      - type: issued-by
+        target: C-3
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      uca-type: providing
+      control-action: futex-wait
+      context: >
+        SMP or preemptible UP: a waker modifies `futex->val` and calls
+        `k_futex_wake` in the window between the waiter's atomic read
+        and the waiter's pend-under-lock.
+      rationale: >
+        Extract must happen inside the same critical section that
+        synchronises with the wake path; otherwise the Decide step acts
+        on a value the Apply step can no longer trust. The fix places
+        the atomic_get after k_spin_lock, and releases the lock on the
+        non-blocking return path.
+
+  - id: U-15
+    type: uca
+    title: signal_pending_ipi called outside _sched_spinlock on SMP
+    status: draft
+    description: >
+      zephyr/gale_sched.c called `signal_pending_ipi()` in
+      `z_get_next_switch_handle` after the `K_SPINLOCK(&_sched_spinlock)`
+      block released. Under SMP, `signal_pending_ipi` performs
+      `atomic_clear` on the calling CPU's pending-IPI bit, then
+      `arch_sched_directed_ipi` skips the calling CPU (i == id). A remote
+      CPU flagging us via `flag_ipi` inside _sched_spinlock can race with
+      our clear: bit is consumed but IPI is never sent. On configurations
+      where a secondary CPU has a single pinned thread and no timer or
+      external interrupts, this becomes a permanent CPU hang.
+      Same lock-region-boundary class as U-14: the signal must occur
+      under the lock that synchronises flag_ipi writes. Fixed in gale
+      commit of 2026-04-24 per upstream Zephyr 1666066082a.
+    tags: [stpa, uca, scheduler, smp, ipi, lock-region-boundary]
+    links:
+      - type: issued-by
+        target: C-8
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      uca-type: not-providing
+      control-action: send-self-directed-ipi
+      context: >
+        SMP: a remote CPU calls `flag_ipi` for us under _sched_spinlock
+        while we are past the lock-release line of
+        `z_get_next_switch_handle`.
+      rationale: >
+        The pending-IPI bit is shared state protected by _sched_spinlock
+        against concurrent flag_ipi. Reading/clearing it outside that
+        lock races. No Rust decision function is involved — this is a
+        pure C locking-discipline bug, same class as U-14.

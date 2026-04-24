@@ -990,8 +990,24 @@ void *z_get_next_switch_handle(void *interrupted)
 		ret = new_thread->switch_handle;
 		/* Active threads MUST have a null here */
 		new_thread->switch_handle = NULL;
+
+		/*
+		 * Check for IPIs under the lock to avoid silently consuming a
+		 * rescheduling IPI flagged by another CPU for ourselves.
+		 *
+		 * Called after k_spin_unlock, signal_pending_ipi's atomic_clear
+		 * on our pending-IPI bit can race with a remote CPU that flagged
+		 * us under _sched_spinlock: we'd clear the bit, then
+		 * arch_sched_directed_ipi would skip the calling CPU (i == id)
+		 * and drop the IPI on the floor. On configurations where a
+		 * secondary CPU has a single pinned thread and no timer / external
+		 * interrupts, this is a permanent CPU hang.
+		 *
+		 * Matches upstream Zephyr fix 1666066082a ("kernel/sched: fix
+		 * race in consuming self-directed IPIs", Mar 2026).
+		 */
+		signal_pending_ipi();
 	}
-	signal_pending_ipi();
 	return ret;
 #else
 	z_sched_usage_switch(_kernel.ready_q.cache);
