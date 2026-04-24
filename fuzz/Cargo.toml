@@ -15,6 +15,23 @@ arbitrary = { version = "1", features = ["derive"] }
 [dependencies.gale]
 path = ".."
 
+# Shared harness library for cross-primitive fuzz targets (e.g. the
+# precondition-erasure runner). Per-primitive targets do not need it.
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "precondition_erasure"
+path = "fuzz_targets/precondition_erasure.rs"
+doc = false
+test = false
+
+[[bin]]
+name = "precondition_erasure_smoke"
+path = "src/bin/precondition_erasure_smoke.rs"
+doc = false
+test = false
+
 [[bin]]
 name = "sem_fuzz"
 path = "fuzz_targets/sem_fuzz.rs"
