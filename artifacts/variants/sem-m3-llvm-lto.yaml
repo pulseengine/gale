@@ -1,0 +1,8 @@
+# LLVM + cross-language LTO lane (llvm-lto.yml).
+name: sem-m3-llvm-lto
+selects:
+  - sem
+  - qemu_cortex_m3
+  - llvm_lto
+  - gale_overlay
+  - gale_lto_overlay

@@ -1,0 +1,8 @@
+# SMP lane (zephyr-tests.yml zephyr-smp-test job).
+name: sem-smp-x86
+selects:
+  - sem
+  - qemu_x86_64
+  - gcc_os
+  - gale_overlay
+  - gale_smp_overlay

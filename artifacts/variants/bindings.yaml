@@ -1,0 +1,110 @@
+# Feature -> artifact bindings for the Gale product line.
+#
+# Each binding entry maps a feature from artifacts/feature-model.yaml to:
+#   - artifacts: artifact IDs that implement or verify the feature
+#   - source:    glob patterns for the implementing source files
+#
+# Consumed by:
+#   rivet validate --model artifacts/feature-model.yaml \
+#                  --variant artifacts/variants/<v>.yaml \
+#                  --binding artifacts/variants/bindings.yaml
+#
+# An unbound feature surfaces in `rivet validate` as a coverage gap.
+
+# ----- named variants iterated by `rivet variant check-all` -----
+# These mirror today's CI lanes. A `check-all` pass confirms that every
+# CI slice is expressible in the feature model (rivet solver agrees it
+# is satisfiable) and that every mentioned feature is bound.
+variants:
+  - name: sem-m3-gcc
+    selects: [sem, qemu_cortex_m3, gcc_os, gale_overlay]
+  - name: sem-m3-llvm-lto
+    selects: [sem, qemu_cortex_m3, llvm_lto, gale_overlay, gale_lto_overlay]
+  - name: sem-smp-x86
+    selects: [sem, qemu_x86_64, gcc_os, gale_overlay, gale_smp_overlay]
+  - name: sem-renode-stm32f4
+    selects: [sem, stm32f4_disco, gcc_os, gale_overlay]
+  - name: mutex-m3-gcc
+    selects: [mutex, qemu_cortex_m3, gcc_os, gale_overlay]
+  - name: all-primitives-m3
+    selects: [sem, mutex, condvar, msgq, timer, qemu_cortex_m3, gcc_os, gale_overlay]
+
+bindings:
+
+  # -------- primitives -> sw-reqs + source globs --------
+  # Source globs reflect the repo's actual layout:
+  #   src/<module>.rs           — Verus-annotated source
+  #   plain/src/<module>.rs     — verus-strip mirror
+  #   ffi/src/lib.rs            — all FFI wrappers (one file, not per-primitive)
+  #   proofs/<module>_proofs.v  — Rocq proofs (where present)
+  # Every primitive binding includes ffi/src/lib.rs intentionally: any
+  # primitive's build regression surfaces through that file.
+  sem:
+    artifacts:
+      - SWREQ-SEM-P01
+      - SWREQ-SEM-P02
+      - SWREQ-SEM-P03
+      - UV-SEM-001
+      - IV-SEM-001
+      - FV-SEM-001
+    source:
+      - "src/sem.rs"
+      - "plain/src/sem.rs"
+      - "ffi/src/lib.rs"
+
+  mutex:
+    artifacts:
+      - SWREQ-MUT-M01
+      - SWREQ-MUT-M02
+      - UV-MUT-001
+    source:
+      - "src/mutex.rs"
+      - "plain/src/mutex.rs"
+      - "ffi/src/lib.rs"
+      - "proofs/mutex_proofs.v"
+      - "safety/aadl/mutex.aadl"
+
+  condvar:
+    artifacts:
+      - SWREQ-CV-C01
+    source:
+      - "src/condvar.rs"
+      - "plain/src/condvar.rs"
+      - "ffi/src/lib.rs"
+      - "proofs/condvar_proofs.v"
+
+  msgq:
+    artifacts:
+      - SWREQ-MQ-MQ01
+    source:
+      - "src/msgq.rs"
+      - "plain/src/msgq.rs"
+      - "ffi/src/lib.rs"
+      - "proofs/msgq_proofs.v"
+
+  timer:
+    artifacts: []    # TODO: bind once timer sw-reqs are authored
+    source:
+      - "src/timer.rs"
+      - "plain/src/timer.rs"
+      - "ffi/src/lib.rs"
+
+  # -------- boards -> renode/robot files --------
+  stm32f4_disco:
+    source:
+      - "renode/stm32f4_sem.robot"
+  nucleo_l552ze_q:
+    source:
+      - "renode/stm32l552_sem.robot"
+
+  # -------- overlays -> conf files --------
+  gale_overlay:
+    source: ["zephyr/gale_overlay.conf"]
+  gale_smp_overlay:
+    source: ["zephyr/gale_smp_overlay.conf"]
+  gale_lto_overlay:
+    source: ["zephyr/gale_lto_overlay.conf"]
+  gale_profiling_overlay:
+    source: ["zephyr/gale_profiling_overlay.conf"]
+  ctf_tracing:
+    source: ["benches/engine_control/prj-ctf.conf"]

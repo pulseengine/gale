@@ -1,0 +1,7 @@
+# Hardware-in-the-loop lane (renode-tests.yml).
+name: sem-renode-stm32f4
+selects:
+  - sem
+  - stm32f4_disco
+  - gcc_os
+  - gale_overlay

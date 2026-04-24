@@ -1,0 +1,213 @@
+# Gale product-line feature model (design prototype)
+#
+# This file is the problem-space description of the Gale variant space
+# that CI exercises. It is consumed by:
+#   rivet variant list     --model artifacts/feature-model.yaml
+#   rivet variant check    --model artifacts/feature-model.yaml --variant artifacts/variants/<v>.yaml
+#   rivet variant solve    --model ... --variant ... --binding artifacts/variants/bindings.yaml
+#   rivet variant features --model ... --variant ... --format cargo|cmake|bazel|env
+#   rivet variant manifest --model ... --variant ... --binding ...   (source manifest)
+#
+# Status: PROTOTYPE. Only 3-5 representative primitives are included; the
+# full 33-primitive tree would enumerate every `CONFIG_GALE_KERNEL_*`.
+#
+# Schema reference: /Users/r/git/pulseengine/rivet/docs/feature-model-schema.md
+#                   /Users/r/git/pulseengine/rivet/docs/feature-model-bindings.md
+
+kind: feature-model
+root: gale
+
+# Per-feature attributes flow into emitted formats as RIVET_ATTR_<F>_<K>=<V>.
+# We lean on attributes to carry CI-relevant scalars: the Kconfig symbol
+# name (so a CI driver can translate a feature-set into a .conf file),
+# the Cargo feature flag name (for ffi/Cargo.toml), and the QEMU / Renode
+# target for board features.
+#
+# NOTE: rivet v0.4.3 does NOT type-check attribute values (Gap 1 in
+# docs/pure-variants-comparison.md). Treat these as free-form strings.
+
+features:
+
+  # -------- root --------
+  gale:
+    group: mandatory
+    children: [primitives, board, toolchain, overlays]
+
+  # -------- primitive axis (1 of 33 kernel modules) --------
+  # Represented as an `or` group: any subset of primitives may be
+  # swapped in simultaneously (CONFIG_GALE_KERNEL_SEM=y + _MUTEX=y, etc.).
+  primitives:
+    group: or
+    children: [sem, mutex, condvar, msgq, timer]
+
+  sem:
+    group: leaf
+    attributes:
+      kconfig: "CONFIG_GALE_KERNEL_SEM"
+      cargo_feature: "sem"
+      ztest_path: "tests/kernel/semaphore/semaphore"
+  mutex:
+    group: leaf
+    attributes:
+      kconfig: "CONFIG_GALE_KERNEL_MUTEX"
+      cargo_feature: "mutex"
+      ztest_path: "tests/kernel/mutex/mutex_api"
+  condvar:
+    group: leaf
+    attributes:
+      kconfig: "CONFIG_GALE_KERNEL_CONDVAR"
+      cargo_feature: "condvar"
+      ztest_path: "tests/kernel/condvar/condvar_api"
+  msgq:
+    group: leaf
+    attributes:
+      kconfig: "CONFIG_GALE_KERNEL_MSGQ"
+      cargo_feature: "msgq"
+      ztest_path: "tests/kernel/msgq/msgq_api"
+  timer:
+    group: leaf
+    attributes:
+      kconfig: "CONFIG_GALE_KERNEL_TIMER"
+      cargo_feature: "timer"
+      ztest_path: "tests/kernel/timer/timer_api"
+
+  # -------- board axis (exactly one per build) --------
+  board:
+    group: alternative
+    children: [qemu_cortex_m3, qemu_cortex_m33, qemu_x86_64, stm32f4_disco, nucleo_l552ze_q, qemu_cortex_r5]
+
+  qemu_cortex_m3:
+    group: leaf
+    attributes:
+      west_board: "qemu_cortex_m3"
+      runner: "qemu"
+      arch: "arm"
+      smp_capable: "false"
+  qemu_cortex_m33:
+    group: leaf
+    attributes:
+      west_board: "qemu_cortex_m33"
+      runner: "qemu"
+      arch: "arm"
+      smp_capable: "false"
+  qemu_x86_64:
+    group: leaf
+    attributes:
+      west_board: "qemu_x86_64"
+      runner: "qemu"
+      arch: "x86_64"
+      smp_capable: "true"
+  stm32f4_disco:
+    group: leaf
+    attributes:
+      west_board: "stm32f4_disco"
+      runner: "renode"
+      arch: "arm"
+      renode_robot: "stm32f4_sem.robot"
+  nucleo_l552ze_q:
+    group: leaf
+    attributes:
+      west_board: "nucleo_l552ze_q"
+      runner: "renode"
+      arch: "arm"
+      renode_robot: "stm32l552_sem.robot"
+  qemu_cortex_r5:
+    group: leaf
+    attributes:
+      west_board: "qemu_cortex_r5"
+      runner: "renode"
+      arch: "arm"
+
+  # -------- toolchain axis (exactly one) --------
+  toolchain:
+    group: alternative
+    children: [gcc_os, gcc_o2, llvm_nolto, llvm_lto, clang_libcxx]
+
+  gcc_os:
+    group: leaf
+    attributes:
+      zephyr_toolchain: "zephyr"
+      cflags: "-Os"
+      cargo_profile: "release"
+  gcc_o2:
+    group: leaf
+    attributes:
+      zephyr_toolchain: "zephyr"
+      cflags: "-O2"
+      cargo_profile: "release"
+  llvm_nolto:
+    group: leaf
+    attributes:
+      zephyr_toolchain: "llvm"
+      cflags: "-Os"
+      cargo_profile: "release"
+  llvm_lto:
+    group: leaf
+    attributes:
+      zephyr_toolchain: "llvm"
+      cflags: "-Os -flto"
+      cargo_profile: "release-lto"
+  clang_libcxx:
+    group: leaf
+    attributes:
+      zephyr_toolchain: "llvm"
+      cflags: "-Os -stdlib=libc++"
+
+  # -------- overlays axis (independently selectable) --------
+  overlays:
+    group: optional
+    children: [gale_overlay, gale_smp_overlay, gale_lto_overlay, gale_profiling_overlay, ctf_tracing, heap_hardening]
+
+  gale_overlay:
+    group: leaf
+    attributes:
+      overlay_conf: "zephyr/gale_overlay.conf"
+  gale_smp_overlay:
+    group: leaf
+    attributes:
+      overlay_conf: "zephyr/gale_smp_overlay.conf"
+  gale_lto_overlay:
+    group: leaf
+    attributes:
+      overlay_conf: "zephyr/gale_lto_overlay.conf"
+  gale_profiling_overlay:
+    group: leaf
+    attributes:
+      overlay_conf: "zephyr/gale_profiling_overlay.conf"
+  ctf_tracing:
+    group: leaf
+    attributes:
+      overlay_conf: "benches/engine_control/prj-ctf.conf"
+
+  # Heap hardening is really a tri-state (BASIC/MODERATE/FULL); rivet
+  # v0.4.3 has no tri-valued leaf so we model it as an alternative
+  # subtree. That's awkward when someone wants "hardening off" — they
+  # simply do not select `heap_hardening`.
+  heap_hardening:
+    group: alternative
+    children: [heap_hardening_basic, heap_hardening_moderate, heap_hardening_full]
+  heap_hardening_basic:
+    group: leaf
+    attributes:
+      conf_value: "CONFIG_SYS_HEAP_HARDENING_BASIC=y"
+  heap_hardening_moderate:
+    group: leaf
+    attributes:
+      conf_value: "CONFIG_SYS_HEAP_HARDENING_MODERATE=y"
+  heap_hardening_full:
+    group: leaf
+    attributes:
+      conf_value: "CONFIG_SYS_HEAP_HARDENING_FULL=y"
+
+# Cross-tree constraints encode the rules that are currently
+# implicit in CI workflow YAMLs.
+constraints:
+  # LTO overlay only makes sense with the llvm_lto toolchain.
+  - (implies gale_lto_overlay llvm_lto)
+  # SMP overlay requires an SMP-capable board; today that's qemu_x86_64.
+  - (implies gale_smp_overlay qemu_x86_64)
+  # Renode boards require Zephyr toolchain (no LLVM runner path yet).
+  - (implies stm32f4_disco gcc_os)
+  - (implies nucleo_l552ze_q gcc_os)
+  # Heap hardening requires the gale overlay (primitives active).
+  - (implies heap_hardening gale_overlay)

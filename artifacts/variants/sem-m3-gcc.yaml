@@ -1,0 +1,8 @@
+# The baseline CI lane: semaphore test, qemu_cortex_m3, GCC -Os, gale
+# primitives active. Mirrors the first `zephyr-tests.yml` matrix entry.
+name: sem-m3-gcc
+selects:
+  - sem
+  - qemu_cortex_m3
+  - gcc_os
+  - gale_overlay
