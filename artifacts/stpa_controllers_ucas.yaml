@@ -754,6 +754,36 @@ artifacts:
         - signal-outside-critical-section
         - atomic-clear-races-with-flag-under-lock
 
+  - id: LS-13
+    type: loss-scenario
+    title: Recursive _sched_spinlock via abort -> free -> unpend
+    status: approved
+    description: >
+      halt_thread holds _sched_spinlock and calls k_thread_perms_all_clear,
+      which iterates k_object_wordlist_foreach. For a dynamically-allocated
+      object with reference count dropping to zero, the callback frees the
+      object via k_free -> k_heap_free, which calls z_unpend_all on the
+      heap's wait queue. z_unpend_all in turn acquires _sched_spinlock —
+      which is already held by halt_thread. On a debug build with
+      CONFIG_SPIN_VALIDATE=y this is caught as a "same CPU re-acquires
+      lock" fault; on a release build the lock is a simple spinlock and
+      the CPU deadlocks with itself (or a crash if k_spin_lock attempts
+      to disable interrupts twice). Matches upstream Zephyr fix 9cef0da05c3
+      which introduced the *_sched_locked variant family to use
+      z_unpend_all_locked and route the abort path through them.
+    tags: [stpa, loss-scenario, userspace, allocator, recursive-lock-acquisition]
+    links:
+      - type: caused-by-uca
+        target: U-16
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      type: inadequate-control-algorithm
+      causal-factors:
+        - free-path-takes-scheduler-lock-caller-already-holds
+        - abort-path-clears-permissions-of-dynamic-objects
+        - no-_sched_locked-variant-for-the-wake-path
+
   # ── Step 5: Controller Constraints ────────────────────────────────────
   # One CC per UCA (CC-n inverts U-n). Each CC states the obligation the
   # controller must enforce at the concrete code site identified by the
@@ -1068,6 +1098,39 @@ artifacts:
         _sched_spinlock; the pending-IPI clear MUST be serialised with
         flag_ipi under the same lock.
 
+  - id: CC-13
+    type: controller-constraint
+    title: Abort path must route allocator free through *_sched_locked
+    status: approved
+    description: >
+      Control paths that reach allocator free operations while already
+      holding `_sched_spinlock` (the abort path via
+      `k_thread_perms_all_clear` -> `clear_perms_sched_locked_cb` ->
+      `unref_check`) MUST use the `_sched_locked` variants of the free
+      and cleanup entry points: `k_free_sched_locked`,
+      `k_heap_free_sched_locked`, `z_msgq_cleanup_sched_locked`,
+      `z_stack_cleanup_sched_locked`. These variants call
+      `z_unpend_all_locked` (readies threads without re-entering
+      `_sched_spinlock`) and leave rescheduling to the caller once the
+      scheduler lock is released. Matches upstream Zephyr fix
+      9cef0da05c3. Fixed in gale by today's sched-locked port across
+      gale_sched.c, gale_kheap.c, gale_mempool.c, gale_msgq.c,
+      gale_stack.c, gale_userspace.c.
+    tags: [stpa, controller-constraint, allocator, userspace, recursive-lock-acquisition]
+    links:
+      - type: constrains-controller
+        target: C-1
+      - type: inverts-uca
+        target: U-16
+      - type: prevents
+        target: H-4
+    fields:
+      constraint: >
+        Any free / cleanup call issued from a context that already
+        holds _sched_spinlock MUST resolve to an implementation that
+        uses z_unpend_all_locked and does NOT call z_reschedule; the
+        caller owns the reschedule after releasing _sched_spinlock.
+
   # ── 2026-04-23 extension: candidate UCAs surfaced by the extreme-
   #    test-cases scoping brief (docs/research/extreme-test-cases.md).
   #    All three follow the "narrow Verus domain vs wide C caller"
@@ -1241,3 +1304,46 @@ artifacts:
         against concurrent flag_ipi. Reading/clearing it outside that
         lock races. No Rust decision function is involved — this is a
         pure C locking-discipline bug, same class as U-14.
+
+  - id: U-16
+    type: uca
+    title: Allocator free path re-acquires _sched_spinlock recursively
+    status: approved
+    description: >
+      `halt_thread` calls `k_thread_perms_all_clear` while holding
+      `_sched_spinlock`. On a dynamically-allocated kernel object whose
+      reference count drops to zero, the cleanup callback invokes
+      `k_free` -> `k_heap_free` -> `z_unpend_all`. The old z_unpend_all
+      re-acquires `_sched_spinlock`, which is already held — producing a
+      CONFIG_SPIN_VALIDATE fault on debug builds or deadlocking the
+      CPU on release builds.
+      Introduces a new class "recursive-lock-acquisition": the C caller
+      reaches a callee that grabs the same lock the caller already owns,
+      via an indirection chain the caller did not anticipate. Distinct
+      from the lock-region-boundary class (U-14, U-15) where the question
+      is WHEN the lock is held; here the lock IS held and the callee
+      tries to take it again. Fixed 2026-04-24 across gale_sched.c,
+      gale_kheap.c, gale_mempool.c, gale_msgq.c, gale_stack.c,
+      gale_userspace.c by porting upstream commit 9cef0da05c3
+      (z_unpend_all_locked + k_heap_free_sched_locked + k_free_sched_locked
+      + z_msgq_cleanup_sched_locked + z_stack_cleanup_sched_locked +
+      clear_perms_sched_locked_cb + unref_check(sched_locked)).
+    tags: [stpa, uca, scheduler, allocator, userspace, recursive-lock-acquisition]
+    links:
+      - type: issued-by
+        target: C-1
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      uca-type: providing
+      control-action: free-dynamic-object
+      context: >
+        Thread abort in flight under _sched_spinlock; a kernel object's
+        reference count drops to zero during the permission clear,
+        triggering the allocator free chain.
+      rationale: >
+        The free chain takes the scheduler lock to wake heap waiters;
+        the caller already holds it. The fix provides a second
+        free-chain family that uses z_unpend_all_locked (no
+        re-acquisition) and defers reschedule to the caller once the
+        lock is released.

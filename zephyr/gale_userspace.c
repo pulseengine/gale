@@ -228,7 +228,14 @@ static unsigned int thread_index_get(struct k_thread *thread)
 	return ko->data.thread_id;
 }
 
-static void unref_check(struct k_object *ko, uintptr_t index)
+/*
+ * `sched_locked` routes this path through the _sched_locked variants of
+ * k_free / k_msgq_cleanup / k_stack_cleanup, avoiding recursive
+ * acquisition of _sched_spinlock when we are reached from the abort
+ * path (k_thread_perms_all_clear -> clear_perms_sched_locked_cb ->
+ * unref_check). Matches upstream Zephyr fix 9cef0da05c3.
+ */
+static void unref_check(struct k_object *ko, uintptr_t index, bool sched_locked)
 {
 	k_spinlock_key_t key = k_spin_lock(&obj_lock);
 
@@ -254,10 +261,18 @@ static void unref_check(struct k_object *ko, uintptr_t index)
 
 	switch (ko->type) {
 	case K_OBJ_MSGQ:
-		k_msgq_cleanup((struct k_msgq *)ko->name);
+		if (sched_locked) {
+			z_msgq_cleanup_sched_locked((struct k_msgq *)ko->name);
+		} else {
+			k_msgq_cleanup((struct k_msgq *)ko->name);
+		}
 		break;
 	case K_OBJ_STACK:
-		k_stack_cleanup((struct k_stack *)ko->name);
+		if (sched_locked) {
+			z_stack_cleanup_sched_locked((struct k_stack *)ko->name);
+		} else {
+			k_stack_cleanup((struct k_stack *)ko->name);
+		}
 		break;
 	default:
 		/* Nothing to do */
@@ -265,8 +280,13 @@ static void unref_check(struct k_object *ko, uintptr_t index)
 	}
 
 	sys_dlist_remove(&dyn->dobj_list);
-	k_free(dyn->data);
-	k_free(dyn);
+	if (sched_locked) {
+		k_free_sched_locked(dyn->data);
+		k_free_sched_locked(dyn);
+	} else {
+		k_free(dyn->data);
+		k_free(dyn);
+	}
 out:
 #endif /* CONFIG_DYNAMIC_OBJECTS */
 	k_spin_unlock(&obj_lock, key);
@@ -572,7 +592,7 @@ void k_thread_perms_clear(struct k_object *ko, struct k_thread *thread)
 
 	if (index != -1) {
 		sys_bitfield_clear_bit((mem_addr_t)&ko->perms, index);
-		unref_check(ko, index);
+		unref_check(ko, index, false);
 	}
 }
 
@@ -580,7 +600,19 @@ static void clear_perms_cb(struct k_object *ko, void *ctx_ptr)
 {
 	uintptr_t id = (uintptr_t)ctx_ptr;
 
-	unref_check(ko, id);
+	unref_check(ko, id, false);
+}
+
+/*
+ * Abort-path callback — reached from k_thread_perms_all_clear while
+ * _sched_spinlock is held. Routes unref_check's free/cleanup through
+ * the _sched_locked variants.
+ */
+static void clear_perms_sched_locked_cb(struct k_object *ko, void *ctx_ptr)
+{
+	uintptr_t id = (uintptr_t)ctx_ptr;
+
+	unref_check(ko, id, true);
 }
 
 void k_thread_perms_all_clear(struct k_thread *thread)
@@ -588,7 +620,8 @@ void k_thread_perms_all_clear(struct k_thread *thread)
 	uintptr_t index = thread_index_get(thread);
 
 	if ((int)index != -1) {
-		k_object_wordlist_foreach(clear_perms_cb, (void *)index);
+		k_object_wordlist_foreach(clear_perms_sched_locked_cb,
+					 (void *)index);
 	}
 }
 

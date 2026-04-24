@@ -119,10 +119,16 @@ static inline int z_vrfy_k_msgq_alloc_init(struct k_msgq *msgq,
 
 /* -----------------------------------------------------------------------
  * k_msgq_cleanup
+ *
+ * Refactored to extract the freeable-buffer pointer via a shared helper
+ * so the sched-locked abort path (z_msgq_cleanup_sched_locked) can free
+ * it through k_free_sched_locked() — avoiding recursive
+ * _sched_spinlock acquisition. Matches upstream Zephyr fix 9cef0da05c3.
  * ----------------------------------------------------------------------- */
 
-int k_msgq_cleanup(struct k_msgq *msgq)
+static int msgq_cleanup(struct k_msgq *msgq, void **mem)
 {
+	*mem = NULL;
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_msgq, cleanup, msgq);
 
 	CHECKIF(z_waitq_head(&msgq->wait_q) != NULL) {
@@ -131,12 +137,30 @@ int k_msgq_cleanup(struct k_msgq *msgq)
 	}
 
 	if ((msgq->flags & K_MSGQ_FLAG_ALLOC) != 0U) {
-		k_free(msgq->buffer_start);
+		*mem = msgq->buffer_start;
 		msgq->flags &= ~K_MSGQ_FLAG_ALLOC;
 	}
 
 	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, cleanup, msgq, 0);
 	return 0;
+}
+
+int k_msgq_cleanup(struct k_msgq *msgq)
+{
+	void *mem;
+	int ret = msgq_cleanup(msgq, &mem);
+
+	k_free(mem);
+	return ret;
+}
+
+int z_msgq_cleanup_sched_locked(struct k_msgq *msgq)
+{
+	void *mem;
+	int ret = msgq_cleanup(msgq, &mem);
+
+	k_free_sched_locked(mem);
+	return ret;
 }
 
 /* -----------------------------------------------------------------------

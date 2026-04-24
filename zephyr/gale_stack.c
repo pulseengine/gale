@@ -87,8 +87,15 @@ static inline int32_t z_vrfy_k_stack_alloc_init(struct k_stack *stack,
 #include <zephyr/syscalls/k_stack_alloc_init_mrsh.c>
 #endif /* CONFIG_USERSPACE */
 
-int k_stack_cleanup(struct k_stack *stack)
+/*
+ * Refactored to extract the freeable-buffer pointer via a shared helper
+ * so the sched-locked abort path (z_stack_cleanup_sched_locked) can free
+ * it through k_free_sched_locked() — avoiding recursive
+ * _sched_spinlock acquisition. Matches upstream Zephyr fix 9cef0da05c3.
+ */
+static int stack_cleanup(struct k_stack *stack, void **mem)
 {
+	*mem = NULL;
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_stack, cleanup, stack);
 
 	CHECKIF(z_waitq_head(&stack->wait_q) != NULL) {
@@ -98,7 +105,7 @@ int k_stack_cleanup(struct k_stack *stack)
 	}
 
 	if ((stack->flags & K_STACK_FLAG_ALLOC) != (uint8_t)0) {
-		k_free(stack->base);
+		*mem = stack->base;
 		stack->base = NULL;
 		stack->flags &= ~K_STACK_FLAG_ALLOC;
 	}
@@ -106,6 +113,24 @@ int k_stack_cleanup(struct k_stack *stack)
 	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_stack, cleanup, stack, 0);
 
 	return 0;
+}
+
+int k_stack_cleanup(struct k_stack *stack)
+{
+	void *mem;
+	int ret = stack_cleanup(stack, &mem);
+
+	k_free(mem);
+	return ret;
+}
+
+int z_stack_cleanup_sched_locked(struct k_stack *stack)
+{
+	void *mem;
+	int ret = stack_cleanup(stack, &mem);
+
+	k_free_sched_locked(mem);
+	return ret;
 }
 
 int z_impl_k_stack_push(struct k_stack *stack, stack_data_t data)

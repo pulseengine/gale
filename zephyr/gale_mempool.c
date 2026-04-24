@@ -23,6 +23,7 @@
 #include <string.h>
 #include <zephyr/sys/math_extras.h>
 #include <zephyr/sys/util.h>
+#include <kernel_internal.h>
 
 #include "gale_mempool.h"
 
@@ -95,6 +96,24 @@ void k_free(void *ptr)
 		k_heap_free(*heap_ref, ptr);
 
 		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_heap_sys, k_free, *heap_ref, heap_ref);
+	}
+}
+
+/*
+ * Variant of k_free() for callers that already hold _sched_spinlock.
+ * See k_heap_free_sched_locked() for the reschedule ownership
+ * contract. Matches upstream Zephyr fix 9cef0da05c3.
+ */
+void k_free_sched_locked(void *ptr)
+{
+	struct k_heap **heap_ref;
+
+	if (ptr != NULL) {
+		heap_ref = ptr;
+		--heap_ref;
+		ptr = heap_ref;
+
+		k_heap_free_sched_locked(*heap_ref, ptr);
 	}
 }
 
