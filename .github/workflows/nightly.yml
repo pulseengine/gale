@@ -1,0 +1,216 @@
+# Nightly CI — deeper sweeps that are too slow for PR/push gating.
+#
+# Runs daily at 03:00 UTC + manual dispatch. Artifacts are retained
+# longer than in the PR lanes so regressions can be bisected.
+#
+# Jobs:
+#   - kani-extended: re-runs Kani with higher unwind/object bits for
+#     deeper bounded model checking.
+#   - fuzz-long:     each cargo-fuzz target for 1h (3600s).
+#   - zephyr-qemu-matrix: Cortex-M33 (mps2/an521) and R5 (qemu_cortex_r5).
+#     M3 is covered on every PR via zephyr-tests.yml; M4F is Renode-only
+#     since there is no upstream QEMU board for Cortex-M4F with FPU.
+
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  kani-extended:
+    name: Kani Extended Bounds
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install Kani
+        run: |
+          cargo install --locked kani-verifier
+          cargo kani setup
+
+      - name: Kani with extended bounds (main crate)
+        env:
+          KANI_FLAGS: "--default-unwind 16 --object-bits 12"
+        run: |
+          mkdir -p kani-reports
+          # shellcheck disable=SC2086
+          cargo kani --tests $KANI_FLAGS 2>&1 | tee kani-reports/main.log
+
+      - name: Kani with extended bounds (ffi crate)
+        env:
+          KANI_FLAGS: "--default-unwind 16 --object-bits 12"
+        working-directory: ffi
+        run: |
+          mkdir -p ../kani-reports
+          # shellcheck disable=SC2086
+          cargo kani --tests --all-features $KANI_FLAGS 2>&1 | tee ../kani-reports/ffi.log
+
+      - name: Upload Kani reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kani-extended-reports
+          path: kani-reports/
+          retention-days: 60
+
+  fuzz-long:
+    name: "${{ matrix.target }} (1h)"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - sem_fuzz
+          - sem_api_fuzz
+          - mutex_fuzz
+          - mutex_api_fuzz
+          - condvar_fuzz
+          - msgq_fuzz
+          - stack_fuzz
+          - pipe_fuzz
+          - timer_fuzz
+          - event_fuzz
+          - mem_slab_fuzz
+          - precondition_erasure
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            fuzz/target
+          key: fuzz-long-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock', 'fuzz/Cargo.toml') }}
+          restore-keys: |
+            fuzz-long-${{ runner.os }}-${{ matrix.target }}-
+            fuzz-${{ runner.os }}-
+
+      - name: Install cargo-fuzz
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+
+      - name: Run fuzz target for 3600s
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p fuzz/artifacts fuzz/corpus
+          cargo +nightly fuzz run "${TARGET}" \
+            -- -max_total_time=3600 -print_final_stats=1
+
+      - name: Upload corpus (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-corpus-${{ matrix.target }}
+          path: |
+            fuzz/artifacts/${{ matrix.target }}/
+            fuzz/corpus/${{ matrix.target }}/
+          retention-days: 30
+          if-no-files-found: ignore
+
+  zephyr-qemu-matrix:
+    # Deeper QEMU coverage beyond the M3 default used in zephyr-tests.yml.
+    # M3 is covered on every PR (zephyr-tests.yml).
+    # M4F has no upstream QEMU board with FPU — covered in renode-tests.yml.
+    name: "zephyr/${{ matrix.arch }} (${{ matrix.board }})"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      options: --user root
+    env:
+      HOME: /root
+      DOCKER_CONFIG: /tmp/.docker
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: cortex-m33
+            board: mps2/an521
+            rust_target: thumbv8m.main-none-eabi
+            sdk_target: arm-zephyr-eabi
+            test_path: tests/kernel/semaphore/semaphore
+          - arch: cortex-r5
+            board: qemu_cortex_r5
+            rust_target: armv7r-none-eabihf
+            sdk_target: arm-zephyr-eabi
+            test_path: tests/kernel/semaphore/semaphore
+    steps:
+      - name: Checkout Gale
+        uses: actions/checkout@v4
+        with:
+          path: gale
+
+      - name: Install Rust + target
+        env:
+          RUST_TARGET: ${{ matrix.rust_target }}
+        run: |
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          . /root/.cargo/env
+          rustup target add "${RUST_TARGET}"
+          NON_HF=$(echo "${RUST_TARGET}" | sed 's/eabihf$/eabi/')
+          if [ "${NON_HF}" != "${RUST_TARGET}" ]; then
+            rustup target add "${NON_HF}" || true
+          fi
+
+      - name: Initialize west workspace
+        env:
+          SDK_TARGET: ${{ matrix.sdk_target }}
+        run: |
+          pip3 install west
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
+          cd zephyr-workspace
+          west update --narrow -o=--depth=1
+          for attempt in 1 2 3; do west sdk install -t "${SDK_TARGET}" && break || sleep 5; done
+
+      - name: Build and run test
+        env:
+          BOARD: ${{ matrix.board }}
+          TEST_PATH: ${{ matrix.test_path }}
+        run: |
+          . /root/.cargo/env
+          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
+          cd zephyr-workspace
+          west build -b "${BOARD}" \
+            -s "zephyr/${TEST_PATH}" \
+            -- \
+            -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
+            -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf" \
+            2>&1 | tee build.log
+          timeout 300 west build -t run 2>&1 | tee test.log
+          if grep -q "PROJECT EXECUTION SUCCESSFUL" test.log; then
+            echo "PASS"
+          else
+            echo "::error::Test suite failed on ${BOARD}"
+            exit 1
+          fi
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zephyr-qemu-${{ matrix.arch }}-logs
+          path: |
+            zephyr-workspace/build.log
+            zephyr-workspace/test.log
+          retention-days: 30
+          if-no-files-found: ignore

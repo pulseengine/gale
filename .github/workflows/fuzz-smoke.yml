@@ -1,0 +1,96 @@
+# Fuzz smoke — short cargo-fuzz run (~60s per target) on every PR + push.
+#
+# The long-budget (1h/target) sweep runs from nightly.yml.
+# Any crashing input is uploaded so the fix can reproduce locally.
+#
+# Target list is derived from fuzz/Cargo.toml [[bin]] entries. If a new
+# fuzz_target is added there, add it to the matrix below.
+
+name: Fuzz Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'plain/**'
+      - 'fuzz/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/fuzz-smoke.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'plain/**'
+      - 'fuzz/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/fuzz-smoke.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: "${{ matrix.target }} (60s)"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - sem_fuzz
+          - sem_api_fuzz
+          - mutex_fuzz
+          - mutex_api_fuzz
+          - condvar_fuzz
+          - msgq_fuzz
+          - stack_fuzz
+          - pipe_fuzz
+          - timer_fuzz
+          - event_fuzz
+          - mem_slab_fuzz
+          - precondition_erasure
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nightly Rust
+        uses: dtolnay/rust-toolchain@nightly
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            fuzz/target
+          key: fuzz-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'fuzz/Cargo.toml') }}
+          restore-keys: fuzz-${{ runner.os }}-
+
+      - name: Install cargo-fuzz
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+
+      - name: Run fuzz target for 60s
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p fuzz/artifacts fuzz/corpus
+          cargo +nightly fuzz run "${TARGET}" \
+            -- -max_total_time=60 -print_final_stats=1
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: |
+            fuzz/artifacts/${{ matrix.target }}/
+            fuzz/corpus/${{ matrix.target }}/
+          retention-days: 30
+          if-no-files-found: ignore

@@ -1,0 +1,107 @@
+# Sanitizer matrix — ASan / TSan / LSan under nightly Rust
+#
+# Runs cargo test with -Zsanitizer=address|thread|leak on the host target.
+# LSan is bundled with ASan on Linux; we exercise it explicitly via a
+# dedicated leak-check run so it's visible as its own CI signal.
+#
+# Paired with .cargo/config.toml, which already wires the rustflags via
+# cfg(sanitizer = "...") for local reproduction.
+
+name: Sanitizers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'plain/**'
+      - 'ffi/**'
+      - 'tests/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.cargo/config.toml'
+      - '.github/workflows/sanitizers.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'plain/**'
+      - 'ffi/**'
+      - 'tests/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.cargo/config.toml'
+      - '.github/workflows/sanitizers.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sanitizers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sanitize:
+    name: "${{ matrix.sanitizer }} (ubuntu-22.04)"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, thread, leak]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nightly Rust + rust-src
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: san-${{ matrix.sanitizer }}-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: san-${{ matrix.sanitizer }}-${{ runner.os }}-
+
+      - name: Resolve host target
+        id: host
+        run: |
+          HOST=$(rustc -vV | awk '/^host:/ {print $2}')
+          echo "target=${HOST}" >> "$GITHUB_OUTPUT"
+          echo "Host target: ${HOST}"
+
+      - name: cargo test with -Zsanitizer=${{ matrix.sanitizer }}
+        env:
+          SAN: ${{ matrix.sanitizer }}
+          TARGET: ${{ steps.host.outputs.target }}
+          RUSTFLAGS: "-Zsanitizer=${{ matrix.sanitizer }} -Cdebuginfo=1"
+          RUSTDOCFLAGS: "-Zsanitizer=${{ matrix.sanitizer }}"
+          ASAN_OPTIONS: "detect_leaks=0:abort_on_error=1:strict_string_checks=1:detect_stack_use_after_return=1"
+          TSAN_OPTIONS: "halt_on_error=1:history_size=7"
+          LSAN_OPTIONS: "exitcode=23"
+        run: |
+          mkdir -p sanitizer-logs
+          set -o pipefail
+          if [ "${SAN}" = "leak" ]; then
+            ASAN_OPTIONS="detect_leaks=1:abort_on_error=0" \
+              cargo +nightly test --workspace \
+                -Z build-std \
+                --target "${TARGET}" \
+                --tests 2>&1 | tee "sanitizer-logs/${SAN}.log"
+          else
+            cargo +nightly test --workspace \
+              -Z build-std \
+              --target "${TARGET}" \
+              --tests 2>&1 | tee "sanitizer-logs/${SAN}.log"
+          fi
+
+      - name: Upload sanitizer log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanitizer-${{ matrix.sanitizer }}-log
+          path: sanitizer-logs/
+          retention-days: 14
