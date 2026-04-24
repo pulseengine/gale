@@ -155,8 +155,12 @@ jobs:
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf;${GALE_ROOT}/zephyr/gale_lto_overlay.conf" \
             -DCMAKE_EXE_LINKER_FLAGS="${LLD_LIBS}"
-          llvm-size build-llvm-gale/zephyr/zephyr.elf 2>/dev/null \
-            || arm-zephyr-eabi-size build-llvm-gale/zephyr/zephyr.elf \
+          # `||` binds tighter than `|` — without grouping, the `| tee` only
+          # applies to the fallback branch and the primary path's stdout is
+          # discarded, so llvm-gale-size.txt never gets created. Brace-group
+          # the fallback, then pipe once.
+          { llvm-size build-llvm-gale/zephyr/zephyr.elf 2>/dev/null \
+            || arm-zephyr-eabi-size build-llvm-gale/zephyr/zephyr.elf ; } \
             | tee llvm-gale-size.txt
 
       # --- Build 4: LLVM + Gale + cross-language LTO ---
@@ -175,8 +179,10 @@ jobs:
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf;${GALE_ROOT}/zephyr/gale_lto_overlay.conf" \
             -DCMAKE_EXE_LINKER_FLAGS="${LLD_LIBS}"
-          llvm-size build-llvm-lto/zephyr/zephyr.elf 2>/dev/null \
-            || arm-zephyr-eabi-size build-llvm-lto/zephyr/zephyr.elf \
+          # See llvm-gale-size.txt block: brace-group the `||` so `| tee`
+          # captures either command's stdout into the file.
+          { llvm-size build-llvm-lto/zephyr/zephyr.elf 2>/dev/null \
+            || arm-zephyr-eabi-size build-llvm-lto/zephyr/zephyr.elf ; } \
             | tee llvm-lto-size.txt
 
       - name: "Run semaphore tests (LLVM+LTO)"
@@ -216,10 +222,22 @@ jobs:
         run: |
           cd zephyr-workspace
           echo "=== Symbol check ==="
+          # Count + list gale_ FFI symbols that survived the link. The goal
+          # of cross-language LTO is for these to be inlined into the C
+          # call sites and dropped from the final ELF (count → 0, or at
+          # least significantly less than GCC+Gale). Today the LLVM+LTO
+          # and LLVM (no LTO) builds report identical symbol counts — #10.
           echo "--- GCC+Gale ---"
-          arm-zephyr-eabi-nm build-gcc-gale/zephyr/zephyr.elf | grep -c gale_ || echo "0"
+          GCC_GALE_SYMS=$(arm-zephyr-eabi-nm build-gcc-gale/zephyr/zephyr.elf 2>/dev/null | grep -c gale_ || echo "0")
+          arm-zephyr-eabi-nm build-gcc-gale/zephyr/zephyr.elf 2>/dev/null | grep gale_ | head -20 || true
+          echo "count: ${GCC_GALE_SYMS}"
+          echo "--- LLVM+Gale (no LTO) ---"
+          LLVM_NOLTO_SYMS=$( { llvm-nm build-llvm-gale/zephyr/zephyr.elf 2>/dev/null || arm-zephyr-eabi-nm build-llvm-gale/zephyr/zephyr.elf 2>/dev/null ; } | grep -c gale_ || echo "0")
+          echo "count: ${LLVM_NOLTO_SYMS}"
           echo "--- LLVM+LTO ---"
-          (llvm-nm build-llvm-lto/zephyr/zephyr.elf 2>/dev/null || arm-zephyr-eabi-nm build-llvm-lto/zephyr/zephyr.elf) | grep -c gale_ || echo "0 (fully inlined)"
+          LTO_SYMS=$( { llvm-nm build-llvm-lto/zephyr/zephyr.elf 2>/dev/null || arm-zephyr-eabi-nm build-llvm-lto/zephyr/zephyr.elf 2>/dev/null ; } | grep -c gale_ || echo "0")
+          { llvm-nm build-llvm-lto/zephyr/zephyr.elf 2>/dev/null || arm-zephyr-eabi-nm build-llvm-lto/zephyr/zephyr.elf 2>/dev/null ; } | grep gale_ | head -20 || true
+          echo "count: ${LTO_SYMS} (target: << ${GCC_GALE_SYMS} — cross-language inlining should remove most)"
 
           echo ""
           parse_size() { tail -1 "$1" | awk '{print $1, $2, $3, $4}'; }
@@ -247,6 +265,17 @@ jobs:
             printf "| LLVM + Gale | %d |\n" "$LLVM_G_TOTAL"
             printf "| LLVM+LTO | %d |\n" "$LTO_TOTAL"
             printf "| **Net vs baseline** | **%+d** |\n" "$LTO_VS_BASELINE"
+            echo ""
+            echo "### gale_ symbols surviving link"
+            echo "| Build | count |"
+            echo "|-------|------:|"
+            printf "| GCC + Gale | %s |\n" "${GCC_GALE_SYMS:-?}"
+            printf "| LLVM + Gale (no LTO) | %s |\n" "${LLVM_NOLTO_SYMS:-?}"
+            printf "| LLVM + Gale + LTO | %s |\n" "${LTO_SYMS:-?}"
+            echo ""
+            echo "Target: LTO count should be significantly lower than"
+            echo "GCC+Gale (ideally near-zero) — the #10 goal is for the"
+            echo "linker to inline every FFI shim into its C call site."
           } >> "$GITHUB_STEP_SUMMARY"
 
   llvm-lto-test:

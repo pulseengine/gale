@@ -208,12 +208,27 @@ Measured shape of the result:
   - Consistent 1-cycle-per-handoff shift; distribution-bounded, not
     noise-bounded.
 
-- `-flto LLVM + Gale` (the #10 aspirational target): not yet measured.
-  Architectural expectation is a larger margin — the FFI call+return
-  (~3 cyc) disappears and LTO can further prune C-side defensive
-  checks whose invariants Gale's Rust has already proven. The LLVM LTO
-  workflow exists (`.github/workflows/llvm-lto.yml`) and will provide
-  the first numbers.
+- `-flto LLVM + Gale` (the #10 aspirational target): not yet measured
+  on Renode. **Current status (April 2026):** the `llvm-lto.yml` CI
+  lane builds Zephyr+Gale with Clang/lld + `CONFIG_LTO=y` and the
+  `linker-plugin-lto` Rust profile. All 6 primitive test suites pass
+  under LLVM+LTO (semaphore, mutex, msgq, stack, pipe, timer). However
+  `llvm-nm | grep -c gale_` on the LTO output equals the count on the
+  non-LTO LLVM build (10 symbols on the semaphore test suite), and the
+  LTO ELF size matches the non-LTO LLVM ELF byte-for-byte (51,552 B vs
+  51,552 B on `qemu_cortex_m3` semaphore). **No cross-language inlining
+  is happening yet** — the pipeline compiles under LTO but doesn't
+  actually optimize across the boundary. The engine-bench Renode lane
+  is still GCC-only, so no LTO handoff delta has been measured.
+  The likely cause is that rustc's `#[no_mangle] pub extern "C"` FFI
+  functions have no `#[inline]` hint, so LLVM's LTO import heuristic
+  declines to clone them into C translation units. Next step: add
+  `#[inline]` to at least the hot-path sem functions
+  (`gale_sem_count_give`, `gale_sem_count_take`, `gale_k_sem_give_decide`,
+  `gale_k_sem_take_decide`) and re-run the lane — the symbol count on
+  the LTO ELF should drop. Then wire a Renode LTO run (same methodology
+  as `engine-bench-renode.yml`, just with the LLVM+LTO overlay
+  toggled on) to measure the handoff delta under the new regime.
 
 The current regime is where "formal verification pays off as a small
 but measurable performance gain *and* tighter tails" is defensible.
