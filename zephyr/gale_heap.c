@@ -95,6 +95,18 @@ static void free_list_remove_bidx(struct z_heap *h, chunkid_t c, int bidx)
 		chunkid_t first = prev_free_chunk(h, c),
 			  second = next_free_chunk(h, c);
 
+		/*
+		 * SYS_HEAP_HARDENING_MODERATE — upstream lib/heap/heap.c:102.
+		 * Verify the doubly-linked free list is self-consistent before
+		 * trusting the neighbor pointers for removal.
+		 */
+		if (SYS_HEAP_HARDENING_MODERATE &&
+		    (next_free_chunk(h, first) != c ||
+		     prev_free_chunk(h, second) != c)) {
+			LOG_ERR("heap corruption (free list linkage)");
+			k_panic();
+		}
+
 		b->next = second;
 		set_next_free_chunk(h, first, second);
 		set_prev_free_chunk(h, second, first);
@@ -132,6 +144,17 @@ static void free_list_add_bidx(struct z_heap *h, chunkid_t c, int bidx)
 		chunkid_t second = b->next;
 		chunkid_t first = prev_free_chunk(h, second);
 
+		/*
+		 * SYS_HEAP_HARDENING_MODERATE — upstream lib/heap/heap.c:146.
+		 * Verify the bucket's tail (prev of head) still points back at
+		 * the head before we splice a new chunk in between.
+		 */
+		if (SYS_HEAP_HARDENING_MODERATE &&
+		    next_free_chunk(h, first) != second) {
+			LOG_ERR("heap corruption (free list linkage)");
+			k_panic();
+		}
+
 		set_prev_free_chunk(h, c, first);
 		set_next_free_chunk(h, c, second);
 		set_next_free_chunk(h, first, c);
@@ -148,6 +171,30 @@ static void free_list_add(struct z_heap *h, chunkid_t c)
 	if (!undersized_chunk(h, c)) {
 		int bidx = bucket_idx(h, chunk_size(h, c));
 		free_list_add_bidx(h, c, bidx);
+	}
+}
+
+/*
+ * SYS_HEAP_HARDENING_MODERATE — upstream lib/heap/heap.c:178-204.
+ * Validate a free chunk's structural integrity before trusting its
+ * header fields. Called before free list removal or merge operations.
+ *
+ * FULL-tier canary verification (upstream's left_trusted path at
+ * heap.c:200-203) is omitted — FULL is deferred to the proof-refresh
+ * PR per docs/research/heap-hardening-port-plan.md §3. The parameter
+ * is kept for API parity so the FULL-tier call sites in this file
+ * (future PR) will not need to change shape.
+ */
+static void free_chunk_check(struct z_heap *h, chunkid_t c, bool left_trusted)
+{
+	ARG_UNUSED(left_trusted);
+
+	if (SYS_HEAP_HARDENING_MODERATE &&
+	    (chunk_used(h, c) ||
+	     left_chunk(h, right_chunk(h, c)) != c ||
+	     right_chunk(h, left_chunk(h, c)) != c)) {
+		LOG_ERR("heap corruption (free chunk linkage)");
+		k_panic();
 	}
 }
 
@@ -182,17 +229,29 @@ static void merge_chunks(struct z_heap *h, chunkid_t lc, chunkid_t rc)
 
 static void free_chunk(struct z_heap *h, chunkid_t c)
 {
+	chunkid_t rc = right_chunk(h, c);
+
 	/* Merge with free right chunk? */
-	if (!chunk_used(h, right_chunk(h, c))) {
-		free_list_remove(h, right_chunk(h, c));
-		merge_chunks(h, c, right_chunk(h, c));
+	if (!chunk_used(h, rc)) {
+		/* MODERATE: upstream heap.c:239 — right neighbor's left
+		 * pointer was already validated as c (we are c), so pass
+		 * left_trusted=true. */
+		free_chunk_check(h, rc, true);
+		free_list_remove(h, rc);
+		merge_chunks(h, c, rc);
 	}
 
+	chunkid_t lc = left_chunk(h, c);
+
 	/* Merge with free left chunk? */
-	if (!chunk_used(h, left_chunk(h, c))) {
-		free_list_remove(h, left_chunk(h, c));
-		merge_chunks(h, left_chunk(h, c), c);
-		c = left_chunk(h, c);
+	if (!chunk_used(h, lc)) {
+		/* MODERATE: upstream heap.c:248 — left_trusted=false because
+		 * the caller has not independently validated lc's right
+		 * pointer round-tripping back to it. */
+		free_chunk_check(h, lc, false);
+		free_list_remove(h, lc);
+		merge_chunks(h, lc, c);
+		c = lc;
 	}
 
 	free_list_add(h, c);
@@ -288,6 +347,8 @@ static chunkid_t alloc_chunk(struct z_heap *h, chunksz_t sz)
 		do {
 			chunkid_t c = b->next;
 			if (chunk_size(h, c) >= sz) {
+				/* MODERATE: upstream heap.c:390 */
+				free_chunk_check(h, c, false);
 				free_list_remove_bidx(h, c, bi);
 				return c;
 			}
@@ -302,6 +363,8 @@ static chunkid_t alloc_chunk(struct z_heap *h, chunksz_t sz)
 		int minbucket = __builtin_ctz(bmask);
 		chunkid_t c = h->buckets[minbucket].next;
 
+		/* MODERATE: upstream heap.c:408 */
+		free_chunk_check(h, c, false);
 		free_list_remove_bidx(h, c, minbucket);
 		CHECK(chunk_size(h, c) >= sz);
 		return c;
@@ -504,6 +567,10 @@ static bool inplace_realloc(struct sys_heap *heap, void *ptr, size_t bytes)
 		increase_allocated_bytes(h, split_size * CHUNK_UNIT);
 #endif
 
+		/* MODERATE: upstream heap.c:638 — left_trusted=true because
+		 * c was just validated by the BASIC/MODERATE guards at the
+		 * head of inplace_realloc. */
+		free_chunk_check(h, rc, true);
 		free_list_remove(h, rc);
 
 		if (split_size < chunk_size(h, rc)) {
