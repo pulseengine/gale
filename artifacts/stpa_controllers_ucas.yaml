@@ -154,6 +154,28 @@ artifacts:
         - global-lock-count
         - per-cpu-lock-holder
 
+  - id: C-9
+    type: controller
+    title: ZMS persistent storage controller
+    status: draft
+    description: >
+      Manages the sector state machine and write-path accounting for
+      Zephyr Memory Storage (NOR flash key-value store). Composed of
+      src/zms.rs (verified decision model) and the follow-on
+      zephyr/gale_zms.c shim. Issues write / close-sector / gc /
+      recover / read control actions on flash. Safety-critical for
+      ASIL-D boot-time configuration storage.
+    tags: [stpa, controller, zms, asil-d]
+    fields:
+      type: automated
+      source-file: src/zms.rs
+      process-model:
+        - sector-state-per-sector
+        - ate-wra-and-data-wra
+        - free-space-accounting
+        - gc-done-marker-state
+        - cycle-counter-per-sector
+
   # ── Step 3: Unsafe Control Actions ─────────────────────────────────────
 
   - id: U-1
@@ -784,6 +806,75 @@ artifacts:
         - abort-path-clears-permissions-of-dynamic-objects
         - no-_sched_locked-variant-for-the-wake-path
 
+  - id: LS-14
+    type: loss-scenario
+    title: Interrupted-GC recovery erases recent ZMS writes
+    status: draft
+    description: >
+      After a crash mid-GC, zms_init erases the active sector before
+      re-scanning for ATEs that are not yet in the source. Any safety-
+      critical writes committed post-GC-start are permanently lost.
+      ZMS7 invariant: if new_ate_count > 0 in the active sector at
+      recovery time, erase-active must NOT proceed — the write path
+      must relocate first or fail-stop when sector_count < 3.
+    tags: [stpa, loss-scenario, zms, gap-zms-5]
+    links:
+      - type: caused-by-uca
+        target: U-17
+      - type: leads-to-hazard
+        target: H-5
+    fields:
+      type: inadequate-control-algorithm
+      causal-factors:
+        - recovery-erases-before-scanning-for-post-gc-writes
+        - no-relocation-path-for-interrupted-gc-case
+
+  - id: LS-15
+    type: loss-scenario
+    title: Concurrent ZMS read + GC returns partial / erased data
+    status: draft
+    description: >
+      A reader walking the ATE chain without the zms_lock observes the
+      intermediate state of a concurrent GC: the source sector is being
+      erased while the reader is mid-walk, returning 0xFF filler as if
+      it were valid data. ZMS8 invariant: read_decide requires
+      mutex_held == true — reads that drop the lock on entry fail
+      verification.
+    tags: [stpa, loss-scenario, zms, gap-zms-8, concurrency]
+    links:
+      - type: caused-by-uca
+        target: U-18
+      - type: leads-to-hazard
+        target: H-5
+    fields:
+      type: inadequate-control-algorithm
+      causal-factors:
+        - read-path-does-not-synchronise-with-gc
+        - ate-walk-observes-mid-erase-state
+
+  - id: LS-16
+    type: loss-scenario
+    title: NO_DOUBLE_WRITE TOCTOU loses concurrent ZMS update
+    status: draft
+    description: >
+      Writer A dedup-compares to the stored value and finds it equal;
+      before A acquires the lock, writer B commits a new value. A skips
+      its write believing the value is already correct, but the stored
+      value is now B's, not A's — A's update is silently lost. ZMS9
+      invariant: no_double_write_decide requires mutex_held == true so
+      the compare-then-write is atomic against concurrent writers.
+    tags: [stpa, loss-scenario, zms, gap-zms-10, toctou]
+    links:
+      - type: caused-by-uca
+        target: U-19
+      - type: leads-to-hazard
+        target: H-5
+    fields:
+      type: inadequate-control-algorithm
+      causal-factors:
+        - compare-outside-critical-section
+        - concurrent-writer-commits-between-compare-and-write
+
   # ── Step 5: Controller Constraints ────────────────────────────────────
   # One CC per UCA (CC-n inverts U-n). Each CC states the obligation the
   # controller must enforce at the concrete code site identified by the
@@ -1131,6 +1222,80 @@ artifacts:
         uses z_unpend_all_locked and does NOT call z_reschedule; the
         caller owns the reschedule after releasing _sched_spinlock.
 
+  - id: CC-14
+    type: controller-constraint
+    title: ZMS init must pre-scan active sector before GC-restart erase
+    status: approved
+    description: >
+      The ZMS controller (C-9) MUST NOT erase the active sector during
+      interrupted-GC recovery until all ATEs not yet present in the
+      source sector have been relocated. With sector_count < 3 the
+      recovery MUST fail-stop rather than erase. Obligation:
+      src/zms.rs::pre_gc_scan_decide (Verus invariant ZMS7) gates every
+      erase-active decision in the recovery path.
+    tags: [stpa, controller-constraint, zms, gap-zms-5]
+    links:
+      - type: constrains-controller
+        target: C-9
+      - type: inverts-uca
+        target: U-17
+      - type: prevents
+        target: H-5
+    fields:
+      constraint: >
+        C-9 MUST NOT issue erase-active during recovery while the
+        active sector contains ATEs absent from the source sector;
+        relocate-first or fail-stop as decided by pre_gc_scan_decide.
+
+  - id: CC-15
+    type: controller-constraint
+    title: ZMS read must hold zms_lock across the full ATE walk
+    status: approved
+    description: >
+      The ZMS controller (C-9) MUST acquire zms_lock before entering
+      zms_read / zms_read_hist and hold it across the full ATE chain
+      traversal. The Verus precondition `requires mutex_held == true`
+      on src/zms.rs::read_decide is the proof obligation — callers
+      that drop the lock on entry fail verification.
+    tags: [stpa, controller-constraint, zms, gap-zms-8, concurrency]
+    links:
+      - type: constrains-controller
+        target: C-9
+      - type: inverts-uca
+        target: U-18
+      - type: prevents
+        target: H-5
+    fields:
+      constraint: >
+        C-9 read operations MUST hold zms_lock from the start of the
+        ATE walk until the read result is committed to the caller's
+        buffer; no reader may observe intermediate GC state.
+
+  - id: CC-16
+    type: controller-constraint
+    title: NO_DOUBLE_WRITE compare must execute inside zms_lock
+    status: approved
+    description: >
+      Under CONFIG_ZMS_NO_DOUBLE_WRITE, the flash read + memcmp that
+      decides whether to skip a redundant write MUST execute inside
+      the zms_lock critical section. Verus invariant ZMS9 encodes
+      this as `requires mutex_held == true` on
+      src/zms.rs::no_double_write_decide with `ensures result.action
+      != RejectToctou`.
+    tags: [stpa, controller-constraint, zms, gap-zms-10, toctou]
+    links:
+      - type: constrains-controller
+        target: C-9
+      - type: inverts-uca
+        target: U-19
+      - type: prevents
+        target: H-5
+    fields:
+      constraint: >
+        C-9 MUST execute the dedup compare-then-write atomically
+        under zms_lock; a concurrent writer's commit between compare
+        and write MUST NOT cause this writer to skip its own commit.
+
   # ── 2026-04-23 extension: candidate UCAs surfaced by the extreme-
   #    test-cases scoping brief (docs/research/extreme-test-cases.md).
   #    All three follow the "narrow Verus domain vs wide C caller"
@@ -1347,3 +1512,91 @@ artifacts:
         free-chain family that uses z_unpend_all_locked (no
         re-acquisition) and defers reschedule to the caller once the
         lock is released.
+
+  - id: U-17
+    type: uca
+    title: ZMS recovery erases active sector, discarding post-GC writes
+    status: approved
+    description: >
+      On power loss during GC, naive zms_init recovery erases the
+      active sector and restarts GC — losing any writes committed
+      after the GC started. Surfaced by STPA GAP-ZMS-5. Closed by
+      src/zms.rs::pre_gc_scan_decide which refuses EraseActive when
+      new_ate_count > 0 (invariant ZMS7). A new subclass of
+      "premature-state-destruction": the recovery algorithm destroys
+      evidence of committed work before checking whether that work
+      needs to be preserved.
+    tags: [stpa, uca, zms, gap-zms-5]
+    links:
+      - type: issued-by
+        target: C-9
+      - type: leads-to-hazard
+        target: H-5
+    fields:
+      uca-type: providing
+      control-action: recover-after-power-loss
+      context: >
+        Power loss detected mid-GC AND the active sector contains
+        ATEs not yet present in the source sector (safety-critical
+        writes committed between GC start and crash).
+      rationale: >
+        The recovery must scan before erase; erase-then-rescan loses
+        any state added by the application between GC start and crash.
+
+  - id: U-18
+    type: uca
+    title: ZMS read walks ATE chain without holding zms_lock
+    status: approved
+    description: >
+      A concurrent writer + GC mutates ate_wra / data_wra while a
+      reader walks the ATE chain, so the reader can observe partial
+      or erased data. Surfaced by STPA GAP-ZMS-8. Closed by
+      src/zms.rs::read_decide's `requires mutex_held == true`
+      (invariant ZMS8) — a caller that drops the lock on read entry
+      fails Verus verification.
+    tags: [stpa, uca, zms, gap-zms-8, concurrency]
+    links:
+      - type: issued-by
+        target: C-9
+      - type: leads-to-hazard
+        target: H-5
+    fields:
+      uca-type: providing
+      control-action: read
+      context: >
+        Reader executes with mutex_held == false while GC is active on
+        the same ZMS instance.
+      rationale: >
+        ate_wra / data_wra are shared state protected by zms_lock
+        against concurrent GC. Reading them outside that lock can
+        observe mid-erase state as valid data (0xFF filler read as
+        content).
+
+  - id: U-19
+    type: uca
+    title: NO_DOUBLE_WRITE dedup compare executes outside zms_lock
+    status: approved
+    description: >
+      Compare-then-write TOCTOU: a concurrent writer mutates the
+      stored value between the memcmp (that decided "no write needed")
+      and the skipped subsequent write, producing a stale-write where
+      the newer update is silently lost. Surfaced by STPA GAP-ZMS-10.
+      Closed by src/zms.rs::no_double_write_decide's `requires
+      mutex_held == true` with `ensures action != RejectToctou`
+      (invariant ZMS9).
+    tags: [stpa, uca, zms, gap-zms-10, toctou]
+    links:
+      - type: issued-by
+        target: C-9
+      - type: leads-to-hazard
+        target: H-5
+    fields:
+      uca-type: providing
+      control-action: no-double-write-compare
+      context: >
+        Writer A reads the stored value and compares; before A writes
+        its update, writer B commits a new value. A then skips its
+        write.
+      rationale: >
+        The dedup compare and the decision to skip must be one atomic
+        step under zms_lock; otherwise A's skipped write is lost.

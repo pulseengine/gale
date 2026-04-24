@@ -4594,3 +4594,121 @@ artifacts:
     links:
       - type: verifies
         target: SYSREQ-COV-001
+
+  # ── 2026-04-24 additions from batch 1 of the #9 FFI delegation work,
+  #    the loom concurrency harness (#22), the heap FULL-tier canary
+  #    (#15 PR-4), and the LLVM LTO regression-guard (#10) ───────────
+
+  - id: FV-US-003
+    type: sw-verification
+    title: k_object flag-op delegation to verified userspace model
+    status: approved
+    description: >
+      gale_k_object_init_decide, _uninit_decide, _recycle_decide, and
+      _make_public_decide delegate flag arithmetic to Verus-verified
+      helpers init_flags_decide / uninit_flags_decide /
+      recycle_flags_decide / make_public_flags_decide in
+      src/userspace.rs. Bit-vector asserts discharge the mask-and-OR
+      postconditions. Closes four RED entries from the GAP-2 audit
+      (docs/safety/stpa-gap2-audit.md).
+    tags: [verification, formal, userspace, asil-d, swe-6, stpa-gap-2]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-US-US05
+      - type: verifies
+        target: SWREQ-US-US07
+
+  - id: FV-RB-002
+    type: sw-verification
+    title: ring_buf index arithmetic delegation to verified model
+    status: approved
+    description: >
+      gale_ring_buf_claim_decide, gale_ring_buf_finish_validate,
+      gale_ring_buf_space_get, and gale_ring_buf_size_get delegate
+      modular wrapping_sub / offset arithmetic to Verus-verified
+      helpers claim_decide / finish_decide / space_get_decide /
+      size_get_decide in src/ring_buf.rs. Closes four RED entries from
+      the GAP-2 audit; RB1 bounds, RB7 consistency, RB8 overflow
+      preserved across the FFI boundary.
+    tags: [verification, formal, ring-buf, asil-d, swe-6, stpa-gap-2]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-RB-RB01
+      - type: verifies
+        target: SWREQ-RB-RB07
+      - type: verifies
+        target: SWREQ-RB-RB08
+
+  - id: IV-LOOM-001
+    type: sw-integration-verification
+    title: tokio-rs/loom concurrency permutation harnesses
+    status: approved
+    description: >
+      Loom 0.7 permutation-checking harnesses in tests/loom_atomic.rs,
+      tests/loom_ring_buf.rs, tests/loom_priority_queue.rs. Each test
+      is gated by #[cfg(loom)] and exercises a small atomic /
+      mutex-backed model under every legal C11 interleaving with
+      LOOM_MAX_PREEMPTIONS=3. Catches weak-memory regressions (wrong
+      Ordering, torn publish, missed release/acquire pair) that Verus
+      cannot observe because its models are single-threaded &mut. 7
+      tests total (CAS-race, fetch_or bit accumulation, fetch_add
+      no-lost-update, SPSC release/acquire, SPSC round-trip,
+      concurrent sorted insert, insert+pop race).
+    tags: [testing, integration, concurrency, loom, swe-5]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-AT-001
+      - type: verifies
+        target: SWARCH-RB-001
+      - type: verifies
+        target: SWARCH-SC-001
+
+  - id: FV-HP-CANARY-001
+    type: sw-verification
+    title: sys_heap FULL-tier canary trailer check (SYS_HEAP_HARDENING_LEVEL >= 3)
+    status: approved
+    description: >
+      Per-chunk 8-byte canary trailers written on alloc (HEAP_CANARY_MAGIC
+      = 0x5A6B7C8D9EAFB0C1) and verified on every free, realloc, and
+      usable_size call in zephyr/gale_heap.c. Trailer is poisoned
+      (0xDEADBEEFDEADBEEFULL) on free so double-free surfaces with a
+      distinguished log line before k_panic. Trailer slot is reserved
+      inside the chunk's physical footprint via heap.h CHUNK_TRAILER_SIZE
+      (propagates through bytes_to_chunksz / min_chunk_size /
+      chunk_usable_bytes). Rust-side HP9 layer (reserved_bytes_spec and
+      lemma_reserved_bytes_bounded) proves reservation is sound:
+      user_bytes + 8 * used_chunks <= capacity.
+    tags: [runtime-check, heap-hardening, asil-d, swe-6]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWREQ-HP-HP05
+
+  - id: FV-LTO-001
+    type: sw-verification
+    title: Cross-language LTO symbol-count regression guard
+    status: draft
+    description: >
+      CI lane .github/workflows/llvm-lto.yml builds the semaphore test
+      suite four ways (GCC baseline, GCC+Gale, LLVM+Gale no-LTO,
+      LLVM+Gale+LTO), counts the `gale_` symbols surviving each link,
+      and dumps the first 20 names per build into the step summary.
+      Guards against inlining regressions across the C <-> Rust FFI
+      boundary. Current state (2026-04-24): 10 / 10 gale_ symbols
+      survive LTO — cross-language inlining is not yet effective (hot-
+      path FFI fns lack `#[inline]`); tracked as the next step of #10.
+    tags: [build, lto, llvm, performance, swe-6]
+    fields:
+      method: static-analysis
+    links:
+      - type: verifies
+        target: SWREQ-SEM-P01
+      - type: related-to
+        target: FV-SEM-001
