@@ -699,6 +699,61 @@ artifacts:
         - type-narrowing-at-model-definition
         - missing-signedness-in-validator
 
+  - id: LS-11
+    type: loss-scenario
+    title: Futex waiter pends on empty queue after stale val read
+    status: approved
+    description: >
+      A thread calls k_futex_wait(futex, expected). gale_futex.c samples
+      `atomic_get(&futex->val)` before taking k_spin_lock(&futex_data->lock).
+      A concurrent waker updates futex->val and calls k_futex_wake in that
+      window; the wake finds no pending waiters (the caller has not yet
+      enqueued) and completes as a no-op. The caller then acquires the
+      lock, passes its stale value to gale_k_futex_wait_decide which
+      returns "pend", enqueues on a now-empty wait queue, and blocks
+      indefinitely with no subsequent wake event arriving. Surfaced by
+      the 2026-04-22 upstream-drift audit; matches upstream Zephyr commit
+      10c974c9d5 which moves the atomic_get inside the critical section.
+    tags: [stpa, loss-scenario, futex, lock-region-boundary]
+    links:
+      - type: caused-by-uca
+        target: U-14
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      type: inadequate-control-algorithm
+      causal-factors:
+        - extract-outside-critical-section
+        - atomic-read-not-synchronised-with-wake-path
+
+  - id: LS-12
+    type: loss-scenario
+    title: Self-directed IPI lost when signal clears bit outside _sched_spinlock
+    status: approved
+    description: >
+      On SMP, CPU A returns from K_SPINLOCK(&_sched_spinlock) inside
+      z_get_next_switch_handle and calls signal_pending_ipi(), which
+      atomic_clears A's pending-IPI bit and invokes
+      arch_sched_directed_ipi — skipping A (i == id). Concurrently,
+      remote CPU B calls flag_ipi for A under _sched_spinlock. The
+      flag_ipi write can race with A's atomic_clear so the bit is
+      consumed but no IPI is ever delivered. On a configuration where
+      A has a single pinned thread and no timer or external interrupts,
+      the scheduled work is never resumed and A hangs permanently.
+      Matches upstream Zephyr commit 1666066082a which moves the call
+      inside the spinlocked region.
+    tags: [stpa, loss-scenario, scheduler, smp, ipi, lock-region-boundary]
+    links:
+      - type: caused-by-uca
+        target: U-15
+      - type: leads-to-hazard
+        target: H-4
+    fields:
+      type: inadequate-control-algorithm
+      causal-factors:
+        - signal-outside-critical-section
+        - atomic-clear-races-with-flag-under-lock
+
   # ── Step 5: Controller Constraints ────────────────────────────────────
   # One CC per UCA (CC-n inverts U-n). Each CC states the obligation the
   # controller must enforce at the concrete code site identified by the
@@ -958,6 +1013,61 @@ artifacts:
         validator MUST be signed and MUST use the kconfig-derived
         bounds, not the hardcoded 32.
 
+  - id: CC-11
+    type: controller-constraint
+    title: Futex wait must sample futex->val under the wait-queue spinlock
+    status: approved
+    description: >
+      The spinlock/wait-queue controller (C-3) MUST NOT extract
+      `futex->val` for the wait decision outside the same critical
+      section that synchronises with the wake path. zephyr/gale_futex.c
+      must issue `atomic_get(&futex->val)` after `k_spin_lock(&futex_data->lock)`
+      and release the lock on every non-blocking return path, so the
+      value passed to `gale_k_futex_wait_decide` is observed under the
+      same lock that orders `k_futex_wake`. Matches upstream Zephyr fix
+      10c974c9d5. Fixed in gale commit 2f314b0.
+    tags: [stpa, controller-constraint, futex, wait-queue, lock-region-boundary]
+    links:
+      - type: constrains-controller
+        target: C-3
+      - type: inverts-uca
+        target: U-14
+      - type: prevents
+        target: H-4
+    fields:
+      constraint: >
+        C-3 MUST sample futex->val inside the wait-queue spinlock
+        critical section; Extract, Decide, and Apply MUST all execute
+        under a single lock acquisition that synchronises with
+        k_futex_wake.
+
+  - id: CC-12
+    type: controller-constraint
+    title: signal_pending_ipi must execute inside _sched_spinlock
+    status: approved
+    description: >
+      The SMP coordinator (C-8) MUST NOT call `signal_pending_ipi()`
+      outside the `_sched_spinlock` critical section that protects the
+      pending-IPI bit against concurrent `flag_ipi` writes from remote
+      CPUs. zephyr/gale_sched.c must invoke signal_pending_ipi while
+      holding K_SPINLOCK(&_sched_spinlock) so that the `atomic_clear`
+      on the calling CPU's pending bit is ordered against flag_ipi and
+      no self-directed IPI is lost. Matches upstream Zephyr fix
+      1666066082a. Fixed in gale commit 2f314b0.
+    tags: [stpa, controller-constraint, scheduler, smp, ipi, lock-region-boundary]
+    links:
+      - type: constrains-controller
+        target: C-8
+      - type: inverts-uca
+        target: U-15
+      - type: prevents
+        target: H-4
+    fields:
+      constraint: >
+        C-8 MUST call signal_pending_ipi() only while holding
+        _sched_spinlock; the pending-IPI clear MUST be serialised with
+        flag_ipi under the same lock.
+
   # ── 2026-04-23 extension: candidate UCAs surfaced by the extreme-
   #    test-cases scoping brief (docs/research/extreme-test-cases.md).
   #    All three follow the "narrow Verus domain vs wide C caller"
@@ -1059,7 +1169,7 @@ artifacts:
   - id: U-14
     type: uca
     title: Futex wait samples value outside the wait-queue spinlock
-    status: draft
+    status: approved
     description: >
       zephyr/gale_futex.c read `atomic_get(&futex->val)` before acquiring
       `k_spin_lock(&futex_data->lock)`, then passed the stale value to
@@ -1099,7 +1209,7 @@ artifacts:
   - id: U-15
     type: uca
     title: signal_pending_ipi called outside _sched_spinlock on SMP
-    status: draft
+    status: approved
     description: >
       zephyr/gale_sched.c called `signal_pending_ipi()` in
       `z_get_next_switch_handle` after the `K_SPINLOCK(&_sched_spinlock)`

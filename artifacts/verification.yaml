@@ -3687,6 +3687,51 @@ artifacts:
       - type: verifies
         target: SWARCH-SM-001
 
+  # ── SWE.5: Integration verification — Precondition-erasure fuzz ───────
+
+  - id: IV-PE-001
+    type: sw-integration-verification
+    title: Precondition-erasure fuzz harness across FFI decision functions
+    status: approved
+    description: >
+      libFuzzer harness at fuzz/fuzz_targets/precondition_erasure.rs with
+      a deterministic smoke binary at fuzz/src/bin/precondition_erasure_smoke.rs
+      (commit eee3182). Exercises nine FFI decision primitives — semaphore
+      give/take, mutex lock/unlock, spinlock valid/unvalid, futex wake,
+      condvar broadcast, and timer expire — by feeding inputs that violate
+      the Verus `requires` preconditions and asserting the coarse-shim
+      reject path matches the decision function's postcondition. Smoke
+      run across 2511 cases produced 0 postcondition mismatches and 0
+      panics; per-primitive coverage counters confirm the violation region
+      is reached for each primitive. Closes the U-1/U-8/U-9/U-11/U-12
+      class at the FFI boundary by making the precondition a runtime gate.
+    tags: [testing, integration, fuzz, swe-5, precondition-erasure]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: SWARCH-SEM-001
+      - type: verifies
+        target: SWARCH-MUT-001
+      - type: verifies
+        target: SWARCH-SL-001
+      - type: verifies
+        target: SWARCH-FX-001
+      - type: verifies
+        target: SWARCH-CV-001
+      - type: verifies
+        target: SWARCH-TM-001
+      - type: mitigates
+        target: U-1
+      - type: mitigates
+        target: U-8
+      - type: mitigates
+        target: U-9
+      - type: mitigates
+        target: U-11
+      - type: mitigates
+        target: U-12
+
   - id: FV-SM-001
     type: sw-verification
     title: SmpState Verus formal verification (SMT/Z3)
