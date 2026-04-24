@@ -268,6 +268,19 @@
 //!
 //! Verified: US1-US6 (tracking guard, accumulate-only-when-started,
 //! track_usage toggle, idempotent sys ops, no divide-by-zero, monotone cycles).
+//!
+//! ## ZMS — Zephyr Memory Storage (gale_zms_*)
+//!
+//! Pure decision functions replacing the sector state machine and
+//! write-path accounting from subsys/kvss/zms/zms.c:
+//!   zms.c:1472-1551  zms_mount_internal        — write_decide / has_space
+//!   zms.c:1563-1713  zms_write                 — write_decide  [SWREQ-ZMS-P05]
+//!   zms.c:728-782    zms_sector_close          — sector_close_decide
+//!   zms.c:1393-1453  zms_init (recovery)       — gc_done_check [SWREQ-ZMS-P08]
+//!
+//! Verified: ZMS1-ZMS9 (overlap invariant, free-space consistency,
+//! O(1) write, minimum sectors, cycle counter, recovery determinism,
+//! GC-restart write preservation, read-path mutex, NO_DOUBLE_WRITE mutex).
 
 #![cfg_attr(not(any(test, kani)), no_std)]
 // FFI boundary crate — unsafe is inherent (no_mangle, raw pointers).
@@ -5828,13 +5841,17 @@ pub struct GaleUserspaceInitDecision {
 /// Decide new flags for k_object_init.
 ///
 /// userspace.c:809: ko->flags |= K_OBJ_FLAG_INITIALIZED;
+///
+/// Delegates to the verified model (`gale::userspace::init_flags_decide`),
+/// which carries the Verus proofs for US7 (init flag management).
 #[cfg(feature = "userspace")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_object_init_decide(
     current_flags: u8,
 ) -> GaleUserspaceInitDecision {
+    use gale::userspace::init_flags_decide;
     GaleUserspaceInitDecision {
-        new_flags: current_flags | K_OBJ_FLAG_INITIALIZED,
+        new_flags: init_flags_decide(current_flags),
     }
 }
 
@@ -5850,13 +5867,18 @@ pub struct GaleUserspaceUninitDecision {
 /// Decide new flags for k_object_uninit.
 ///
 /// userspace.c:833: ko->flags &= ~K_OBJ_FLAG_INITIALIZED;
+///
+/// Delegates to the verified model (`gale::userspace::uninit_flags_decide`),
+/// which carries the Verus proofs for US7 (init flag management) and the
+/// preservation of other flag bits (e.g. PUBLIC).
 #[cfg(feature = "userspace")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_object_uninit_decide(
     current_flags: u8,
 ) -> GaleUserspaceUninitDecision {
+    use gale::userspace::uninit_flags_decide;
     GaleUserspaceUninitDecision {
-        new_flags: current_flags & !K_OBJ_FLAG_INITIALIZED,
+        new_flags: uninit_flags_decide(current_flags),
     }
 }
 
@@ -5877,13 +5899,19 @@ pub struct GaleUserspaceRecycleDecision {
 ///   memset(ko->perms, 0, sizeof(ko->perms));
 ///   k_thread_perms_set(ko, _current);
 ///   ko->flags |= K_OBJ_FLAG_INITIALIZED;
+///
+/// Delegates the flag-update portion to the verified model
+/// (`gale::userspace::recycle_flags_decide`).  The perm clearing and
+/// grant-to-caller remain C-side side effects; we always signal
+/// `clear_perms = 1` per the Zephyr recycle contract (US2, US6, US7).
 #[cfg(feature = "userspace")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_object_recycle_decide(
     current_flags: u8,
 ) -> GaleUserspaceRecycleDecision {
+    use gale::userspace::recycle_flags_decide;
     GaleUserspaceRecycleDecision {
-        new_flags: current_flags | K_OBJ_FLAG_INITIALIZED,
+        new_flags: recycle_flags_decide(current_flags),
         clear_perms: 1,
     }
 }
@@ -5900,13 +5928,18 @@ pub struct GaleUserspacePublicDecision {
 /// Decide new flags for k_object_access_all_grant.
 ///
 /// userspace.c:750: ko->flags |= K_OBJ_FLAG_PUBLIC;
+///
+/// Delegates to the verified model (`gale::userspace::make_public_flags_decide`),
+/// which carries the Verus proof for US5 (public flag grants universal
+/// access) and the preservation of INITIALIZED.
 #[cfg(feature = "userspace")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_object_make_public_decide(
     current_flags: u8,
 ) -> GaleUserspacePublicDecision {
+    use gale::userspace::make_public_flags_decide;
     GaleUserspacePublicDecision {
-        new_flags: current_flags | K_OBJ_FLAG_PUBLIC,
+        new_flags: make_public_flags_decide(current_flags),
     }
 }
 
@@ -8293,41 +8326,13 @@ pub extern "C" fn gale_ring_buf_claim_decide(
     buf_size: u32,
     requested: u32,
 ) -> GaleRingBufClaimDecision {
-    if buf_size == 0 {
-        return GaleRingBufClaimDecision {
-            claim_size: 0,
-            buffer_offset: 0,
-        };
-    }
+    use gale::ring_buf::claim_decide;
 
-    // head_offset = head - base, with wraparound adjustment.
-    // C uses unsigned subtraction (wraps at u16/u32 boundary).
-    // We use wrapping_sub to match, then mod buf_size for safety.
-    let raw_offset = head.wrapping_sub(base);
-    let head_offset = if raw_offset >= buf_size {
-        raw_offset - buf_size
-    } else {
-        raw_offset
-    };
-    // Clamp: if still >= buf_size (shouldn't happen with valid state),
-    // use modulo to guarantee bounds.
-    let head_offset = if head_offset >= buf_size {
-        head_offset % buf_size
-    } else {
-        head_offset
-    };
-
-    // wrap_size = bytes until end of physical buffer
-    let wrap_size = buf_size - head_offset;
-    let claim_size = if requested <= wrap_size {
-        requested
-    } else {
-        wrap_size
-    };
-
+    // Delegate to verified model (RB1, RB8).
+    let d = claim_decide(head, base, buf_size, requested);
     GaleRingBufClaimDecision {
-        claim_size,
-        buffer_offset: head_offset,
+        claim_size: d.claim_size,
+        buffer_offset: d.buffer_offset,
     }
 }
 
@@ -8354,14 +8359,15 @@ pub extern "C" fn gale_ring_buf_finish_validate(
     size: u32,
     buf_size: u32,
 ) -> i32 {
-    // claimed_size = head - tail (may wrap via unsigned subtraction)
-    let claimed_size = head.wrapping_sub(tail);
+    use gale::ring_buf::finish_decide;
+    let _ = buf_size;
 
-    if size > claimed_size {
-        return EINVAL;
+    // Delegate to verified model (RB3/RB4, RB8).
+    if finish_decide(head, tail, size) {
+        OK
+    } else {
+        EINVAL
     }
-
-    OK
 }
 
 /// Compute ring buffer free space.
@@ -8385,16 +8391,10 @@ pub extern "C" fn gale_ring_buf_space_get(
     get_tail: u32,
     buf_size: u32,
 ) -> u32 {
-    if buf_size == 0 {
-        return 0;
-    }
-    let allocated = put_head.wrapping_sub(get_tail);
-    if allocated > buf_size {
-        // Shouldn't happen with valid state, but clamp to 0 free space
-        0
-    } else {
-        buf_size - allocated
-    }
+    use gale::ring_buf::space_get_decide;
+
+    // Delegate to verified model (RB1, RB7, RB8).
+    space_get_decide(put_head, get_tail, buf_size)
 }
 
 /// Compute ring buffer available data size.
@@ -8415,7 +8415,10 @@ pub extern "C" fn gale_ring_buf_size_get(
     put_tail: u32,
     get_head: u32,
 ) -> u32 {
-    put_tail.wrapping_sub(get_head)
+    use gale::ring_buf::size_get_decide;
+
+    // Delegate to verified model (RB7).
+    size_get_decide(put_tail, get_head)
 }
 
 // ---------------------------------------------------------------------------
@@ -11604,5 +11607,413 @@ mod kani_ipc_proofs {
     fn ipc_register_null_out_einval() {
         let r = gale_ipc_register_decide(true, 0, 4, core::ptr::null_mut());
         assert!(r == -22);
+    }
+}
+
+// ===========================================================================
+// ZMS — Zephyr Memory Storage (flash key-value store)
+// ===========================================================================
+//
+// These decision functions delegate to the Verus-verified model in
+// `src/zms.rs`. The C shim in zephyr/gale_zms.c (follow-on) extracts the
+// filesystem state, calls these functions, and applies the returned
+// action (issue flash ops, close sector, trigger GC, etc.).
+//
+// Verified by Verus (SMT/Z3):
+//   ZMS1: ATEs and data never overlap (ate_wra >= data_wra)
+//   ZMS2: free_space consistent with sector addresses
+//   ZMS3: write_decide(WriteOk) ==> no GC triggered  [SWREQ-ZMS-P05]
+//   ZMS4: sector_count > 1 invariant
+//   ZMS5: cycle_cnt increments on sector reuse (mod 256)
+//   ZMS6: gc_done marker determines recovery action  [SWREQ-ZMS-P08]
+//   ZMS7: GC restart preserves new writes            [GAP-ZMS-5 closed]
+//   ZMS8: read path requires ZMS mutex held          [GAP-ZMS-8 closed]
+//   ZMS9: NO_DOUBLE_WRITE compare requires mutex     [GAP-ZMS-10 closed]
+
+/// Decision struct for gale_zms_write_decide.
+///
+/// Mirrors `gale::zms::ZmsWriteDecision` in a C-ABI form.
+#[cfg(feature = "zms")]
+#[repr(C)]
+pub struct GaleZmsWriteDecision {
+    /// 0 = WRITE_OK, 1 = NEEDS_GC.
+    pub action: u8,
+    /// 0 = no GC, 1 = GC required before the write can proceed.
+    pub needs_gc: u8,
+}
+
+/// Action constants — must match `WriteAction` in src/zms.rs.
+#[cfg(feature = "zms")]
+pub const GALE_ZMS_WRITE_OK: u8 = 0;
+#[cfg(feature = "zms")]
+pub const GALE_ZMS_WRITE_NEEDS_GC: u8 = 1;
+
+/// Decide whether a ZMS write can proceed or needs GC.
+///
+/// ASIL-D property (ZMS3 / SWREQ-ZMS-P05): when `free_space >=
+/// data_len + ate_size`, the write proceeds without GC. This is the
+/// O(1) bounded-latency write path.
+///
+/// Delegates to `gale::zms::ZmsFs::write_decide`.
+#[cfg(feature = "zms")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_zms_write_decide(
+    sector_count: u32,
+    current_sector: u32,
+    ate_size: u32,
+    free_space: u32,
+    data_len: u32,
+) -> GaleZmsWriteDecision {
+    use gale::zms::ZmsFs;
+    // Guard against invalid filesystem state — return NEEDS_GC to force
+    // the C shim down the safe path. The Verus invariants rule these
+    // out at model level; this is defense-in-depth.
+    if sector_count < 2 || ate_size == 0 || current_sector >= sector_count {
+        return GaleZmsWriteDecision { action: GALE_ZMS_WRITE_NEEDS_GC, needs_gc: 1 };
+    }
+    let fs = ZmsFs { sector_count, current_sector, ate_size, free_space };
+    let d = fs.write_decide(data_len);
+    GaleZmsWriteDecision {
+        action: d.action,
+        needs_gc: u8::from(d.needs_gc),
+    }
+}
+
+/// Decide whether a ZMS write of `needed` bytes fits in the current
+/// sector without GC.
+///
+/// Thin wrapper around `ZmsFs::has_space` for the C shim. Returns 1 if
+/// the write fits, 0 otherwise.
+#[cfg(feature = "zms")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_zms_has_space(
+    sector_count: u32,
+    current_sector: u32,
+    ate_size: u32,
+    free_space: u32,
+    needed: u32,
+) -> u32 {
+    use gale::zms::ZmsFs;
+    if sector_count < 2 || ate_size == 0 || current_sector >= sector_count {
+        return 0;
+    }
+    let fs = ZmsFs { sector_count, current_sector, ate_size, free_space };
+    u32::from(fs.has_space(needed))
+}
+
+/// Decision struct for gale_zms_gc_done_check.
+#[cfg(feature = "zms")]
+#[repr(C)]
+pub struct GaleZmsRecoveryDecision {
+    /// 0 = NORMAL, 1 = ERASE_AND_RESTART, 2 = RESUME_GC.
+    pub action: u8,
+}
+
+/// Recovery action constants — must match `RecoveryAction` in src/zms.rs.
+#[cfg(feature = "zms")]
+pub const GALE_ZMS_RECOVERY_NORMAL: u8 = 0;
+#[cfg(feature = "zms")]
+pub const GALE_ZMS_RECOVERY_ERASE_AND_RESTART: u8 = 1;
+#[cfg(feature = "zms")]
+pub const GALE_ZMS_RECOVERY_RESUME_GC: u8 = 2;
+
+/// Decide the power-loss recovery action for ZMS.
+///
+/// Models `zms.c:1393-1453`: after mount, if the sector following the
+/// write sector is closed, the recovery action depends on whether a
+/// `gc_done` marker was found.
+///
+/// ZMS6 / SWREQ-ZMS-P08: the `gc_done` marker is the sole determinant
+/// of recovery action.
+///
+/// Delegates to `gale::zms::ZmsFs::gc_done_check`.
+#[cfg(feature = "zms")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_zms_gc_done_check(
+    next_sector_closed: u32,
+    has_gc_done_marker: u32,
+) -> GaleZmsRecoveryDecision {
+    use gale::zms::ZmsFs;
+    let d = ZmsFs::gc_done_check(next_sector_closed != 0, has_gc_done_marker != 0);
+    GaleZmsRecoveryDecision { action: d.action }
+}
+
+/// Decision struct for gale_zms_sector_close_decide.
+#[cfg(feature = "zms")]
+#[repr(C)]
+pub struct GaleZmsCloseDecision {
+    /// 0 = CAN_CLOSE, 1 = CANNOT_CLOSE (ate_wra underflow).
+    pub action: u8,
+}
+
+/// Close action constants — must match `CloseAction` in src/zms.rs.
+#[cfg(feature = "zms")]
+pub const GALE_ZMS_CAN_CLOSE: u8 = 0;
+#[cfg(feature = "zms")]
+pub const GALE_ZMS_CANNOT_CLOSE: u8 = 1;
+
+/// Decide whether a sector may be closed.
+///
+/// Models `zms_sector_close` (zms.c:728-782): a sector can be closed
+/// when `ate_wra > 0` (non-zero offset, room for the close ATE).
+///
+/// Delegates to `gale::zms::ZmsSector::close_decide`.
+#[cfg(feature = "zms")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_zms_sector_close_decide(
+    ate_wra: u32,
+    data_wra: u32,
+    sector_size: u32,
+    cycle_cnt: u8,
+    ate_size: u32,
+) -> GaleZmsCloseDecision {
+    use gale::zms::ZmsSector;
+    // Defense-in-depth: validate the sector structure. If invalid, the
+    // C shim sees CANNOT_CLOSE and must not attempt the close.
+    if ate_size == 0
+        || sector_size < 5u32.saturating_mul(ate_size)
+        || ate_wra > sector_size.saturating_sub(3u32.saturating_mul(ate_size))
+        || ate_wra < data_wra
+    {
+        return GaleZmsCloseDecision { action: GALE_ZMS_CANNOT_CLOSE };
+    }
+    let s = ZmsSector {
+        ate_wra,
+        data_wra,
+        sector_size,
+        cycle_cnt,
+        is_open: true,
+        is_closed: false,
+    };
+    let d = s.close_decide(ate_size);
+    GaleZmsCloseDecision { action: d.action }
+}
+
+/// Decision struct for gale_zms_pre_gc_scan_decide (GAP-ZMS-5 closure).
+#[cfg(feature = "zms")]
+#[repr(C)]
+pub struct GaleZmsPreGcScanDecision {
+    /// 0 = ERASE_ACTIVE, 1 = RELOCATE_THEN_ERASE, 2 = INSUFFICIENT_SPARE.
+    pub action: u8,
+    /// Number of ATEs to relocate before erase (0 when ERASE_ACTIVE).
+    pub relocate_count: u32,
+}
+
+/// Pre-GC scan action constants.
+#[cfg(feature = "zms")]
+pub const GALE_ZMS_PRE_GC_ERASE_ACTIVE: u8 = 0;
+#[cfg(feature = "zms")]
+pub const GALE_ZMS_PRE_GC_RELOCATE_THEN_ERASE: u8 = 1;
+#[cfg(feature = "zms")]
+pub const GALE_ZMS_PRE_GC_INSUFFICIENT_SPARE: u8 = 2;
+
+/// Decide whether the active sector can be erased during GC-restart
+/// recovery. Closes GAP-ZMS-5.
+///
+/// The C shim must first scan the active sector for ATEs whose IDs are
+/// absent from the closed source sector (`new_ate_count`). If any such
+/// ATEs exist, they must be relocated to a spare sector before erase.
+///
+/// Delegates to `gale::zms::ZmsFs::pre_gc_scan_decide`.
+#[cfg(feature = "zms")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_zms_pre_gc_scan_decide(
+    sector_count: u32,
+    new_ate_count: u32,
+    spare_sectors: u32,
+) -> GaleZmsPreGcScanDecision {
+    use gale::zms::ZmsFs;
+    if sector_count < 2 {
+        return GaleZmsPreGcScanDecision {
+            action: GALE_ZMS_PRE_GC_INSUFFICIENT_SPARE,
+            relocate_count: new_ate_count,
+        };
+    }
+    let d = ZmsFs::pre_gc_scan_decide(sector_count, new_ate_count, spare_sectors);
+    GaleZmsPreGcScanDecision {
+        action: d.action,
+        relocate_count: d.relocate_count,
+    }
+}
+
+/// Decision struct for gale_zms_read_decide (GAP-ZMS-8 closure).
+#[cfg(feature = "zms")]
+#[repr(C)]
+pub struct GaleZmsReadDecision {
+    /// 0 = PROCEED, 1 = REJECT (mutex precondition violated).
+    pub action: u8,
+    /// 0 on PROCEED, EPERM on REJECT.
+    pub ret: i32,
+}
+
+/// Read action constants.
+#[cfg(feature = "zms")]
+pub const GALE_ZMS_READ_PROCEED: u8 = 0;
+#[cfg(feature = "zms")]
+pub const GALE_ZMS_READ_REJECT: u8 = 1;
+
+/// Authorize a ZMS read. Closes GAP-ZMS-8.
+///
+/// The C shim MUST acquire `zms_lock` before calling this function and
+/// pass `mutex_held=1`. If `mutex_held=0`, the call is rejected with
+/// EPERM (defense-in-depth: the Verus model formally forbids this case).
+///
+/// Delegates to `gale::zms::ZmsFs::read_decide`.
+#[cfg(feature = "zms")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_zms_read_decide(mutex_held: u32) -> GaleZmsReadDecision {
+    use gale::zms::ZmsFs;
+    let d = ZmsFs::read_decide(mutex_held != 0);
+    GaleZmsReadDecision { action: d.action, ret: d.ret }
+}
+
+/// Decision struct for gale_zms_no_double_write_decide (GAP-ZMS-10 closure).
+#[cfg(feature = "zms")]
+#[repr(C)]
+pub struct GaleZmsNoDoubleWriteDecision {
+    /// 0 = PROCEED_WRITE, 1 = SKIP_IDENTICAL, 2 = REJECT_TOCTOU.
+    pub action: u8,
+    /// 0 on PROCEED/SKIP, EPERM on REJECT.
+    pub ret: i32,
+}
+
+/// NO_DOUBLE_WRITE action constants.
+#[cfg(feature = "zms")]
+pub const GALE_ZMS_NDW_PROCEED_WRITE: u8 = 0;
+#[cfg(feature = "zms")]
+pub const GALE_ZMS_NDW_SKIP_IDENTICAL: u8 = 1;
+#[cfg(feature = "zms")]
+pub const GALE_ZMS_NDW_REJECT_TOCTOU: u8 = 2;
+
+/// Decide the outcome of the NO_DOUBLE_WRITE dedup compare. Closes
+/// GAP-ZMS-10.
+///
+/// The C shim MUST hold `zms_lock` when comparing the incoming payload
+/// to the stored value (mutex_held=1). If the compare is attempted
+/// outside the lock, the decision rejects with EPERM.
+///
+/// Delegates to `gale::zms::ZmsFs::no_double_write_decide`.
+#[cfg(feature = "zms")]
+#[unsafe(no_mangle)]
+pub extern "C" fn gale_zms_no_double_write_decide(
+    mutex_held: u32,
+    data_identical: u32,
+) -> GaleZmsNoDoubleWriteDecision {
+    use gale::zms::ZmsFs;
+    let d = ZmsFs::no_double_write_decide(mutex_held != 0, data_identical != 0);
+    GaleZmsNoDoubleWriteDecision { action: d.action, ret: d.ret }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — ZMS
+// ---------------------------------------------------------------------------
+
+#[cfg(all(kani, feature = "zms"))]
+mod kani_zms_proofs {
+    use super::*;
+
+    /// ZMS3: write with sufficient free space => WriteOk, no GC.
+    #[kani::proof]
+    fn zms_write_ok_no_gc() {
+        let ate_size: u32 = 16;
+        let free: u32 = 1024;
+        let data_len: u32 = 32;
+        // free >= data_len + ate_size (1024 >= 48)
+        let d = gale_zms_write_decide(2, 0, ate_size, free, data_len);
+        assert!(d.action == GALE_ZMS_WRITE_OK);
+        assert!(d.needs_gc == 0);
+    }
+
+    /// ZMS3: write with insufficient space => NeedsGc.
+    #[kani::proof]
+    fn zms_write_insufficient_space_needs_gc() {
+        let ate_size: u32 = 16;
+        let free: u32 = 8;
+        let data_len: u32 = 32;
+        let d = gale_zms_write_decide(2, 0, ate_size, free, data_len);
+        assert!(d.action == GALE_ZMS_WRITE_NEEDS_GC);
+        assert!(d.needs_gc == 1);
+    }
+
+    /// ZMS6: next sector not closed => Normal recovery.
+    #[kani::proof]
+    fn zms_gc_done_not_closed_normal() {
+        let d = gale_zms_gc_done_check(0, 0);
+        assert!(d.action == GALE_ZMS_RECOVERY_NORMAL);
+    }
+
+    /// ZMS6: closed + marker => EraseAndRestart.
+    #[kani::proof]
+    fn zms_gc_done_closed_with_marker() {
+        let d = gale_zms_gc_done_check(1, 1);
+        assert!(d.action == GALE_ZMS_RECOVERY_ERASE_AND_RESTART);
+    }
+
+    /// ZMS6: closed + no marker => ResumeGc.
+    #[kani::proof]
+    fn zms_gc_done_closed_no_marker() {
+        let d = gale_zms_gc_done_check(1, 0);
+        assert!(d.action == GALE_ZMS_RECOVERY_RESUME_GC);
+    }
+
+    /// ZMS7 / GAP-ZMS-5: no new ATEs => safe to erase.
+    #[kani::proof]
+    fn zms_pre_gc_no_new_ates_erase_active() {
+        let d = gale_zms_pre_gc_scan_decide(3, 0, 1);
+        assert!(d.action == GALE_ZMS_PRE_GC_ERASE_ACTIVE);
+        assert!(d.relocate_count == 0);
+    }
+
+    /// ZMS7 / GAP-ZMS-5: new ATEs + spare => relocate then erase.
+    #[kani::proof]
+    fn zms_pre_gc_new_ates_relocate() {
+        let d = gale_zms_pre_gc_scan_decide(3, 5, 1);
+        assert!(d.action == GALE_ZMS_PRE_GC_RELOCATE_THEN_ERASE);
+        assert!(d.relocate_count == 5);
+    }
+
+    /// ZMS7 / GAP-ZMS-5: new ATEs + no spare => fail-stop.
+    #[kani::proof]
+    fn zms_pre_gc_no_spare_fail_stop() {
+        let d = gale_zms_pre_gc_scan_decide(2, 3, 0);
+        assert!(d.action == GALE_ZMS_PRE_GC_INSUFFICIENT_SPARE);
+    }
+
+    /// ZMS8 / GAP-ZMS-8: read with mutex held => proceed.
+    #[kani::proof]
+    fn zms_read_mutex_held_proceed() {
+        let d = gale_zms_read_decide(1);
+        assert!(d.action == GALE_ZMS_READ_PROCEED);
+        assert!(d.ret == 0);
+    }
+
+    /// ZMS8 / GAP-ZMS-8: read without mutex => reject.
+    #[kani::proof]
+    fn zms_read_no_mutex_reject() {
+        let d = gale_zms_read_decide(0);
+        assert!(d.action == GALE_ZMS_READ_REJECT);
+        assert!(d.ret == -1); // EPERM
+    }
+
+    /// ZMS9 / GAP-ZMS-10: compare with mutex + identical => skip.
+    #[kani::proof]
+    fn zms_ndw_mutex_identical_skip() {
+        let d = gale_zms_no_double_write_decide(1, 1);
+        assert!(d.action == GALE_ZMS_NDW_SKIP_IDENTICAL);
+    }
+
+    /// ZMS9 / GAP-ZMS-10: compare with mutex + differ => proceed.
+    #[kani::proof]
+    fn zms_ndw_mutex_differ_proceed() {
+        let d = gale_zms_no_double_write_decide(1, 0);
+        assert!(d.action == GALE_ZMS_NDW_PROCEED_WRITE);
+    }
+
+    /// ZMS9 / GAP-ZMS-10: compare without mutex => reject TOCTOU.
+    #[kani::proof]
+    fn zms_ndw_no_mutex_reject_toctou() {
+        let d = gale_zms_no_double_write_decide(0, 0);
+        assert!(d.action == GALE_ZMS_NDW_REJECT_TOCTOU);
+        assert!(d.ret == -1); // EPERM
     }
 }

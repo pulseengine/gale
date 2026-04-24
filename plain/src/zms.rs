@@ -29,6 +29,12 @@
 //!   ZMS4: sector_count > 1 (need at least 1 spare sector for GC)
 //!   ZMS5: cycle_cnt increments on sector reuse (mod 256)
 //!   ZMS6: gc_done marker determines recovery action
+//!   ZMS7: GC restart preserves new writes — pre-scan relocates any ATE
+//!         in the active sector whose ID is not present in the source
+//!         sector before the active sector is erased (closes GAP-ZMS-5).
+//!   ZMS8: Read path requires the ZMS mutex to be held (closes GAP-ZMS-8).
+//!   ZMS9: NO_DOUBLE_WRITE comparison requires the ZMS mutex to be held,
+//!         eliminating the TOCTOU window (closes GAP-ZMS-10).
 use crate::error::*;
 /// Write-path decision — returned to C shim to select the code path.
 ///
@@ -94,6 +100,75 @@ pub enum CloseAction {
 pub struct ZmsCloseDecision {
     /// The close action to take (CloseAction discriminant).
     pub action: u8,
+}
+/// Pre-GC scan decision — closes GAP-ZMS-5 (GC restart loses new writes).
+///
+/// When `zms_init` finds a closed sector following the active sector with
+/// no `gc_done` marker, the naive recovery (erase active sector + restart
+/// GC) discards any writes that arrived after the crashed GC started.
+///
+/// This decision models the mitigation: scan the active sector for ATEs
+/// whose IDs are *not* present in the source (closed) sector; those must
+/// be relocated to a spare sector before erasing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum PreGcScanAction {
+    /// Safe to erase the active sector — no live new writes would be lost.
+    EraseActive = 0,
+    /// New ATEs must be relocated to a spare sector before erasing.
+    RelocateThenErase = 1,
+    /// Pre-condition violated: not enough sectors to relocate. Fail-stop.
+    InsufficientSpareSectors = 2,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ZmsPreGcScanDecision {
+    /// The action to take (PreGcScanAction discriminant).
+    pub action: u8,
+    /// Number of ATEs that must be relocated before erase.
+    pub relocate_count: u32,
+}
+/// Read-path decision — closes GAP-ZMS-8 (`zms_read` without mutex).
+///
+/// The C shim must call `k_mutex_lock(&fs->zms_lock, K_FOREVER)` before
+/// passing control to this model. If `mutex_held == false`, the decision
+/// rejects the read (EPERM).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ReadAction {
+    /// Read is authorized to proceed.
+    Proceed = 0,
+    /// Read is rejected (mutex precondition violated).
+    Reject = 1,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ZmsReadDecision {
+    /// The read action to take (ReadAction discriminant).
+    pub action: u8,
+    /// Return code for the Reject path (EPERM), else OK.
+    pub ret: i32,
+}
+/// NO_DOUBLE_WRITE decision — closes GAP-ZMS-10 (TOCTOU on dedup compare).
+///
+/// When `CONFIG_ZMS_NO_DOUBLE_WRITE` is enabled, `zms_write` compares the
+/// incoming data against the latest stored value before writing. The
+/// original code performed this compare *outside* the mutex, leaving a
+/// window where a concurrent writer could change the stored value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum NoDoubleWriteAction {
+    /// Data differs — proceed with the write.
+    ProceedWrite = 0,
+    /// Data identical — skip the write (return 0).
+    SkipIdentical = 1,
+    /// Precondition violated: compare invoked outside mutex. Fail-stop.
+    RejectToctou = 2,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ZmsNoDoubleWriteDecision {
+    /// The action to take (NoDoubleWriteAction discriminant).
+    pub action: u8,
+    /// Return code passed back to the application.
+    pub ret: i32,
 }
 /// Model of a single ZMS sector's address state.
 ///
@@ -308,6 +383,82 @@ impl ZmsFs {
         } else {
             ZmsRecoveryDecision {
                 action: RecoveryAction::ResumeGc as u8,
+            }
+        }
+    }
+    /// Decide whether the active sector can be safely erased during GC
+    /// restart recovery, or whether new ATEs must be relocated first.
+    ///
+    /// Closes GAP-ZMS-5 (STPA-ZMS). See the Verus-verified source at
+    /// `src/zms.rs` for the full specification (ZMS7).
+    ///
+    /// `new_ate_count` is the number of ATEs in the active sector whose
+    /// IDs are not present (or not current) in the closed source sector.
+    /// `spare_sectors` is the number of sectors that can host the
+    /// relocation.
+    pub fn pre_gc_scan_decide(
+        sector_count: u32,
+        new_ate_count: u32,
+        spare_sectors: u32,
+    ) -> ZmsPreGcScanDecision {
+        let _ = sector_count;
+        if new_ate_count == 0 {
+            ZmsPreGcScanDecision {
+                action: PreGcScanAction::EraseActive as u8,
+                relocate_count: 0,
+            }
+        } else if spare_sectors > 0 {
+            ZmsPreGcScanDecision {
+                action: PreGcScanAction::RelocateThenErase as u8,
+                relocate_count: new_ate_count,
+            }
+        } else {
+            ZmsPreGcScanDecision {
+                action: PreGcScanAction::InsufficientSpareSectors as u8,
+                relocate_count: new_ate_count,
+            }
+        }
+    }
+    /// Authorize a read operation. Closes GAP-ZMS-8 by requiring the
+    /// caller to assert it has acquired `zms_lock` before crossing the
+    /// FFI boundary.
+    pub fn read_decide(mutex_held: bool) -> ZmsReadDecision {
+        if mutex_held {
+            ZmsReadDecision {
+                action: ReadAction::Proceed as u8,
+                ret: 0,
+            }
+        } else {
+            ZmsReadDecision {
+                action: ReadAction::Reject as u8,
+                ret: EPERM,
+            }
+        }
+    }
+    /// Decide the outcome of the NO_DOUBLE_WRITE dedup compare.
+    ///
+    /// Closes GAP-ZMS-10: the Verus precondition `requires mutex_held`
+    /// pushes the compare inside the critical section. This stripped
+    /// version returns `RejectToctou` at runtime when `mutex_held == false`
+    /// so a defensive C shim observes a safe refusal.
+    pub fn no_double_write_decide(
+        mutex_held: bool,
+        data_identical: bool,
+    ) -> ZmsNoDoubleWriteDecision {
+        if !mutex_held {
+            ZmsNoDoubleWriteDecision {
+                action: NoDoubleWriteAction::RejectToctou as u8,
+                ret: EPERM,
+            }
+        } else if data_identical {
+            ZmsNoDoubleWriteDecision {
+                action: NoDoubleWriteAction::SkipIdentical as u8,
+                ret: 0,
+            }
+        } else {
+            ZmsNoDoubleWriteDecision {
+                action: NoDoubleWriteAction::ProceedWrite as u8,
+                ret: 0,
             }
         }
     }

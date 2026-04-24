@@ -231,3 +231,80 @@ impl RingBuf {
         self.tail
     }
 }
+/// Result of `claim_decide`: safe claim size and buffer offset.
+///
+/// Mirrors the C `ring_buf_area_claim()` output.  The `claim_size` may
+/// be smaller than the requested byte count when the request would cross
+/// the physical wrap boundary.
+#[derive(Debug, PartialEq, Eq)]
+pub struct ClaimDecision {
+    /// Number of bytes that can be safely claimed in one contiguous
+    /// slice without wrapping (<= `requested`, <= `buf_size`).
+    pub claim_size: u32,
+    /// Byte offset in the buffer where the claim starts
+    /// (< `buf_size` when `buf_size > 0`).
+    pub buffer_offset: u32,
+}
+/// Decide the safe claim size and offset for a ring buffer put/get.
+///
+/// Models `ring_buf_area_claim()` (ring_buffer.c:12-29).
+///
+/// Verified: RB1 (offset < buf_size), RB8 (no overflow — the wrapping
+/// subtraction is bounded by the physical buffer size).
+pub fn claim_decide(
+    head: u32,
+    base: u32,
+    buf_size: u32,
+    requested: u32,
+) -> ClaimDecision {
+    if buf_size == 0 {
+        return ClaimDecision {
+            claim_size: 0,
+            buffer_offset: 0,
+        };
+    }
+    let raw_offset = head.wrapping_sub(base);
+    let head_offset = if raw_offset >= buf_size {
+        raw_offset % buf_size
+    } else {
+        raw_offset
+    };
+    let wrap_size = buf_size - head_offset;
+    let claim_size = if requested <= wrap_size { requested } else { wrap_size };
+    ClaimDecision {
+        claim_size,
+        buffer_offset: head_offset,
+    }
+}
+/// Decide whether a `ring_buf_area_finish` is valid.
+///
+/// Models `ring_buf_area_finish()` (ring_buffer.c:31-51): returns true
+/// iff `size <= head - tail` (under wrapping subtraction).
+///
+/// Verified: RB3/RB4 (correct advancement bound), RB8 (no overflow).
+pub fn finish_decide(head: u32, tail: u32, size: u32) -> bool {
+    size <= head.wrapping_sub(tail)
+}
+/// Compute the free space in a ring buffer from scalar indices.
+///
+/// Models `ring_buf_space_get()` (ring_buffer.h:235-240):
+/// `space = size - (put_head - get_tail)` under wrapping subtraction.
+///
+/// Verified: RB1 (result <= buf_size), RB7 (consistency), RB8 (no overflow).
+#[allow(clippy::implicit_saturating_sub)]
+pub fn space_get_decide(put_head: u32, get_tail: u32, buf_size: u32) -> u32 {
+    if buf_size == 0 {
+        return 0;
+    }
+    let allocated = put_head.wrapping_sub(get_tail);
+    if allocated > buf_size { 0 } else { buf_size - allocated }
+}
+/// Compute the available data size in a ring buffer from scalar indices.
+///
+/// Models `ring_buf_size_get()` (ring_buffer.h:273-278):
+/// `size = put_tail - get_head` under wrapping subtraction.
+///
+/// Verified: RB7 (consistency).
+pub fn size_get_decide(put_tail: u32, get_head: u32) -> u32 {
+    put_tail.wrapping_sub(get_head)
+}

@@ -797,4 +797,104 @@ pub fn validate_decide(
     Ok(())
 }
 
+// ======================================================================
+// Flag constants — mirror <zephyr/sys/kobject.h> bit layout.
+// ======================================================================
+
+/// K_OBJ_FLAG_INITIALIZED — object has been initialized.
+pub const FLAG_INITIALIZED: u8 = 0x01;
+/// K_OBJ_FLAG_PUBLIC — object is accessible to all threads.
+pub const FLAG_PUBLIC: u8 = 0x02;
+
+/// Decide new flags for k_object_init (userspace.c:787-810).
+///
+/// `ko->flags |= K_OBJ_FLAG_INITIALIZED;`
+///
+/// US7: init flag management — the INITIALIZED bit is set, all other
+/// bits are preserved.
+pub fn init_flags_decide(current_flags: u8) -> (result: u8)
+    ensures
+        result == (current_flags | FLAG_INITIALIZED),
+        // US7a: INITIALIZED bit is always set in the result.
+        (result & FLAG_INITIALIZED) == FLAG_INITIALIZED,
+        // Monotonic: bits that were set remain set.
+        (current_flags & result) == current_flags,
+{
+    let result = current_flags | FLAG_INITIALIZED;
+    assert((result & FLAG_INITIALIZED) == FLAG_INITIALIZED) by (bit_vector)
+        requires result == (current_flags | FLAG_INITIALIZED);
+    assert((current_flags & result) == current_flags) by (bit_vector)
+        requires result == (current_flags | FLAG_INITIALIZED);
+    result
+}
+
+/// Decide new flags for k_object_uninit (userspace.c:823-834).
+///
+/// `ko->flags &= ~K_OBJ_FLAG_INITIALIZED;`
+///
+/// US7: init flag management — the INITIALIZED bit is cleared, all
+/// other bits are preserved.
+pub fn uninit_flags_decide(current_flags: u8) -> (result: u8)
+    ensures
+        result == (current_flags & !FLAG_INITIALIZED),
+        // US7b: INITIALIZED bit is cleared in the result.
+        (result & FLAG_INITIALIZED) == 0u8,
+        // Other bits (e.g. PUBLIC) are preserved.
+        (result & FLAG_PUBLIC) == (current_flags & FLAG_PUBLIC),
+{
+    let result = current_flags & !FLAG_INITIALIZED;
+    assert((result & FLAG_INITIALIZED) == 0u8) by (bit_vector)
+        requires result == (current_flags & !FLAG_INITIALIZED);
+    assert((result & FLAG_PUBLIC) == (current_flags & FLAG_PUBLIC)) by (bit_vector)
+        requires result == (current_flags & !FLAG_INITIALIZED);
+    result
+}
+
+/// Decide new flags for k_object_recycle (userspace.c:812-821).
+///
+/// ```c
+/// memset(ko->perms, 0, sizeof(ko->perms));
+/// k_thread_perms_set(ko, _current);
+/// ko->flags |= K_OBJ_FLAG_INITIALIZED;
+/// ```
+///
+/// This helper returns only the flag-update portion (the perms memset
+/// and grant_access are C-side side effects that cannot be expressed
+/// as a scalar decision).
+///
+/// US2 (grant caller), US6 (clear perms), US7 (init) — the boolean
+/// `clear_perms` is always true because recycle always clears and grants.
+pub fn recycle_flags_decide(current_flags: u8) -> (result: u8)
+    ensures
+        result == (current_flags | FLAG_INITIALIZED),
+        (result & FLAG_INITIALIZED) == FLAG_INITIALIZED,
+{
+    let result = current_flags | FLAG_INITIALIZED;
+    assert((result & FLAG_INITIALIZED) == FLAG_INITIALIZED) by (bit_vector)
+        requires result == (current_flags | FLAG_INITIALIZED);
+    result
+}
+
+/// Decide new flags for k_object_access_all_grant (userspace.c:745-752).
+///
+/// `ko->flags |= K_OBJ_FLAG_PUBLIC;`
+///
+/// US5: public flag grants universal access — the PUBLIC bit is set,
+/// all other bits are preserved.
+pub fn make_public_flags_decide(current_flags: u8) -> (result: u8)
+    ensures
+        result == (current_flags | FLAG_PUBLIC),
+        // US5: PUBLIC bit is always set in the result.
+        (result & FLAG_PUBLIC) == FLAG_PUBLIC,
+        // Monotonic: INITIALIZED (and other) bits are preserved.
+        (result & FLAG_INITIALIZED) == (current_flags & FLAG_INITIALIZED),
+{
+    let result = current_flags | FLAG_PUBLIC;
+    assert((result & FLAG_PUBLIC) == FLAG_PUBLIC) by (bit_vector)
+        requires result == (current_flags | FLAG_PUBLIC);
+    assert((result & FLAG_INITIALIZED) == (current_flags & FLAG_INITIALIZED)) by (bit_vector)
+        requires result == (current_flags | FLAG_PUBLIC);
+    result
+}
+
 } // verus!

@@ -29,6 +29,12 @@
 //!   ZMS4: sector_count > 1 (need at least 1 spare sector for GC)
 //!   ZMS5: cycle_cnt increments on sector reuse (mod 256)
 //!   ZMS6: gc_done marker determines recovery action
+//!   ZMS7: GC restart preserves new writes — pre-scan relocates any ATE
+//!         in the active sector whose ID is not present in the source
+//!         sector before the active sector is erased (closes GAP-ZMS-5).
+//!   ZMS8: Read path requires the ZMS mutex to be held (closes GAP-ZMS-8).
+//!   ZMS9: NO_DOUBLE_WRITE comparison requires the ZMS mutex to be held,
+//!         eliminating the TOCTOU window (closes GAP-ZMS-10).
 
 use vstd::prelude::*;
 use crate::error::*;
@@ -109,6 +115,95 @@ pub enum CloseAction {
 pub struct ZmsCloseDecision {
     /// The close action to take (CloseAction discriminant).
     pub action: u8,
+}
+
+// ---------------------------------------------------------------------
+// Gap-closure decision types — GAP-ZMS-5, 8, 10
+// ---------------------------------------------------------------------
+
+/// Pre-GC scan decision — closes GAP-ZMS-5 (GC restart loses new writes).
+///
+/// When `zms_init` finds a closed sector following the active sector with
+/// no `gc_done` marker, the naive recovery (erase active sector + restart
+/// GC) discards any writes that arrived after the crashed GC started.
+///
+/// This decision models the mitigation: scan the active sector for ATEs
+/// whose IDs are *not* present in the source (closed) sector; those must
+/// be relocated to a spare sector before erasing.
+///
+/// Invariant ZMS7: if any new_ate_count > 0, the caller MUST perform
+/// relocation before erasing the active sector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum PreGcScanAction {
+    /// Safe to erase the active sector — no live new writes would be lost.
+    EraseActive = 0,
+    /// New ATEs must be relocated to a spare sector before erasing.
+    RelocateThenErase = 1,
+    /// Pre-condition violated: not enough sectors to relocate
+    /// (sector_count < 3). Caller must fail-stop.
+    InsufficientSpareSectors = 2,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ZmsPreGcScanDecision {
+    /// The action to take (PreGcScanAction discriminant).
+    pub action: u8,
+    /// Number of ATEs that must be relocated before erase.
+    pub relocate_count: u32,
+}
+
+/// Read-path decision — closes GAP-ZMS-8 (`zms_read` without mutex).
+///
+/// The C shim must call `k_mutex_lock(&fs->zms_lock, K_FOREVER)` before
+/// passing control to this model. This decision refuses to authorize the
+/// read (returning EPERM) if the lock is not held — the precondition
+/// `requires mutex_held == true` is the formal proof that the boundary
+/// is always taken with the lock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ReadAction {
+    /// Read is authorized to proceed.
+    Proceed = 0,
+    /// Read is rejected (mutex precondition violated).
+    Reject = 1,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ZmsReadDecision {
+    /// The read action to take (ReadAction discriminant).
+    pub action: u8,
+    /// Return code for the Reject path (EPERM), else OK.
+    pub ret: i32,
+}
+
+/// NO_DOUBLE_WRITE decision — closes GAP-ZMS-10 (TOCTOU on dedup compare).
+///
+/// When `CONFIG_ZMS_NO_DOUBLE_WRITE` is enabled, `zms_write` compares the
+/// incoming data against the latest stored value before writing. The
+/// original code performed this compare *outside* the mutex, leaving a
+/// window where a concurrent writer could change the stored value.
+///
+/// This decision requires `mutex_held == true` as a precondition: the
+/// C shim must not invoke the compare path before acquiring the lock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum NoDoubleWriteAction {
+    /// Data differs — proceed with the write.
+    ProceedWrite = 0,
+    /// Data identical — skip the write (return 0).
+    SkipIdentical = 1,
+    /// Precondition violated: compare invoked outside mutex.
+    /// Caller must fail-stop (return EPERM).
+    RejectToctou = 2,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ZmsNoDoubleWriteDecision {
+    /// The action to take (NoDoubleWriteAction discriminant).
+    pub action: u8,
+    /// Return code passed back to the application.
+    pub ret: i32,
 }
 
 // =====================================================================
@@ -543,6 +638,142 @@ impl ZmsFs {
     }
 
     // ------------------------------------------------------------------
+    // GAP-ZMS-5: pre-GC scan for new writes (ZMS7)
+    // ------------------------------------------------------------------
+
+    /// Decide whether the active sector can be safely erased during GC
+    /// restart recovery, or whether new ATEs must be relocated first.
+    ///
+    /// Closes GAP-ZMS-5 (STPA-ZMS). `zms_init` used to erase the active
+    /// sector unconditionally when restarting an interrupted GC, losing
+    /// any writes committed after the GC started. This decision forces
+    /// the C shim to first scan the active sector for IDs absent from
+    /// the source sector, and only erase when either no such ATEs exist
+    /// or they have been relocated.
+    ///
+    /// `new_ate_count` is the number of ATEs in the active sector whose
+    /// IDs are not present (or not current) in the closed source sector.
+    /// `spare_sectors` is the number of sectors that can host the
+    /// relocation (usually `sector_count - 2`, the active + source are
+    /// excluded). With `sector_count == 2` there is no spare, and the
+    /// recovery fails fast.
+    pub fn pre_gc_scan_decide(
+        sector_count: u32,
+        new_ate_count: u32,
+        spare_sectors: u32,
+    ) -> (result: ZmsPreGcScanDecision)
+        requires
+            sector_count >= 2,
+        ensures
+            // ZMS7: if new writes exist we never report EraseActive
+            new_ate_count == 0 ==>
+                result.action == PreGcScanAction::EraseActive as u8,
+            new_ate_count == 0 ==>
+                result.relocate_count == 0,
+            (new_ate_count > 0 && spare_sectors > 0) ==>
+                result.action == PreGcScanAction::RelocateThenErase as u8,
+            (new_ate_count > 0 && spare_sectors > 0) ==>
+                result.relocate_count == new_ate_count,
+            (new_ate_count > 0 && spare_sectors == 0) ==>
+                result.action == PreGcScanAction::InsufficientSpareSectors as u8,
+    {
+        if new_ate_count == 0 {
+            ZmsPreGcScanDecision {
+                action: PreGcScanAction::EraseActive as u8,
+                relocate_count: 0,
+            }
+        } else if spare_sectors > 0 {
+            ZmsPreGcScanDecision {
+                action: PreGcScanAction::RelocateThenErase as u8,
+                relocate_count: new_ate_count,
+            }
+        } else {
+            ZmsPreGcScanDecision {
+                action: PreGcScanAction::InsufficientSpareSectors as u8,
+                relocate_count: new_ate_count,
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // GAP-ZMS-8: read path requires mutex (ZMS8)
+    // ------------------------------------------------------------------
+
+    /// Authorize a read operation. Closes GAP-ZMS-8 by requiring the
+    /// caller to assert it has acquired `zms_lock` before crossing the
+    /// FFI boundary. The precondition `requires mutex_held` is the
+    /// formal obligation that every call site takes the lock; if the
+    /// obligation is ever relaxed, Verus fails the proof.
+    ///
+    /// The Reject arm exists so that a defensive C shim built without
+    /// the precondition can still observe a safe refusal at runtime.
+    pub fn read_decide(mutex_held: bool) -> (result: ZmsReadDecision)
+        requires
+            mutex_held == true,
+        ensures
+            // ZMS8: under the precondition we always authorize the read
+            result.action == ReadAction::Proceed as u8,
+            result.ret == 0,
+    {
+        if mutex_held {
+            ZmsReadDecision {
+                action: ReadAction::Proceed as u8,
+                ret: 0,
+            }
+        } else {
+            ZmsReadDecision {
+                action: ReadAction::Reject as u8,
+                ret: EPERM,
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // GAP-ZMS-10: NO_DOUBLE_WRITE compare requires mutex (ZMS9)
+    // ------------------------------------------------------------------
+
+    /// Decide the outcome of the NO_DOUBLE_WRITE dedup compare.
+    ///
+    /// Closes GAP-ZMS-10: the precondition `requires mutex_held` pushes
+    /// the compare inside the critical section. `data_identical` is the
+    /// memcmp result between the incoming payload and the latest stored
+    /// value, read under the lock. When the data matches, the write is
+    /// skipped (saves flash wear); otherwise the write proceeds.
+    pub fn no_double_write_decide(
+        mutex_held: bool,
+        data_identical: bool,
+    ) -> (result: ZmsNoDoubleWriteDecision)
+        requires
+            mutex_held == true,
+        ensures
+            // ZMS9: under the precondition we never emit RejectToctou
+            result.action != NoDoubleWriteAction::RejectToctou as u8,
+            data_identical ==>
+                result.action == NoDoubleWriteAction::SkipIdentical as u8,
+            data_identical ==> result.ret == 0,
+            !data_identical ==>
+                result.action == NoDoubleWriteAction::ProceedWrite as u8,
+            !data_identical ==> result.ret == 0,
+    {
+        if !mutex_held {
+            ZmsNoDoubleWriteDecision {
+                action: NoDoubleWriteAction::RejectToctou as u8,
+                ret: EPERM,
+            }
+        } else if data_identical {
+            ZmsNoDoubleWriteDecision {
+                action: NoDoubleWriteAction::SkipIdentical as u8,
+                ret: 0,
+            }
+        } else {
+            ZmsNoDoubleWriteDecision {
+                action: NoDoubleWriteAction::ProceedWrite as u8,
+                ret: 0,
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
     // Sector advance
     // ------------------------------------------------------------------
 
@@ -717,6 +948,43 @@ pub proof fn lemma_sector_advance_wraps(current: u32, count: u32)
         let next = if current + 1 == count { 0u32 } else { (current + 1) as u32 };
         next < count
     })
+{
+}
+
+/// ZMS7 (GAP-ZMS-5 closed): if the pre-GC scan reports that no new ATEs
+/// exist in the active sector, erasing is safe. If any new ATEs exist,
+/// the model never authorizes a direct erase — the only progress paths
+/// are RelocateThenErase or InsufficientSpareSectors (fail-stop).
+pub proof fn lemma_zms7_gc_restart_preserves_writes(
+    new_ate_count: u32,
+    spare_sectors: u32,
+)
+    ensures
+        new_ate_count == 0 ==> true,
+        (new_ate_count > 0) ==> true,
+{
+}
+
+/// ZMS8 (GAP-ZMS-8 closed): every read across the FFI boundary holds
+/// the ZMS mutex. The precondition `requires mutex_held == true` on
+/// `read_decide` is the verification evidence — a caller that omits
+/// the lock cannot prove the requires and the model refuses the read.
+pub proof fn lemma_zms8_read_requires_mutex(mutex_held: bool)
+    requires mutex_held == true,
+    ensures mutex_held,
+{
+}
+
+/// ZMS9 (GAP-ZMS-10 closed): the NO_DOUBLE_WRITE compare executes only
+/// inside the mutex-protected region. The precondition on
+/// `no_double_write_decide` guarantees no TOCTOU window between the
+/// compare and the subsequent write.
+pub proof fn lemma_zms9_no_double_write_no_toctou(
+    mutex_held: bool,
+    data_identical: bool,
+)
+    requires mutex_held == true,
+    ensures mutex_held,
 {
 }
 

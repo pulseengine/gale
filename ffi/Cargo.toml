@@ -18,7 +18,7 @@ all = [
     "fatal", "mempool", "dynamic", "smp_state", "sched",
     "mem_domain", "userspace", "heap", "ring_buf", "bitarray", "rbtree",
     "spinlock_validate", "spinlock", "atomic", "ipi", "cpu_mask",
-    "usage", "mmu", "pm", "net_buf", "cbprintf", "ipc",
+    "usage", "mmu", "pm", "net_buf", "cbprintf", "ipc", "zms",
 ]
 sem = []
 mutex = []
@@ -62,6 +62,7 @@ pm = []
 net_buf = []
 cbprintf = []
 ipc = []
+zms = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

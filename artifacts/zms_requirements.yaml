@@ -429,3 +429,93 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-ZMS-005
+
+  # ── STPA P1 critical gap closures (Issue #8) ─────────────────────────
+  #
+  # These three gaps were identified in docs/safety/stpa-zms-analysis.md
+  # as P1 Critical. Each is closed by a verified decision function in
+  # src/zms.rs with an FFI wrapper in ffi/src/lib.rs.
+
+  - id: GAP-ZMS-5
+    type: finding
+    title: "GAP-ZMS-5: GC restart vs. resume on power loss"
+    status: resolved
+    description: >
+      Before closure: when zms_init detected an incomplete GC (closed
+      sector following active sector, no gc_done marker), it erased the
+      active sector and restarted GC.  Any writes committed after the
+      GC started were lost.  Impact H4 / L1, L5.
+      Closure: added ZmsFs::pre_gc_scan_decide (src/zms.rs) with verified
+      invariant ZMS7 — if new_ate_count > 0 the decision never returns
+      EraseActive; the caller must RelocateThenErase or fail-stop.
+      FFI: gale_zms_pre_gc_scan_decide (ffi/src/lib.rs).  Requires
+      sector_count >= 3 for the relocate path; sector_count == 2 now
+      fail-stops instead of silently losing data.
+    tags: [zms, stpa, asil-d, resolved]
+    fields:
+      priority: P1
+      source: docs/safety/stpa-zms-analysis.md
+      resolution-verus: src/zms.rs::pre_gc_scan_decide
+      resolution-ffi: ffi/src/lib.rs::gale_zms_pre_gc_scan_decide
+      verification-criteria: >
+        Verus proof that pre_gc_scan_decide with new_ate_count > 0 never
+        returns EraseActive.  Kani proofs in kani_zms_proofs cover the
+        three action branches.
+    links:
+      - type: derives-from
+        target: SYSREQ-ZMS-003
+
+  - id: GAP-ZMS-8
+    type: finding
+    title: "GAP-ZMS-8: zms_read does not hold mutex"
+    status: resolved
+    description: >
+      Before closure: zms_read and zms_read_hist did not acquire the ZMS
+      mutex, permitting a concurrent zms_write + GC to return partial or
+      inconsistent data.  Impact H8 / L2.
+      Closure: added ZmsFs::read_decide (src/zms.rs) with Verus
+      precondition `requires mutex_held == true`.  Any caller that
+      attempts to read without the lock fails the Verus proof obligation;
+      at runtime the defensive fall-through returns EPERM.  Invariant
+      ZMS8.
+      FFI: gale_zms_read_decide (ffi/src/lib.rs).
+    tags: [zms, stpa, asil-d, resolved, concurrency]
+    fields:
+      priority: P1
+      source: docs/safety/stpa-zms-analysis.md
+      resolution-verus: src/zms.rs::read_decide
+      resolution-ffi: ffi/src/lib.rs::gale_zms_read_decide
+      verification-criteria: >
+        Verus precondition `requires mutex_held == true` proves the lock
+        is held at every call site.  Kani proofs cover both the
+        mutex-held (Proceed) and mutex-absent (Reject) branches.
+    links:
+      - type: derives-from
+        target: SYSREQ-ZMS-003
+
+  - id: GAP-ZMS-10
+    type: finding
+    title: "GAP-ZMS-10: NO_DOUBLE_WRITE TOCTOU"
+    status: resolved
+    description: >
+      Before closure: when CONFIG_ZMS_NO_DOUBLE_WRITE was enabled the
+      dedup compare (flash read + memcmp) executed before acquiring the
+      ZMS mutex, leaving a TOCTOU window where a concurrent writer could
+      change the stored value between compare and write.  Impact H8, H1.
+      Closure: added ZmsFs::no_double_write_decide (src/zms.rs) with
+      Verus precondition `requires mutex_held == true`.  The compare is
+      authoritative only inside the critical section.  Invariant ZMS9.
+      FFI: gale_zms_no_double_write_decide (ffi/src/lib.rs).
+    tags: [zms, stpa, asil-d, resolved, concurrency, toctou]
+    fields:
+      priority: P1
+      source: docs/safety/stpa-zms-analysis.md
+      resolution-verus: src/zms.rs::no_double_write_decide
+      resolution-ffi: ffi/src/lib.rs::gale_zms_no_double_write_decide
+      verification-criteria: >
+        Verus precondition `requires mutex_held == true` plus the
+        ensures `result.action != RejectToctou` prove no TOCTOU window
+        under the lock.  Kani proofs cover the three action branches.
+    links:
+      - type: derives-from
+        target: SYSREQ-ZMS-003

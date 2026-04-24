@@ -560,4 +560,135 @@ pub proof fn lemma_fill_drain_symmetric(capacity: u32)
 {
 }
 
+// =================================================================
+// Lightweight decision functions — scalar-only.
+// Used by FFI (gale_ring_buf_*) to delegate safety-critical arithmetic
+// to the verified model.
+// =================================================================
+
+/// Result of `claim_decide`: safe claim size and buffer offset.
+///
+/// Mirrors the C `ring_buf_area_claim()` output.  The `claim_size` may
+/// be smaller than the requested byte count when the request would cross
+/// the physical wrap boundary.
+#[derive(Debug, PartialEq, Eq)]
+pub struct ClaimDecision {
+    /// Number of bytes that can be safely claimed in one contiguous
+    /// slice without wrapping (<= `requested`, <= `buf_size`).
+    pub claim_size: u32,
+    /// Byte offset in the buffer where the claim starts
+    /// (< `buf_size` when `buf_size > 0`).
+    pub buffer_offset: u32,
+}
+
+/// Decide the safe claim size and offset for a ring buffer put/get.
+///
+/// Models `ring_buf_area_claim()` (ring_buffer.c:12-29).
+///
+/// Verified: RB1 (offset < buf_size), RB8 (no overflow — the wrapping
+/// subtraction is bounded by the physical buffer size).
+pub fn claim_decide(
+    head: u32,
+    base: u32,
+    buf_size: u32,
+    requested: u32,
+) -> (result: ClaimDecision)
+    ensures
+        // RB1: a zero-sized buffer yields a zero claim and zero offset.
+        buf_size == 0 ==> result === ClaimDecision { claim_size: 0, buffer_offset: 0 },
+        // RB1: when buf_size > 0 the offset is always in-range.
+        buf_size > 0 ==> result.buffer_offset < buf_size,
+        // The claim is bounded by the request.
+        result.claim_size <= requested,
+        // The claim is bounded by the physical buffer.
+        result.claim_size <= buf_size,
+{
+    if buf_size == 0 {
+        return ClaimDecision {
+            claim_size: 0,
+            buffer_offset: 0,
+        };
+    }
+
+    // head_offset = head - base, with wraparound adjustment.
+    // C uses unsigned subtraction (wraps at u32 boundary).
+    let raw_offset = head.wrapping_sub(base);
+    let head_offset = if raw_offset >= buf_size {
+        // wrapping_sub can yield values up to u32::MAX; a single
+        // subtraction of buf_size still may leave us above buf_size,
+        // so we fall back to modulo for the defensive case.
+        raw_offset % buf_size
+    } else {
+        raw_offset
+    };
+
+    // wrap_size = bytes until the end of the physical buffer.
+    let wrap_size = buf_size - head_offset;
+    let claim_size = if requested <= wrap_size {
+        requested
+    } else {
+        wrap_size
+    };
+
+    ClaimDecision {
+        claim_size,
+        buffer_offset: head_offset,
+    }
+}
+
+/// Decide whether a `ring_buf_area_finish` is valid.
+///
+/// Models `ring_buf_area_finish()` (ring_buffer.c:31-51): returns true
+/// iff `size <= head - tail` (under wrapping subtraction).
+///
+/// Verified: RB3/RB4 (correct advancement bound), RB8 (no overflow).
+pub fn finish_decide(head: u32, tail: u32, size: u32) -> (result: bool)
+    ensures
+        result == (size <= head.wrapping_sub(tail)),
+{
+    size <= head.wrapping_sub(tail)
+}
+
+/// Compute the free space in a ring buffer from scalar indices.
+///
+/// Models `ring_buf_space_get()` (ring_buffer.h:235-240):
+/// `space = size - (put_head - get_tail)` under wrapping subtraction.
+///
+/// Verified: RB1 (result <= buf_size), RB7 (consistency), RB8 (no overflow).
+#[allow(clippy::implicit_saturating_sub)] // explicit branch makes the Verus ensures trivial
+pub fn space_get_decide(
+    put_head: u32,
+    get_tail: u32,
+    buf_size: u32,
+) -> (result: u32)
+    ensures
+        buf_size == 0 ==> result == 0,
+        result <= buf_size,
+{
+    if buf_size == 0 {
+        return 0;
+    }
+    let allocated = put_head.wrapping_sub(get_tail);
+    // If `allocated > buf_size` (which would violate RB1 under a corrupt
+    // state), return 0 free space; otherwise return `buf_size - allocated`.
+    if allocated > buf_size {
+        0
+    } else {
+        buf_size - allocated
+    }
+}
+
+/// Compute the available data size in a ring buffer from scalar indices.
+///
+/// Models `ring_buf_size_get()` (ring_buffer.h:273-278):
+/// `size = put_tail - get_head` under wrapping subtraction.
+///
+/// Verified: RB7 (consistency).
+pub fn size_get_decide(put_tail: u32, get_head: u32) -> (result: u32)
+    ensures
+        result == put_tail.wrapping_sub(get_head),
+{
+    put_tail.wrapping_sub(get_head)
+}
+
 } // verus!
