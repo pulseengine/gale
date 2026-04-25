@@ -96,9 +96,14 @@ void z_impl_k_sem_give(struct k_sem *sem)
 	/* Extract: try to unpend first waiter (side effect: removes from queue) */
 	struct k_thread *thread = z_unpend_first_thread(&sem->wait_q);
 
-	/* Decide: Rust determines action based on whether a waiter was found */
-	struct gale_sem_give_decision d = gale_k_sem_give_decide(
+	/* Decide: Rust determines action based on whether a waiter was found.
+	 * Return value is the 8-byte gale_sem_give_decision packed into
+	 * uint64_t so AAPCS uses r0/r1 instead of sret — necessary for the
+	 * LLVM cross-language inliner to inline this call (see #10). */
+	union gale_sem_give_decision_u du;
+	du.raw = gale_k_sem_give_decide(
 		sem->count, sem->limit, thread != NULL ? 1U : 0U);
+	const struct gale_sem_give_decision d = du.dec;
 
 	/* Apply: execute Rust's decision */
 	if (d.action == GALE_SEM_ACTION_WAKE) {
@@ -144,17 +149,26 @@ int z_impl_k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 
 	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_sem, take, sem, timeout);
 
-	/* Decide: Rust determines acquire/busy/pend */
-	struct gale_sem_take_decision d = gale_k_sem_take_decide(
+	/* Decide: Rust determines acquire/busy/pend.
+	 * Returns the 8-byte gale_sem_take_decision packed into uint64_t
+	 * for cross-language LTO inlining (see #10). The decision struct
+	 * was redesigned to drop the redundant ret field — caller derives
+	 * the return code from the action value below. */
+	union gale_sem_take_decision_u du;
+	du.raw = gale_k_sem_take_decide(
 		sem->count, K_TIMEOUT_EQ(timeout, K_NO_WAIT) ? 1U : 0U);
+	const struct gale_sem_take_decision d = du.dec;
 
 	/* Apply */
-	if (d.action == GALE_SEM_ACTION_RETURN) {
+	if (d.action == GALE_SEM_TAKE_ACQUIRED) {
 		sem->count = d.new_count;
-		ret = d.ret;
+		ret = 0;
+		k_spin_unlock(&lock, key);
+	} else if (d.action == GALE_SEM_TAKE_WOULD_BLOCK) {
+		ret = -EBUSY;
 		k_spin_unlock(&lock, key);
 	} else {
-		/* PEND_CURRENT: block on wait queue with timeout */
+		/* PEND: block on wait queue with timeout */
 		ret = z_pend_curr(&lock, key, &sem->wait_q, timeout);
 	}
 

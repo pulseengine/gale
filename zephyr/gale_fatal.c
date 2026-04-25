@@ -132,9 +132,14 @@ void z_fatal_error(unsigned int reason, const struct arch_esf *esf)
 
 	uint32_t test_mode = IS_ENABLED(CONFIG_TEST) ? 1U : 0U;
 
-	/* ---- Decide (Rust) ---- */
-	struct gale_fatal_decision d = gale_k_fatal_decide(
-		(uint32_t)reason, is_isr, test_mode);
+	/* ---- Decide (Rust) ----
+	 * gale_k_fatal_decide returns the 8-byte gale_fatal_decision packed
+	 * into uint64_t for AAPCS register return — needed for cross-language
+	 * inlining under LLVM LTO (see #10).
+	 */
+	union gale_fatal_decision_u du;
+	du.raw = gale_k_fatal_decide((uint32_t)reason, is_isr, test_mode);
+	const struct gale_fatal_decision d = du.dec;
 
 	/* ---- Apply ---- */
 	if (d.action == GALE_FATAL_ACTION_HALT) {

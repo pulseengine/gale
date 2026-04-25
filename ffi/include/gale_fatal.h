@@ -47,20 +47,28 @@ struct gale_fatal_decision {
 /**
  * Full decision for fatal error classification.
  *
- * Returns a decision struct telling the C shim what recovery action
- * to apply after k_sys_fatal_error_handler returns.
+ * Returns the 8-byte gale_fatal_decision packed into uint64_t so AAPCS
+ * uses r0/r1 instead of sret — required for the LLVM cross-language
+ * inliner to inline this call (see gale issue #10). Caller decodes
+ * via the union helper below.
  *
  * @param reason     Error reason code (0-4).
  * @param is_isr     1 if in ISR context, 0 if in thread context.
  * @param test_mode  1 if CONFIG_TEST, 0 for production.
  *
- * @return Decision struct: action + return code.
+ * @return 8-byte decision packed into u64 (action low byte, ret high i32).
  *
  * Verified: FT1 (reason mapping), FT2 (panic halts), FT3 (recovery).
  */
-struct gale_fatal_decision gale_k_fatal_decide(uint32_t reason,
-                                                uint32_t is_isr,
-                                                uint32_t test_mode);
+uint64_t gale_k_fatal_decide(uint32_t reason,
+                              uint32_t is_isr,
+                              uint32_t test_mode);
+
+/* Helper union: cast the u64 return back to the typed struct. */
+union gale_fatal_decision_u {
+    uint64_t raw;
+    struct gale_fatal_decision dec;
+};
 
 #ifdef __cplusplus
 }

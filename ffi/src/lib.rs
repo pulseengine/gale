@@ -389,17 +389,27 @@ pub const GALE_SEM_ACTION_WAKE: u8 = 1;
 /// whether a waiter was found. Rust decides the action.
 ///
 /// Delegates to `gale::sem::give_decide` (Verus-verified).
+///
+/// Return ABI: the GaleSemGiveDecision struct (8 bytes) packed into a u64 so
+/// AAPCS returns it in the r0/r1 register pair instead of via an sret
+/// pointer. Returning structs via sret blocks the LLVM cross-language
+/// inliner (rustc emits sret([8 x i8]) while clang emits
+/// sret(%struct.X) — the type mismatch on the sret arg is conservative-
+/// rejected even when the underlying bytes are identical). Returning u64
+/// is `i64` on both sides → matches → inlines. C callers decode via
+/// memcpy/union back into the typed struct. See #10.
 #[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
+#[inline(always)]
 pub extern "C" fn gale_k_sem_give_decide(
     count: u32,
     limit: u32,
     has_waiter: u32,
-) -> GaleSemGiveDecision {
+) -> u64 {
     use gale::sem::{GiveDecision, give_decide};
 
     let decision = give_decide(count, limit, has_waiter != 0);
-    match decision {
+    let typed = match decision {
         GiveDecision::WakeThread => GaleSemGiveDecision {
             action: GALE_SEM_ACTION_WAKE,
             new_count: count,
@@ -416,56 +426,73 @@ pub extern "C" fn gale_k_sem_give_decide(
             action: GALE_SEM_ACTION_INCREMENT,
             new_count: count,
         },
-    }
+    };
+    // SAFETY: GaleSemGiveDecision is #[repr(C)] with size 8 (u8 + 3 padding
+    // + u32) which exactly matches u64. The padding bytes are uninitialised
+    // in `typed` but the C caller treats the same bytes via the same
+    // #[repr(C)] layout, so the padding is irrelevant on both sides.
+    const _: () = assert!(core::mem::size_of::<GaleSemGiveDecision>() == 8);
+    unsafe { core::mem::transmute::<GaleSemGiveDecision, u64>(typed) }
 }
 
 /// Decision struct for k_sem_take.
+///
+/// Redesigned 2026-04-25 from the previous 12-byte `{i32 ret, u32 new_count,
+/// u8 action}` layout to 8 bytes by collapsing the redundant `ret` field
+/// into the action value: the caller derives the return code from action.
+/// 8 bytes lets the FFI return via u64 register pair (AAPCS r0/r1) which
+/// is what the LLVM cross-language inliner needs (see #10).
 #[repr(C)]
 pub struct GaleSemTakeDecision {
-    /// Return code: 0 (acquired), -EBUSY (would block)
-    pub ret: i32,
-    /// New count value (decremented if acquired)
-    pub new_count: u32,
-    /// Action: 0=RETURN_IMMEDIATELY, 1=PEND_CURRENT
+    /// Action: 0=ACQUIRED, 1=WOULD_BLOCK, 2=PEND
     pub action: u8,
+    /// New count value (only meaningful when action=ACQUIRED).
+    pub new_count: u32,
 }
 
-pub const GALE_SEM_ACTION_RETURN: u8 = 0;
-pub const GALE_SEM_ACTION_PEND: u8 = 1;
+/// Take outcome: count decremented, caller returns 0 (OK).
+pub const GALE_SEM_TAKE_ACQUIRED: u8 = 0;
+/// Take outcome: count was 0 with no_wait — caller returns -EBUSY.
+pub const GALE_SEM_TAKE_WOULD_BLOCK: u8 = 1;
+/// Take outcome: count was 0, may block — caller pends current thread.
+pub const GALE_SEM_TAKE_PEND: u8 = 2;
 
 /// Full decision for k_sem_take: decides whether to acquire, return busy, or pend.
+///
+/// Return ABI: 8-byte struct packed into u64 — see
+/// `gale_k_sem_give_decide` for the full rationale (#10 cross-language LTO).
 ///
 /// Delegates to `gale::sem::take_decide` (Verus-verified).
 #[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
+#[inline(always)]
 pub extern "C" fn gale_k_sem_take_decide(
     count: u32,
     is_no_wait: u32,
-) -> GaleSemTakeDecision {
+) -> u64 {
     use gale::sem::{TakeDecision, take_decide};
 
     let decision = take_decide(count, is_no_wait != 0);
-    match decision {
+    let typed = match decision {
         TakeDecision::Acquired => {
             #[allow(clippy::arithmetic_side_effects)]
             let new_count = count - 1;
             GaleSemTakeDecision {
-                ret: OK,
+                action: GALE_SEM_TAKE_ACQUIRED,
                 new_count,
-                action: GALE_SEM_ACTION_RETURN,
             }
         }
         TakeDecision::WouldBlock => GaleSemTakeDecision {
-            ret: EBUSY,
+            action: GALE_SEM_TAKE_WOULD_BLOCK,
             new_count: 0,
-            action: GALE_SEM_ACTION_RETURN,
         },
         TakeDecision::Pend => GaleSemTakeDecision {
-            ret: 0,
+            action: GALE_SEM_TAKE_PEND,
             new_count: 0,
-            action: GALE_SEM_ACTION_PEND,
         },
-    }
+    };
+    const _: () = assert!(core::mem::size_of::<GaleSemTakeDecision>() == 8);
+    unsafe { core::mem::transmute::<GaleSemTakeDecision, u64>(typed) }
 }
 
 // ---------------------------------------------------------------------------
@@ -4643,7 +4670,10 @@ pub extern "C" fn gale_fatal_classify(
     is_isr: u32,
     test_mode: u32,
 ) -> i32 {
-    let d = gale_k_fatal_decide(reason, is_isr, test_mode);
+    // gale_k_fatal_decide now returns u64-packed GaleFatalDecision (see #10).
+    let raw = gale_k_fatal_decide(reason, is_isr, test_mode);
+    // SAFETY: u64 round-trips back to the same #[repr(C)] 8-byte struct.
+    let d: GaleFatalDecision = unsafe { core::mem::transmute(raw) };
     if d.ret != 0 {
         return d.ret;
     }
@@ -4656,18 +4686,22 @@ pub extern "C" fn gale_fatal_classify(
 /// returns. Rust classifies the error and decides: abort thread, halt, or
 /// ignore.
 ///
+/// Return ABI: GaleFatalDecision (8B) packed into u64 — see
+/// `gale_k_sem_give_decide` for the full rationale (#10 cross-language LTO).
+///
 /// Verified: FT1 (reason mapping), FT2 (panic halts), FT3 (recovery).
 #[cfg(feature = "fatal")]
 #[unsafe(no_mangle)]
+#[inline(always)]
 pub extern "C" fn gale_k_fatal_decide(
     reason: u32,
     is_isr: u32,
     test_mode: u32,
-) -> GaleFatalDecision {
+) -> u64 {
     use gale::fatal::{RecoveryAction, classify_decide};
 
     // Delegate to verified model (FT1, FT2, FT3).
-    match classify_decide(reason, is_isr != 0, test_mode != 0) {
+    let typed = match classify_decide(reason, is_isr != 0, test_mode != 0) {
         Ok(action) => {
             let a = match action {
                 RecoveryAction::AbortThread => GALE_FATAL_ACTION_ABORT_THREAD,
@@ -4680,7 +4714,10 @@ pub extern "C" fn gale_k_fatal_decide(
             action: GALE_FATAL_ACTION_HALT,
             ret: e,
         },
-    }
+    };
+    const _: () = assert!(core::mem::size_of::<GaleFatalDecision>() == 8);
+    // SAFETY: GaleFatalDecision is #[repr(C)] with size 8; transmute to u64.
+    unsafe { core::mem::transmute::<GaleFatalDecision, u64>(typed) }
 }
 
 // ---------------------------------------------------------------------------

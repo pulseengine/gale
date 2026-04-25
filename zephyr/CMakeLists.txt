@@ -61,7 +61,14 @@ if("${ZEPHYR_TOOLCHAIN_VARIANT}" STREQUAL "llvm" AND CONFIG_LTO)
   # identical, the attribute mismatch makes the inliner reject the
   # cross-language inline. We pass the subset of clang's feature list
   # that rustc recognises (per `rustc --print=target-features`).
-  set(_gale_lto_target_features "+soft-float,+thumb-mode,+thumb2,+mclass,-aclass,-rclass,-aes,-crc,-d32,-dotprod,-dsp,-fp-armv8,-fp16,-fpregs,-i8mm,-neon,-sha2,-trustzone")
+  # Strict-subset of clang's emitted feature string. Clang for cortex-m3 lists
+  # +armv7-m,+hwdiv,+soft-float,+thumb-mode plus a long list of negatives.
+  # Rustc doesn't recognise armv7-m / hwdiv as features (they're implied by
+  # target-cpu), so we omit them. We MUST NOT include features clang doesn't
+  # emit (thumb2, mclass, aclass, rclass, trustzone) because LLVM's
+  # areInlineCompatible checks (callee_features & caller_features) ==
+  # callee_features — any feature in callee but not caller blocks the inline.
+  set(_gale_lto_target_features "+soft-float,+thumb-mode,-aes,-crc,-d32,-dotprod,-dsp,-fp-armv8,-fp16,-fpregs,-i8mm,-neon,-sha2")
   set(GALE_CARGO_RUSTFLAGS_ENV
     "RUSTFLAGS=-Clinker-plugin-lto -Cembed-bitcode=yes -Ctarget-cpu=${_gale_lto_target_cpu} -Ctarget-feature=${_gale_lto_target_features}"
   )
