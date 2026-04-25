@@ -59,39 +59,58 @@ int32_t gale_pipe_read_check(uint32_t used,
                               uint32_t *actual_len,
                               uint32_t *new_used);
 
-/* ---- Phase 2: Full Decision API ---- */
+/* ---- Phase 2: Full Decision API ----
+ *
+ * Redesigned 2026-04-25 from 16-byte structs to 8 bytes so the FFI
+ * returns via uint64_t (AAPCS r0/r1 register pair) instead of sret —
+ * required for the LLVM cross-language inliner (see gale issue #10).
+ *
+ *   - new_used dropped (caller computes new_used = old_used +/- actual_bytes,
+ *     verified unused by the C consumer prior to redesign)
+ *   - ret dropped (caller derives error code from the action variant)
+ *   - WRITE_ERROR / READ_ERROR split into ECANCELED + EPIPE variants
+ *     to preserve the -EPIPE distinction the read consumer relies on.
+ */
 
 struct gale_pipe_write_decision {
-    int32_t ret;
-    uint8_t action;      /* 0=WRITE_OK, 1=WAKE_READER, 2=PEND_CURRENT, 3=RETURN_ERROR */
+    uint8_t action;      /* see GALE_PIPE_ACTION_WRITE_* below */
     uint32_t actual_bytes;
-    uint32_t new_used;
 };
 
-#define GALE_PIPE_ACTION_WRITE_OK     0
-#define GALE_PIPE_ACTION_WAKE_READER  1
-#define GALE_PIPE_ACTION_WRITE_PEND   2
-#define GALE_PIPE_ACTION_WRITE_ERROR  3
+#define GALE_PIPE_ACTION_WRITE_OK                0
+#define GALE_PIPE_ACTION_WAKE_READER             1
+#define GALE_PIPE_ACTION_WRITE_PEND              2
+#define GALE_PIPE_ACTION_WRITE_ERROR_ECANCELED   3
+#define GALE_PIPE_ACTION_WRITE_ERROR_EPIPE       4
 
-struct gale_pipe_write_decision gale_k_pipe_write_decide(
+uint64_t gale_k_pipe_write_decide(
     uint32_t used, uint32_t size, uint8_t flags,
     uint32_t request_len, uint32_t has_reader);
 
-struct gale_pipe_read_decision {
-    int32_t ret;
-    uint8_t action;      /* 0=READ_OK, 1=WAKE_WRITER, 2=PEND_CURRENT, 3=RETURN_ERROR */
-    uint32_t actual_bytes;
-    uint32_t new_used;
+union gale_pipe_write_decision_u {
+    uint64_t raw;
+    struct gale_pipe_write_decision dec;
 };
 
-#define GALE_PIPE_ACTION_READ_OK      0
-#define GALE_PIPE_ACTION_WAKE_WRITER  1
-#define GALE_PIPE_ACTION_READ_PEND    2
-#define GALE_PIPE_ACTION_READ_ERROR   3
+struct gale_pipe_read_decision {
+    uint8_t action;      /* see GALE_PIPE_ACTION_READ_* below */
+    uint32_t actual_bytes;
+};
 
-struct gale_pipe_read_decision gale_k_pipe_read_decide(
+#define GALE_PIPE_ACTION_READ_OK                 0
+#define GALE_PIPE_ACTION_WAKE_WRITER             1
+#define GALE_PIPE_ACTION_READ_PEND               2
+#define GALE_PIPE_ACTION_READ_ERROR_ECANCELED    3
+#define GALE_PIPE_ACTION_READ_ERROR_EPIPE        4
+
+uint64_t gale_k_pipe_read_decide(
     uint32_t used, uint32_t size, uint8_t flags,
     uint32_t request_len, uint32_t has_writer);
+
+union gale_pipe_read_decision_u {
+    uint64_t raw;
+    struct gale_pipe_read_decision dec;
+};
 
 #ifdef __cplusplus
 }

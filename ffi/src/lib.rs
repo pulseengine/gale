@@ -1308,128 +1308,145 @@ pub extern "C" fn gale_pipe_read_check(
 
 // ---- Phase 2: Pipe Decision API ----
 
-/// Decision struct for k_pipe_write -- tells C shim what action to take.
+/// Decision struct for k_pipe_write — tells C shim what action to take.
+///
+/// Redesigned 2026-04-25 from a 16-byte layout (`{i32 ret, u8 action,
+/// u32 actual_bytes, u32 new_used}`) down to 8 bytes so the FFI returns
+/// via u64 register pair (AAPCS r0/r1) rather than sret. 8-byte returns
+/// are what the LLVM cross-language inliner accepts (see #10). Three
+/// reductions:
+///   - `new_used` was never read by the C consumer (verified) — dropped.
+///   - `ret` was only consulted on error paths to extract the error code
+///     — replaced with two distinct error-action variants (ECANCELED,
+///     EPIPE) so the C consumer can derive the negative ret from action.
+///   - 4 actions → 5 actions; still fits in u8.
 #[repr(C)]
 pub struct GalePipeWriteDecision {
-    /// Return code (error code when action=RETURN_ERROR)
-    pub ret: i32,
-    /// Action: 0=WRITE_OK, 1=WAKE_READER, 2=PEND_CURRENT, 3=RETURN_ERROR
+    /// Action: 0=WRITE_OK, 1=WAKE_READER, 2=PEND, 3=ERROR_ECANCELED,
+    /// 4=ERROR_EPIPE.
     pub action: u8,
-    /// Bytes that can be written to ring buffer
+    /// Bytes that can be written to ring buffer (only meaningful when
+    /// action is WRITE_OK or WAKE_READER).
     pub actual_bytes: u32,
-    /// Updated used count after write
-    pub new_used: u32,
 }
 
 pub const GALE_PIPE_ACTION_WRITE_OK: u8 = 0;
 pub const GALE_PIPE_ACTION_WAKE_READER: u8 = 1;
 pub const GALE_PIPE_ACTION_WRITE_PEND: u8 = 2;
-pub const GALE_PIPE_ACTION_WRITE_ERROR: u8 = 3;
+pub const GALE_PIPE_ACTION_WRITE_ERROR_ECANCELED: u8 = 3;
+pub const GALE_PIPE_ACTION_WRITE_ERROR_EPIPE: u8 = 4;
 
 /// Full decision for k_pipe_write: decides what the C shim should do.
+///
+/// Return ABI: 8-byte struct packed into u64 — see
+/// `gale_k_sem_give_decide` for the full rationale (#10 cross-language LTO).
 ///
 /// Delegates to `gale::pipe::write_decide` (Verus-verified).
 /// Verified: PP3-PP5, PP9-PP10
 #[cfg(feature = "pipe")]
 #[unsafe(no_mangle)]
+#[inline(always)]
 pub extern "C" fn gale_k_pipe_write_decide(
     used: u32,
     size: u32,
     flags: u8,
     request_len: u32,
     has_reader: u32,
-) -> GalePipeWriteDecision {
+) -> u64 {
     use gale::pipe::{WriteDecision, write_decide};
 
     let r = write_decide(used, size, flags, request_len, has_reader != 0);
-    match r.decision {
+    let typed = match r.decision {
         WriteDecision::WriteOk => GalePipeWriteDecision {
-            ret: r.ret,
             action: GALE_PIPE_ACTION_WRITE_OK,
             actual_bytes: r.actual_bytes,
-            new_used: r.new_used,
         },
         WriteDecision::WakeReader => GalePipeWriteDecision {
-            ret: r.ret,
             action: GALE_PIPE_ACTION_WAKE_READER,
             actual_bytes: r.actual_bytes,
-            new_used: r.new_used,
         },
         WriteDecision::WritePend => GalePipeWriteDecision {
-            ret: r.ret,
             action: GALE_PIPE_ACTION_WRITE_PEND,
-            actual_bytes: r.actual_bytes,
-            new_used: r.new_used,
+            actual_bytes: 0,
         },
-        WriteDecision::WriteError => GalePipeWriteDecision {
-            ret: r.ret,
-            action: GALE_PIPE_ACTION_WRITE_ERROR,
-            actual_bytes: r.actual_bytes,
-            new_used: r.new_used,
-        },
-    }
+        WriteDecision::WriteError => {
+            // r.ret is the negative error code from the verified model
+            // (-ECANCELED on FLAG_RESET, -EPIPE on !FLAG_OPEN per PP3-PP5).
+            let action = if r.ret == EPIPE {
+                GALE_PIPE_ACTION_WRITE_ERROR_EPIPE
+            } else {
+                GALE_PIPE_ACTION_WRITE_ERROR_ECANCELED
+            };
+            GalePipeWriteDecision { action, actual_bytes: 0 }
+        }
+    };
+    const _: () = assert!(core::mem::size_of::<GalePipeWriteDecision>() == 8);
+    unsafe { core::mem::transmute::<GalePipeWriteDecision, u64>(typed) }
 }
 
-/// Decision struct for k_pipe_read -- tells C shim what action to take.
+/// Decision struct for k_pipe_read — tells C shim what action to take.
+///
+/// Same redesign as GalePipeWriteDecision (16B → 8B for cross-language
+/// LTO inlining; see comment there).
 #[repr(C)]
 pub struct GalePipeReadDecision {
-    /// Return code (error code when action=RETURN_ERROR)
-    pub ret: i32,
-    /// Action: 0=READ_OK, 1=WAKE_WRITER, 2=PEND_CURRENT, 3=RETURN_ERROR
+    /// Action: 0=READ_OK, 1=WAKE_WRITER, 2=PEND, 3=ERROR_ECANCELED,
+    /// 4=ERROR_EPIPE.
     pub action: u8,
-    /// Bytes that can be read from ring buffer
+    /// Bytes that can be read from ring buffer (only meaningful when
+    /// action is READ_OK or WAKE_WRITER).
     pub actual_bytes: u32,
-    /// Updated used count after read
-    pub new_used: u32,
 }
 
 pub const GALE_PIPE_ACTION_READ_OK: u8 = 0;
 pub const GALE_PIPE_ACTION_WAKE_WRITER: u8 = 1;
 pub const GALE_PIPE_ACTION_READ_PEND: u8 = 2;
-pub const GALE_PIPE_ACTION_READ_ERROR: u8 = 3;
+pub const GALE_PIPE_ACTION_READ_ERROR_ECANCELED: u8 = 3;
+pub const GALE_PIPE_ACTION_READ_ERROR_EPIPE: u8 = 4;
 
 /// Full decision for k_pipe_read: decides what the C shim should do.
+///
+/// Return ABI: 8-byte struct packed into u64.
 ///
 /// Delegates to `gale::pipe::read_decide` (Verus-verified).
 /// Verified: PP3-PP6, PP9-PP10
 #[cfg(feature = "pipe")]
 #[unsafe(no_mangle)]
+#[inline(always)]
 pub extern "C" fn gale_k_pipe_read_decide(
     used: u32,
     size: u32,
     flags: u8,
     request_len: u32,
     has_writer: u32,
-) -> GalePipeReadDecision {
+) -> u64 {
     use gale::pipe::{ReadDecision, read_decide};
 
     let r = read_decide(used, size, flags, request_len, has_writer != 0);
-    match r.decision {
+    let typed = match r.decision {
         ReadDecision::ReadOk => GalePipeReadDecision {
-            ret: r.ret,
             action: GALE_PIPE_ACTION_READ_OK,
             actual_bytes: r.actual_bytes,
-            new_used: r.new_used,
         },
         ReadDecision::WakeWriter => GalePipeReadDecision {
-            ret: r.ret,
             action: GALE_PIPE_ACTION_WAKE_WRITER,
             actual_bytes: r.actual_bytes,
-            new_used: r.new_used,
         },
         ReadDecision::ReadPend => GalePipeReadDecision {
-            ret: r.ret,
             action: GALE_PIPE_ACTION_READ_PEND,
-            actual_bytes: r.actual_bytes,
-            new_used: r.new_used,
+            actual_bytes: 0,
         },
-        ReadDecision::ReadError => GalePipeReadDecision {
-            ret: r.ret,
-            action: GALE_PIPE_ACTION_READ_ERROR,
-            actual_bytes: r.actual_bytes,
-            new_used: r.new_used,
-        },
-    }
+        ReadDecision::ReadError => {
+            let action = if r.ret == EPIPE {
+                GALE_PIPE_ACTION_READ_ERROR_EPIPE
+            } else {
+                GALE_PIPE_ACTION_READ_ERROR_ECANCELED
+            };
+            GalePipeReadDecision { action, actual_bytes: 0 }
+        }
+    };
+    const _: () = assert!(core::mem::size_of::<GalePipeReadDecision>() == 8);
+    unsafe { core::mem::transmute::<GalePipeReadDecision, u64>(typed) }
 }
 
 /// Validate stack init parameters.

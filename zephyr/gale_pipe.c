@@ -152,14 +152,25 @@ int z_impl_k_pipe_write(struct k_pipe *pipe, const uint8_t *data, size_t len, k_
 		uint32_t capacity = ring_buf_capacity_get(&pipe->buf);
 		uint32_t has_reader = z_waitq_head(&pipe->data) != NULL ? 1U : 0U;
 
-		/* Decide: Rust determines action */
-		struct gale_pipe_write_decision d = gale_k_pipe_write_decide(
+		/* Decide: Rust determines action.
+		 * Returns 8-byte decision packed into uint64_t for AAPCS register
+		 * return — required for cross-language LTO inlining (#10). The
+		 * old `ret` field is gone; error code is derived from the action
+		 * variant (split into ECANCELED + EPIPE).
+		 */
+		union gale_pipe_write_decision_u du;
+		du.raw = gale_k_pipe_write_decide(
 			used, capacity, pipe->flags,
 			(uint32_t)(len - written), has_reader);
+		const struct gale_pipe_write_decision d = du.dec;
 
 		/* Apply: execute Rust's decision */
-		if (d.action == GALE_PIPE_ACTION_WRITE_ERROR) {
-			rc = d.ret;
+		if (d.action == GALE_PIPE_ACTION_WRITE_ERROR_ECANCELED) {
+			rc = -ECANCELED;
+			break;
+		}
+		if (d.action == GALE_PIPE_ACTION_WRITE_ERROR_EPIPE) {
+			rc = -EPIPE;
 			break;
 		}
 
@@ -243,18 +254,21 @@ int z_impl_k_pipe_read(struct k_pipe *pipe, uint8_t *data, size_t len, k_timeout
 		uint32_t capacity = ring_buf_capacity_get(&pipe->buf);
 		uint32_t has_writer = z_waitq_head(&pipe->space) != NULL ? 1U : 0U;
 
-		/* Decide: Rust determines action */
-		struct gale_pipe_read_decision d = gale_k_pipe_read_decide(
+		/* Decide: Rust determines action (8-byte struct in u64). */
+		union gale_pipe_read_decision_u du;
+		du.raw = gale_k_pipe_read_decide(
 			used, capacity, pipe->flags,
 			(uint32_t)(len - buf.used), has_writer);
+		const struct gale_pipe_read_decision d = du.dec;
 
 		/* Apply: execute Rust's decision */
-		if (d.action == GALE_PIPE_ACTION_READ_ERROR) {
-			if (d.ret == -EPIPE) {
-				rc = buf.used ? (int)buf.used : -EPIPE;
-			} else {
-				rc = d.ret;
-			}
+		if (d.action == GALE_PIPE_ACTION_READ_ERROR_EPIPE) {
+			/* On EPIPE, return any partial bytes already buffered. */
+			rc = buf.used ? (int)buf.used : -EPIPE;
+			break;
+		}
+		if (d.action == GALE_PIPE_ACTION_READ_ERROR_ECANCELED) {
+			rc = -ECANCELED;
 			break;
 		}
 
