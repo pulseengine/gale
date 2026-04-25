@@ -320,7 +320,6 @@ pub extern "C" fn gale_sem_count_init(initial_count: u32, limit: u32) -> i32 {
 /// cannot overflow.  Verified by Verus lemma_give_saturation.
 #[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
-#[inline(always)]
 pub extern "C" fn gale_sem_count_give(count: u32, limit: u32) -> u32 {
     use gale::sem::{GiveDecision, give_decide};
 
@@ -346,7 +345,6 @@ pub extern "C" fn gale_sem_count_give(count: u32, limit: u32) -> u32 {
 /// sem->count).  Called under Zephyr's spinlock — no concurrent access.
 #[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
-#[inline(always)]
 pub extern "C" fn gale_sem_count_take(count: *mut u32) -> i32 {
     use gale::sem::{TakeDecision, take_decide};
 
@@ -393,7 +391,6 @@ pub const GALE_SEM_ACTION_WAKE: u8 = 1;
 /// Delegates to `gale::sem::give_decide` (Verus-verified).
 #[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
-#[inline(always)]
 pub extern "C" fn gale_k_sem_give_decide(
     count: u32,
     limit: u32,
@@ -441,7 +438,6 @@ pub const GALE_SEM_ACTION_PEND: u8 = 1;
 /// Delegates to `gale::sem::take_decide` (Verus-verified).
 #[cfg(feature = "sem")]
 #[unsafe(no_mangle)]
-#[inline(always)]
 pub extern "C" fn gale_k_sem_take_decide(
     count: u32,
     is_no_wait: u32,
