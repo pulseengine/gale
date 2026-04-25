@@ -132,7 +132,7 @@ the toolchain can cash in:
 | `-O0` | all present, both sides | no | slower (ABI overhead visible) |
 | `-Os` GCC **baseline** | baseline: present. Gale: most eliminated inside Rust but FFI opaque | no | **measured: −3.1% median, −2.6% max** (Renode, N=7750, p<1e-100) |
 | `-Os` GCC + Gale, with `inline_never` stripped | baseline: present. Gale: eliminated + Rust body inlined into caller | partial | expected: few additional cycles faster |
-| `-flto` LLVM + Gale | both sides fully eliminated; Rust body inlined across FFI boundary; dead-branch pruning across C↔Rust | **yes** | **expected meaningfully faster** — tracked in #10, not yet measured |
+| `-flto` LLVM + Gale | both sides fully eliminated; Rust body inlined across FFI boundary; dead-branch pruning across C↔Rust | **yes — 0 surviving gale_ symbols at link time, see below** | **handoff cycle measurement pending** (Renode LTO bench lane, separate followup) |
 
 The `-Os GCC` row is what the engine-control bench measures today, and
 the measured direction confirms the architectural argument: even
@@ -142,12 +142,53 @@ overhead. The delta is small (11 cycles / 65 ns per handoff) but
 distribution-significant (MW-U p ≈ 0 across all 13 RPM steps, tails
 also shifted by −2.6%).
 
-The `-flto LLVM` row is the one that will widen that margin, because:
-1. The FFI call itself disappears (lld inlines across C and Rust
-   bitcode).
-2. Gale's Verus-proven invariants become visible to the optimizer,
-   which can eliminate defensive branches in the **C** code that
-   Gale's Rust already knows are unreachable.
+The `-flto LLVM` row is now verified working at the **inlining level**
+(commit `3a25191` and predecessors, 2026-04-25). The LLVM LTO CI lane
+reports **0 surviving `gale_` symbols** in the linked ELF — every
+verified decision function is emitted directly into its C caller's
+basic block, no FFI `bl`/`ret` pair remains. Concrete evidence:
+
+```
+LLVM + Gale (no LTO): 10 gale_ symbols
+LLVM + Gale + LTO:    0  ← cross-language inlining works end-to-end
+```
+
+What it took to get there (a small archaeology series):
+
+1. **C side wasn't emitting bitcode** (commit `2500fbd`). Zephyr's
+   `cmake/compiler/clang/*` has no `-flto` plumbing — the
+   `optimization_lto` property expands to empty under
+   `ZEPHYR_TOOLCHAIN_VARIANT=llvm + CONFIG_LTO=y`. We inject
+   `-flto=thin` ourselves in `zephyr/CMakeLists.txt` for the gale
+   module.
+2. **Function attribute mismatch** (commit `8867c1e`). rustc emitted
+   `target-cpu="generic"` and no `target-features` while clang emitted
+   `target-cpu="cortex-m3"` plus a long explicit feature list. LLVM's
+   inliner refused to merge across the mismatch even with both sides
+   bitcoded. Fix: `RUSTFLAGS=-Ctarget-cpu=cortex-mN -Ctarget-feature=...`
+   matching clang's strict subset.
+3. **`sret(struct)` type mismatch** (commits `7d89ed3` and `3a25191`).
+   `#[repr(C)]` struct returns lower to opaque `sret([N x i8])` in Rust
+   bitcode while clang emits `sret(%struct.X)`. Five FFI decision
+   functions returned via sret. Fix: redesign the FFI to return `u64`
+   (8-byte structs packed into the AAPCS r0/r1 register pair). For
+   structs that didn't fit in 8 bytes (`sem_take` 12B, `pipe_*` 16B)
+   we dropped redundant fields — `ret` (caller derives from action)
+   and `new_used` (caller computes from `actual_bytes`) — and split
+   single-`ERROR` actions into per-error-code variants where the
+   caller needed the distinction.
+
+Once all three blockers cleared, lld inlines every decision function
+into its caller. Defensive C branches that Verus has proven dead
+(e.g., the `count != limit` saturation guard in `k_sem_give`) get
+eliminated in the same LTO pass — exactly the architectural prediction.
+
+What's still outstanding to translate inlining into a published
+margin: build the engine-control bench under LLVM+LTO on Renode
+(`engine-bench-renode-lto.yml`, separate followup) and report the
+handoff cycle delta. The `−3.1%` median at `-Os` GCC is the floor;
+LTO should widen meaningfully because the FFI bl/ret pair (~3 cycles
+per handoff on Cortex-M4F) is now gone *at every call site*.
 
 ## 3. Defensive C is not free
 
