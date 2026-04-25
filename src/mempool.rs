@@ -400,4 +400,62 @@ pub fn free_block_decide(allocated: u32) -> (result: Result<u32, i32>)
     }
 }
 
+// ======================================================================
+// Post-syscall action decision (for FFI gale_k_mempool_*_decide)
+// ======================================================================
+
+/// Action to take after a mempool alloc attempt.
+///
+/// Mirrors mempool.c — the mempool API does not pend (unlike k_heap), so the
+/// post-alloc action is a 2-way: pointer (success) or NULL (failure).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MempoolAllocAction {
+    /// Allocation succeeded — return the pointer to caller.
+    ReturnPtr = 0,
+    /// Allocation failed — return NULL.
+    ReturnNull = 1,
+}
+
+/// Decide the post-alloc action for k_mem_pool_alloc.
+///
+/// MP2: alloc success returns the pointer; MP3: failure returns NULL.
+pub fn alloc_action_decide(alloc_succeeded: bool) -> (result: MempoolAllocAction)
+    ensures
+        alloc_succeeded ==> result === MempoolAllocAction::ReturnPtr,
+        !alloc_succeeded ==> result === MempoolAllocAction::ReturnNull,
+{
+    if alloc_succeeded {
+        MempoolAllocAction::ReturnPtr
+    } else {
+        MempoolAllocAction::ReturnNull
+    }
+}
+
+/// Action to take after a mempool free.
+///
+/// Mirrors mempool.c — after sys_heap_free, if any waiters were unpended a
+/// reschedule is required.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MempoolFreeAction {
+    /// No waiters — just unlock.
+    FreeOk = 0,
+    /// Waiters present — unlock and reschedule.
+    FreeAndReschedule = 1,
+}
+
+/// Decide the post-free action for k_mem_pool_free.
+///
+/// MP4 (free): chooses between plain free and reschedule based on waiters.
+pub fn free_action_decide(has_waiters: bool) -> (result: MempoolFreeAction)
+    ensures
+        has_waiters ==> result === MempoolFreeAction::FreeAndReschedule,
+        !has_waiters ==> result === MempoolFreeAction::FreeOk,
+{
+    if has_waiters {
+        MempoolFreeAction::FreeAndReschedule
+    } else {
+        MempoolFreeAction::FreeOk
+    }
+}
+
 } // verus!

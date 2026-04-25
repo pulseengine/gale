@@ -343,3 +343,22 @@ pub fn check_sem_decide(event_type: u32, sem_count: u32) -> bool {
 pub fn signal_raise_decide(result_val: i32, has_poll_event: bool) -> (u32, i32, bool) {
     (1u32, result_val, has_poll_event)
 }
+/// Decision for k_poll_event_init: compute the initial state.
+///
+/// PL1: a freshly-initialised poll event is always in STATE_NOT_READY.
+/// The Zephyr API does not reject any type value at init time, so the
+/// type is passed through unchanged and the state is set to NOT_READY.
+///
+/// Source: poll.c:46-62 k_poll_event_init.
+pub fn event_init_decide(event_type: u32) -> u32 {
+    let _ = event_type;
+    STATE_NOT_READY
+}
+/// Decision for k_poll_signal_reset: compute the new signaled value.
+///
+/// PL8: reset clears signaled to 0 (unconditionally).
+///
+/// Source: poll.c:494-498 k_poll_signal_reset.
+pub fn signal_reset_decide() -> u32 {
+    0u32
+}

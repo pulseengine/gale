@@ -791,4 +791,102 @@ pub proof fn lemma_watermark_monotonic(old_usage: u32, observed: u32, size: u32)
 {
 }
 
+// =====================================================================
+// Abort / Join decision functions (FFI gale_k_thread_*_decide)
+// =====================================================================
+
+/// Thread state flag: thread is dead (kernel_structs.h _THREAD_DEAD = BIT(3)).
+pub const THREAD_STATE_DEAD: u8 = 0x08;
+
+/// Decision for k_thread_abort.
+///
+/// Source: sched.c z_thread_abort:
+///   if (z_is_thread_dead(thread)) { return; }   // ALREADY_DEAD
+///   z_thread_halt(thread, key, true);            // PROCEED
+///   if (essential) { k_panic(); }                // PANIC after halt
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AbortDecision {
+    /// Action: 0=PROCEED, 1=ALREADY_DEAD, 2=PANIC
+    pub action: u8,
+}
+
+/// Action: proceed with halt.
+pub const ABORT_PROCEED: u8 = 0;
+/// Action: thread already dead — no-op.
+pub const ABORT_ALREADY_DEAD: u8 = 1;
+/// Action: essential thread — halt then panic.
+pub const ABORT_PANIC: u8 = 2;
+
+/// Decide the abort action for k_thread_abort.
+///
+/// TH5: dead threads must not be re-aborted (no underflow on the active
+/// counter).  Essential-thread abort is honoured but the kernel panics
+/// after the halt completes.
+pub fn abort_decide(thread_state: u8, is_essential: bool) -> (d: AbortDecision)
+    ensures
+        // TH5: already dead → no-op
+        (thread_state & THREAD_STATE_DEAD) != 0 ==> d.action == ABORT_ALREADY_DEAD,
+        // Live + essential → panic after halt
+        (thread_state & THREAD_STATE_DEAD) == 0 && is_essential ==> d.action == ABORT_PANIC,
+        // Live + non-essential → proceed
+        (thread_state & THREAD_STATE_DEAD) == 0 && !is_essential ==> d.action == ABORT_PROCEED,
+{
+    if (thread_state & THREAD_STATE_DEAD) != 0 {
+        AbortDecision { action: ABORT_ALREADY_DEAD }
+    } else if is_essential {
+        AbortDecision { action: ABORT_PANIC }
+    } else {
+        AbortDecision { action: ABORT_PROCEED }
+    }
+}
+
+/// Decision for k_thread_join.
+///
+/// Source: sched.c z_impl_k_thread_join:
+///   if (z_is_thread_dead(thread))           ret = 0;       // RETURN OK
+///   else if (timeout == K_NO_WAIT)          ret = -EBUSY;  // RETURN EBUSY
+///   else if (target == _current || circ)    ret = -EDEADLK;// RETURN EDEADLK
+///   else                                    pend on join_queue
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JoinDecision {
+    /// Action: 0=RETURN_IMMEDIATELY, 1=PEND_ON_JOIN_QUEUE
+    pub action: u8,
+    /// Return code applied on action == RETURN_IMMEDIATELY: OK, -EBUSY, -EDEADLK
+    pub ret: i32,
+}
+
+/// Action: return immediately with `ret`.
+pub const JOIN_RETURN: u8 = 0;
+/// Action: pend on the target thread's join queue.
+pub const JOIN_PEND: u8 = 1;
+
+/// Decide the action for k_thread_join.
+///
+/// TH9: deadlock detection — joining self or a circular dependency is
+/// rejected without modifying any wait queues.
+pub fn join_decide(is_dead: bool, is_no_wait: bool, is_self_or_circular: bool)
+    -> (d: JoinDecision)
+    ensures
+        // Already dead → return OK
+        is_dead ==> d.action == JOIN_RETURN && d.ret == OK,
+        // Live + no-wait → return EBUSY
+        !is_dead && is_no_wait ==> d.action == JOIN_RETURN && d.ret == EBUSY,
+        // Live + waiting + self/circular → return EDEADLK
+        !is_dead && !is_no_wait && is_self_or_circular ==>
+            d.action == JOIN_RETURN && d.ret == EDEADLK,
+        // Live + waiting + safe → pend
+        !is_dead && !is_no_wait && !is_self_or_circular ==>
+            d.action == JOIN_PEND && d.ret == OK,
+{
+    if is_dead {
+        JoinDecision { action: JOIN_RETURN, ret: OK }
+    } else if is_no_wait {
+        JoinDecision { action: JOIN_RETURN, ret: EBUSY }
+    } else if is_self_or_circular {
+        JoinDecision { action: JOIN_RETURN, ret: EDEADLK }
+    } else {
+        JoinDecision { action: JOIN_PEND, ret: OK }
+    }
+}
+
 } // verus!

@@ -2929,25 +2929,23 @@ pub const GALE_MBOX_ACTION_PEND_TX: u8 = 2;
 /// Rust decides the action.
 ///
 /// Verified: MB2-MB4 (match check delegated), state transition decision.
+///
+/// Delegates the post-scan action selection to the verified model
+/// (`gale::mbox::put_action_decide`).
 #[cfg(feature = "mbox")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mbox_put_decide(
     matched: u32,
     is_no_wait: u32,
 ) -> GaleMboxPutDecision {
-    if matched != 0 {
-        GaleMboxPutDecision {
-            action: GALE_MBOX_ACTION_MATCHED,
-        }
-    } else if is_no_wait != 0 {
-        GaleMboxPutDecision {
-            action: GALE_MBOX_ACTION_RETURN_ENOMSG,
-        }
-    } else {
-        GaleMboxPutDecision {
-            action: GALE_MBOX_ACTION_PEND_TX,
-        }
-    }
+    use gale::mbox::{MboxPutAction, put_action_decide};
+
+    let action = match put_action_decide(matched != 0, is_no_wait != 0) {
+        MboxPutAction::Matched => GALE_MBOX_ACTION_MATCHED,
+        MboxPutAction::ReturnEnomsg => GALE_MBOX_ACTION_RETURN_ENOMSG,
+        MboxPutAction::PendTx => GALE_MBOX_ACTION_PEND_TX,
+    };
+    GaleMboxPutDecision { action }
 }
 
 /// Decision struct for k_mbox_get — tells C shim what action to take.
@@ -2968,25 +2966,23 @@ pub const GALE_MBOX_ACTION_PEND_RX: u8 = 2;
 /// Rust decides the action.
 ///
 /// Verified: MB2-MB4 (match check delegated), state transition decision.
+///
+/// Delegates the post-scan action selection to the verified model
+/// (`gale::mbox::get_action_decide`).
 #[cfg(feature = "mbox")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mbox_get_decide(
     matched: u32,
     is_no_wait: u32,
 ) -> GaleMboxGetDecision {
-    if matched != 0 {
-        GaleMboxGetDecision {
-            action: GALE_MBOX_ACTION_CONSUME,
-        }
-    } else if is_no_wait != 0 {
-        GaleMboxGetDecision {
-            action: GALE_MBOX_ACTION_RETURN_ENOMSG,
-        }
-    } else {
-        GaleMboxGetDecision {
-            action: GALE_MBOX_ACTION_PEND_RX,
-        }
-    }
+    use gale::mbox::{MboxGetAction, get_action_decide};
+
+    let action = match get_action_decide(matched != 0, is_no_wait != 0) {
+        MboxGetAction::Consume => GALE_MBOX_ACTION_CONSUME,
+        MboxGetAction::ReturnEnomsg => GALE_MBOX_ACTION_RETURN_ENOMSG,
+        MboxGetAction::PendRx => GALE_MBOX_ACTION_PEND_RX,
+    };
+    GaleMboxGetDecision { action }
 }
 
 // ---------------------------------------------------------------------------
@@ -3228,20 +3224,24 @@ pub extern "C" fn gale_timeout_announce(
 /// Returns:
 ///   0 (OK)   — valid type, *state set to 0
 ///   -EINVAL  — null pointer
+///
+/// Delegates the initial-state computation to the verified model
+/// (`gale::poll::event_init_decide`, PL1).
 #[cfg(feature = "poll")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_poll_event_init(
     event_type: u32,
     state: *mut u32,
 ) -> i32 {
+    use gale::poll::event_init_decide;
+
     unsafe {
         if state.is_null() {
             return EINVAL;
         }
 
-        // All types are valid — Zephyr doesn't reject unknown types at init.
-        let _ = event_type;
-        *state = 0; // STATE_NOT_READY
+        // Delegate to verified model (PL1: state starts NOT_READY).
+        *state = event_init_decide(event_type);
         OK
     }
 }
@@ -3313,17 +3313,23 @@ pub extern "C" fn gale_poll_signal_raise(
 /// Returns:
 ///   0 (OK)   — *signaled = 0
 ///   -EINVAL  — null pointer
+///
+/// Delegates the cleared-signaled value to the verified model
+/// (`gale::poll::signal_reset_decide`, PL8).
 #[cfg(feature = "poll")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_poll_signal_reset(
     signaled: *mut u32,
 ) -> i32 {
+    use gale::poll::signal_reset_decide;
+
     unsafe {
         if signaled.is_null() {
             return EINVAL;
         }
 
-        *signaled = 0;
+        // Delegate to verified model (PL8: signaled := 0).
+        *signaled = signal_reset_decide();
         OK
     }
 }
@@ -3802,25 +3808,23 @@ pub const GALE_KHEAP_ACTION_RETURN_NULL: u8 = 2;
 ///   is_no_wait:      1 if K_NO_WAIT or !MULTITHREADING, 0 otherwise
 ///
 /// Verified: KH2 (alloc), KH3 (full), KH6 (no overflow).
+///
+/// Delegates the post-syscall action selection to the verified model
+/// (`gale::kheap::alloc_action_decide`).
 #[cfg(feature = "kheap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_kheap_alloc_decide(
     alloc_succeeded: u32,
     is_no_wait: u32,
 ) -> GaleKheapAllocDecision {
-    if alloc_succeeded != 0 {
-        GaleKheapAllocDecision {
-            action: GALE_KHEAP_ACTION_RETURN_PTR,
-        }
-    } else if is_no_wait != 0 {
-        GaleKheapAllocDecision {
-            action: GALE_KHEAP_ACTION_RETURN_NULL,
-        }
-    } else {
-        GaleKheapAllocDecision {
-            action: GALE_KHEAP_ACTION_PEND,
-        }
-    }
+    use gale::kheap::{KheapAllocAction, alloc_action_decide};
+
+    let action = match alloc_action_decide(alloc_succeeded != 0, is_no_wait != 0) {
+        KheapAllocAction::ReturnPtr => GALE_KHEAP_ACTION_RETURN_PTR,
+        KheapAllocAction::Pend => GALE_KHEAP_ACTION_PEND,
+        KheapAllocAction::ReturnNull => GALE_KHEAP_ACTION_RETURN_NULL,
+    };
+    GaleKheapAllocDecision { action }
 }
 
 /// Decision struct for k_heap_free — tells C shim what action to take.
@@ -3845,20 +3849,21 @@ pub const GALE_KHEAP_ACTION_FREE_AND_RESCHEDULE: u8 = 1;
 ///   has_waiters: 1 if z_unpend_all returned > 0, 0 otherwise
 ///
 /// Verified: KH4 (free), KH5 (conservation).
+///
+/// Delegates the post-syscall action selection to the verified model
+/// (`gale::kheap::free_action_decide`).
 #[cfg(feature = "kheap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_kheap_free_decide(
     has_waiters: u32,
 ) -> GaleKheapFreeDecision {
-    if has_waiters != 0 {
-        GaleKheapFreeDecision {
-            action: GALE_KHEAP_ACTION_FREE_AND_RESCHEDULE,
-        }
-    } else {
-        GaleKheapFreeDecision {
-            action: GALE_KHEAP_ACTION_FREE_ONLY,
-        }
-    }
+    use gale::kheap::{KheapFreeAction, free_action_decide};
+
+    let action = match free_action_decide(has_waiters != 0) {
+        KheapFreeAction::FreeAndReschedule => GALE_KHEAP_ACTION_FREE_AND_RESCHEDULE,
+        KheapFreeAction::FreeOnly => GALE_KHEAP_ACTION_FREE_ONLY,
+    };
+    GaleKheapFreeDecision { action }
 }
 
 // ---------------------------------------------------------------------------
@@ -4068,8 +4073,8 @@ pub const GALE_THREAD_ABORT_PROCEED: u8 = 0;
 pub const GALE_THREAD_ABORT_ALREADY_DEAD: u8 = 1;
 pub const GALE_THREAD_ABORT_PANIC: u8 = 2;
 
-/// Thread state flag: thread is dead (from kernel_structs.h _THREAD_DEAD = BIT(3)).
-const THREAD_STATE_DEAD: u8 = 0x08;
+// THREAD_STATE_DEAD lives in `gale::thread_lifecycle` now (re-exported as
+// the public constant used by the verified abort_decide helper).
 
 /// Full decision for k_thread_abort: determines abort action based on thread state.
 ///
@@ -4088,29 +4093,28 @@ const THREAD_STATE_DEAD: u8 = 0x08;
 ///   action=ABORT otherwise (proceed with halt)
 ///
 /// Verified: TH5 (no underflow — dead threads not re-aborted).
+///
+/// Delegates to `gale::thread_lifecycle::abort_decide` for the dead/essential
+/// classification.
 #[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_thread_abort_decide(
     thread_state: u8,
     is_essential: u32,
 ) -> GaleThreadAbortDecision {
-    // Already dead — no-op
-    if (thread_state & THREAD_STATE_DEAD) != 0 {
-        return GaleThreadAbortDecision {
-            action: GALE_THREAD_ABORT_ALREADY_DEAD,
-        };
-    }
+    use gale::thread_lifecycle::{
+        ABORT_ALREADY_DEAD, ABORT_PANIC, ABORT_PROCEED, abort_decide,
+    };
 
-    // Essential thread — will be aborted, then panic
-    if is_essential != 0 {
-        return GaleThreadAbortDecision {
-            action: GALE_THREAD_ABORT_PANIC,
-        };
-    }
-
-    GaleThreadAbortDecision {
-        action: GALE_THREAD_ABORT_PROCEED,
-    }
+    let d = abort_decide(thread_state, is_essential != 0);
+    let action = match d.action {
+        ABORT_ALREADY_DEAD => GALE_THREAD_ABORT_ALREADY_DEAD,
+        ABORT_PANIC => GALE_THREAD_ABORT_PANIC,
+        ABORT_PROCEED => GALE_THREAD_ABORT_PROCEED,
+        // Unreachable per the verified model.
+        _ => GALE_THREAD_ABORT_PROCEED,
+    };
+    GaleThreadAbortDecision { action }
 }
 
 /// Decision struct for k_thread_join — tells C shim what action to take.
@@ -4142,6 +4146,9 @@ pub const GALE_THREAD_JOIN_PEND: u8 = 1;
 ///   is_self_or_circular: 1 if target == _current or target is pended on our join queue
 ///
 /// Verified: deadlock detection, proper state transitions.
+///
+/// Delegates to `gale::thread_lifecycle::join_decide` for the
+/// dead/no-wait/deadlock/pend classification (TH9).
 #[cfg(feature = "thread_lifecycle")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_thread_join_decide(
@@ -4149,35 +4156,15 @@ pub extern "C" fn gale_k_thread_join_decide(
     is_no_wait: u32,
     is_self_or_circular: u32,
 ) -> GaleThreadJoinDecision {
-    // Already dead — return success immediately
-    if is_dead != 0 {
-        return GaleThreadJoinDecision {
-            action: GALE_THREAD_JOIN_RETURN,
-            ret: OK,
-        };
-    }
+    use gale::thread_lifecycle::{JOIN_PEND, JOIN_RETURN, join_decide};
 
-    // No-wait mode — return busy
-    if is_no_wait != 0 {
-        return GaleThreadJoinDecision {
-            action: GALE_THREAD_JOIN_RETURN,
-            ret: EBUSY,
-        };
-    }
-
-    // Deadlock: joining self or circular dependency
-    if is_self_or_circular != 0 {
-        return GaleThreadJoinDecision {
-            action: GALE_THREAD_JOIN_RETURN,
-            ret: EDEADLK,
-        };
-    }
-
-    // Otherwise pend on the thread's join queue
-    GaleThreadJoinDecision {
-        action: GALE_THREAD_JOIN_PEND,
-        ret: OK,
-    }
+    let d = join_decide(is_dead != 0, is_no_wait != 0, is_self_or_circular != 0);
+    let action = match d.action {
+        JOIN_RETURN => GALE_THREAD_JOIN_RETURN,
+        JOIN_PEND => GALE_THREAD_JOIN_PEND,
+        _ => GALE_THREAD_JOIN_RETURN,
+    };
+    GaleThreadJoinDecision { action, ret: d.ret }
 }
 
 // ---- Phase 2: Suspend / Resume / Priority-set / Stack-space / Deadline ----
@@ -4807,20 +4794,21 @@ pub const GALE_MEMPOOL_ACTION_RETURN_NULL: u8 = 1;
 ///   alloc_succeeded: 1 if sys_heap returned non-NULL, 0 if NULL
 ///
 /// Verified: MP2 (alloc), MP3 (full).
+///
+/// Delegates the post-syscall action selection to the verified model
+/// (`gale::mempool::alloc_action_decide`).
 #[cfg(feature = "mempool")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mempool_alloc_decide(
     alloc_succeeded: u32,
 ) -> GaleMemPoolAllocDecision {
-    if alloc_succeeded != 0 {
-        GaleMemPoolAllocDecision {
-            action: GALE_MEMPOOL_ACTION_RETURN_PTR,
-        }
-    } else {
-        GaleMemPoolAllocDecision {
-            action: GALE_MEMPOOL_ACTION_RETURN_NULL,
-        }
-    }
+    use gale::mempool::{MempoolAllocAction, alloc_action_decide};
+
+    let action = match alloc_action_decide(alloc_succeeded != 0) {
+        MempoolAllocAction::ReturnPtr => GALE_MEMPOOL_ACTION_RETURN_PTR,
+        MempoolAllocAction::ReturnNull => GALE_MEMPOOL_ACTION_RETURN_NULL,
+    };
+    GaleMemPoolAllocDecision { action }
 }
 
 /// Decision struct for mempool free — tells C shim what action to take.
@@ -4845,20 +4833,21 @@ pub const GALE_MEMPOOL_ACTION_FREE_AND_RESCHEDULE: u8 = 1;
 ///   has_waiters: 1 if z_unpend_all returned > 0, 0 otherwise
 ///
 /// Verified: MP4 (free), MP5 (conservation).
+///
+/// Delegates the post-syscall action selection to the verified model
+/// (`gale::mempool::free_action_decide`).
 #[cfg(feature = "mempool")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mempool_free_decide(
     has_waiters: u32,
 ) -> GaleMemPoolFreeDecision {
-    if has_waiters != 0 {
-        GaleMemPoolFreeDecision {
-            action: GALE_MEMPOOL_ACTION_FREE_AND_RESCHEDULE,
-        }
-    } else {
-        GaleMemPoolFreeDecision {
-            action: GALE_MEMPOOL_ACTION_FREE_OK,
-        }
-    }
+    use gale::mempool::{MempoolFreeAction, free_action_decide};
+
+    let action = match free_action_decide(has_waiters != 0) {
+        MempoolFreeAction::FreeAndReschedule => GALE_MEMPOOL_ACTION_FREE_AND_RESCHEDULE,
+        MempoolFreeAction::FreeOk => GALE_MEMPOOL_ACTION_FREE_OK,
+    };
+    GaleMemPoolFreeDecision { action }
 }
 
 // ---------------------------------------------------------------------------
@@ -7425,6 +7414,248 @@ mod kani_mbox_proofs {
     fn mbox_data_exchange_symmetric() {
         let size: u32 = kani::any();
         assert!(gale_mbox_data_exchange(size, size) == size);
+    }
+
+    /// MB2/MB3: put_decide selects MATCHED whenever a receiver is found.
+    #[kani::proof]
+    fn mbox_put_matched_dominates() {
+        let is_no_wait: u32 = kani::any();
+        let d = gale_k_mbox_put_decide(1, is_no_wait);
+        assert!(d.action == GALE_MBOX_ACTION_MATCHED);
+    }
+
+    /// put_decide: no match + K_NO_WAIT → ENOMSG.
+    #[kani::proof]
+    fn mbox_put_no_wait_returns_enomsg() {
+        let d = gale_k_mbox_put_decide(0, 1);
+        assert!(d.action == GALE_MBOX_ACTION_RETURN_ENOMSG);
+    }
+
+    /// put_decide: no match + waiting → PEND_TX.
+    #[kani::proof]
+    fn mbox_put_waits_pend() {
+        let d = gale_k_mbox_put_decide(0, 0);
+        assert!(d.action == GALE_MBOX_ACTION_PEND_TX);
+    }
+
+    /// MB3: get_decide selects CONSUME whenever a sender is found.
+    #[kani::proof]
+    fn mbox_get_matched_consumes() {
+        let is_no_wait: u32 = kani::any();
+        let d = gale_k_mbox_get_decide(1, is_no_wait);
+        assert!(d.action == GALE_MBOX_ACTION_CONSUME);
+    }
+
+    /// get_decide: no match + K_NO_WAIT → ENOMSG.
+    #[kani::proof]
+    fn mbox_get_no_wait_returns_enomsg() {
+        let d = gale_k_mbox_get_decide(0, 1);
+        assert!(d.action == GALE_MBOX_ACTION_RETURN_ENOMSG);
+    }
+
+    /// get_decide: no match + waiting → PEND_RX.
+    #[kani::proof]
+    fn mbox_get_waits_pend() {
+        let d = gale_k_mbox_get_decide(0, 0);
+        assert!(d.action == GALE_MBOX_ACTION_PEND_RX);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — kheap (post-syscall action)
+// ---------------------------------------------------------------------------
+
+#[cfg(all(kani, feature = "kheap"))]
+mod kani_kheap_proofs {
+    use super::*;
+
+    /// KH2: alloc_decide returns RETURN_PTR on success.
+    #[kani::proof]
+    fn kheap_alloc_success_returns_ptr() {
+        let is_no_wait: u32 = kani::any();
+        let d = gale_k_kheap_alloc_decide(1, is_no_wait);
+        assert!(d.action == GALE_KHEAP_ACTION_RETURN_PTR);
+    }
+
+    /// KH3: alloc_decide returns NULL on K_NO_WAIT failure.
+    #[kani::proof]
+    fn kheap_alloc_no_wait_failure_returns_null() {
+        let d = gale_k_kheap_alloc_decide(0, 1);
+        assert!(d.action == GALE_KHEAP_ACTION_RETURN_NULL);
+    }
+
+    /// KH3: alloc_decide PENDs on waiting failure.
+    #[kani::proof]
+    fn kheap_alloc_wait_failure_pends() {
+        let d = gale_k_kheap_alloc_decide(0, 0);
+        assert!(d.action == GALE_KHEAP_ACTION_PEND);
+    }
+
+    /// KH4: free_decide picks reschedule when waiters present.
+    #[kani::proof]
+    fn kheap_free_with_waiters_reschedules() {
+        let d = gale_k_kheap_free_decide(1);
+        assert!(d.action == GALE_KHEAP_ACTION_FREE_AND_RESCHEDULE);
+    }
+
+    /// KH4: free_decide skips reschedule with no waiters.
+    #[kani::proof]
+    fn kheap_free_without_waiters_unlocks() {
+        let d = gale_k_kheap_free_decide(0);
+        assert!(d.action == GALE_KHEAP_ACTION_FREE_ONLY);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — mempool (post-syscall action)
+// ---------------------------------------------------------------------------
+
+#[cfg(all(kani, feature = "mempool"))]
+mod kani_mempool_proofs {
+    use super::*;
+
+    /// MP2: alloc_decide returns RETURN_PTR on success.
+    #[kani::proof]
+    fn mempool_alloc_success_returns_ptr() {
+        let d = gale_k_mempool_alloc_decide(1);
+        assert!(d.action == GALE_MEMPOOL_ACTION_RETURN_PTR);
+    }
+
+    /// MP3: alloc_decide returns NULL on failure.
+    #[kani::proof]
+    fn mempool_alloc_failure_returns_null() {
+        let d = gale_k_mempool_alloc_decide(0);
+        assert!(d.action == GALE_MEMPOOL_ACTION_RETURN_NULL);
+    }
+
+    /// MP4: free_decide picks reschedule when waiters present.
+    #[kani::proof]
+    fn mempool_free_with_waiters_reschedules() {
+        let d = gale_k_mempool_free_decide(1);
+        assert!(d.action == GALE_MEMPOOL_ACTION_FREE_AND_RESCHEDULE);
+    }
+
+    /// MP4: free_decide skips reschedule with no waiters.
+    #[kani::proof]
+    fn mempool_free_without_waiters_unlocks() {
+        let d = gale_k_mempool_free_decide(0);
+        assert!(d.action == GALE_MEMPOOL_ACTION_FREE_OK);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — thread_lifecycle abort/join
+// ---------------------------------------------------------------------------
+
+#[cfg(all(kani, feature = "thread_lifecycle"))]
+mod kani_thread_decide_proofs {
+    use super::*;
+
+    /// TH5: dead threads are not re-aborted.
+    #[kani::proof]
+    fn thread_abort_dead_is_noop() {
+        let is_essential: u32 = kani::any();
+        // Any state byte that has the DEAD bit set.
+        let extra: u8 = kani::any();
+        let state = 0x08u8 | (extra & 0xF7);
+        let d = gale_k_thread_abort_decide(state, is_essential);
+        assert!(d.action == GALE_THREAD_ABORT_ALREADY_DEAD);
+    }
+
+    /// Live + essential → PANIC after halt.
+    #[kani::proof]
+    fn thread_abort_essential_panics() {
+        let extra: u8 = kani::any();
+        let state = extra & 0xF7; // DEAD bit clear
+        let d = gale_k_thread_abort_decide(state, 1);
+        assert!(d.action == GALE_THREAD_ABORT_PANIC);
+    }
+
+    /// Live + non-essential → PROCEED.
+    #[kani::proof]
+    fn thread_abort_normal_proceeds() {
+        let extra: u8 = kani::any();
+        let state = extra & 0xF7;
+        let d = gale_k_thread_abort_decide(state, 0);
+        assert!(d.action == GALE_THREAD_ABORT_PROCEED);
+    }
+
+    /// Join: dead target → return OK.
+    #[kani::proof]
+    fn thread_join_dead_returns_ok() {
+        let nw: u32 = kani::any();
+        let circ: u32 = kani::any();
+        let d = gale_k_thread_join_decide(1, nw, circ);
+        assert!(d.action == GALE_THREAD_JOIN_RETURN);
+        assert!(d.ret == OK);
+    }
+
+    /// Join: live + K_NO_WAIT → -EBUSY.
+    #[kani::proof]
+    fn thread_join_no_wait_returns_ebusy() {
+        let circ: u32 = kani::any();
+        let d = gale_k_thread_join_decide(0, 1, circ);
+        assert!(d.action == GALE_THREAD_JOIN_RETURN);
+        assert!(d.ret == EBUSY);
+    }
+
+    /// TH9: join on self/circular → -EDEADLK.
+    #[kani::proof]
+    fn thread_join_self_returns_edeadlk() {
+        let d = gale_k_thread_join_decide(0, 0, 1);
+        assert!(d.action == GALE_THREAD_JOIN_RETURN);
+        assert!(d.ret == EDEADLK);
+    }
+
+    /// Join: live + waiting + safe → PEND.
+    #[kani::proof]
+    fn thread_join_safe_pends() {
+        let d = gale_k_thread_join_decide(0, 0, 0);
+        assert!(d.action == GALE_THREAD_JOIN_PEND);
+        assert!(d.ret == OK);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Kani bounded model checking — poll (event init / signal reset)
+// ---------------------------------------------------------------------------
+
+#[cfg(all(kani, feature = "poll"))]
+mod kani_poll_decide_proofs {
+    use super::*;
+
+    /// PL1: event_init writes STATE_NOT_READY (0) regardless of type.
+    #[kani::proof]
+    fn poll_event_init_state_is_not_ready() {
+        let event_type: u32 = kani::any();
+        let mut state: u32 = kani::any();
+        let r = gale_poll_event_init(event_type, &mut state as *mut u32);
+        assert!(r == OK);
+        assert!(state == 0);
+    }
+
+    /// gale_poll_event_init rejects null state.
+    #[kani::proof]
+    fn poll_event_init_null_rejects() {
+        let event_type: u32 = kani::any();
+        let r = gale_poll_event_init(event_type, core::ptr::null_mut());
+        assert!(r == EINVAL);
+    }
+
+    /// PL8: signal_reset clears signaled to 0.
+    #[kani::proof]
+    fn poll_signal_reset_clears() {
+        let mut sig: u32 = kani::any();
+        let r = gale_poll_signal_reset(&mut sig as *mut u32);
+        assert!(r == OK);
+        assert!(sig == 0);
+    }
+
+    /// gale_poll_signal_reset rejects null pointer.
+    #[kani::proof]
+    fn poll_signal_reset_null_rejects() {
+        let r = gale_poll_signal_reset(core::ptr::null_mut());
+        assert!(r == EINVAL);
     }
 }
 

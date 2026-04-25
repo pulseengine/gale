@@ -6,16 +6,16 @@
 **Pattern:** GAP-2 requires that FFI decision structs delegate to Verus-verified
 model functions (`src/*.rs`) rather than reimplementing logic inline.
 
-## Current status (2026-04-19)
+## Current status (2026-04-25)
 
 Automated scan of `ffi/src/lib.rs` — count of functions that contain a
 `use gale::<module>::` statement inside their body (indicating delegation):
 
 | Metric        | Value |
 |---            |---    |
-| Total FFI fns | 208   |
-| **GREEN**     | **140** (67%) |
-| RED           | 68    |
+| Total FFI fns | 215   |
+| **GREEN**     | **167** (78%) |
+| RED           | 48    |
 
 RED breakdown by family (lines = non-empty, non-comment body):
 
@@ -26,17 +26,17 @@ RED breakdown by family (lines = non-empty, non-comment body):
 | spinlock   | 6 | stateful; defer until spinlock model matures |
 | bitarray   | 4 | no model exists — new `bitarray.rs` needed |
 | mem_domain | 4 | complex partition arithmetic (45–51 lines) |
-| k_object   | 4 | flag ops; small model already in `userspace.rs` |
-| ring_buf   | 4 | `ring_buf.rs` exists; 4/8 already wired |
-| thread     | 3 | `thread_lifecycle.rs` exists |
+| k_object   | ~~4~~ **0** | wired in 2026-04-24 batch 1 (commit 9a10c10) |
+| ring_buf   | ~~4~~ **0** | wired in 2026-04-24 batch 1 (commit 9a10c10) |
 | timer      | 3 | `timer.rs` exists |
 | timeout    | 3 | `timeout.rs` exists |
+| thread     | ~~3~~ **1** | abort/join wired in 2026-04-25 batch 2; `gale_thread_exit_validate` left |
 | condvar    | ~~3~~ **0** | wired in 2026-04-19 commit |
-| sched      | 2 | `sched.rs` exists |
-| kheap      | 2 | `kheap.rs` exists; pattern matches mbox |
-| mbox       | 2 | `mbox.rs` exists |
-| mempool    | 2 | `mempool.rs` exists |
-| poll       | 2 | `poll.rs` exists |
+| sched      | 2 | `sched.rs` exists; `next_up_decide` needs SMP MetaIRQ-preempted-thread path |
+| kheap      | ~~2~~ **0** | wired in 2026-04-25 batch 2 |
+| mbox       | ~~2~~ **0** | wired in 2026-04-25 batch 2 |
+| mempool    | ~~2~~ **0** | wired in 2026-04-25 batch 2 |
+| poll       | ~~2~~ **0** | wired in 2026-04-25 batch 2 |
 | rb (tree)  | 2 | no model; red-black invariants |
 | work       | 2 | `work.rs` exists |
 | other      | 8 | see detail tables below |

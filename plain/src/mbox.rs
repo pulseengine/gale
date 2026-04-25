@@ -220,3 +220,59 @@ impl Mbox {
         self.initialized
     }
 }
+/// Action selected by k_mbox_async_put / k_mbox_put after the receiver
+/// scan completes.
+///
+/// Mirrors mailbox.c:228-282 (mbox_message_put): once the receiver wait
+/// queue has been scanned, the caller either matches a receiver (consume
+/// data + wake), returns ENOMSG (K_NO_WAIT, no match), or pends on the
+/// tx queue to await a receiver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MboxPutAction {
+    /// A compatible receiver was found — wake it and exchange.
+    Matched = 0,
+    /// K_NO_WAIT, no match — return ENOMSG to the caller.
+    ReturnEnomsg = 1,
+    /// Wait — pend on the tx wait queue.
+    PendTx = 2,
+}
+/// Decide the post-scan action for k_mbox_put.
+///
+/// MB2: send blocks until a receiver matches (modeled by `matched` flag).
+/// MB4: matching is delegated to `match_check_decide`; this fn is purely
+/// the timeout-policy branch.
+pub fn put_action_decide(matched: bool, is_no_wait: bool) -> MboxPutAction {
+    if matched {
+        MboxPutAction::Matched
+    } else if is_no_wait {
+        MboxPutAction::ReturnEnomsg
+    } else {
+        MboxPutAction::PendTx
+    }
+}
+/// Action selected by k_mbox_get after the sender scan completes.
+///
+/// Mirrors mailbox.c:359-410 (mbox_message_get): once the sender wait
+/// queue has been scanned, the caller either consumes a matched message,
+/// returns ENOMSG (K_NO_WAIT), or pends on the rx queue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MboxGetAction {
+    /// A compatible sender was found — consume the message.
+    Consume = 0,
+    /// K_NO_WAIT, no match — return ENOMSG to the caller.
+    ReturnEnomsg = 1,
+    /// Wait — pend on the rx wait queue.
+    PendRx = 2,
+}
+/// Decide the post-scan action for k_mbox_get.
+///
+/// MB3: receive blocks until a sender matches.
+pub fn get_action_decide(matched: bool, is_no_wait: bool) -> MboxGetAction {
+    if matched {
+        MboxGetAction::Consume
+    } else if is_no_wait {
+        MboxGetAction::ReturnEnomsg
+    } else {
+        MboxGetAction::PendRx
+    }
+}

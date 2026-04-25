@@ -468,4 +468,73 @@ pub fn free_decide(allocated_bytes: u32, bytes: u32) -> (result: Result<u32, i32
     }
 }
 
+// ======================================================================
+// Post-syscall action decision (for FFI gale_k_kheap_*_decide)
+// ======================================================================
+
+/// Action to take after a k_heap_alloc attempt.
+///
+/// Mirrors kheap.c:119-129 — after sys_heap_aligned_alloc returns, the
+/// caller branches: return the pointer (success), pend on the wait queue
+/// (failure with timeout), or return NULL (failure with K_NO_WAIT or
+/// non-thread context).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KheapAllocAction {
+    /// Allocation succeeded — return the pointer to caller.
+    ReturnPtr = 0,
+    /// Allocation failed, caller willing to wait — pend on wait queue.
+    Pend = 1,
+    /// Allocation failed, no-wait or non-threaded — return NULL.
+    ReturnNull = 2,
+}
+
+/// Decide the post-alloc action for k_heap_alloc.
+///
+/// KH2: alloc-succeeded path returns the pointer.
+/// KH3: alloc-failed honours `is_no_wait` / threaded context to choose
+///      between pending and returning NULL.
+pub fn alloc_action_decide(alloc_succeeded: bool, is_no_wait: bool) -> (result: KheapAllocAction)
+    ensures
+        alloc_succeeded ==> result === KheapAllocAction::ReturnPtr,
+        !alloc_succeeded && is_no_wait ==> result === KheapAllocAction::ReturnNull,
+        !alloc_succeeded && !is_no_wait ==> result === KheapAllocAction::Pend,
+{
+    if alloc_succeeded {
+        KheapAllocAction::ReturnPtr
+    } else if is_no_wait {
+        KheapAllocAction::ReturnNull
+    } else {
+        KheapAllocAction::Pend
+    }
+}
+
+/// Action to take after a k_heap_free.
+///
+/// Mirrors kheap.c:206-218 — after sys_heap_free, the caller checks whether
+/// any waiters were unpended; if so, a reschedule is required.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KheapFreeAction {
+    /// No waiters — just unlock.
+    FreeOnly = 0,
+    /// Waiters present — unlock and reschedule.
+    FreeAndReschedule = 1,
+}
+
+/// Decide the post-free action for k_heap_free.
+///
+/// KH4: free always succeeds (the bookkeeping side is in `free_decide`).
+/// KH5: this only chooses between unlock and reschedule based on waiter
+/// presence — no arithmetic, no ambiguity.
+pub fn free_action_decide(has_waiters: bool) -> (result: KheapFreeAction)
+    ensures
+        has_waiters ==> result === KheapFreeAction::FreeAndReschedule,
+        !has_waiters ==> result === KheapFreeAction::FreeOnly,
+{
+    if has_waiters {
+        KheapFreeAction::FreeAndReschedule
+    } else {
+        KheapFreeAction::FreeOnly
+    }
+}
+
 } // verus!
