@@ -39,6 +39,26 @@ if("${ZEPHYR_TOOLCHAIN_VARIANT}" STREQUAL "llvm" AND CONFIG_LTO)
   set(GALE_CARGO_PROFILE_ARGS "--profile" "release-lto")
   set(GALE_CARGO_PROFILE_DIR "release-lto")
   message(STATUS "Gale: cross-language LTO enabled (LLVM linker-plugin-lto)")
+
+  # ------------------------------------------------------------------------
+  # Issue #10: force C-side bitcode emission under clang.
+  #
+  # Zephyr's CONFIG_LTO=y wires `optimization_lto` into the compile flags
+  # and `lto_arguments` into the link flags. For GCC this expands to
+  # `-flto=auto`. For clang/lld (cmake/compiler/clang/* and
+  # cmake/linker/lld/*) BOTH properties are empty — so neither the C
+  # compile step nor the link step receives any LTO flag, and clang emits
+  # plain ELF object code instead of LLVM bitcode. With no bitcode in the
+  # C `.o` files, lld has nothing to inline the Rust bitcode against, and
+  # every gale_ FFI shim survives the link.
+  #
+  # Inject `-flto=thin` ourselves at both compile and link time so clang
+  # emits bitcode and lld performs ThinLTO across C ↔ Rust. ThinLTO (vs.
+  # full -flto) keeps build times and memory bounded and is the recommended
+  # mode for cross-language LTO with linker-plugin-lto on the Rust side.
+  zephyr_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-flto=thin>)
+  zephyr_ld_options(-flto=thin)
+  message(STATUS "Gale: injecting -flto=thin into C compile + link (clang+lld LTO)")
 endif()
 
 if(CONFIG_GALE_KERNEL_SEM)
