@@ -4712,3 +4712,107 @@ artifacts:
         target: SWREQ-SEM-P01
       - type: related-to
         target: FV-SEM-001
+
+  # ── 2026-04-25 #9 batch 2: 10 RED FFI fns wired to verified models.
+  #    Same delegation pattern as FV-US-003 / FV-RB-002 from batch 1.
+
+  - id: FV-KH-002
+    type: sw-verification
+    title: kheap alloc/free decision delegation to verified model
+    status: approved
+    description: >
+      gale_k_kheap_alloc_decide and gale_k_kheap_free_decide delegate
+      the post-syscall action computation to Verus-verified helpers
+      gale::kheap::alloc_action_decide / free_action_decide. 3-way
+      ensures clauses cover ReturnPtr/Pend/ReturnNull (alloc) and
+      FreeOnly/FreeAndReschedule (free). Closes two RED entries from
+      the GAP-2 audit.
+    tags: [verification, formal, kheap, asil-d, swe-6, stpa-gap-2]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-KH-KH02
+      - type: verifies
+        target: SWREQ-KH-KH04
+
+  - id: FV-MP-002
+    type: sw-verification
+    title: mempool alloc/free decision delegation to verified model
+    status: approved
+    description: >
+      gale_k_mempool_alloc_decide and gale_k_mempool_free_decide
+      delegate to Verus-verified helpers
+      gale::mempool::alloc_action_decide / free_action_decide.
+      MP2/MP3 (alloc) and MP4/MP5 (free) covered by exhaustive
+      ensures. Closes two RED entries from the GAP-2 audit.
+    tags: [verification, formal, mempool, asil-d, swe-6, stpa-gap-2]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-MP-MP02
+      - type: verifies
+        target: SWREQ-MP-MP04
+
+  - id: FV-MB-002
+    type: sw-verification
+    title: mbox put/get decision delegation to verified model
+    status: approved
+    description: >
+      gale_k_mbox_put_decide and gale_k_mbox_get_decide delegate
+      the post-scan action computation to Verus-verified helpers
+      gale::mbox::put_action_decide / get_action_decide. 3-way
+      ensures clauses cover Matched/ReturnEnomsg/PendTx (put) and
+      Consume/ReturnEnomsg/PendRx (get). Closes two RED entries from
+      the GAP-2 audit.
+    tags: [verification, formal, mbox, asil-d, swe-6, stpa-gap-2]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-MB-MB02
+      - type: verifies
+        target: SWREQ-MB-MB03
+
+  - id: FV-TL-002
+    type: sw-verification
+    title: thread abort/join decision delegation (TH5, TH9 deadlock)
+    status: approved
+    description: >
+      gale_k_thread_abort_decide and gale_k_thread_join_decide
+      delegate to Verus-verified helpers
+      gale::thread_lifecycle::abort_decide / join_decide. The 4-way
+      join_decide ensures covers all paths: target dead -> OK,
+      live + no_wait -> EBUSY, self/circular -> EDEADLK, live safe -> PEND.
+      Captures the deadlock-prevention property TH9. Closes two RED
+      entries from the GAP-2 audit (third thread fn,
+      gale_thread_exit_validate, deferred to a later batch).
+    tags: [verification, formal, thread, asil-d, swe-6, stpa-gap-2]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-TL-TH05
+      - type: verifies
+        target: SWREQ-TL-TH06
+
+  - id: FV-PL-002
+    type: sw-verification
+    title: poll event_init / signal_reset decision delegation (PL1, PL8)
+    status: approved
+    description: >
+      gale_poll_event_init and gale_poll_signal_reset delegate
+      initial-state computation to Verus-verified helpers
+      gale::poll::event_init_decide / signal_reset_decide. PL1
+      (state == NOT_READY at init) and PL8 (signal reset to 0)
+      covered by ensures clauses. Closes two RED entries from the
+      GAP-2 audit.
+    tags: [verification, formal, poll, asil-d, swe-6, stpa-gap-2]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-PL-PL01
+      - type: verifies
+        target: SWREQ-PL-PL07
