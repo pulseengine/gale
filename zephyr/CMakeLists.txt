@@ -27,9 +27,45 @@ if("${ZEPHYR_TOOLCHAIN_VARIANT}" STREQUAL "llvm" AND CONFIG_LTO)
   # These are combined into a single RUSTFLAGS value. CMake's VERBATIM
   # mode ensures the space-separated flags are passed correctly via the
   # shell's quoting to cmake -E env.
+  # Match rustc's target-cpu attributes to clang's. Without this, Rust
+  # bitcode emits `target-cpu="generic"` on every function and clang emits
+  # `target-cpu="cortex-mN"` — LLVM's IR-level inliner refuses to
+  # cross-inline functions whose target-cpu / target-features attributes
+  # differ even when the target triple matches. The result: every gale_
+  # FFI shim survives the link as a separate symbol, with `bl` instructions
+  # at every call site, regardless of how aggressive the LTO pipeline is.
+  # Surfaced 2026-04-25 by local archaeology on issue #10.
+  if(CONFIG_CPU_CORTEX_M0 OR CONFIG_CPU_CORTEX_M0PLUS)
+    set(_gale_lto_target_cpu "cortex-m0")
+  elseif(CONFIG_CPU_CORTEX_M3)
+    set(_gale_lto_target_cpu "cortex-m3")
+  elseif(CONFIG_CPU_CORTEX_M4)
+    set(_gale_lto_target_cpu "cortex-m4")
+  elseif(CONFIG_CPU_CORTEX_M7)
+    set(_gale_lto_target_cpu "cortex-m7")
+  elseif(CONFIG_CPU_CORTEX_M33)
+    set(_gale_lto_target_cpu "cortex-m33")
+  elseif(CONFIG_CPU_CORTEX_M55)
+    set(_gale_lto_target_cpu "cortex-m55")
+  elseif(CONFIG_CPU_CORTEX_M85)
+    set(_gale_lto_target_cpu "cortex-m85")
+  elseif(CONFIG_CPU_CORTEX_R5)
+    set(_gale_lto_target_cpu "cortex-r5")
+  else()
+    set(_gale_lto_target_cpu "generic")
+  endif()
+  # Match clang's feature attribute too — without this, the LLVM
+  # inliner check `(CallerBits & CalleeBits) == CalleeBits` fails because
+  # rustc emits no `target-features` attribute on functions while clang
+  # emits an explicit list. Even when the underlying machine code is
+  # identical, the attribute mismatch makes the inliner reject the
+  # cross-language inline. We pass the subset of clang's feature list
+  # that rustc recognises (per `rustc --print=target-features`).
+  set(_gale_lto_target_features "+soft-float,+thumb-mode,+thumb2,+mclass,-aclass,-rclass,-aes,-crc,-d32,-dotprod,-dsp,-fp-armv8,-fp16,-fpregs,-i8mm,-neon,-sha2,-trustzone")
   set(GALE_CARGO_RUSTFLAGS_ENV
-    "RUSTFLAGS=-Clinker-plugin-lto -Cembed-bitcode=yes"
+    "RUSTFLAGS=-Clinker-plugin-lto -Cembed-bitcode=yes -Ctarget-cpu=${_gale_lto_target_cpu} -Ctarget-feature=${_gale_lto_target_features}"
   )
+  message(STATUS "Gale: rustc target-cpu = ${_gale_lto_target_cpu} (matches clang for cross-lang inlining)")
   # Use the release-lto profile which sets lto=false so rustc does NOT
   # perform fat LTO internally. With lto=true (the default release profile),
   # rustc consumes all LLVM bitcode and emits native machine code — the .a
@@ -57,8 +93,8 @@ if("${ZEPHYR_TOOLCHAIN_VARIANT}" STREQUAL "llvm" AND CONFIG_LTO)
   # full -flto) keeps build times and memory bounded and is the recommended
   # mode for cross-language LTO with linker-plugin-lto on the Rust side.
   zephyr_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-flto=thin>)
-  zephyr_ld_options(-flto=thin)
-  message(STATUS "Gale: injecting -flto=thin into C compile + link (clang+lld LTO)")
+  zephyr_ld_options(-flto=thin -Wl,--lto-O3 -Wl,--lto-whole-program-visibility)
+  message(STATUS "Gale: -flto=thin + --lto-O3 + --lto-whole-program-visibility (clang+lld cross-lang LTO)")
 endif()
 
 if(CONFIG_GALE_KERNEL_SEM)
