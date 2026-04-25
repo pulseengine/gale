@@ -139,7 +139,18 @@ jobs:
           arm-zephyr-eabi-size build-gcc-gale/zephyr/zephyr.elf | tee gcc-gale-size.txt
 
       # --- Build 3: LLVM + Gale (no LTO) ---
-      # Uses LTO overlay just for CONFIG_LLVM_USE_LLD=y (lld instead of bfd)
+      #
+      # This is the comparison baseline for the LTO experiment: same
+      # toolchain (clang+lld) and the same lld settings as Build 4, but
+      # WITHOUT CONFIG_LTO=y. Earlier revisions of this lane mistakenly
+      # applied gale_lto_overlay.conf here too, which sets CONFIG_LTO=y
+      # — making this build identical to Build 4 and erasing the
+      # comparison point. Surfaced 2026-04-25 while diagnosing #10.
+      #
+      # Apply only gale_overlay.conf via OVERLAY_CONFIG and pass the two
+      # non-LTO settings from gale_lto_overlay.conf (LLVM_USE_LLD,
+      # ISR_TABLES_LOCAL_DECLARATION) as direct -DCONFIG_* overrides so
+      # the linker and ISR-table layout match Build 4 exactly.
       - name: "Build LLVM + Gale (no LTO)"
         run: |
           . /root/.cargo/env
@@ -153,7 +164,9 @@ jobs:
             -DZEPHYR_TOOLCHAIN_VARIANT=llvm \
             -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
-            -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf;${GALE_ROOT}/zephyr/gale_lto_overlay.conf" \
+            -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf" \
+            -DCONFIG_LLVM_USE_LLD=y \
+            -DCONFIG_ISR_TABLES_LOCAL_DECLARATION=y \
             -DCMAKE_EXE_LINKER_FLAGS="${LLD_LIBS}"
           # `||` binds tighter than `|` — without grouping, the `| tee` only
           # applies to the fallback branch and the primary path's stdout is
