@@ -299,6 +299,40 @@ LLVM+LTO regime may be the preferred choice despite the 1.1% cycle
 gap. For pure performance budget on a generously-flashed part, GCC
 remains the floor.
 
+### When does each win — the system-level framing
+
+Choosing between these isn't a benchmark-tuning knob. It's a
+system-design decision typically made once, at the start of a program
+or during an architectural rework like the one Gale represents (adding
+verified Rust to a Zephyr C kernel). Once shipped, switching costs
+re-qualification and re-test of the safety case — non-trivial. So the
+choice should map to the constraints that dominate the platform, not
+to whichever number on this page is biggest.
+
+The relevant dimensions, with how each configuration scores:
+
+| Dimension                                     | GCC + Gale (no LTO) wins when… | LLVM + LTO wins when… |
+|---|---|---|
+| **Flash budget**                              | Generous (≥ 256 KB on the target) — the +1.3 KB Gale tax is rounding error | Tight (Cortex-M0/M0+ with 32-64 KB; +1.0 KB matters as % of budget) |
+| **WCET vs throughput**                        | Throughput / median cycles dominate the timing argument | WCET-bounded; both regimes' 412-414 max cycles are equally inside the deadline so cycles are a wash, leaving size + auditability as the deciders |
+| **Toolchain count to certify**                | One toolchain (Zephyr SDK GCC) is preferred for ASPICE / ASIL-D evidence chains | Two toolchains acceptable (clang+lld in addition to GCC for libgcc/picolibc); the clang LTO infrastructure is documented |
+| **Proof-to-binary correspondence**            | Acceptable that FFI shims appear as opaque symbols in the ELF; the assessor reads commits + tests, not disassembly | Required: the assessor wants `nm zephyr.elf | grep gale_` to return zero — verified Rust emitted directly into C call sites, no opaque FFI hop |
+| **Future architecture portability**           | Stable on ARM Cortex-M for the program's lifetime | RISC-V, AArch64, or hybrid futures plausible — LLVM's broader target support amortises the toolchain investment |
+| **Currently at a freeze point**               | Already shipped, switching means re-qual + re-test of the safety case — leave it | Active rework window (which is where Gale itself sits) — choose deliberately while change is cheap |
+
+Most projects don't get a clean win on every row. The pattern we
+expect: a Cortex-M4 industrial controller with 256-512 KB flash, mature
+GCC certification, and throughput-dominant timing argument picks
+**GCC + Gale**; a Cortex-M33 / M0+ medical or automotive part with
+constrained flash, fresh tooling investment, and a strict
+proof-to-binary requirement picks **LLVM + LTO**.
+
+For Gale itself (the published reference): both lanes stay live in
+CI as regression guards. We don't pick one for the project — we
+provide both numbers, and let downstream consumers pick based on
+their constraints. That's the only honest position when the data
+doesn't dominate in one direction.
+
 ## 3. Defensive C is not free
 
 This is the architectural argument, separate from any specific number.
