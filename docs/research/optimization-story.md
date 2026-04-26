@@ -207,40 +207,25 @@ called once at boot) and 0 `bl gale_*` instructions in the hot path
 every handoff. So the LTO benefit shows up as we expected; it's the
 toolchain comparison that goes the other way.
 
-What changed compared to the prediction:
+What we measured:
 
-- **The FFI `bl`/`ret` pair we eliminated is ~3 cycles** of the
-  handoff. That part of the prediction was right.
-- **Clang at `-Oz` generates ~7 cycles slower per handoff than GCC
-  at `-Os`** for this specific code. (Engine bench arithmetic:
-  Gale-GCC saves 11 cycles vs baseline; Gale-LTO saves 7. Of those
-  4 missing cycles, ~3 come from inlining gain that's already
-  baked in, and ~7 come from clang-vs-GCC codegen difference for
-  the surrounding kernel-primitive code which IS the dominant cost.)
-- The handoff path is dominated by Zephyr's spinlock acquire,
-  wait-queue check, and scheduler/return logic — all in C, all
-  unaffected by our FFI redesign. Inlining ~3 cycles out of a
-  354-cycle handoff is a 0.8% gain in isolation; the toolchain
-  difference washes it out and then some.
+- Gale + GCC saves **11 cycles** per handoff vs the GCC baseline.
+- Gale + LLVM + LTO saves **7 cycles** per handoff vs the same baseline.
+- LLVM + LTO is therefore **4 cycles per handoff slower** than GCC + Gale, despite the LTO build provably eliminating the FFI `bl gale_*` calls (verified locally and on CI: 1 surviving init-only symbol, 0 `bl gale_*` in the hot path).
 
-**Net call**: GCC `-Os` + Gale (no LTO) is the fastest configuration
-for this benchmark, by ~4 cycles per handoff over LLVM+LTO. The
-`-3.1%` published margin holds; the LTO regime reports a real but
-smaller `-2.0%` margin. *Both are net-positive gains over baseline.*
+What we *infer* (not directly measured — we didn't isolate codegen contributions):
 
-The LTO benefit, in retrospect, is **architectural rather than
-performance-headline**: every Gale FFI shim is gone from the binary,
-the verified Verus decision logic is emitted directly into the C
-kernel, and the cross-language ABI overhead is provably zero. That
-matters for binary-attestation, for proof-to-binary correspondence,
-and for confirming that the verified-Rust artefact actually reaches
-the silicon as intended. It does not, as it turns out, beat
-hand-tuned GCC `-Os` codegen on this particular hot path.
+- The 4-cycle gap between the two Gale variants is some combination of (a) cycle savings from no-FFI-call (a real win for LLVM+LTO) and (b) cycle cost of clang's codegen at `-Oz` vs GCC's at `-Os` for the surrounding C kernel-primitive code (a real loss for LLVM+LTO). The net direction is "loss" by 4 cycles, but we have not separated the two contributions with a controlled experiment (e.g., LLVM-no-LTO-no-Gale baseline).
+- The handoff path is dominated by Zephyr's spinlock acquire, wait-queue check, and scheduler/return logic — all in C, all unaffected by the FFI redesign. So eliminating the FFI call has limited headroom regardless of how aggressive the inlining gets.
 
-Whether `-flto` would widen the margin on a *different* workload
-(longer Rust hot paths, more arithmetic, less Zephyr-C dominance)
-remains an open question. The engine-bench result says: not on this
-one.
+**Net call**: GCC + Gale (no LTO) is the fastest configuration measured on this benchmark, by 4 cycles per handoff over LLVM+LTO. The `-3.1%` published margin holds; the LTO regime reports a real but smaller `-2.0%` margin. Both are net-positive gains over baseline.
+
+What the LTO regime delivers that the GCC regime doesn't:
+
+- Hot-path Gale FFI shims are absent from the linked binary (`nm zephyr.elf | grep gale_` returns 1 init-only symbol; no `bl gale_*` instructions on the hot path). What gets shipped is provably the verified Verus decision logic emitted directly into the C call site — relevant if the safety case requires that property of the binary.
+- ~360 bytes smaller total flash on the engine bench (see Size section below).
+
+Whether `-flto` would widen or narrow the margin on a *different* workload (longer Rust hot paths, more arithmetic, less Zephyr-C dominance) is unmeasured. The engine-bench result is one data point.
 
 ### Size / memory footprint — LTO trims the Gale overhead by ~27%
 
@@ -273,33 +258,18 @@ Two takeaways:
    — every standalone copy of an inlined FFI shim drops out of
    `.text`.
 
-2. **LLVM redistributes text → data significantly compared to GCC.**
-   Engine bench: text shrinks 21% (22,268 → 17,692) but `.data`
-   grows from 124 to 4,336 bytes. Same constants and string
-   literals, just placed differently — clang prefers separate
-   sections, GCC inlines more of them into instructions. For
-   Cortex-M parts where flash holds both, the total footprint is
-   what counts, and LLVM+LTO wins.
+2. **LLVM redistributes bytes between `.text` and `.data` differently
+   than GCC for this code.** Engine bench: text shrinks 21% (22,268
+   → 17,692) but `.data` grows from 124 to 4,336 bytes — the LLVM
+   build moves ~4 KB out of `.text`. We have not investigated
+   *which* bytes moved or why clang places them where it does; the
+   observation is the size-table redistribution itself. For Cortex-M
+   parts where flash holds both `.text` and `.data` (initialised
+   data lives in flash and is copied to RAM at boot), what matters
+   is the **total**, and LLVM+LTO is ~360 bytes smaller than
+   GCC+Gale for this benchmark.
 
-### Tradeoff matrix — which configuration to pick
-
-|                                 | GCC + Gale (no LTO) | LLVM + Gale + LTO |
-|---|---|---|
-| Handoff median (engine bench)   | **−3.1%** *(faster)* | −2.0% |
-| Total flash (engine bench)      | +1,320 B over baseline | **+960 B** *(smaller)* |
-| Cross-language inlining         | no — FFI stays as `bl`/`ret` | **yes** — 0 surviving `gale_` symbols on hot path |
-| Binary-attestation ergonomics   | FFI shim symbols visible in ELF | verified Rust emitted directly into C — *what shipped is what was proved* |
-| Toolchain footprint             | GCC arm-zephyr-eabi only | also needs clang + lld matching rustc's LLVM |
-
-GCC + Gale wins on raw cycles. LLVM+LTO wins on flash and on
-auditability. For ASIL-D contexts with a flash budget AND a
-proof-to-binary correspondence requirement (i.e., the assessor wants
-to confirm the verified artefact is what reached the silicon), the
-LLVM+LTO regime may be the preferred choice despite the 1.1% cycle
-gap. For pure performance budget on a generously-flashed part, GCC
-remains the floor.
-
-### When does each win — the system-level framing
+### When does each configuration apply — the system-level framing
 
 Choosing between these isn't a benchmark-tuning knob. It's a
 system-design decision typically made once, at the start of a program
@@ -309,29 +279,59 @@ re-qualification and re-test of the safety case — non-trivial. So the
 choice should map to the constraints that dominate the platform, not
 to whichever number on this page is biggest.
 
-The relevant dimensions, with how each configuration scores:
+The relevant dimensions, with how each configuration scores. Numbers
+in this table are facts we measured in this repo; everything else is
+phrased as "if your constraint is X, the configuration favouring X
+is Y" — not as a recommendation about *which* constraint to weigh
+heaviest. That choice depends on context we don't have.
 
-| Dimension                                     | GCC + Gale (no LTO) wins when… | LLVM + LTO wins when… |
+| Dimension                                     | GCC + Gale (no LTO) | LLVM + LTO |
 |---|---|---|
-| **Flash budget**                              | Generous (≥ 256 KB on the target) — the +1.3 KB Gale tax is rounding error | Tight (Cortex-M0/M0+ with 32-64 KB; +1.0 KB matters as % of budget) |
-| **WCET vs throughput**                        | Throughput / median cycles dominate the timing argument | WCET-bounded; both regimes' 412-414 max cycles are equally inside the deadline so cycles are a wash, leaving size + auditability as the deciders |
-| **Toolchain count to certify**                | One toolchain (Zephyr SDK GCC) is preferred for ASPICE / ASIL-D evidence chains | Two toolchains acceptable (clang+lld in addition to GCC for libgcc/picolibc); the clang LTO infrastructure is documented |
-| **Proof-to-binary correspondence**            | Acceptable that FFI shims appear as opaque symbols in the ELF; the assessor reads commits + tests, not disassembly | Required: the assessor wants `nm zephyr.elf | grep gale_` to return zero — verified Rust emitted directly into C call sites, no opaque FFI hop |
-| **Future architecture portability**           | Stable on ARM Cortex-M for the program's lifetime | RISC-V, AArch64, or hybrid futures plausible — LLVM's broader target support amortises the toolchain investment |
-| **Currently at a freeze point**               | Already shipped, switching means re-qual + re-test of the safety case — leave it | Active rework window (which is where Gale itself sits) — choose deliberately while change is cheap |
+| **Median handoff cycles** (engine bench)      | −3.1% vs baseline (faster) | −2.0% vs baseline |
+| **Max handoff cycles** (engine bench)         | 412 cycles | 414 cycles (≤ 0.5% apart — near-tie) |
+| **Total flash** (engine bench, stm32f4_disco) | +1,320 B over baseline | +960 B over baseline |
+| **Cross-language inlining**                   | no — FFI stays as `bl gale_*` instructions, gale_ symbols visible in `nm` output | yes — 0 surviving `gale_` symbols on the hot path (1 init-only symbol survives), no `bl gale_*` in the linked ELF's hot path |
+| **Toolchain artefacts to track**              | one (Zephyr SDK arm-zephyr-eabi GCC) | three (Zephyr SDK GCC for libgcc/picolibc paths + apt.llvm.org clang + apt.llvm.org ld.lld matching rustc's LLVM major) |
+| **Setup documented in this repo**             | no extra setup — Zephyr SDK default | `zephyr/CMakeLists.txt` Gale module injects `-flto=thin` + `-Ctarget-cpu/-feature` matching; upstream-Zephyr issue [zephyrproject-rtos/zephyr#107948](https://github.com/zephyrproject-rtos/zephyr/issues/107948) tracks the missing clang LTO plumbing |
+| **Currently at a freeze point**               | Already shipped — switching means re-qual + re-test of the safety case | Active rework window (which is where Gale itself sits) — choosing deliberately is cheap |
 
-Most projects don't get a clean win on every row. The pattern we
-expect: a Cortex-M4 industrial controller with 256-512 KB flash, mature
-GCC certification, and throughput-dominant timing argument picks
-**GCC + Gale**; a Cortex-M33 / M0+ medical or automotive part with
-constrained flash, fresh tooling investment, and a strict
-proof-to-binary requirement picks **LLVM + LTO**.
+Most projects won't have a clean win on every row. Whether the
+median-cycles row, the flash row, or the cross-language-inlining row
+is decisive for *your* platform is something we can't infer from
+this repo — it depends on flash budget headroom, whether the timing
+argument is WCET-bounded or throughput-dominant, and what the
+assessor actually wants to see in the safety case.
 
 For Gale itself (the published reference): both lanes stay live in
 CI as regression guards. We don't pick one for the project — we
 provide both numbers, and let downstream consumers pick based on
 their constraints. That's the only honest position when the data
 doesn't dominate in one direction.
+
+#### What this section deliberately doesn't claim
+
+To keep the doc honest:
+
+- **No claims about specific industries' compiler preferences.** We
+  haven't surveyed automotive, medical, or industrial assessors on
+  toolchain choice; the previous version of this section named those
+  industries and was wrong to do so.
+- **No claims about future Gale portability.** Gale has been measured
+  only on ARM Cortex-M3 / Cortex-M4 (this benchmark). RISC-V and
+  AArch64 paths exist in `zephyr/CMakeLists.txt`'s target-CPU
+  selection but have not been built or measured. Treat them as
+  unvalidated.
+- **No claims about "qualified GCC" or "qualified clang" products.**
+  Both toolchains are qualified for safety use by various commercial
+  vendors via process-based qualification (typically ISO 26262-8
+  §6.3); we have not selected, paid for, or tested any of them. The
+  Zephyr SDK GCC and apt.llvm.org clang we use here are *not*
+  themselves safety-qualified products.
+- **No claims about whether `-flto` would widen or narrow the margin
+  on workloads other than this engine bench.** The Cortex-M4 / no-FPU
+  / spinlock-dominated handoff path is one data point; longer Rust
+  hot paths or more arithmetic-heavy code would behave differently
+  and we haven't measured them.
 
 ## 3. Defensive C is not free
 
