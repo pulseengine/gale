@@ -242,6 +242,63 @@ Whether `-flto` would widen the margin on a *different* workload
 remains an open question. The engine-bench result says: not on this
 one.
 
+### Size / memory footprint — LTO trims the Gale overhead by ~27%
+
+Cycle counts are one axis; flash usage is the other. Two binaries
+measured (both stm32f4_disco, Cortex-M4F):
+
+**Engine-control bench** (3-way local build, 2026-04-26):
+
+| Build | text | data | bss | total | vs GCC baseline |
+|---|---:|---:|---:|---:|---:|
+| GCC `-Os` baseline (no Gale) | 20,948 | 124 | 15,961 | **37,033** | — |
+| GCC `-Os` + Gale (no LTO) | 22,268 | 124 | 15,961 | **38,353** | +1,320 (+3.6%) |
+| LLVM + Gale + LTO | 17,692 | 4,336 | 15,965 | **37,993** | **+960 (+2.6%)** |
+
+**Semaphore test suite** (LLVM LTO CI lane, run 24952405040):
+
+| Build | text | data | bss | total | vs GCC baseline |
+|---|---:|---:|---:|---:|---:|
+| GCC `-Os` baseline (no Gale) | 36,284 | 828 | 12,531 | **49,643** | — |
+| GCC `-Os` + Gale (no LTO) | 39,472 | 856 | 13,371 | **53,699** | +4,056 (+8.2%) |
+| LLVM + Gale (no LTO) | 29,244 | 10,604 | 13,389 | **53,237** | +3,594 (+7.2%) |
+| LLVM + Gale + LTO | 28,476 | 10,204 | 13,361 | **52,041** | **+2,398 (+4.8%)** |
+
+Two takeaways:
+
+1. **LTO trims the Gale memory overhead substantially.** For the
+   engine bench, +1,320 → +960 bytes (~27% reduction); for the
+   semaphore test, +4,056 → +2,398 bytes (~41% reduction). The
+   inlining we did for cycle reasons doubles as binary-size cleanup
+   — every standalone copy of an inlined FFI shim drops out of
+   `.text`.
+
+2. **LLVM redistributes text → data significantly compared to GCC.**
+   Engine bench: text shrinks 21% (22,268 → 17,692) but `.data`
+   grows from 124 to 4,336 bytes. Same constants and string
+   literals, just placed differently — clang prefers separate
+   sections, GCC inlines more of them into instructions. For
+   Cortex-M parts where flash holds both, the total footprint is
+   what counts, and LLVM+LTO wins.
+
+### Tradeoff matrix — which configuration to pick
+
+|                                 | GCC + Gale (no LTO) | LLVM + Gale + LTO |
+|---|---|---|
+| Handoff median (engine bench)   | **−3.1%** *(faster)* | −2.0% |
+| Total flash (engine bench)      | +1,320 B over baseline | **+960 B** *(smaller)* |
+| Cross-language inlining         | no — FFI stays as `bl`/`ret` | **yes** — 0 surviving `gale_` symbols on hot path |
+| Binary-attestation ergonomics   | FFI shim symbols visible in ELF | verified Rust emitted directly into C — *what shipped is what was proved* |
+| Toolchain footprint             | GCC arm-zephyr-eabi only | also needs clang + lld matching rustc's LLVM |
+
+GCC + Gale wins on raw cycles. LLVM+LTO wins on flash and on
+auditability. For ASIL-D contexts with a flash budget AND a
+proof-to-binary correspondence requirement (i.e., the assessor wants
+to confirm the verified artefact is what reached the silicon), the
+LLVM+LTO regime may be the preferred choice despite the 1.1% cycle
+gap. For pure performance budget on a generously-flashed part, GCC
+remains the floor.
+
 ## 3. Defensive C is not free
 
 This is the architectural argument, separate from any specific number.
