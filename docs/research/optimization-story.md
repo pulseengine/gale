@@ -132,7 +132,7 @@ the toolchain can cash in:
 | `-O0` | all present, both sides | no | slower (ABI overhead visible) |
 | `-Os` GCC **baseline** | baseline: present. Gale: most eliminated inside Rust but FFI opaque | no | **measured: −3.1% median, −2.6% max** (Renode, N=7750, p<1e-100) |
 | `-Os` GCC + Gale, with `inline_never` stripped | baseline: present. Gale: eliminated + Rust body inlined into caller | partial | expected: few additional cycles faster |
-| `-flto` LLVM + Gale | both sides fully eliminated; Rust body inlined across FFI boundary; dead-branch pruning across C↔Rust | **yes — 0 surviving gale_ symbols at link time, see below** | **handoff cycle measurement pending** (Renode LTO bench lane, separate followup) |
+| `-flto` LLVM + Gale | both sides fully eliminated; Rust body inlined across FFI boundary; dead-branch pruning across C↔Rust | **yes — 0 surviving gale_ symbols at link time** | **measured: −2.0% median, −2.1% max** (Renode, N=7750, p<1e-100) — *smaller than the −Os GCC margin, see analysis below* |
 
 The `-Os GCC` row is what the engine-control bench measures today, and
 the measured direction confirms the architectural argument: even
@@ -183,12 +183,64 @@ into its caller. Defensive C branches that Verus has proven dead
 (e.g., the `count != limit` saturation guard in `k_sem_give`) get
 eliminated in the same LTO pass — exactly the architectural prediction.
 
-What's still outstanding to translate inlining into a published
-margin: build the engine-control bench under LLVM+LTO on Renode
-(`engine-bench-renode-lto.yml`, separate followup) and report the
-handoff cycle delta. The `−3.1%` median at `-Os` GCC is the floor;
-LTO should widen meaningfully because the FFI bl/ret pair (~3 cycles
-per handoff on Cortex-M4F) is now gone *at every call site*.
+### LTO measured (2026-04-26): the prediction was wrong, and that's interesting
+
+The `engine-bench-renode-lto.yml` lane (Cortex-M4F @ 168 MHz, N=7750,
+0 drops, 13 RPM steps from 1k to 10k RPM) reports:
+
+| Build | handoff median | handoff max | Δ vs GCC baseline |
+|---|---:|---:|---:|
+| GCC `-Os` baseline (no Gale) | 354 cyc / 2107 ns | 423 cyc / 2518 ns | — |
+| GCC `-Os` + Gale (no LTO) | 343 cyc / 2042 ns | 412 cyc / 2452 ns | **−3.1% / −2.6%** |
+| LLVM + Gale + LTO | 347 cyc / 2065 ns | 414 cyc / 2464 ns | **−2.0% / −2.1%** |
+
+MW-U p-values < 1e-100 across all 13 RPM steps for both Gale
+variants vs baseline — distribution-significant, not noise.
+
+**The LTO lane reports a smaller margin than the `-Os` GCC lane.**
+That's the opposite of what §2 originally predicted ("LTO should
+widen the margin to −10% to −30%"). Confirmed it isn't a
+measurement artefact: local LLVM+LTO build of the engine bench shows
+1 surviving `gale_` symbol (`gale_sem_count_init`, init-only,
+called once at boot) and 0 `bl gale_*` instructions in the hot path
+— the inlining is real, the FFI call+return overhead is gone at
+every handoff. So the LTO benefit shows up as we expected; it's the
+toolchain comparison that goes the other way.
+
+What changed compared to the prediction:
+
+- **The FFI `bl`/`ret` pair we eliminated is ~3 cycles** of the
+  handoff. That part of the prediction was right.
+- **Clang at `-Oz` generates ~7 cycles slower per handoff than GCC
+  at `-Os`** for this specific code. (Engine bench arithmetic:
+  Gale-GCC saves 11 cycles vs baseline; Gale-LTO saves 7. Of those
+  4 missing cycles, ~3 come from inlining gain that's already
+  baked in, and ~7 come from clang-vs-GCC codegen difference for
+  the surrounding kernel-primitive code which IS the dominant cost.)
+- The handoff path is dominated by Zephyr's spinlock acquire,
+  wait-queue check, and scheduler/return logic — all in C, all
+  unaffected by our FFI redesign. Inlining ~3 cycles out of a
+  354-cycle handoff is a 0.8% gain in isolation; the toolchain
+  difference washes it out and then some.
+
+**Net call**: GCC `-Os` + Gale (no LTO) is the fastest configuration
+for this benchmark, by ~4 cycles per handoff over LLVM+LTO. The
+`-3.1%` published margin holds; the LTO regime reports a real but
+smaller `-2.0%` margin. *Both are net-positive gains over baseline.*
+
+The LTO benefit, in retrospect, is **architectural rather than
+performance-headline**: every Gale FFI shim is gone from the binary,
+the verified Verus decision logic is emitted directly into the C
+kernel, and the cross-language ABI overhead is provably zero. That
+matters for binary-attestation, for proof-to-binary correspondence,
+and for confirming that the verified-Rust artefact actually reaches
+the silicon as intended. It does not, as it turns out, beat
+hand-tuned GCC `-Os` codegen on this particular hot path.
+
+Whether `-flto` would widen the margin on a *different* workload
+(longer Rust hot paths, more arithmetic, less Zephyr-C dominance)
+remains an open question. The engine-bench result says: not on this
+one.
 
 ## 3. Defensive C is not free
 
