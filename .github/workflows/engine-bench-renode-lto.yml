@@ -1,0 +1,269 @@
+# Engine-control benchmark — Renode long run UNDER LLVM+LTO.
+#
+# Companion to engine-bench-renode.yml. That workflow measures
+# baseline (GCC -Os, no Gale) vs gale (GCC -Os, Gale primitives swapped
+# in) and produces the published "-3.1% handoff median" number.
+#
+# This workflow swaps the gale build for LLVM + cross-language LTO —
+# the toolchain configuration that #10 unblocked (commits 2500fbd /
+# 8867c1e / 7d89ed3 / 3a25191). Local builds report 0 surviving gale_
+# symbols in the linked ELF: every Verus-proved decision function is
+# emitted directly into its C caller's basic block, no `bl gale_*`
+# instruction remains. The bench measures whether that translates to
+# a meaningfully larger handoff cycle margin than the -Os GCC number.
+#
+# Sample count: 10,000 per build (long sweep). Runtime ~15-25 min per
+# build, ~50-60 min total for both Renode runs. Plus ~5 min of LLVM
+# install. timeout-minutes: 120 covers it with margin.
+#
+# Security: this workflow uses no untrusted GitHub event inputs
+# (issue title, PR body, commit message) in shell commands. Only
+# github.workspace (filesystem path) and github.ref (concurrency key)
+# are referenced, both safe contexts.
+
+name: Engine bench long under LLVM+LTO (Renode)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-bench-renode-lto-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  long-run-lto:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      options: --user root
+    env:
+      HOME: /root
+      DOCKER_CONFIG: /tmp/.docker
+    steps:
+      - name: Checkout Gale
+        uses: actions/checkout@v4
+        with:
+          path: gale
+
+      - name: Install Rust + ARM targets
+        run: |
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable
+          . /root/.cargo/env
+          # stm32f4_disco is Cortex-M4F. Engine bench keeps CONFIG_FPU
+          # off (no float in the ISR path) so cargo selects the soft-
+          # float target. Install both for safety.
+          rustup target add thumbv7em-none-eabi
+          rustup target add thumbv7em-none-eabihf
+
+      - name: Install matching Clang + LLD (apt.llvm.org)
+        run: |
+          . /root/.cargo/env
+          # Match clang's LLVM major version to rustc's bundled LLVM so
+          # the linker plugin accepts rustc-emitted bitcode (#10).
+          RUST_LLVM=$(rustc -vV | grep 'LLVM version' | grep -o '[0-9]*' | head -1)
+          echo "Rustc LLVM major: ${RUST_LLVM}"
+          apt-get install -y -qq wget lsb-release software-properties-common gnupg > /dev/null 2>&1
+          wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- "${RUST_LLVM}" all
+          update-alternatives --install /usr/bin/clang   clang   /usr/bin/clang-${RUST_LLVM}   200
+          update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${RUST_LLVM} 200
+          update-alternatives --install /usr/bin/ld.lld  ld.lld  /usr/bin/ld.lld-${RUST_LLVM}  200
+          update-alternatives --install /usr/bin/llvm-nm llvm-nm /usr/bin/llvm-nm-${RUST_LLVM} 200
+          update-alternatives --install /usr/bin/llvm-size llvm-size /usr/bin/llvm-size-${RUST_LLVM} 200
+          echo "Clang: $(clang --version | head -1)"
+          echo "LLD:   $(ld.lld --version | head -1)"
+
+      - name: West init + update + Renode + SDK
+        run: |
+          pip3 install west robotframework
+          west init -m https://github.com/pulseengine/zephyr.git \
+            --mr gale/sem-replacement zephyr-workspace
+          cd zephyr-workspace
+          west update --narrow -o=--depth=1
+          for attempt in 1 2 3; do
+            west sdk install -t arm-zephyr-eabi && break || sleep 5
+          done
+
+      - name: Setup SDK paths + LLD lib search paths
+        run: |
+          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d | head -1)
+          [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d | head -1)
+          if [ -d "${SDK_DIR}/gnu/arm-zephyr-eabi/bin" ]; then
+            ARM_BIN="${SDK_DIR}/gnu/arm-zephyr-eabi"
+          else
+            ARM_BIN="${SDK_DIR}/arm-zephyr-eabi"
+          fi
+          GCC="${ARM_BIN}/bin/arm-zephyr-eabi-gcc"
+          # Cortex-M4 + soft-float (CONFIG_FPU=n in the engine bench).
+          # libgcc / picolibc live under the v7e-m/nofp multilib variant.
+          GCC_LIB_DIR=$(dirname $("${GCC}" -print-libgcc-file-name -mcpu=cortex-m4 -mthumb -mfloat-abi=soft))
+          PICOLIBC_DIR="${ARM_BIN}/arm-zephyr-eabi/lib/thumb/v7e-m/nofp"
+          echo "LLD_LIBS=-L${GCC_LIB_DIR} -L${PICOLIBC_DIR}" >> "$GITHUB_ENV"
+          echo "${ARM_BIN}/bin" >> "$GITHUB_PATH"
+          echo "ZEPHYR_SDK_INSTALL_DIR=${SDK_DIR}" >> "$GITHUB_ENV"
+          echo "SDK: ${SDK_DIR}"
+          echo "GCC libgcc dir:   ${GCC_LIB_DIR}"
+          echo "PICOLIBC dir:     ${PICOLIBC_DIR}"
+
+      - name: Build baseline (GCC -Os, no Gale, long sweep)
+        env:
+          ZEPHYR_BASE: ${{ github.workspace }}/zephyr-workspace/zephyr
+          GALE_ROOT:   ${{ github.workspace }}/gale
+        run: |
+          . /root/.cargo/env
+          west build -b stm32f4_disco -d /tmp/engine-baseline-long \
+            -s "$GALE_ROOT/benches/engine_control" \
+            -- \
+              -DENGINE_BENCH_SWEEP=long
+
+      - name: Build gale (LLVM + LTO, long sweep)
+        env:
+          ZEPHYR_BASE: ${{ github.workspace }}/zephyr-workspace/zephyr
+          GALE_ROOT:   ${{ github.workspace }}/gale
+        run: |
+          . /root/.cargo/env
+          west build -b stm32f4_disco -d /tmp/engine-gale-lto-long \
+            -s "$GALE_ROOT/benches/engine_control" \
+            -- \
+              -DZEPHYR_TOOLCHAIN_VARIANT=llvm \
+              -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+              -DZEPHYR_EXTRA_MODULES="$GALE_ROOT" \
+              -DOVERLAY_CONFIG="$GALE_ROOT/benches/engine_control/prj-gale.conf;$GALE_ROOT/zephyr/gale_lto_overlay.conf" \
+              -DCMAKE_EXE_LINKER_FLAGS="${LLD_LIBS}" \
+              -DENGINE_BENCH_SWEEP=long
+
+      - name: Symbol-count check (regression guard for #10)
+        run: |
+          # If the sret/u64 redesign or the target-cpu/features matching
+          # ever regresses, gale_ symbols will start surviving the link
+          # again and inlining stops happening. We *report* the count
+          # rather than failing the build — a non-zero count doesn't
+          # break the bench, it just means inlining is incomplete and
+          # the cycle delta will narrow correspondingly.
+          ELF=/tmp/engine-gale-lto-long/zephyr/zephyr.elf
+          BL_ELF=/tmp/engine-baseline-long/zephyr/zephyr.elf
+          NM=/usr/bin/llvm-nm
+          [ -x "${NM}" ] || NM=arm-zephyr-eabi-nm
+          BL_COUNT=$("${NM}" "${BL_ELF}" 2>/dev/null | grep -c '\bgale_' || echo 0)
+          LTO_COUNT=$("${NM}" "${ELF}"    2>/dev/null | grep -c '\bgale_' || echo 0)
+          {
+            echo "## #10 LTO regression guard"
+            echo ""
+            echo "| Build | gale_ symbols surviving link |"
+            echo "|---|---:|"
+            echo "| baseline (GCC -Os, no Gale)        | ${BL_COUNT} |"
+            echo "| gale + LLVM + LTO                   | **${LTO_COUNT}** (target: 0) |"
+            echo ""
+            if [ "${LTO_COUNT}" -gt 0 ]; then
+              echo "First 20 surviving symbols (LTO build):"
+              echo '```'
+              "${NM}" "${ELF}" 2>/dev/null | grep '\bgale_' | head -20
+              echo '```'
+            else
+              echo "All gale_ FFI shims inlined cross-language."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run baseline in Renode
+        env:
+          ELF:           /tmp/engine-baseline-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/engine-baseline-long/output.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/renode-baseline"
+          cd "$GITHUB_WORKSPACE/renode-baseline"
+          renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
+
+      - name: Run gale-LTO in Renode
+        env:
+          ELF:           /tmp/engine-gale-lto-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/engine-gale-lto-long/output.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/renode-gale-lto"
+          cd "$GITHUB_WORKSPACE/renode-gale-lto"
+          renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
+
+      - name: Tag events with run-id for analyzer
+        run: |
+          # Same shape as engine-bench-renode.yml.
+          python3 - <<'PY' \
+              /tmp/engine-baseline-long/output.csv baseline \
+              > /tmp/engine-baseline-long/events.csv
+          import sys
+          raw_path, variant = sys.argv[1], sys.argv[2]
+          with open(raw_path, 'rt', errors='replace') as f:
+              for line in f:
+                  line = line.rstrip('\r\n')
+                  if line.startswith('E,'):
+                      print(f"R1,{variant},{line}")
+                  elif line.startswith(('drops,', 'samples,', 'build,',
+                                        'cycles_per_sec,', 'target_samples,')):
+                      print(f"M,R1,{variant},{line}")
+                  elif line == '=== END ===':
+                      print(f"M,R1,{variant},END")
+          PY
+          python3 - <<'PY' \
+              /tmp/engine-gale-lto-long/output.csv gale \
+              > /tmp/engine-gale-lto-long/events.csv
+          import sys
+          raw_path, variant = sys.argv[1], sys.argv[2]
+          with open(raw_path, 'rt', errors='replace') as f:
+              for line in f:
+                  line = line.rstrip('\r\n')
+                  if line.startswith('E,'):
+                      print(f"R1,{variant},{line}")
+                  elif line.startswith(('drops,', 'samples,', 'build,',
+                                        'cycles_per_sec,', 'target_samples,')):
+                      print(f"M,R1,{variant},{line}")
+                  elif line == '=== END ===':
+                      print(f"M,R1,{variant},END")
+          PY
+
+      - name: Render comparison report (baseline vs LLVM+LTO Gale)
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          python3 "$GALE_ROOT/benches/engine_control/analyze.py" \
+            --baseline /tmp/engine-baseline-long/events.csv \
+            --gale     /tmp/engine-gale-lto-long/events.csv \
+            --runs 1 \
+            > /tmp/engine-comparison-lto.md || true
+          {
+            echo ''
+            echo '## Engine bench long under LLVM+LTO — this run'
+            echo ''
+            echo 'Baseline = GCC -Os, no Gale.'
+            echo 'Compared variant = LLVM + Gale + cross-language LTO.'
+            echo 'The published -3.1% number from engine-bench-renode.yml uses GCC + Gale (no LTO);'
+            echo 'this lane should report a wider margin if the LTO inlining work translates to'
+            echo 'measurable handoff cycles.'
+            echo ''
+            cat /tmp/engine-comparison-lto.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload event streams + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-bench-renode-lto-long
+          path: |
+            /tmp/engine-baseline-long/output.csv
+            /tmp/engine-gale-lto-long/output.csv
+            /tmp/engine-baseline-long/events.csv
+            /tmp/engine-gale-lto-long/events.csv
+            renode-baseline/
+            renode-gale-lto/
+            /tmp/engine-comparison-lto.md
+          if-no-files-found: ignore
