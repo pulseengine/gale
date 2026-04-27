@@ -7,6 +7,27 @@
 #   3. Links both into the kernel
 
 # ==========================================================================
+# Experimental: wasm → synth (Cortex-M AOT) build mode
+#
+# When GALE_USE_SYNTH=ON, the gale-ffi crate is first compiled to wasm32
+# (cdylib), then run through the `synth` AOT compiler which emits a
+# Cortex-M ET_REL relocatable object. The object is wrapped into the
+# same `libgale_ffi.a` archive path the rest of the build expects, so no
+# downstream consumer changes are required — only the bytes inside
+# differ.
+#
+# Used for the 4th-variant cross-language LTO experiment. Off by default.
+# ==========================================================================
+option(GALE_USE_SYNTH
+  "Build gale-ffi via wasm→synth (Cortex-M AOT) instead of rustc-direct" OFF)
+
+if(GALE_USE_SYNTH)
+  find_program(SYNTH synth REQUIRED)
+  message(STATUS "Gale: GALE_USE_SYNTH=ON — using wasm→synth pipeline (Cortex-M AOT)")
+  message(STATUS "Gale: synth binary: ${SYNTH}")
+endif()
+
+# ==========================================================================
 # Cross-language LTO support (LLVM toolchain only)
 #
 # When building with ZEPHYR_TOOLCHAIN_VARIANT=llvm and CONFIG_LTO=y,
@@ -247,20 +268,71 @@ else()
   set(GALE_CARGO_FEATURE_ARGS --no-default-features)
 endif()
 
-add_custom_command(
-  OUTPUT ${GALE_FFI_LIB}
-  COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_ENV} ${GALE_CARGO_RUSTFLAGS_ENV}
-    cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
-    ${GALE_CARGO_FEATURE_ARGS}
-    --manifest-path ${GALE_FFI_DIR}/Cargo.toml
-  DEPENDS
-    ${GALE_FFI_DIR}/Cargo.toml
-    ${GALE_FFI_DIR}/src/lib.rs
-    ${GALE_DIR}/plain/src/error.rs
-    ${GALE_DIR}/plain/src/lib.rs
-  COMMENT "Building Gale FFI static library for ${RUST_TARGET} [features: ${GALE_CARGO_FEATURES_STR}]"
-  VERBATIM
-)
+if(GALE_USE_SYNTH)
+  # wasm → synth → ar pipeline
+  # 1. cargo rustc -> gale_ffi.wasm (cdylib at wasm32-unknown-unknown)
+  # 2. synth compile -> gale_ffi_synth.o (ET_REL ARM EABI5 for Cortex-Mx)
+  # 3. ar rcs -> wraps the .o into libgale_ffi.a at the same path the
+  #    rustc-direct build would have produced; downstream consumers
+  #    (gale_sem.c link step, etc.) need no changes.
+  set(_GALE_WASM ${GALE_FFI_DIR}/target/wasm32-unknown-unknown/release/gale_ffi.wasm)
+  set(_GALE_SYNTH_OBJ ${CMAKE_CURRENT_BINARY_DIR}/gale_ffi_synth.o)
+
+  # Resolve synth --target from Kconfig CPU selection
+  if(CONFIG_CPU_CORTEX_M3)
+    set(_SYNTH_TARGET "cortex-m3")
+  elseif(CONFIG_CPU_CORTEX_M7)
+    set(_SYNTH_TARGET "cortex-m7")
+  else()
+    set(_SYNTH_TARGET "cortex-m4")
+  endif()
+  if(CONFIG_FPU)
+    set(_SYNTH_TARGET "${_SYNTH_TARGET}f")
+  endif()
+  message(STATUS "Gale: synth --target = ${_SYNTH_TARGET}")
+
+  # Ensure the libgale_ffi.a parent directory exists before ar runs
+  get_filename_component(_GALE_FFI_LIB_DIR ${GALE_FFI_LIB} DIRECTORY)
+
+  add_custom_command(
+    OUTPUT ${GALE_FFI_LIB}
+    # 1. gale-ffi -> wasm32 cdylib
+    COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_ENV}
+      cargo rustc --release --target wasm32-unknown-unknown
+      --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+      ${GALE_CARGO_FEATURE_ARGS}
+      --crate-type=cdylib
+    # 2. wasm -> Cortex-M relocatable .o
+    COMMAND ${SYNTH} compile ${_GALE_WASM}
+      --target ${_SYNTH_TARGET} --all-exports --relocatable
+      -o ${_GALE_SYNTH_OBJ}
+    # 3. .o -> libgale_ffi.a at the path the rest of the build expects
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${_GALE_FFI_LIB_DIR}
+    COMMAND ${CMAKE_AR} rcs ${GALE_FFI_LIB} ${_GALE_SYNTH_OBJ}
+    DEPENDS
+      ${GALE_FFI_DIR}/Cargo.toml
+      ${GALE_FFI_DIR}/src/lib.rs
+      ${GALE_DIR}/plain/src/error.rs
+      ${GALE_DIR}/plain/src/lib.rs
+    COMMENT "Gale: wasm -> synth (${_SYNTH_TARGET}) -> libgale_ffi.a [features: ${GALE_CARGO_FEATURES_STR}]"
+    VERBATIM
+  )
+else()
+  add_custom_command(
+    OUTPUT ${GALE_FFI_LIB}
+    COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_ENV} ${GALE_CARGO_RUSTFLAGS_ENV}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      ${GALE_CARGO_FEATURE_ARGS}
+      --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    DEPENDS
+      ${GALE_FFI_DIR}/Cargo.toml
+      ${GALE_FFI_DIR}/src/lib.rs
+      ${GALE_DIR}/plain/src/error.rs
+      ${GALE_DIR}/plain/src/lib.rs
+    COMMENT "Building Gale FFI static library for ${RUST_TARGET} [features: ${GALE_CARGO_FEATURES_STR}]"
+    VERBATIM
+  )
+endif()
 
 add_custom_target(gale_ffi_build DEPENDS ${GALE_FFI_LIB})
 
