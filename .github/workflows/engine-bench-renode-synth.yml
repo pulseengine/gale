@@ -1,0 +1,236 @@
+# Engine-control benchmark — Renode long run UNDER gale-via-synth.
+#
+# 4th-variant follow-up to the cross-language LTO experiment
+# (see engine-bench-renode-lto.yml and the published post at
+# https://pulseengine.eu/blog/cross-language-lto-three-quiet-barriers/).
+#
+# That post compared three builds on stm32f4_disco (7,750 samples each,
+# p<1e-100 across 13 RPM steps): GCC baseline, GCC + Gale (rustc-direct),
+# LLVM + LTO + Gale. This workflow adds the 4th variant: gale-ffi compiled
+# to wasm32-unknown-unknown, then run through pulseengine/synth to produce
+# a Cortex-M ET_REL relocatable, wrapped into libgale_ffi.a, and linked
+# into the engine bench.
+#
+# Build pipeline for the synth variant:
+#   cargo rustc --target wasm32-unknown-unknown
+#     -> synth (wasm -> Cortex-M ET_REL relocatable)
+#     -> ar (wrap into libgale_ffi.a)
+#     -> linked into the engine bench ELF
+#
+# This is gated by the GALE_USE_SYNTH=ON CMake option on the
+# experiment/gale-via-synth branch. Baseline (GCC -Os, no Gale) is built
+# alongside so we get same-CI cycle deltas.
+#
+# Sample count: 10,000 per build (long sweep), matching the LTO workflow.
+# Runtime ~15-25 min per build, ~50-60 min total for both Renode runs.
+# timeout-minutes: 120 covers it with margin.
+#
+# Note on the synth source: the relocatable-flag support lives on the
+# feat/synth-relocatable-flag branch (PR
+# https://github.com/pulseengine/synth/pull/83). Once that PR merges,
+# switch the cargo install --branch arg to main.
+#
+# Security: this workflow uses no untrusted GitHub event inputs
+# (issue title, PR body, commit message) in shell commands. Only
+# github.workspace (filesystem path) and github.ref (concurrency key)
+# are referenced, both safe contexts.
+
+name: Engine bench long under gale-via-synth (Renode)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-bench-renode-synth-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  long-run-synth:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      options: --user root
+    env:
+      HOME: /root
+      DOCKER_CONFIG: /tmp/.docker
+    steps:
+      - name: Checkout Gale
+        uses: actions/checkout@v4
+        with:
+          path: gale
+
+      - name: Install Rust + ARM targets
+        run: |
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable
+          . /root/.cargo/env
+          # stm32f4_disco is Cortex-M4F. Engine bench keeps CONFIG_FPU
+          # off (no float in the ISR path) so cargo selects the soft-
+          # float target. Install both for safety.
+          rustup target add thumbv7em-none-eabi
+          rustup target add thumbv7em-none-eabihf
+
+      - name: Install Rust wasm32-unknown-unknown target
+        run: |
+          . /root/.cargo/env
+          rustup target add wasm32-unknown-unknown
+
+      - name: Install synth from pulseengine/synth (feat/synth-relocatable-flag branch)
+        run: |
+          . /root/.cargo/env
+          cargo install --git https://github.com/pulseengine/synth.git \
+                        --branch feat/synth-relocatable-flag \
+                        --path crates/synth-cli \
+                        --force
+          synth --version
+
+      - name: West init + update + Renode + SDK
+        run: |
+          pip3 install west robotframework
+          west init -m https://github.com/pulseengine/zephyr.git \
+            --mr gale/sem-replacement zephyr-workspace
+          cd zephyr-workspace
+          west update --narrow -o=--depth=1
+          for attempt in 1 2 3; do
+            west sdk install -t arm-zephyr-eabi && break || sleep 5
+          done
+
+      - name: Setup SDK paths
+        run: |
+          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d | head -1)
+          [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d | head -1)
+          if [ -d "${SDK_DIR}/gnu/arm-zephyr-eabi/bin" ]; then
+            ARM_BIN="${SDK_DIR}/gnu/arm-zephyr-eabi"
+          else
+            ARM_BIN="${SDK_DIR}/arm-zephyr-eabi"
+          fi
+          echo "${ARM_BIN}/bin" >> "$GITHUB_PATH"
+          echo "ZEPHYR_SDK_INSTALL_DIR=${SDK_DIR}" >> "$GITHUB_ENV"
+          echo "SDK: ${SDK_DIR}"
+
+      - name: Build baseline (GCC -Os, no Gale, long sweep)
+        env:
+          ZEPHYR_BASE: ${{ github.workspace }}/zephyr-workspace/zephyr
+          GALE_ROOT:   ${{ github.workspace }}/gale
+        run: |
+          . /root/.cargo/env
+          west build -b stm32f4_disco -d /tmp/engine-baseline-long \
+            -s "$GALE_ROOT/benches/engine_control" \
+            -- \
+              -DENGINE_BENCH_SWEEP=long
+
+      - name: Build gale (via synth, long sweep)
+        env:
+          ZEPHYR_BASE: ${{ github.workspace }}/zephyr-workspace/zephyr
+          GALE_ROOT:   ${{ github.workspace }}/gale
+        run: |
+          . /root/.cargo/env
+          west build -b stm32f4_disco -d /tmp/engine-synth-long \
+            -s "$GALE_ROOT/benches/engine_control" \
+            -- \
+              -DZEPHYR_EXTRA_MODULES="$GALE_ROOT" \
+              -DOVERLAY_CONFIG="$GALE_ROOT/benches/engine_control/prj-gale.conf" \
+              -DGALE_USE_SYNTH=ON \
+              -DENGINE_BENCH_SWEEP=long
+
+      - name: Run baseline in Renode
+        env:
+          ELF:           /tmp/engine-baseline-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/engine-baseline-long/output.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/renode-baseline"
+          cd "$GITHUB_WORKSPACE/renode-baseline"
+          renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
+
+      - name: Run gale-via-synth in Renode
+        env:
+          ELF:           /tmp/engine-synth-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/engine-synth-long/output.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/renode-gale-synth"
+          cd "$GITHUB_WORKSPACE/renode-gale-synth"
+          renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
+
+      - name: Tag events with run-id for analyzer
+        run: |
+          # Same shape as engine-bench-renode.yml.
+          python3 - <<'PY' \
+              /tmp/engine-baseline-long/output.csv baseline \
+              > /tmp/engine-baseline-long/events.csv
+          import sys
+          raw_path, variant = sys.argv[1], sys.argv[2]
+          with open(raw_path, 'rt', errors='replace') as f:
+              for line in f:
+                  line = line.rstrip('\r\n')
+                  if line.startswith('E,'):
+                      print(f"R1,{variant},{line}")
+                  elif line.startswith(('drops,', 'samples,', 'build,',
+                                        'cycles_per_sec,', 'target_samples,')):
+                      print(f"M,R1,{variant},{line}")
+                  elif line == '=== END ===':
+                      print(f"M,R1,{variant},END")
+          PY
+          python3 - <<'PY' \
+              /tmp/engine-synth-long/output.csv gale \
+              > /tmp/engine-synth-long/events.csv
+          import sys
+          raw_path, variant = sys.argv[1], sys.argv[2]
+          with open(raw_path, 'rt', errors='replace') as f:
+              for line in f:
+                  line = line.rstrip('\r\n')
+                  if line.startswith('E,'):
+                      print(f"R1,{variant},{line}")
+                  elif line.startswith(('drops,', 'samples,', 'build,',
+                                        'cycles_per_sec,', 'target_samples,')):
+                      print(f"M,R1,{variant},{line}")
+                  elif line == '=== END ===':
+                      print(f"M,R1,{variant},END")
+          PY
+
+      - name: Render comparison report (baseline vs gale-via-synth)
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          python3 "$GALE_ROOT/benches/engine_control/analyze.py" \
+            --baseline /tmp/engine-baseline-long/events.csv \
+            --gale     /tmp/engine-synth-long/events.csv \
+            --runs 1 \
+            > /tmp/engine-comparison-synth.md || true
+          {
+            echo ''
+            echo '## Engine bench long under gale-via-synth — this run'
+            echo ''
+            echo 'Baseline = GCC -Os, no Gale.'
+            echo 'Compared variant = GCC + Gale via synth (wasm32 -> Cortex-M ET_REL -> libgale_ffi.a).'
+            echo 'The published numbers from the LTO blog post compare GCC baseline,'
+            echo 'GCC + Gale (rustc-direct), and LLVM + LTO + Gale. This workflow adds'
+            echo 'the 4th variant for a follow-up post.'
+            echo ''
+            cat /tmp/engine-comparison-synth.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload event streams + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-bench-renode-synth-long
+          path: |
+            /tmp/engine-baseline-long/output.csv
+            /tmp/engine-synth-long/output.csv
+            /tmp/engine-baseline-long/events.csv
+            /tmp/engine-synth-long/events.csv
+            renode-baseline/
+            renode-gale-synth/
+            /tmp/engine-comparison-synth.md
+          if-no-files-found: ignore
