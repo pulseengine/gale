@@ -93,6 +93,22 @@ jobs:
                         --force
           synth --version
 
+      - name: Install wasm-opt (Binaryen) and loom (pulseengine/loom)
+        run: |
+          # wasm-opt: Binaryen size optimizer. apt's binaryen package
+          # provides the wasm-opt binary on Ubuntu 22.04.
+          apt-get update && apt-get install -y binaryen
+          wasm-opt --version
+          # loom: formally-verified WASM optimizer (each pass proved sound).
+          # Optional in the gale CMakeLists pipeline — if neither tool is
+          # found, build skips the optimization step and falls through to
+          # rustc -> synth directly.
+          . /root/.cargo/env
+          cargo install --git https://github.com/pulseengine/loom.git \
+                        --path loom-cli \
+                        --force
+          loom --version
+
       - name: West init + update + Renode + SDK
         run: |
           pip3 install west robotframework
