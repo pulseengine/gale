@@ -39,6 +39,9 @@ name: Engine bench long under gale-via-synth (Renode)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - experiment/gale-via-synth
 
 permissions:
   contents: read
