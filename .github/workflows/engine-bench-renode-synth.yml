@@ -92,7 +92,7 @@ jobs:
           . /root/.cargo/env
           cargo install --git https://github.com/pulseengine/synth.git \
                         --branch feat/synth-relocatable-flag \
-                        --path crates/synth-cli \
+                        synth-cli \
                         --force
           synth --version
 
@@ -108,7 +108,7 @@ jobs:
           # rustc -> synth directly.
           . /root/.cargo/env
           cargo install --git https://github.com/pulseengine/loom.git \
-                        --path loom-cli \
+                        loom-cli \
                         --force
           loom --version
 
