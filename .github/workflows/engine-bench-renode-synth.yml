@@ -87,11 +87,16 @@ jobs:
           . /root/.cargo/env
           rustup target add wasm32-unknown-unknown
 
-      - name: Install synth from pulseengine/synth (feat/synth-relocatable-flag branch)
+      - name: Install synth from pulseengine/synth (fix/synth-i64-locals-and-frame branch)
         run: |
           . /root/.cargo/env
+          # This branch combines:
+          #   - feat/synth-relocatable-flag (PR #83): --relocatable flag
+          #   - fix/synth-i64-locals-and-frame (PR #85): proper i64 local
+          #     storage + stack frame allocation in --no-optimize mode.
+          # Switch to main once both PRs merge.
           cargo install --git https://github.com/pulseengine/synth.git \
-                        --branch feat/synth-relocatable-flag \
+                        --branch fix/synth-i64-locals-and-frame \
                         synth-cli \
                         --force
           synth --version
