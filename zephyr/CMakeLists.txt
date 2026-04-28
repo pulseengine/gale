@@ -354,7 +354,7 @@ if(GALE_USE_SYNTH)
   list(APPEND _GALE_PIPELINE_COMMANDS
     # 3. wasm -> Cortex-M relocatable .o
     COMMAND ${SYNTH} compile ${_GALE_WASM_FOR_SYNTH}
-      --target ${_SYNTH_TARGET} --all-exports --relocatable
+      --target ${_SYNTH_TARGET} --all-exports --relocatable --no-optimize
       -o ${_GALE_SYNTH_OBJ}
     # 4. .o -> libgale_ffi.a at the path the rest of the build expects
     COMMAND ${CMAKE_COMMAND} -E make_directory ${_GALE_FFI_LIB_DIR}
