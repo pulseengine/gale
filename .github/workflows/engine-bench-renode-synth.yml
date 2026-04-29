@@ -22,8 +22,14 @@
 # alongside so we get same-CI cycle deltas.
 #
 # Sample count: 10,000 per build (long sweep), matching the LTO workflow.
-# Runtime ~15-25 min per build, ~50-60 min total for both Renode runs.
-# timeout-minutes: 120 covers it with margin.
+# Runtime ~15-25 min per build, ~50-60 min total for both Renode runs
+# under 1.16.0, plus ~50-60 min for the nightly A/B reruns.
+# timeout-minutes: 240 covers all four Renode runs with margin.
+#
+# Cycle-model A/B: the container ships Renode 1.16.0. The same two ELFs
+# are also run under Renode nightly to attribute the observed gale-vs-
+# baseline cycle delta — see the "Render nightly comparison" step for
+# the three controls (a/b/c).
 #
 # Note on the synth source: the relocatable-flag support lives on the
 # feat/synth-relocatable-flag branch (PR
@@ -57,7 +63,7 @@ defaults:
 jobs:
   long-run-synth:
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: 240
     container:
       image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
       options: --user root
@@ -142,6 +148,24 @@ jobs:
           echo "ZEPHYR_SDK_INSTALL_DIR=${SDK_DIR}" >> "$GITHUB_ENV"
           echo "SDK: ${SDK_DIR}"
 
+      - name: Install Renode nightly (parallel install, for cycle-model A/B)
+        run: |
+          # Container ships Renode 1.16.0 (pinned in zephyr docker-image
+          # Dockerfile.base across v0.28.x → v0.29.2). The unexplained
+          # gale-via-synth -34.5% cycle delta might be partly an artifact
+          # of the 1.16.0 Cortex-M cycle model (Thumb-2 dispatch / SP[1:0]
+          # handling were touched in 1.16.1). We run the same two ELFs
+          # under nightly Renode as a control: if the delta moves, we've
+          # fingerprinted Renode model drift; if it doesn't, we've ruled
+          # the model out and the gap is in the actual instruction stream.
+          mkdir -p /opt/renode-nightly
+          curl -sSL https://builds.renode.io/renode-latest.linux-portable-dotnet.tar.gz \
+            | tar xz -C /opt/renode-nightly --strip-components=1
+          /opt/renode-nightly/renode --version
+          # Robot framework deps for renode-test — same set as the bundled
+          # 1.16.0 install but for the nightly tree.
+          pip3 install -r /opt/renode-nightly/tests/requirements.txt --no-cache-dir
+
       - name: Build baseline (GCC -Os, no Gale, long sweep)
         env:
           ZEPHYR_BASE: ${{ github.workspace }}/zephyr-workspace/zephyr
@@ -187,6 +211,33 @@ jobs:
           cd "$GITHUB_WORKSPACE/renode-gale-synth"
           renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
 
+      - name: Run baseline in Renode (nightly)
+        env:
+          ELF:           /tmp/engine-baseline-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/engine-baseline-long/output-nightly.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          # Same ELF as the 1.16.0 baseline run; only the simulator
+          # changes. PATH override puts nightly's renode/renode-test
+          # in front of the container's bundled 1.16.0.
+          export PATH="/opt/renode-nightly:$PATH"
+          renode --version
+          mkdir -p "$GITHUB_WORKSPACE/renode-baseline-nightly"
+          cd "$GITHUB_WORKSPACE/renode-baseline-nightly"
+          renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
+
+      - name: Run gale-via-synth in Renode (nightly)
+        env:
+          ELF:           /tmp/engine-synth-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/engine-synth-long/output-nightly.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          export PATH="/opt/renode-nightly:$PATH"
+          renode --version
+          mkdir -p "$GITHUB_WORKSPACE/renode-gale-synth-nightly"
+          cd "$GITHUB_WORKSPACE/renode-gale-synth-nightly"
+          renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
+
       - name: Tag events with run-id for analyzer
         run: |
           # Same shape as engine-bench-renode.yml.
@@ -209,6 +260,41 @@ jobs:
           python3 - <<'PY' \
               /tmp/engine-synth-long/output.csv gale \
               > /tmp/engine-synth-long/events.csv
+          import sys
+          raw_path, variant = sys.argv[1], sys.argv[2]
+          with open(raw_path, 'rt', errors='replace') as f:
+              for line in f:
+                  line = line.rstrip('\r\n')
+                  if line.startswith('E,'):
+                      print(f"R1,{variant},{line}")
+                  elif line.startswith(('drops,', 'samples,', 'build,',
+                                        'cycles_per_sec,', 'target_samples,')):
+                      print(f"M,R1,{variant},{line}")
+                  elif line == '=== END ===':
+                      print(f"M,R1,{variant},END")
+          PY
+          # Nightly Renode outputs — same R1 tagging (single run each),
+          # written to events-nightly.csv so the headline 1.16.0 comparison
+          # is undisturbed.
+          python3 - <<'PY' \
+              /tmp/engine-baseline-long/output-nightly.csv baseline \
+              > /tmp/engine-baseline-long/events-nightly.csv
+          import sys
+          raw_path, variant = sys.argv[1], sys.argv[2]
+          with open(raw_path, 'rt', errors='replace') as f:
+              for line in f:
+                  line = line.rstrip('\r\n')
+                  if line.startswith('E,'):
+                      print(f"R1,{variant},{line}")
+                  elif line.startswith(('drops,', 'samples,', 'build,',
+                                        'cycles_per_sec,', 'target_samples,')):
+                      print(f"M,R1,{variant},{line}")
+                  elif line == '=== END ===':
+                      print(f"M,R1,{variant},END")
+          PY
+          python3 - <<'PY' \
+              /tmp/engine-synth-long/output-nightly.csv gale \
+              > /tmp/engine-synth-long/events-nightly.csv
           import sys
           raw_path, variant = sys.argv[1], sys.argv[2]
           with open(raw_path, 'rt', errors='replace') as f:
@@ -245,6 +331,76 @@ jobs:
             cat /tmp/engine-comparison-synth.md
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Render nightly comparison + cross-Renode model-drift check
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          # Three additional comparisons to attribute the observed delta:
+          #   (a) baseline vs gale, BOTH under nightly Renode
+          #       — does the gale delta change when the cycle model changes?
+          #   (b) baseline_1.16.0 vs baseline_nightly (same ELF)
+          #       — control: how much does the cycle model alone shift cycles
+          #         on identical instructions?
+          #   (c) gale_1.16.0 vs gale_nightly (same ELF)
+          #       — does the model shift gale's instructions more than the
+          #         baseline's? If yes, gale's instruction mix is mis-scored
+          #         by the older model and the delta is partly artifactual.
+          #
+          # analyze.py's --baseline / --gale flags are just column labels —
+          # the comparison itself is symmetric, so we (ab)use them for the
+          # cross-Renode controls.
+          python3 "$GALE_ROOT/benches/engine_control/analyze.py" \
+            --baseline /tmp/engine-baseline-long/events-nightly.csv \
+            --gale     /tmp/engine-synth-long/events-nightly.csv \
+            --runs 1 \
+            > /tmp/engine-comparison-synth-nightly.md || true
+          python3 "$GALE_ROOT/benches/engine_control/analyze.py" \
+            --baseline /tmp/engine-baseline-long/events.csv \
+            --gale     /tmp/engine-baseline-long/events-nightly.csv \
+            --runs 1 \
+            > /tmp/engine-cross-renode-baseline.md || true
+          python3 "$GALE_ROOT/benches/engine_control/analyze.py" \
+            --baseline /tmp/engine-synth-long/events.csv \
+            --gale     /tmp/engine-synth-long/events-nightly.csv \
+            --runs 1 \
+            > /tmp/engine-cross-renode-gale.md || true
+          {
+            echo ''
+            echo '## Cycle-model A/B — Renode 1.16.0 vs nightly'
+            echo ''
+            echo 'The headline comparison above was run under Renode 1.16.0'
+            echo '(pinned in the zephyr docker-image). The same two ELFs are'
+            echo 'also run under Renode nightly to test whether the observed'
+            echo 'gale-via-synth delta is partly a cycle-model artifact.'
+            echo ''
+            echo '### (a) baseline vs gale, both under nightly Renode'
+            echo ''
+            echo 'If the gale-vs-baseline gap looks similar to the 1.16.0 run,'
+            echo 'the delta is real (in the instruction stream). If it shrinks'
+            echo 'or vanishes, the 1.16.0 cycle model was over-counting one of'
+            echo 'the two paths.'
+            echo ''
+            cat /tmp/engine-comparison-synth-nightly.md
+            echo ''
+            echo '### (b) baseline ELF: 1.16.0 vs nightly (same .elf)'
+            echo ''
+            echo 'Control. Same compiled bytes, different simulator. Any nonzero'
+            echo 'delta is pure cycle-model drift. "baseline" column = 1.16.0,'
+            echo '"gale" column = nightly.'
+            echo ''
+            cat /tmp/engine-cross-renode-baseline.md
+            echo ''
+            echo '### (c) gale ELF: 1.16.0 vs nightly (same .elf)'
+            echo ''
+            echo 'Same control on the gale path. If (c) shows a larger drift'
+            echo 'than (b), the 1.16.0 model is mis-scoring gale-specific'
+            echo 'instructions (Thumb-2 dispatch / SP[1:0] / FPU-disabled were'
+            echo 'all touched in 1.16.1). "baseline" column = 1.16.0,'
+            echo '"gale" column = nightly.'
+            echo ''
+            cat /tmp/engine-cross-renode-gale.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload event streams + report
         if: always()
         uses: actions/upload-artifact@v4
@@ -255,7 +411,16 @@ jobs:
             /tmp/engine-synth-long/output.csv
             /tmp/engine-baseline-long/events.csv
             /tmp/engine-synth-long/events.csv
+            /tmp/engine-baseline-long/output-nightly.csv
+            /tmp/engine-synth-long/output-nightly.csv
+            /tmp/engine-baseline-long/events-nightly.csv
+            /tmp/engine-synth-long/events-nightly.csv
             renode-baseline/
             renode-gale-synth/
+            renode-baseline-nightly/
+            renode-gale-synth-nightly/
             /tmp/engine-comparison-synth.md
+            /tmp/engine-comparison-synth-nightly.md
+            /tmp/engine-cross-renode-baseline.md
+            /tmp/engine-cross-renode-gale.md
           if-no-files-found: ignore
