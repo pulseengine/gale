@@ -1,0 +1,181 @@
+# Flight-control macro benchmark — Renode long run.
+#
+# Sibling of engine-bench-renode-synth.yml, runs the macro bench
+# (six threads + two timer ISRs + five Zephyr primitives) on the
+# stm32f4_disco Cortex-M4F target. Where engine_control isolates
+# ring_buf + sem on a single ISR path, the flight bench composes
+# all five primitives so a regression that only manifests under
+# combined contention (e.g. mutex chain + msgq + condvar) shows up
+# in p99 deltas.
+#
+# Variant matrix mirrors engine-bench-renode-synth.yml:
+#   baseline  = stock Zephyr (no Gale modules)
+#   gale      = CONFIG_GALE_KERNEL_{SEM,TIMER,SPINLOCK,MUTEX,MSGQ,CONDVAR}=y
+#
+# Sample count: 4500 (long sweep, 27 cells x ~150 samples each).
+# Renode wall-clock: ~30 min per build, ~70 min total. timeout-minutes
+# at 120 covers it with a safety margin.
+#
+# Security: this workflow uses no untrusted GitHub event inputs
+# (issue title, PR body, commit message) in shell commands. Only
+# github.workspace (filesystem path) and github.ref (concurrency key)
+# are referenced, both safe contexts.
+
+name: Flight bench long (Renode)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/macro-bench-flight-control
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-bench-renode-flight-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  long-run-flight:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      options: --user root
+    env:
+      HOME: /root
+      DOCKER_CONFIG: /tmp/.docker
+    steps:
+      - name: Checkout Gale
+        uses: actions/checkout@v4
+        with:
+          path: gale
+
+      - name: Install Rust + ARM targets
+        run: |
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable
+          . /root/.cargo/env
+          rustup target add thumbv7em-none-eabi
+          rustup target add thumbv7em-none-eabihf
+
+      - name: West init + update + Renode + SDK
+        run: |
+          pip3 install west robotframework
+          west init -m https://github.com/pulseengine/zephyr.git \
+            --mr gale/sem-replacement zephyr-workspace
+          cd zephyr-workspace
+          west update --narrow -o=--depth=1
+          for attempt in 1 2 3; do
+            west sdk install -t arm-zephyr-eabi && break || sleep 5
+          done
+
+      - name: Setup SDK paths
+        run: |
+          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d | head -1)
+          [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d | head -1)
+          if [ -d "${SDK_DIR}/gnu/arm-zephyr-eabi/bin" ]; then
+            ARM_BIN="${SDK_DIR}/gnu/arm-zephyr-eabi"
+          else
+            ARM_BIN="${SDK_DIR}/arm-zephyr-eabi"
+          fi
+          echo "${ARM_BIN}/bin" >> "$GITHUB_PATH"
+          echo "ZEPHYR_SDK_INSTALL_DIR=${SDK_DIR}" >> "$GITHUB_ENV"
+          echo "SDK: ${SDK_DIR}"
+
+      - name: Build baseline (GCC -Os, no Gale, long sweep)
+        env:
+          ZEPHYR_BASE: ${{ github.workspace }}/zephyr-workspace/zephyr
+          GALE_ROOT:   ${{ github.workspace }}/gale
+        run: |
+          . /root/.cargo/env
+          west build -b stm32f4_disco -d /tmp/flight-baseline-long \
+            -s "$GALE_ROOT/benches/flight_control" \
+            -- \
+              -DENGINE_BENCH_SWEEP=long
+
+      - name: Build gale (long sweep)
+        env:
+          ZEPHYR_BASE: ${{ github.workspace }}/zephyr-workspace/zephyr
+          GALE_ROOT:   ${{ github.workspace }}/gale
+        run: |
+          . /root/.cargo/env
+          west build -b stm32f4_disco -d /tmp/flight-gale-long \
+            -s "$GALE_ROOT/benches/flight_control" \
+            -- \
+              -DZEPHYR_EXTRA_MODULES="$GALE_ROOT" \
+              -DOVERLAY_CONFIG="$GALE_ROOT/benches/flight_control/prj-gale.conf" \
+              -DENGINE_BENCH_SWEEP=long
+
+      - name: Run baseline in Renode
+        env:
+          ELF:           /tmp/flight-baseline-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/flight-baseline-long/output.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/renode-baseline"
+          cd "$GITHUB_WORKSPACE/renode-baseline"
+          renode-test "$GALE_ROOT/benches/flight_control/renode/flight_stm32f4.robot"
+
+      - name: Run gale in Renode
+        env:
+          ELF:           /tmp/flight-gale-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/flight-gale-long/output.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/renode-gale"
+          cd "$GITHUB_WORKSPACE/renode-gale"
+          renode-test "$GALE_ROOT/benches/flight_control/renode/flight_stm32f4.robot"
+
+      - name: Tag events with run-id for analyzer
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          python3 "$GALE_ROOT/benches/flight_control/tag_events.py" \
+            /tmp/flight-baseline-long/output.csv 1 baseline \
+            > /tmp/flight-baseline-long/events.csv
+          python3 "$GALE_ROOT/benches/flight_control/tag_events.py" \
+            /tmp/flight-gale-long/output.csv 1 gale \
+            > /tmp/flight-gale-long/events.csv
+
+      - name: Render comparison report (baseline vs gale)
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          python3 "$GALE_ROOT/benches/flight_control/analyze.py" \
+            --baseline /tmp/flight-baseline-long/events.csv \
+            --gale     /tmp/flight-gale-long/events.csv \
+            --runs 1 \
+            > /tmp/flight-comparison.md || true
+          {
+            echo ''
+            echo '## Flight bench long - this run'
+            echo ''
+            echo 'Macro benchmark: ring_buf + sem + mutex + msgq + condvar'
+            echo 'composed on a 100 Hz fixed-rate flight-control loop.'
+            echo 'Per-sensor-ISR algo + handoff (engine_control parity);'
+            echo 'per-controller-period t_lock, t_post, t_round, t_bcast.'
+            echo ''
+            cat /tmp/flight-comparison.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload event streams + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flight-bench-renode-long
+          path: |
+            /tmp/flight-baseline-long/output.csv
+            /tmp/flight-gale-long/output.csv
+            /tmp/flight-baseline-long/events.csv
+            /tmp/flight-gale-long/events.csv
+            renode-baseline/
+            renode-gale/
+            /tmp/flight-comparison.md
+          if-no-files-found: ignore
