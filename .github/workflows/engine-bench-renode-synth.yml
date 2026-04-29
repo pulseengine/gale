@@ -112,10 +112,11 @@ jobs:
           # found, build skips the optimization step and falls through to
           # rustc -> synth directly.
           . /root/.cargo/env
-          cargo install --git https://github.com/pulseengine/loom.git \
-                        loom-cli \
-                        --force
-          loom --version
+          # loom DELIBERATELY OMITTED — investigating whether loom miscompiles
+          # gale_k_sem_give_decide in a way that drops the WakeThread/Increment
+          # distinction. See cycle-analysis investigation. CMakeLists ferret-skips
+          # loom if find_program fails.
+          echo "loom install skipped (cycle-analysis run)"
 
       - name: West init + update + Renode + SDK
         run: |
