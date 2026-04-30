@@ -261,6 +261,46 @@ def render(base_s: list[Sample], gale_s: list[Sample],
         lines.append(f"- Cycle counter:   {hz:,} Hz "
                      f"(1 cycle ≈ {1e9/hz:.1f} ns)")
     lines.append("")
+    lines.append("## Column semantics")
+    lines.append("")
+    lines.append(
+        "These names are inherited from the bench's CSV schema; the "
+        "windows they cover are *narrower* than the names suggest, so the "
+        "definitions below are the canonical reading for any comparative "
+        "claim derived from this report:")
+    lines.append("")
+    lines.append(
+        "- **`algo`** — sensor-ISR-side filter precomputation: "
+        "`k_cycle_get_32` at ISR entry → after the squelch computation. "
+        "Per-sensor-ISR cost.")
+    lines.append(
+        "- **`handoff`** — sensor-ISR-side ring_buf_put + sem-give-from-ISR: "
+        "after `algo` → end of ISR. The primitive being measured is the "
+        "ring + sem path on the ISR-to-thread handoff.")
+    lines.append(
+        "- **`t_lock`** — controller-thread mutex acquire+release window: "
+        "`k_cycle_get_32` immediately before `k_mutex_lock(state_mutex)` → "
+        "immediately after `k_mutex_unlock`. Includes any waiter-list "
+        "traversal and contended-acquire wait.")
+    lines.append(
+        "- **`t_post`** — controller-thread `k_msgq_put` cost only: "
+        "before `k_msgq_put(actuator_q, ..., K_NO_WAIT)` → after. Producer-side "
+        "cost; does *not* include consumer wake.")
+    lines.append(
+        "- **`t_round`** — *controller post → actuator-0 stamp.* Window "
+        "starts at `t_post_out` (just after `k_msgq_put` returns on the "
+        "controller) and ends when actuator 0 writes "
+        "`g_actuator_done_cyc = k_cycle_get_32()` immediately before its "
+        "`k_sem_give`. Includes the actuator's `cycles_busy=100` busy-loop "
+        "(constant for both variants). Despite the name, this is *not* a "
+        "round-trip: it does not include the controller's sem-take after the "
+        "actuator wake.")
+    lines.append(
+        "- **`t_bcast`** — *broadcaster-side `k_condvar_broadcast` self-cost.* "
+        "Window starts before `k_mutex_lock` on the broadcast path and ends "
+        "after `k_mutex_unlock`, all on the fusion thread. Does *not* include "
+        "the telemetry thread's wake or any priority-inheritance window.")
+    lines.append("")
 
     base_g = group_by_step(base_s)
     gale_g = group_by_step(gale_s)

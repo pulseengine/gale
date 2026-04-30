@@ -13,22 +13,40 @@
  *   sensor ISR (k_timer @ 1 kHz)
  *     -> ring_buf_put + k_sem_give    [algo + handoff measured]
  *        -> fusion thread (prio 4)
- *             -> k_mutex_lock(state)  [t_lock measured by controller]
+ *             -> k_mutex_lock(state)
  *                -> filter_step
- *             every 10 cycles: k_condvar_broadcast  [t_bcast measured]
+ *             every 10 cycles: k_condvar_broadcast  [t_bcast measured
+ *                                                    on broadcaster only]
  *
  *   controller ISR (k_timer @ 100 Hz)
  *     -> wakes controller thread (prio 5)
- *        -> k_mutex_lock(state)       [t_lock]
+ *        -> k_mutex_lock(state)       [t_lock measured here]
  *           -> snapshot state
- *        -> k_msgq_put(actuator_q)    [t_post]
+ *        -> k_msgq_put(actuator_q)    [t_post measured here]
  *           -> 3× actuator threads (prio 6/7/8)
  *              -> k_msgq_get -> work -> k_sem_give(done)
- *                 -> shared atomic timestamp [t_round measured at controller]
+ *                 -> shared atomic timestamp [t_round measured]
  *
  *   telemetry thread (prio 9, lowest)
  *     -> k_condvar_wait
  *        -> k_mutex_lock(state)       [priority-inheritance path]
+ *
+ * Column semantics — the names are inherited from the design doc,
+ * but the windows they actually measure are narrower than the names
+ * suggest. Honest reading (see analyze.py for the same block in the
+ * report header):
+ *
+ *   algo     sensor ISR start → after squelch precompute
+ *   handoff  after squelch → end of sensor ISR (= ring_buf_put + sem-give-from-ISR)
+ *   t_lock   k_cycle_get_32 just before mutex_lock → just after mutex_unlock
+ *            on the controller thread
+ *   t_post   just before k_msgq_put → just after, on the controller thread
+ *   t_round  controller's t_post_out → actuator 0's stamp before sem_give.
+ *            INCLUDES actuator 0's cycles_busy=100 busy-loop (same for both
+ *            variants). NOT a round-trip: excludes controller's post-wake
+ *            sem_take.
+ *   t_bcast  fusion thread's lock + condvar_broadcast + unlock window.
+ *            NOT a wake-up latency: telemetry-side wake is never sampled.
  *
  * Per-controller-cycle event (rows that lack a controller pair-tag
  * are filtered out at emit; see emit_event for the rationale):
