@@ -22,14 +22,20 @@
 # alongside so we get same-CI cycle deltas.
 #
 # Sample count: 10,000 per build (long sweep), matching the LTO workflow.
-# Runtime ~15-25 min per build, ~50-60 min total for both Renode runs
-# under 1.16.0, plus ~50-60 min for the nightly A/B reruns.
-# timeout-minutes: 240 covers all four Renode runs with margin.
+# Runtime ~15-25 min per build x 3 builds, ~10-15 min per Renode run x 5
+# (baseline 1.16.0, synth 1.16.0, rustc-direct 1.16.0, baseline nightly,
+# synth nightly). timeout-minutes: 300 covers it with margin.
 #
-# Cycle-model A/B: the container ships Renode 1.16.0. The same two ELFs
-# are also run under Renode nightly to attribute the observed gale-vs-
-# baseline cycle delta — see the "Render nightly comparison" step for
-# the three controls (a/b/c).
+# Cycle-model A/B (controls a/b/c): the container ships Renode 1.16.0.
+# The same baseline + synth ELFs are also run under Renode nightly to
+# attribute the observed gale-vs-baseline cycle delta — see the "Render
+# nightly comparison" step.
+#
+# Synth correctness control (audit P7, DO-330 §6.1.4): a third gale
+# build via rustc-direct (no synth in the chain) is run alongside under
+# 1.16.0. If synth's handoff median agrees with rustc-direct's within
+# ~3%, the synth-emitted ELF is a faithful Cortex-M codegen of the same
+# Rust source. See the "Render synth-vs-rustc-direct" step.
 #
 # Note on the synth source: the relocatable-flag support lives on the
 # feat/synth-relocatable-flag branch (PR
@@ -63,7 +69,7 @@ defaults:
 jobs:
   long-run-synth:
     runs-on: ubuntu-22.04
-    timeout-minutes: 240
+    timeout-minutes: 300
     container:
       image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
       options: --user root
@@ -159,8 +165,14 @@ jobs:
           # fingerprinted Renode model drift; if it doesn't, we've ruled
           # the model out and the gap is in the actual instruction stream.
           mkdir -p /opt/renode-nightly
-          curl -sSL https://builds.renode.io/renode-latest.linux-portable-dotnet.tar.gz \
-            | tar xz -C /opt/renode-nightly --strip-components=1
+          # Download to a known path so we can sha256 it for the
+          # build manifest (D6) — without this, the same "nightly"
+          # arm cannot be reproduced 6 months from now.
+          curl -sSL -o /tmp/renode-nightly.tgz \
+            https://builds.renode.io/renode-latest.linux-portable-dotnet.tar.gz
+          sha256sum /tmp/renode-nightly.tgz
+          tar xzf /tmp/renode-nightly.tgz -C /opt/renode-nightly \
+            --strip-components=1
           /opt/renode-nightly/renode --version
           # Robot framework deps for renode-test — same set as the bundled
           # 1.16.0 install but for the nightly tree.
@@ -191,6 +203,30 @@ jobs:
               -DGALE_USE_SYNTH=ON \
               -DENGINE_BENCH_SWEEP=long
 
+      - name: Build gale (via rustc-direct, long sweep) — synth correctness control
+        env:
+          ZEPHYR_BASE: ${{ github.workspace }}/zephyr-workspace/zephyr
+          GALE_ROOT:   ${{ github.workspace }}/gale
+        run: |
+          # Cross-check arm: build the same gale-ffi crate with rustc
+          # targeting Cortex-M directly (no synth in the chain). The
+          # synth-emitted gale ELF should produce handoff/algo cycle
+          # counts within ~3% of this rustc-direct ELF — if they
+          # diverge, synth's codegen has a correctness or efficiency
+          # bug that the bench's nominal A/B can't catch on its own.
+          # Per audit P7 (tool qualification): synth is a research
+          # compiler with no upstream qualification path; this third
+          # arm is the cheapest possible "tool error mitigation" in
+          # the DO-330 §6.1.4 sense — a redundant computation by a
+          # much more battle-tested tool with the same input contract.
+          . /root/.cargo/env
+          west build -b stm32f4_disco -d /tmp/engine-rustc-long \
+            -s "$GALE_ROOT/benches/engine_control" \
+            -- \
+              -DZEPHYR_EXTRA_MODULES="$GALE_ROOT" \
+              -DOVERLAY_CONFIG="$GALE_ROOT/benches/engine_control/prj-gale.conf" \
+              -DENGINE_BENCH_SWEEP=long
+
       - name: Run baseline in Renode
         env:
           ELF:           /tmp/engine-baseline-long/zephyr/zephyr.elf
@@ -209,6 +245,24 @@ jobs:
         run: |
           mkdir -p "$GITHUB_WORKSPACE/renode-gale-synth"
           cd "$GITHUB_WORKSPACE/renode-gale-synth"
+          renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
+
+      - name: Run gale-via-rustc-direct in Renode (synth correctness control)
+        env:
+          ELF:           /tmp/engine-rustc-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/engine-rustc-long/output.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          # Same Renode 1.16.0 as the headline two arms — the question
+          # this run answers is "does synth's Cortex-M codegen produce
+          # the same cycle counts as rustc-direct on the same Rust
+          # source?" — *not* a cycle-model question. We don't run this
+          # ELF under nightly Renode because the cycle-model A/B
+          # already established on baseline + gale-via-synth that
+          # 1.16.0 ≡ nightly within rounding (see step "Render nightly
+          # comparison" output (b) and (c)).
+          mkdir -p "$GITHUB_WORKSPACE/renode-gale-rustc"
+          cd "$GITHUB_WORKSPACE/renode-gale-rustc"
           renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
 
       - name: Run baseline in Renode (nightly)
@@ -295,6 +349,26 @@ jobs:
           python3 - <<'PY' \
               /tmp/engine-synth-long/output-nightly.csv gale \
               > /tmp/engine-synth-long/events-nightly.csv
+          import sys
+          raw_path, variant = sys.argv[1], sys.argv[2]
+          with open(raw_path, 'rt', errors='replace') as f:
+              for line in f:
+                  line = line.rstrip('\r\n')
+                  if line.startswith('E,'):
+                      print(f"R1,{variant},{line}")
+                  elif line.startswith(('drops,', 'samples,', 'build,',
+                                        'cycles_per_sec,', 'target_samples,')):
+                      print(f"M,R1,{variant},{line}")
+                  elif line == '=== END ===':
+                      print(f"M,R1,{variant},END")
+          PY
+          # Rustc-direct cross-check arm. Same R1 tag — analyze.py
+          # treats it as just another "gale" variant for column
+          # purposes; the cross-check report compares synth vs rustc
+          # directly (without baseline).
+          python3 - <<'PY' \
+              /tmp/engine-rustc-long/output.csv gale \
+              > /tmp/engine-rustc-long/events.csv
           import sys
           raw_path, variant = sys.argv[1], sys.argv[2]
           with open(raw_path, 'rt', errors='replace') as f:
@@ -401,6 +475,115 @@ jobs:
             cat /tmp/engine-cross-renode-gale.md
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Render synth-vs-rustc-direct cross-check (tool-qualification control)
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          # Per audit P7 (tool qualification, DO-330 §6.1.4):
+          # synth is a research compiler with no upstream qualification
+          # path. The cycle-model A/B (steps a/b/c above) ruled out the
+          # simulator as the source of the delta, but a synth miscompile
+          # that produces semantically-different-but-not-crashing code
+          # (e.g. regalloc that elides a register-spill, or i64 split that
+          # aliases the wrong half) would still report cycle counts
+          # downstream. The rustc-direct ELF runs the SAME Rust source
+          # through a much more battle-tested compiler; if the two
+          # disagree on handoff median by more than a few percent, the
+          # delta is partly synth-specific and the publication-bound
+          # number must include the rustc-direct comparison too.
+          python3 "$GALE_ROOT/benches/engine_control/analyze.py" \
+            --baseline /tmp/engine-synth-long/events.csv \
+            --gale     /tmp/engine-rustc-long/events.csv \
+            --runs 1 \
+            > /tmp/engine-synth-vs-rustc.md || true
+          {
+            echo ''
+            echo '## Synth correctness — gale-via-synth vs gale-via-rustc-direct'
+            echo ''
+            echo 'Both ELFs are gale-with-the-same-source; "baseline" column is'
+            echo 'synth-emitted, "gale" column is rustc-direct. A tight median'
+            echo 'agreement (Δ < ~3%) confirms synth is a faithful Cortex-M code'
+            echo 'generator for this Rust source. Larger disagreement on `handoff`'
+            echo 'or `algo` indicates a synth-specific codegen artifact and the'
+            echo 'headline comparison should disclose both numbers.'
+            echo ''
+            cat /tmp/engine-synth-vs-rustc.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Compose build manifest (single point of provenance)
+        if: always()
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          # Per audit P9 (configuration management): a reader who downloads
+          # the artifact bundle 6 months from now should be able to identify
+          # exactly which Renode, synth, rustc, wasm-opt, Zephyr, and SDK
+          # produced these numbers. Without this manifest, "I ran exactly
+          # this configuration" reduces to "trust the gale_sha and hope
+          # nothing else moved" — which is wrong, because every pinned
+          # input in this workflow is a branch tip or a moving tag.
+          mkdir -p /tmp/manifest
+          . /root/.cargo/env || true
+          {
+            echo "# Gale bench manifest — single point of provenance"
+            echo "# Produced by .github/workflows/engine-bench-renode-synth.yml"
+            echo "produced_at:           $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "run_id:                ${{ github.run_id }}"
+            echo "run_attempt:           ${{ github.run_attempt }}"
+            echo "gale_sha:              ${{ github.sha }}"
+            echo "gale_ref:              ${{ github.ref }}"
+            echo "container:             ghcr.io/zephyrproject-rtos/ci:v0.29.0"
+            echo "runner:                $(uname -srm)"
+            echo "---"
+            echo "# Toolchain"
+            echo "rustc:                 $(rustc --version 2>&1 | head -1)"
+            echo "cargo:                 $(cargo --version 2>&1 | head -1)"
+            echo "wasm-opt:              $(wasm-opt --version 2>&1 | head -1)"
+            echo "synth:                 $(synth --version 2>&1 | head -1)"
+            echo "west:                  $(west --version 2>&1 | head -1)"
+            echo "robotframework:        $(pip3 show robotframework 2>&1 \
+                                          | awk '/^Version/ {print $2}')"
+            echo "sdk_dir:               ${ZEPHYR_SDK_INSTALL_DIR:-unknown}"
+            echo "---"
+            echo "# Renode"
+            echo "renode_1.16.0:         $(renode --version 2>&1 | head -1)"
+            echo "renode_nightly:        $(/opt/renode-nightly/renode --version 2>&1 | head -1)"
+            if [ -f /tmp/renode-nightly.tgz ]; then
+              echo "renode_nightly_sha256: $(sha256sum /tmp/renode-nightly.tgz | awk '{print $1}')"
+              echo "renode_nightly_bytes:  $(stat -c '%s' /tmp/renode-nightly.tgz 2>/dev/null \
+                                             || stat -f '%z' /tmp/renode-nightly.tgz)"
+            fi
+            echo "---"
+            echo "# West manifest (Zephyr fork + modules at landed sha)"
+            ( cd "${GITHUB_WORKSPACE}/zephyr-workspace" \
+              && west list --format='{name}: {revision}' 2>&1 ) \
+              | sed 's/^/  /' || echo "  (west list unavailable)"
+            echo "---"
+            echo "# Built ELFs (sha256, path)"
+            for elf in /tmp/engine-baseline-long/zephyr/zephyr.elf \
+                       /tmp/engine-synth-long/zephyr/zephyr.elf \
+                       /tmp/engine-rustc-long/zephyr/zephyr.elf; do
+              if [ -f "$elf" ]; then
+                printf "  %s  %s\n" \
+                  "$(sha256sum "$elf" | awk '{print $1}')" "$elf"
+              fi
+            done
+            echo "---"
+            echo "# CSV outputs (sha256, bytes, path)"
+            for csv in /tmp/engine-baseline-long/output.csv \
+                       /tmp/engine-synth-long/output.csv \
+                       /tmp/engine-rustc-long/output.csv \
+                       /tmp/engine-baseline-long/output-nightly.csv \
+                       /tmp/engine-synth-long/output-nightly.csv; do
+              if [ -f "$csv" ]; then
+                bytes=$(stat -c '%s' "$csv" 2>/dev/null || stat -f '%z' "$csv")
+                printf "  %s  %s  %s\n" \
+                  "$(sha256sum "$csv" | awk '{print $1}')" \
+                  "$bytes" "$csv"
+              fi
+            done
+          } | tee /tmp/manifest.txt
+
       - name: Upload event streams + report
         if: always()
         uses: actions/upload-artifact@v4
@@ -409,18 +592,26 @@ jobs:
           path: |
             /tmp/engine-baseline-long/output.csv
             /tmp/engine-synth-long/output.csv
+            /tmp/engine-rustc-long/output.csv
             /tmp/engine-baseline-long/events.csv
             /tmp/engine-synth-long/events.csv
+            /tmp/engine-rustc-long/events.csv
             /tmp/engine-baseline-long/output-nightly.csv
             /tmp/engine-synth-long/output-nightly.csv
             /tmp/engine-baseline-long/events-nightly.csv
             /tmp/engine-synth-long/events-nightly.csv
             renode-baseline/
             renode-gale-synth/
+            renode-gale-rustc/
             renode-baseline-nightly/
             renode-gale-synth-nightly/
             /tmp/engine-comparison-synth.md
             /tmp/engine-comparison-synth-nightly.md
             /tmp/engine-cross-renode-baseline.md
             /tmp/engine-cross-renode-gale.md
+            /tmp/engine-synth-vs-rustc.md
+            /tmp/manifest.txt
+            /tmp/engine-baseline-long/zephyr/zephyr.elf
+            /tmp/engine-synth-long/zephyr/zephyr.elf
+            /tmp/engine-rustc-long/zephyr/zephyr.elf
           if-no-files-found: ignore
