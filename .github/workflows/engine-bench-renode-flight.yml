@@ -169,6 +169,63 @@ jobs:
             cat /tmp/flight-comparison.md
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Compose build manifest (single point of provenance)
+        if: always()
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          # Per audit P9 (configuration management): identical pattern to
+          # the synth workflow's manifest. See that file for full rationale.
+          mkdir -p /tmp/manifest
+          . /root/.cargo/env || true
+          {
+            echo "# Gale flight-bench manifest"
+            echo "# Produced by .github/workflows/engine-bench-renode-flight.yml"
+            echo "produced_at:           $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "run_id:                ${{ github.run_id }}"
+            echo "run_attempt:           ${{ github.run_attempt }}"
+            echo "gale_sha:              ${{ github.sha }}"
+            echo "gale_ref:              ${{ github.ref }}"
+            echo "container:             ghcr.io/zephyrproject-rtos/ci:v0.29.0"
+            echo "runner:                $(uname -srm)"
+            echo "---"
+            echo "# Toolchain"
+            echo "rustc:                 $(rustc --version 2>&1 | head -1)"
+            echo "cargo:                 $(cargo --version 2>&1 | head -1)"
+            echo "west:                  $(west --version 2>&1 | head -1)"
+            echo "robotframework:        $(pip3 show robotframework 2>&1 \
+                                          | awk '/^Version/ {print $2}')"
+            echo "sdk_dir:               ${ZEPHYR_SDK_INSTALL_DIR:-unknown}"
+            echo "---"
+            echo "# Renode"
+            echo "renode_1.16.0:         $(renode --version 2>&1 | head -1)"
+            echo "---"
+            echo "# West manifest (Zephyr fork + modules at landed sha)"
+            ( cd "${GITHUB_WORKSPACE}/zephyr-workspace" \
+              && west list --format='{name}: {revision}' 2>&1 ) \
+              | sed 's/^/  /' || echo "  (west list unavailable)"
+            echo "---"
+            echo "# Built ELFs (sha256, path)"
+            for elf in /tmp/flight-baseline-long/zephyr/zephyr.elf \
+                       /tmp/flight-gale-long/zephyr/zephyr.elf; do
+              if [ -f "$elf" ]; then
+                printf "  %s  %s\n" \
+                  "$(sha256sum "$elf" | awk '{print $1}')" "$elf"
+              fi
+            done
+            echo "---"
+            echo "# CSV outputs (sha256, bytes, path)"
+            for csv in /tmp/flight-baseline-long/output.csv \
+                       /tmp/flight-gale-long/output.csv; do
+              if [ -f "$csv" ]; then
+                bytes=$(stat -c '%s' "$csv" 2>/dev/null || stat -f '%z' "$csv")
+                printf "  %s  %s  %s\n" \
+                  "$(sha256sum "$csv" | awk '{print $1}')" \
+                  "$bytes" "$csv"
+              fi
+            done
+          } | tee /tmp/manifest.txt
+
       - name: Upload event streams + report
         if: always()
         uses: actions/upload-artifact@v4
@@ -182,4 +239,7 @@ jobs:
             renode-baseline/
             renode-gale/
             /tmp/flight-comparison.md
+            /tmp/manifest.txt
+            /tmp/flight-baseline-long/zephyr/zephyr.elf
+            /tmp/flight-gale-long/zephyr/zephyr.elf
           if-no-files-found: ignore
