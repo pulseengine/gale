@@ -159,6 +159,54 @@ def bootstrap_median_ci(xs: list[int], iters: int = 2000,
     return (med, lo, hi)
 
 
+def block_bootstrap_percentile_ci(xs: list[int], q: float,
+                                  block_size: int = 10,
+                                  iters: int = 2000,
+                                  alpha: float = 0.05,
+                                  seed: int = 12345
+                                  ) -> tuple[float, float, float]:
+    """Moving-block bootstrap for the q-th percentile.
+
+    Per audit P4 #6: this bench's samples are consecutive 100 Hz
+    controller cycles, which are autocorrelated — a slow noise burst
+    contaminates 5-10 consecutive samples. Naive resample-with-
+    replacement underestimates the CI width by treating dependent
+    samples as independent. Moving-block bootstrap resamples
+    contiguous blocks of `block_size` samples, preserving local
+    autocorrelation in each resample.
+
+    Block size of 10 covers ~100 ms (one full controller-period
+    burst) at 100 Hz — sufficient for the autocorrelation observed
+    in this bench. Empirically the CIs widen by ~sqrt((1+ρ)/(1-ρ))
+    relative to naive bootstrap, which is the correction Politis-
+    Romano predict for first-order-autocorrelated series.
+
+    Returns (point, lo, hi) at (1-alpha) confidence. NaN if N is too
+    small for a meaningful resample.
+    """
+    if not xs:
+        return (float("nan"), float("nan"), float("nan"))
+    n = len(xs)
+    sorted_xs = sorted(xs)
+    point = percentile(sorted_xs, q)
+    if n < block_size * 3:
+        return (point, float("nan"), float("nan"))
+    rng = random.Random(seed)
+    samples_q: list[float] = []
+    for _ in range(iters):
+        resample: list[int] = []
+        while len(resample) < n:
+            start = rng.randrange(n - block_size + 1)
+            resample.extend(xs[start:start + block_size])
+        resample = resample[:n]
+        resample.sort()
+        samples_q.append(percentile(resample, q))
+    samples_q.sort()
+    lo = percentile(samples_q, alpha / 2)
+    hi = percentile(samples_q, 1 - alpha / 2)
+    return (point, lo, hi)
+
+
 def mannwhitney_u(xs: list[int], ys: list[int]) -> tuple[float, float]:
     n1, n2 = len(xs), len(ys)
     if n1 == 0 or n2 == 0:
@@ -340,19 +388,49 @@ def render(base_s: list[Sample], gale_s: list[Sample],
             )
         lines.append("")
 
-    # Pooled percentiles for each cross-thread metric
+    # Pooled percentiles for each cross-thread metric, with moving-
+    # block-bootstrap CI on each. The block bootstrap (vs the naive
+    # resample-with-replacement used for medians) is what makes the
+    # tail estimates honest under the bench's 100 Hz autocorrelation
+    # — see block_bootstrap_percentile_ci for the rationale.
+    lines.append(
+        "_Pooled-percentile CIs use a moving-block bootstrap "
+        "(block_size=10, iters=2000) to account for autocorrelation "
+        "in 100 Hz consecutive samples. Per-step Mann-Whitney p-values "
+        "below are reported uncorrected — for 162 simultaneous tests "
+        "(27 cells × 6 metrics) at α=0.05, ~8 false positives are "
+        "expected under H0; apply Holm-Bonferroni or BH-FDR when "
+        "interpreting individual cells._")
+    lines.append("")
     for metric in ("handoff", "t_lock", "t_post", "t_round", "t_bcast"):
         lines.append(f"## `{metric}` — overall (pooled across steps)\n")
-        lines.append("| Percentile | Baseline | Gale |")
+        lines.append("| Percentile | Baseline (95% CI) | Gale (95% CI) |")
         lines.append("|---|---|---|")
-        all_b = sorted(metric_values(base_s, metric))
-        all_g = sorted(metric_values(gale_s, metric))
+        all_b = metric_values(base_s, metric)
+        all_g = metric_values(gale_s, metric)
+        all_b_sorted = sorted(all_b)
+        all_g_sorted = sorted(all_g)
         for q, label in [(0.50, "p50"), (0.75, "p75"),
                          (0.95, "p95"), (0.99, "p99"), (1.00, "max")]:
-            bp = percentile(all_b, q) if all_b else float("nan")
-            gp = percentile(all_g, q) if all_g else float("nan")
-            lines.append(f"| {label} | {format_ns(bp, hz)} | "
-                         f"{format_ns(gp, hz)} |")
+            if q == 1.00:
+                bp = max(all_b_sorted) if all_b_sorted else float("nan")
+                gp = max(all_g_sorted) if all_g_sorted else float("nan")
+                lines.append(f"| {label} | {format_ns(bp, hz)} | "
+                             f"{format_ns(gp, hz)} |")
+            else:
+                bp, b_lo, b_hi = block_bootstrap_percentile_ci(all_b, q)
+                gp, g_lo, g_hi = block_bootstrap_percentile_ci(all_g, q)
+                if math.isnan(b_lo):
+                    b_str = format_ns(bp, hz)
+                else:
+                    b_str = (f"{format_ns(bp, hz)} "
+                             f"[{format_ns(b_lo, hz)}, {format_ns(b_hi, hz)}]")
+                if math.isnan(g_lo):
+                    g_str = format_ns(gp, hz)
+                else:
+                    g_str = (f"{format_ns(gp, hz)} "
+                             f"[{format_ns(g_lo, hz)}, {format_ns(g_hi, hz)}]")
+                lines.append(f"| {label} | {b_str} | {g_str} |")
         lines.append("")
 
     # Integrity check: algo median should match across builds.
