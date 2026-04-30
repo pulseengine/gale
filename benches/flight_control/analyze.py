@@ -11,12 +11,16 @@ Usage:
 
 Input format (per line; anything else is skipped):
   R<run>,<variant>,E,<seq>,<step>,<load>,<algo>,<handoff>,<t_lock>,<t_post>,<t_round>,<t_bcast>
-  M,R<run>,<variant>,{drops,N | samples,N | telemetry_emits,N | END | build,X
-                      | cycles_per_sec,N | target_samples,N}
+  M,R<run>,<variant>,{drops,N | emit_drops,N | samples,N | samples_skipped,N
+                      | telemetry_emits,N | END | build,X | cycles_per_sec,N
+                      | target_samples,N}
 
-Negative values in t_lock/t_post/t_round/t_bcast = "not measured on this
-sensor row" and are excluded from the per-step distributions. Only ~1 in
-10 sensor rows carries each segment, by design.
+Negative values in t_post/t_round/t_bcast = "not measured on this row" and
+are excluded from the per-step distributions. After the controller-rate
+emit filter (main.c::emit_event), every emitted row has t_lock populated
+by construction; t_post/t_round/t_bcast may still be -1 if the matching
+primitive didn't fire on this controller tick (e.g. broadcast every 10th
+cycle ⇒ t_bcast = -1 on 9 of 10).
 
 Pure stdlib (no scipy / numpy dependency) — runs inside the minimal
 Zephyr CI container.
@@ -56,6 +60,7 @@ class Meta:
     cycles_per_sec: int = 0
     target_samples: int = 0
     drops: dict[str, int] = field(default_factory=dict)
+    emit_drops: dict[str, int] = field(default_factory=dict)
     samples: dict[str, int] = field(default_factory=dict)
     telemetry_emits: dict[str, int] = field(default_factory=dict)
     ended: set[str] = field(default_factory=set)
@@ -96,6 +101,9 @@ def parse_events(path: Path) -> tuple[list[Sample], Meta]:
                 meta.ended.add(run)
             elif tail == "drops" and len(parts) >= 5:
                 try: meta.drops[run] = int(parts[4])
+                except ValueError: pass
+            elif tail == "emit_drops" and len(parts) >= 5:
+                try: meta.emit_drops[run] = int(parts[4])
                 except ValueError: pass
             elif tail == "samples" and len(parts) >= 5:
                 try: meta.samples[run] = int(parts[4])
@@ -350,6 +358,19 @@ def run_asserts(base_s: list[Sample], gale_s: list[Sample],
     g_drops = sum(gale_m.drops.values())
     check("baseline.drops==0", b_drops == 0, f"drops={b_drops}")
     check("gale.drops==0",     g_drops == 0, f"drops={g_drops}")
+
+    # emit_ring drops are tracked separately. Per audit P4 #2: a
+    # silently uncounted emit_drop creates variant-asymmetric CSV row
+    # counts (gale's faster sem_give means emit_ring drains better
+    # → fewer emit_drops on gale → more rows in gale's CSV → biased
+    # comparison). Asserting both are zero forces both variants onto
+    # the same denominator.
+    b_emit_drops = sum(base_m.emit_drops.values())
+    g_emit_drops = sum(gale_m.emit_drops.values())
+    check("baseline.emit_drops==0", b_emit_drops == 0,
+          f"emit_drops={b_emit_drops}")
+    check("gale.emit_drops==0",     g_emit_drops == 0,
+          f"emit_drops={g_emit_drops}")
 
     check("baseline.runs_ended",
           len(base_m.ended) == runs,

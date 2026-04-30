@@ -66,11 +66,21 @@
 #define RING_CAPACITY_SAMPLES   256
 
 /* Side-channel slot count for the four cross-thread cycle deltas.
- * Sized at 512 to give >5× headroom over worst-case in-flight
- * samples at 2 kHz sensor × 100 Hz controller (per design doc
- * Section "Risks"). Using a power of two so `% RING_CAPACITY` is
- * a cheap mask. */
-#define SLOT_COUNT              512
+ * Sized at 1024 to exceed the per-cell sensor-ISR budget (1000 in
+ * the long sweep; see `sweep[]` below) so no slot-index wrap occurs
+ * within a single cell — which is the only horizon over which the
+ * controller's pair-tag can race the sensor ISR's slot reset. Cross-
+ * cell wrap is harmless: between cells, sweep_driver stops the sensor
+ * timer and drains the reader; any in-flight controller stamps from
+ * the previous cell are at slots the reader has already consumed.
+ *
+ * Per audit P1 #3 — confirmed against partial CSV from run
+ * 25135494876 where cross-cell row-count gaps suggested mid-cell
+ * slot wraps were dropping data.
+ *
+ * RAM cost: 5 arrays × 1024 × 4 bytes = 20 KB (was 10 KB at 512).
+ * Power of two so `% SLOT_COUNT` lowers to a cheap AND mask. */
+#define SLOT_COUNT              1024
 
 #define ACTUATOR_QUEUE_DEPTH    16
 #define ACTUATOR_MSG_BYTES      64   /* msgq slot size; payload ≤ 64 B */
@@ -180,7 +190,8 @@ static volatile uint8_t  g_contention = 0U;
 
 static volatile uint16_t g_seq        = 0U;
 static volatile uint32_t g_sensor_ints = 0U;
-static volatile uint16_t g_drops      = 0U;
+static volatile uint16_t g_drops      = 0U;       /* sample_ring drops (sensor-side) */
+static volatile uint16_t g_emit_drops = 0U;       /* emit_ring drops (fusion-side) */
 static volatile uint32_t g_fire_budget = 0U;
 
 /*
@@ -370,11 +381,20 @@ static void fusion_loop(void *a, void *b, void *c)
 
 			/* Republish the sample on the emit ring so the
 			 * reader can pick it up without competing with us
-			 * on sensor_data_ready. */
+			 * on sensor_data_ready. emit_ring drops are tracked
+			 * separately from sample_ring drops (g_drops on the
+			 * sensor-ISR side) — per audit P4 #2: a silently
+			 * uncounted emit_drop creates variant-asymmetric CSV
+			 * row counts if gale's faster sem_give means the
+			 * emit ring drains better, biasing baseline-versus-
+			 * gale comparisons. The analyzer asserts both
+			 * counters are 0. */
 			uint32_t wrote = ring_buf_put(&emit_ring,
 						      (uint8_t *)&s, sizeof(s));
 			if (wrote == sizeof(s)) {
 				k_sem_give(&emit_ready);
+			} else {
+				g_emit_drops++;
 			}
 		}
 	}
@@ -426,6 +446,25 @@ static void ctrl_loop(void *a, void *b, void *c)
 		uint16_t my_seq = (uint16_t)g_state.updates;
 		msgbuf[4] = (uint8_t)(my_seq >> 0);
 		msgbuf[5] = (uint8_t)(my_seq >> 8);
+
+		/*
+		 * Drain any stale tokens from a previous cycle's
+		 * K_MSEC(2)-timeout path before posting. Without this, if
+		 * the previous controller cycle timed out before actuator 0
+		 * gave its sem, the ungated sem_give now sits on the
+		 * counter; the next iteration's `k_sem_take` returns 0
+		 * immediately, reading a previous-cycle `g_actuator_done_cyc`
+		 * and computing `t_round = old_done_cyc - new_t_post_out`,
+		 * which underflows to ~2^32 cycles and contaminates the
+		 * tail of the t_round distribution.
+		 *
+		 * Per audit P1 #1 — confirmed against the partial CSV from
+		 * run 25135494876 where t_round outliers up to 1500-1800
+		 * cycles in early cells suggested wraparound subtraction.
+		 */
+		while (k_sem_take(&actuator_done[0], K_NO_WAIT) == 0) {
+			/* drain */
+		}
 
 		uint32_t t_post_in = k_cycle_get_32();
 		(void)k_msgq_put(&actuator_q, msgbuf, K_NO_WAIT);
@@ -621,6 +660,7 @@ static void print_csv_header(void)
 static void print_csv_footer(void)
 {
 	printf("drops,%u\n", g_drops);
+	printf("emit_drops,%u\n", g_emit_drops);
 	printf("samples,%u\n", reader_count);
 	printf("samples_skipped,%u\n", reader_skipped);
 	printf("telemetry_emits,%u\n", g_telemetry_emits);
