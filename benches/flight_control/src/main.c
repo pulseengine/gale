@@ -30,13 +30,17 @@
  *     -> k_condvar_wait
  *        -> k_mutex_lock(state)       [priority-inheritance path]
  *
- * Per-sensor-ISR event:
+ * Per-controller-cycle event (rows that lack a controller pair-tag
+ * are filtered out at emit; see emit_event for the rationale):
  *   E,<seq>,<step>,<load>,<algo>,<handoff>,<t_lock>,<t_post>,<t_round>,<t_bcast>
  *
- * `t_lock` / `t_post` / `t_round` / `t_bcast` are tagged onto the most
- * recent fusion-cycle output; `-1` for cycles where the segment was
- * not measured (e.g. 9-of-10 cycles have no broadcast). Strict
- * superset of engine_control's schema; analyze.py extends additively.
+ * `t_lock` is always populated on emitted rows (the filter key);
+ * `t_post` / `t_round` / `t_bcast` are -1 if the matching primitive
+ * didn't fire on this controller tick (e.g. broadcast every 10th
+ * cycle => t_bcast = -1 on 9 of 10). `algo` and `handoff` are the
+ * sensor-ISR-side numbers from the most recent ISR that wrote this
+ * slot — strict superset of engine_control's schema; analyze.py
+ * extends additively.
  *
  * Phase status (per the implementation plan):
  *   Phase 1 — sensor ISR + fusion thread + ring_buf + sem
@@ -92,20 +96,28 @@ struct sweep_step {
  * gated on ENGINE_BENCH_SWEEP=long via the CMakeLists.
  */
 #if defined(ENGINE_BENCH_SWEEP_long)
-/* 3 × 3 × 3 = 27 cells, ~1500 samples on the densest, total ≈ 4500. */
+/* Trimmed long sweep: 9 cells (sensor_hz=1000 only × 3 contention × 3 payload).
+ *
+ * Original 27-cell sweep blew the 120-min CI budget at step 13 in run
+ * 25135494876 (sensor-rate UART emission overwhelmed Renode wall-time
+ * at sensor_hz=2000). Two changes are applied together:
+ *
+ *   1. emit_event() now skips rows without a controller-cycle pair-tag
+ *      (t_lock==0). At sensor_hz=1000 / ctrl=100 Hz, ~10% of sensor
+ *      ISRs are emitted — UART traffic drops ~10×.
+ *   2. Sweep restricted to sensor_hz=1000 (drop both 500 and 2000) so
+ *      every cell has identical wall-time per ctrl-cycle. Single rate
+ *      lands at engine_control's familiar regime; the contention ×
+ *      payload axes carry the macro-bench signal.
+ *
+ * `samples` here is the sensor-ISR budget per cell. With the controller-
+ * rate skip, expected ctrl-tagged rows per cell ≈ samples * 100 / 1000
+ * = samples / 10. At samples=1000 we target ~100 ctrl-rows / cell.
+ */
 static const struct sweep_step sweep[] = {
-	/* sensor_hz = 500, contention = 0/1/2, payload = 16/32/64 */
-	{  500, 0, 16, 150 }, {  500, 0, 32, 150 }, {  500, 0, 64, 150 },
-	{  500, 1, 16, 150 }, {  500, 1, 32, 150 }, {  500, 1, 64, 150 },
-	{  500, 2, 16, 150 }, {  500, 2, 32, 150 }, {  500, 2, 64, 150 },
-	/* sensor_hz = 1000 */
-	{ 1000, 0, 16, 200 }, { 1000, 0, 32, 200 }, { 1000, 0, 64, 200 },
-	{ 1000, 1, 16, 200 }, { 1000, 1, 32, 200 }, { 1000, 1, 64, 200 },
-	{ 1000, 2, 16, 200 }, { 1000, 2, 32, 200 }, { 1000, 2, 64, 200 },
-	/* sensor_hz = 2000 */
-	{ 2000, 0, 16, 150 }, { 2000, 0, 32, 150 }, { 2000, 0, 64, 150 },
-	{ 2000, 1, 16, 150 }, { 2000, 1, 32, 150 }, { 2000, 1, 64, 150 },
-	{ 2000, 2, 16, 150 }, { 2000, 2, 32, 150 }, { 2000, 2, 64, 150 },
+	{ 1000, 0, 16, 1000 }, { 1000, 0, 32, 1000 }, { 1000, 0, 64, 1000 },
+	{ 1000, 1, 16, 1000 }, { 1000, 1, 32, 1000 }, { 1000, 1, 64, 1000 },
+	{ 1000, 2, 16, 1000 }, { 1000, 2, 32, 1000 }, { 1000, 2, 64, 1000 },
 };
 #else
 /* QEMU smoke: 5 cells × 30 samples = 150 events. Same density as
@@ -122,11 +134,16 @@ static const struct sweep_step sweep[] = {
 
 #if defined(ENGINE_BENCH_SWEEP_long)
 #  ifndef TOTAL_SAMPLES
-#    define TOTAL_SAMPLES  4650u  /* sum of long sweep */
+/* 9 cells × ~100 ctrl-tagged rows each (skip-emission keeps only rows
+ * with a controller-cycle pair-tag — see emit_event). Slack: budget
+ * matches the cell-sample sum so the reader_loop terminates exactly
+ * at the per-cell expected count, not before. */
+#    define TOTAL_SAMPLES  900u
 #  endif
 #else
 #  ifndef TOTAL_SAMPLES
-#    define TOTAL_SAMPLES  150u
+/* 5 cells × ~10 ctrl-tagged rows ≈ 50; round to 50 for QEMU smoke. */
+#    define TOTAL_SAMPLES  50u
 #  endif
 #endif
 
@@ -524,8 +541,25 @@ static void noise_loop(void *a_, void *b, void *c)
 /* ---------------------------------------------------------- reporter */
 
 static uint32_t reader_count = 0;
+static uint32_t reader_skipped = 0;   /* sensor-rate rows without ctrl tag */
 
-static void emit_event(const struct imu_sample *s)
+/*
+ * Returns true if a row was emitted, false if skipped.
+ *
+ * Skip rule: rows whose slot has no controller-cycle pair-tag
+ * (t_lock == 0) are dropped from the CSV. Without this, the bench
+ * emits one row per sensor ISR (~1 kHz), of which only ~10 % carry
+ * the marquee t_lock/t_post/t_round measurements (controller runs
+ * at 100 Hz). The 90 % near-empty rows starved Renode at the UART
+ * — run 25135494876 ran out of CI budget after 13 of 27 cells.
+ *
+ * This change keeps the bench's ISR-side measurements (algo /
+ * handoff) honest by emitting them only on ctrl-tagged rows
+ * (where they are still valid), and drops the dilute fraction.
+ * Per-cell N drops from "150 sensor rows, 8 ctrl-measured" to
+ * "100 ctrl-measured rows, every column populated."
+ */
+static bool emit_event(const struct imu_sample *s)
 {
 	uint32_t slot = s->seq % SLOT_COUNT;
 	uint32_t handoff = g_handoff_by_slot[slot];
@@ -534,10 +568,11 @@ static void emit_event(const struct imu_sample *s)
 	uint32_t t_round = g_round_by_slot[slot];
 	uint32_t t_bcast = g_bcast_by_slot[slot];
 
-	/* -1 for measurements that didn't apply to this sensor row.
-	 * Printed as a signed int; analyze.py treats negatives as
-	 * "absent" and excludes them from per-step distributions. */
-	int32_t f_lock  = (t_lock  == 0U) ? -1 : (int32_t)t_lock;
+	if (t_lock == 0U) {
+		return false;
+	}
+
+	int32_t f_lock  = (int32_t)t_lock;
 	int32_t f_post  = (t_post  == 0U) ? -1 : (int32_t)t_post;
 	int32_t f_round = (t_round == 0U) ? -1 : (int32_t)t_round;
 	int32_t f_bcast = (t_bcast == 0U) ? -1 : (int32_t)t_bcast;
@@ -546,6 +581,7 @@ static void emit_event(const struct imu_sample *s)
 	       (unsigned)s->seq, (unsigned)s->step, (unsigned)g_load,
 	       (unsigned)s->algo_cycles, (unsigned)handoff,
 	       (int)f_lock, (int)f_post, (int)f_round, (int)f_bcast);
+	return true;
 }
 
 static void reader_loop(void)
@@ -555,8 +591,11 @@ static void reader_loop(void)
 		struct imu_sample s;
 		while (ring_buf_get(&emit_ring, (uint8_t *)&s, sizeof(s))
 		       == sizeof(s)) {
-			emit_event(&s);
-			reader_count++;
+			if (emit_event(&s)) {
+				reader_count++;
+			} else {
+				reader_skipped++;
+			}
 			if (reader_count >= TOTAL_SAMPLES) break;
 		}
 	}
@@ -583,6 +622,7 @@ static void print_csv_footer(void)
 {
 	printf("drops,%u\n", g_drops);
 	printf("samples,%u\n", reader_count);
+	printf("samples_skipped,%u\n", reader_skipped);
 	printf("telemetry_emits,%u\n", g_telemetry_emits);
 	printf("=== END ===\n");
 }
@@ -632,7 +672,8 @@ static void sweep_driver(void *a, void *b, void *c)
 
 		update_imu_inputs(st->sensor_hz);
 
-		uint32_t start_ints = g_sensor_ints;
+		uint32_t start_emits = reader_count;
+		uint32_t start_ints  = g_sensor_ints;
 		g_fire_budget = st->samples;
 		k_timer_start(&sensor_timer,
 			      K_USEC(period_us),
@@ -650,12 +691,20 @@ static void sweep_driver(void *a, void *b, void *c)
 		}
 		k_timer_stop(&sensor_timer);
 
-		/* Drain — the reader emits over UART, the slow path. */
+		/*
+		 * Drain in controller-rate units. The reader emits only
+		 * rows tagged by ctrl_loop (see emit_event). Expected
+		 * ctrl-rows ≈ sensor_budget * (100 Hz ctrl / sensor_hz).
+		 * Drain timeout is short (5s) because the cell already
+		 * waited budget_ms above for sensor ISRs to retire.
+		 */
+		uint32_t expected_ctrl =
+			(uint32_t)st->samples * 100U / st->sensor_hz;
+		uint32_t drain_target = start_emits + expected_ctrl;
 		uint32_t drain_t0 = k_uptime_get_32();
-		uint32_t target = start_ints + st->samples;
 		bool drain_timeout = false;
-		while (reader_count < target && reader_count < g_sensor_ints) {
-			if ((k_uptime_get_32() - drain_t0) > 30000U) {
+		while (reader_count < drain_target) {
+			if ((k_uptime_get_32() - drain_t0) > 5000U) {
 				drain_timeout = true;
 				break;
 			}
@@ -663,12 +712,13 @@ static void sweep_driver(void *a, void *b, void *c)
 		}
 
 		printf("# step %u/%u sensor_hz=%u contention=%u payload=%u "
-		       "ints=%u count=%u%s%s\n",
+		       "ints=%u expected=%u count=%u%s%s\n",
 		       (unsigned)(i + 1), (unsigned)SWEEP_STEPS,
 		       (unsigned)st->sensor_hz, (unsigned)st->contention,
 		       (unsigned)st->payload,
 		       (unsigned)(g_sensor_ints - start_ints),
-		       (unsigned)reader_count,
+		       (unsigned)expected_ctrl,
+		       (unsigned)(reader_count - start_emits),
 		       budget_exceeded ? " [budget_exceeded]" : "",
 		       drain_timeout   ? " [drain_timeout]"   : "");
 

@@ -12,9 +12,13 @@
 #   baseline  = stock Zephyr (no Gale modules)
 #   gale      = CONFIG_GALE_KERNEL_{SEM,TIMER,SPINLOCK,MUTEX,MSGQ,CONDVAR}=y
 #
-# Sample count: 4500 (long sweep, 27 cells x ~150 samples each).
-# Renode wall-clock: ~30 min per build, ~70 min total. timeout-minutes
-# at 120 covers it with a safety margin.
+# Sample count: 900 controller-rate rows (long sweep, 9 cells x ~100
+# rows after controller-rate emission filter — see emit_event in
+# main.c for rationale; the 27-cell sensor-rate variant blew the
+# 120 min budget at step 13 in run 25135494876).
+# Renode wall-clock estimate per Renode run: ~10–15 min after the
+# emission filter; ~50–60 min total for both runs plus builds.
+# timeout-minutes at 180 covers it with a generous safety margin.
 #
 # Security: this workflow uses no untrusted GitHub event inputs
 # (issue title, PR body, commit message) in shell commands. Only
@@ -43,7 +47,7 @@ defaults:
 jobs:
   long-run-flight:
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     container:
       image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
       options: --user root
