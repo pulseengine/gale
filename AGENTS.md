@@ -106,19 +106,28 @@ Key rules:
 
 ### Running verification locally
 
+The Bazel rules pull `nix-build` themselves for toolchain resolution
+(see `rules_rocq_rust` in MODULE.bazel) — `nix-build` must be on PATH,
+but `nix develop` and a flake.nix are NOT required. Just plain Bazel:
+
 ```bash
-# Verus SMT (requires Nix)
-nix develop --command bazel test //:verus_test
+# Verus SMT
+bazel test //:verus_test
 
 # Kani BMC
-nix develop --command bazel test //:kani_test //:kani_ffi_test
+bazel test //:kani_test //:kani_ffi_test
 
 # Rocq proofs
-nix develop --command bazel test //proofs:all
+bazel test //proofs:all
 
 # Lean proofs
-nix develop --command bazel test //proofs/lean:all
+bazel test //proofs/lean:all
 ```
+
+If your `bazel test` run fails with `nix-build not found in PATH`,
+prepend Nix's profile bin dir (typical install paths are
+`/nix/var/nix/profiles/default/bin` or `~/.nix-profile/bin`) to PATH
+and rerun.
 
 ## Conventions
 

@@ -18,7 +18,15 @@ Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 
 ## Modules
 
-39 Rust modules covering the full Zephyr kernel surface. All 39 pass Verus SMT verification (805 verified, 0 errors):
+39 Rust modules covering the full Zephyr kernel surface. All 39 pass Verus SMT verification (805 verified, 0 errors)¹:
+
+¹ "Verified" here = the bodies Verus checked against requires/ensures
+contracts. Trusted-base inventory (133 `#[verifier::external_body]`
+shims + 2 `assume_specification` calls): see
+[docs/safety/verification-honesty.md](docs/safety/verification-honesty.md).
+The headline number is anchored by the `formal-verification.yml` CI job
+(`bazel test //:verus_test`); if that job is red, the number is stale
+until it goes green again.
 
 **Synchronization**
 
