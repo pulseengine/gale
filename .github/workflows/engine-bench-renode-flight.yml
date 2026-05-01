@@ -1,0 +1,245 @@
+# Flight-control macro benchmark — Renode long run.
+#
+# Sibling of engine-bench-renode-synth.yml, runs the macro bench
+# (six threads + two timer ISRs + five Zephyr primitives) on the
+# stm32f4_disco Cortex-M4F target. Where engine_control isolates
+# ring_buf + sem on a single ISR path, the flight bench composes
+# all five primitives so a regression that only manifests under
+# combined contention (e.g. mutex chain + msgq + condvar) shows up
+# in p99 deltas.
+#
+# Variant matrix mirrors engine-bench-renode-synth.yml:
+#   baseline  = stock Zephyr (no Gale modules)
+#   gale      = CONFIG_GALE_KERNEL_{SEM,TIMER,SPINLOCK,MUTEX,MSGQ,CONDVAR}=y
+#
+# Sample count: 900 controller-rate rows (long sweep, 9 cells x ~100
+# rows after controller-rate emission filter — see emit_event in
+# main.c for rationale; the 27-cell sensor-rate variant blew the
+# 120 min budget at step 13 in run 25135494876).
+# Renode wall-clock estimate per Renode run: ~10–15 min after the
+# emission filter; ~50–60 min total for both runs plus builds.
+# timeout-minutes at 180 covers it with a generous safety margin.
+#
+# Security: this workflow uses no untrusted GitHub event inputs
+# (issue title, PR body, commit message) in shell commands. Only
+# github.workspace (filesystem path) and github.ref (concurrency key)
+# are referenced, both safe contexts.
+
+name: Flight bench long (Renode)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/macro-bench-flight-control
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-bench-renode-flight-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  long-run-flight:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      options: --user root
+    env:
+      HOME: /root
+      DOCKER_CONFIG: /tmp/.docker
+    steps:
+      - name: Checkout Gale
+        uses: actions/checkout@v4
+        with:
+          path: gale
+
+      - name: Install Rust + ARM targets
+        run: |
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable
+          . /root/.cargo/env
+          rustup target add thumbv7em-none-eabi
+          rustup target add thumbv7em-none-eabihf
+
+      - name: West init + update + Renode + SDK
+        run: |
+          pip3 install west robotframework
+          west init -m https://github.com/pulseengine/zephyr.git \
+            --mr gale/sem-replacement zephyr-workspace
+          cd zephyr-workspace
+          west update --narrow -o=--depth=1
+          for attempt in 1 2 3; do
+            west sdk install -t arm-zephyr-eabi && break || sleep 5
+          done
+
+      - name: Setup SDK paths
+        run: |
+          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d | head -1)
+          [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d | head -1)
+          if [ -d "${SDK_DIR}/gnu/arm-zephyr-eabi/bin" ]; then
+            ARM_BIN="${SDK_DIR}/gnu/arm-zephyr-eabi"
+          else
+            ARM_BIN="${SDK_DIR}/arm-zephyr-eabi"
+          fi
+          echo "${ARM_BIN}/bin" >> "$GITHUB_PATH"
+          echo "ZEPHYR_SDK_INSTALL_DIR=${SDK_DIR}" >> "$GITHUB_ENV"
+          echo "SDK: ${SDK_DIR}"
+
+      - name: Build baseline (GCC -Os, no Gale, long sweep)
+        env:
+          ZEPHYR_BASE: ${{ github.workspace }}/zephyr-workspace/zephyr
+          GALE_ROOT:   ${{ github.workspace }}/gale
+        run: |
+          . /root/.cargo/env
+          west build -b stm32f4_disco -d /tmp/flight-baseline-long \
+            -s "$GALE_ROOT/benches/flight_control" \
+            -- \
+              -DENGINE_BENCH_SWEEP=long
+
+      - name: Build gale (long sweep)
+        env:
+          ZEPHYR_BASE: ${{ github.workspace }}/zephyr-workspace/zephyr
+          GALE_ROOT:   ${{ github.workspace }}/gale
+        run: |
+          . /root/.cargo/env
+          west build -b stm32f4_disco -d /tmp/flight-gale-long \
+            -s "$GALE_ROOT/benches/flight_control" \
+            -- \
+              -DZEPHYR_EXTRA_MODULES="$GALE_ROOT" \
+              -DOVERLAY_CONFIG="$GALE_ROOT/benches/flight_control/prj-gale.conf" \
+              -DENGINE_BENCH_SWEEP=long
+
+      - name: Run baseline in Renode
+        env:
+          ELF:           /tmp/flight-baseline-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/flight-baseline-long/output.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/renode-baseline"
+          cd "$GITHUB_WORKSPACE/renode-baseline"
+          renode-test "$GALE_ROOT/benches/flight_control/renode/flight_stm32f4.robot"
+
+      - name: Run gale in Renode
+        env:
+          ELF:           /tmp/flight-gale-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/flight-gale-long/output.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/renode-gale"
+          cd "$GITHUB_WORKSPACE/renode-gale"
+          renode-test "$GALE_ROOT/benches/flight_control/renode/flight_stm32f4.robot"
+
+      - name: Tag events with run-id for analyzer
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          python3 "$GALE_ROOT/benches/flight_control/tag_events.py" \
+            /tmp/flight-baseline-long/output.csv 1 baseline \
+            > /tmp/flight-baseline-long/events.csv
+          python3 "$GALE_ROOT/benches/flight_control/tag_events.py" \
+            /tmp/flight-gale-long/output.csv 1 gale \
+            > /tmp/flight-gale-long/events.csv
+
+      - name: Render comparison report (baseline vs gale)
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          python3 "$GALE_ROOT/benches/flight_control/analyze.py" \
+            --baseline /tmp/flight-baseline-long/events.csv \
+            --gale     /tmp/flight-gale-long/events.csv \
+            --runs 1 \
+            > /tmp/flight-comparison.md || true
+          {
+            echo ''
+            echo '## Flight bench long - this run'
+            echo ''
+            echo 'Macro benchmark: ring_buf + sem + mutex + msgq + condvar'
+            echo 'composed on a 100 Hz fixed-rate flight-control loop.'
+            echo 'Per-sensor-ISR algo + handoff (engine_control parity);'
+            echo 'per-controller-period t_lock, t_post, t_round, t_bcast.'
+            echo ''
+            cat /tmp/flight-comparison.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Compose build manifest (single point of provenance)
+        if: always()
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          # Per audit P9 (configuration management): identical pattern to
+          # the synth workflow's manifest. See that file for full rationale.
+          mkdir -p /tmp/manifest
+          . /root/.cargo/env || true
+          {
+            echo "# Gale flight-bench manifest"
+            echo "# Produced by .github/workflows/engine-bench-renode-flight.yml"
+            echo "produced_at:           $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "run_id:                ${{ github.run_id }}"
+            echo "run_attempt:           ${{ github.run_attempt }}"
+            echo "gale_sha:              ${{ github.sha }}"
+            echo "gale_ref:              ${{ github.ref }}"
+            echo "container:             ghcr.io/zephyrproject-rtos/ci:v0.29.0"
+            echo "runner:                $(uname -srm)"
+            echo "---"
+            echo "# Toolchain"
+            echo "rustc:                 $(rustc --version 2>&1 | head -1)"
+            echo "cargo:                 $(cargo --version 2>&1 | head -1)"
+            echo "west:                  $(west --version 2>&1 | head -1)"
+            echo "robotframework:        $(pip3 show robotframework 2>&1 \
+                                          | awk '/^Version/ {print $2}')"
+            echo "sdk_dir:               ${ZEPHYR_SDK_INSTALL_DIR:-unknown}"
+            echo "---"
+            echo "# Renode"
+            echo "renode_1.16.0:         $(renode --version 2>&1 | head -1)"
+            echo "---"
+            echo "# West manifest (Zephyr fork + modules at landed sha)"
+            ( cd "${GITHUB_WORKSPACE}/zephyr-workspace" \
+              && west list --format='{name}: {revision}' 2>&1 ) \
+              | sed 's/^/  /' || echo "  (west list unavailable)"
+            echo "---"
+            echo "# Built ELFs (sha256, path)"
+            for elf in /tmp/flight-baseline-long/zephyr/zephyr.elf \
+                       /tmp/flight-gale-long/zephyr/zephyr.elf; do
+              if [ -f "$elf" ]; then
+                printf "  %s  %s\n" \
+                  "$(sha256sum "$elf" | awk '{print $1}')" "$elf"
+              fi
+            done
+            echo "---"
+            echo "# CSV outputs (sha256, bytes, path)"
+            for csv in /tmp/flight-baseline-long/output.csv \
+                       /tmp/flight-gale-long/output.csv; do
+              if [ -f "$csv" ]; then
+                bytes=$(stat -c '%s' "$csv" 2>/dev/null || stat -f '%z' "$csv")
+                printf "  %s  %s  %s\n" \
+                  "$(sha256sum "$csv" | awk '{print $1}')" \
+                  "$bytes" "$csv"
+              fi
+            done
+          } | tee /tmp/manifest.txt
+
+      - name: Upload event streams + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flight-bench-renode-long
+          path: |
+            /tmp/flight-baseline-long/output.csv
+            /tmp/flight-gale-long/output.csv
+            /tmp/flight-baseline-long/events.csv
+            /tmp/flight-gale-long/events.csv
+            renode-baseline/
+            renode-gale/
+            /tmp/flight-comparison.md
+            /tmp/manifest.txt
+            /tmp/flight-baseline-long/zephyr/zephyr.elf
+            /tmp/flight-gale-long/zephyr/zephyr.elf
+          if-no-files-found: ignore
