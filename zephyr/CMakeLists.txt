@@ -183,6 +183,29 @@ if(CONFIG_X86)
     string(REPLACE "RUSTFLAGS=" "RUSTFLAGS=-Crelocation-model=static -Ccode-model=small "
            GALE_CARGO_RUSTFLAGS_ENV "${GALE_CARGO_RUSTFLAGS_ENV}")
   endif()
+
+  # Bitcode-merge mismatch on x86_64-unknown-none: the precompiled `core`
+  # rustlib ships bitcode tagged with code-model=kernel (the target's
+  # default). Our `-Ccode-model=small` tags gale-ffi's bitcode with
+  # code-model=small. With ffi/Cargo.toml's release profile `lto = true`
+  # (fat LTO), rustc tries to merge the two bitcode modules and LLVM
+  # rejects the link with:
+  #   warning: linking module flags 'Code Model':
+  #     IDs have conflicting values: 'i32 2' from , and 'i32 1' from gale_ffi...
+  #   error: failed to load bitcode of module "core-...rcgu.o"
+  # Switching to the release-lto profile (lto=false) sidesteps the
+  # bitcode merge — rustc emits a regular static archive. We keep the
+  # rest of the release tuning (opt-level=z, codegen-units=1, panic=abort,
+  # overflow-checks=true). Cortex-M targets are unaffected: their
+  # precompiled core has the same code-model the FFI uses, so fat LTO
+  # works there. (The LLVM+CONFIG_LTO branch above already selects
+  # release-lto for cross-language LTO — this just extends the same
+  # profile choice to plain x86 GCC builds.)
+  if(GALE_CARGO_PROFILE_DIR STREQUAL "release")
+    set(GALE_CARGO_PROFILE_ARGS "--profile" "release-lto")
+    set(GALE_CARGO_PROFILE_DIR "release-lto")
+    message(STATUS "Gale: x86 — using release-lto profile to avoid core bitcode/code-model mismatch")
+  endif()
 endif()
 
 # --------------------------------------------------------------------------
