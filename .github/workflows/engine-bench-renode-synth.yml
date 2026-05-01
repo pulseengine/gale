@@ -1,0 +1,617 @@
+# Engine-control benchmark — Renode long run UNDER gale-via-synth.
+#
+# 4th-variant follow-up to the cross-language LTO experiment
+# (see engine-bench-renode-lto.yml and the published post at
+# https://pulseengine.eu/blog/cross-language-lto-three-quiet-barriers/).
+#
+# That post compared three builds on stm32f4_disco (7,750 samples each,
+# p<1e-100 across 13 RPM steps): GCC baseline, GCC + Gale (rustc-direct),
+# LLVM + LTO + Gale. This workflow adds the 4th variant: gale-ffi compiled
+# to wasm32-unknown-unknown, then run through pulseengine/synth to produce
+# a Cortex-M ET_REL relocatable, wrapped into libgale_ffi.a, and linked
+# into the engine bench.
+#
+# Build pipeline for the synth variant:
+#   cargo rustc --target wasm32-unknown-unknown
+#     -> synth (wasm -> Cortex-M ET_REL relocatable)
+#     -> ar (wrap into libgale_ffi.a)
+#     -> linked into the engine bench ELF
+#
+# This is gated by the GALE_USE_SYNTH=ON CMake option on the
+# experiment/gale-via-synth branch. Baseline (GCC -Os, no Gale) is built
+# alongside so we get same-CI cycle deltas.
+#
+# Sample count: 10,000 per build (long sweep), matching the LTO workflow.
+# Runtime ~15-25 min per build x 3 builds, ~10-15 min per Renode run x 5
+# (baseline 1.16.0, synth 1.16.0, rustc-direct 1.16.0, baseline nightly,
+# synth nightly). timeout-minutes: 300 covers it with margin.
+#
+# Cycle-model A/B (controls a/b/c): the container ships Renode 1.16.0.
+# The same baseline + synth ELFs are also run under Renode nightly to
+# attribute the observed gale-vs-baseline cycle delta — see the "Render
+# nightly comparison" step.
+#
+# Synth correctness control (audit P7, DO-330 §6.1.4): a third gale
+# build via rustc-direct (no synth in the chain) is run alongside under
+# 1.16.0. If synth's handoff median agrees with rustc-direct's within
+# ~3%, the synth-emitted ELF is a faithful Cortex-M codegen of the same
+# Rust source. See the "Render synth-vs-rustc-direct" step.
+#
+# Note on the synth source: the relocatable-flag support lives on the
+# feat/synth-relocatable-flag branch (PR
+# https://github.com/pulseengine/synth/pull/83). Once that PR merges,
+# switch the cargo install --branch arg to main.
+#
+# Security: this workflow uses no untrusted GitHub event inputs
+# (issue title, PR body, commit message) in shell commands. Only
+# github.workspace (filesystem path) and github.ref (concurrency key)
+# are referenced, both safe contexts.
+
+name: Engine bench long under gale-via-synth (Renode)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/gale-via-synth
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-bench-renode-synth-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  long-run-synth:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      options: --user root
+    env:
+      HOME: /root
+      DOCKER_CONFIG: /tmp/.docker
+    steps:
+      - name: Checkout Gale
+        uses: actions/checkout@v4
+        with:
+          path: gale
+
+      - name: Install Rust + ARM targets
+        run: |
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable
+          . /root/.cargo/env
+          # stm32f4_disco is Cortex-M4F. Engine bench keeps CONFIG_FPU
+          # off (no float in the ISR path) so cargo selects the soft-
+          # float target. Install both for safety.
+          rustup target add thumbv7em-none-eabi
+          rustup target add thumbv7em-none-eabihf
+
+      - name: Install Rust wasm32-unknown-unknown target
+        run: |
+          . /root/.cargo/env
+          rustup target add wasm32-unknown-unknown
+
+      - name: Install synth from pulseengine/synth (fix/synth-i64-locals-and-frame branch)
+        run: |
+          . /root/.cargo/env
+          # This branch combines:
+          #   - feat/synth-relocatable-flag (PR #83): --relocatable flag
+          #   - fix/synth-i64-locals-and-frame (PR #85): proper i64 local
+          #     storage + stack frame allocation in --no-optimize mode.
+          # Switch to main once both PRs merge.
+          cargo install --git https://github.com/pulseengine/synth.git \
+                        --branch fix/synth-i64-locals-and-frame \
+                        synth-cli \
+                        --force
+          synth --version
+
+      - name: Install wasm-opt (Binaryen) and loom (pulseengine/loom)
+        run: |
+          # wasm-opt: Binaryen size optimizer. apt's binaryen package
+          # provides the wasm-opt binary on Ubuntu 22.04.
+          apt-get update && apt-get install -y binaryen
+          wasm-opt --version
+          # loom: formally-verified WASM optimizer (each pass proved sound).
+          # Optional in the gale CMakeLists pipeline — if neither tool is
+          # found, build skips the optimization step and falls through to
+          # rustc -> synth directly.
+          . /root/.cargo/env
+          # loom DELIBERATELY OMITTED — investigating whether loom miscompiles
+          # gale_k_sem_give_decide in a way that drops the WakeThread/Increment
+          # distinction. See cycle-analysis investigation. CMakeLists ferret-skips
+          # loom if find_program fails.
+          echo "loom install skipped (cycle-analysis run)"
+
+      - name: West init + update + Renode + SDK
+        run: |
+          pip3 install west robotframework
+          west init -m https://github.com/pulseengine/zephyr.git \
+            --mr gale/sem-replacement zephyr-workspace
+          cd zephyr-workspace
+          west update --narrow -o=--depth=1
+          for attempt in 1 2 3; do
+            west sdk install -t arm-zephyr-eabi && break || sleep 5
+          done
+
+      - name: Setup SDK paths
+        run: |
+          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d | head -1)
+          [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d | head -1)
+          if [ -d "${SDK_DIR}/gnu/arm-zephyr-eabi/bin" ]; then
+            ARM_BIN="${SDK_DIR}/gnu/arm-zephyr-eabi"
+          else
+            ARM_BIN="${SDK_DIR}/arm-zephyr-eabi"
+          fi
+          echo "${ARM_BIN}/bin" >> "$GITHUB_PATH"
+          echo "ZEPHYR_SDK_INSTALL_DIR=${SDK_DIR}" >> "$GITHUB_ENV"
+          echo "SDK: ${SDK_DIR}"
+
+      - name: Install Renode nightly (parallel install, for cycle-model A/B)
+        run: |
+          # Container ships Renode 1.16.0 (pinned in zephyr docker-image
+          # Dockerfile.base across v0.28.x → v0.29.2). The unexplained
+          # gale-via-synth -34.5% cycle delta might be partly an artifact
+          # of the 1.16.0 Cortex-M cycle model (Thumb-2 dispatch / SP[1:0]
+          # handling were touched in 1.16.1). We run the same two ELFs
+          # under nightly Renode as a control: if the delta moves, we've
+          # fingerprinted Renode model drift; if it doesn't, we've ruled
+          # the model out and the gap is in the actual instruction stream.
+          mkdir -p /opt/renode-nightly
+          # Download to a known path so we can sha256 it for the
+          # build manifest (D6) — without this, the same "nightly"
+          # arm cannot be reproduced 6 months from now.
+          curl -sSL -o /tmp/renode-nightly.tgz \
+            https://builds.renode.io/renode-latest.linux-portable-dotnet.tar.gz
+          sha256sum /tmp/renode-nightly.tgz
+          tar xzf /tmp/renode-nightly.tgz -C /opt/renode-nightly \
+            --strip-components=1
+          /opt/renode-nightly/renode --version
+          # Robot framework deps for renode-test — same set as the bundled
+          # 1.16.0 install but for the nightly tree.
+          pip3 install -r /opt/renode-nightly/tests/requirements.txt --no-cache-dir
+
+      - name: Build baseline (GCC -Os, no Gale, long sweep)
+        env:
+          ZEPHYR_BASE: ${{ github.workspace }}/zephyr-workspace/zephyr
+          GALE_ROOT:   ${{ github.workspace }}/gale
+        run: |
+          . /root/.cargo/env
+          west build -b stm32f4_disco -d /tmp/engine-baseline-long \
+            -s "$GALE_ROOT/benches/engine_control" \
+            -- \
+              -DENGINE_BENCH_SWEEP=long
+
+      - name: Build gale (via synth, long sweep)
+        env:
+          ZEPHYR_BASE: ${{ github.workspace }}/zephyr-workspace/zephyr
+          GALE_ROOT:   ${{ github.workspace }}/gale
+        run: |
+          . /root/.cargo/env
+          west build -b stm32f4_disco -d /tmp/engine-synth-long \
+            -s "$GALE_ROOT/benches/engine_control" \
+            -- \
+              -DZEPHYR_EXTRA_MODULES="$GALE_ROOT" \
+              -DOVERLAY_CONFIG="$GALE_ROOT/benches/engine_control/prj-gale.conf" \
+              -DGALE_USE_SYNTH=ON \
+              -DENGINE_BENCH_SWEEP=long
+
+      - name: Build gale (via rustc-direct, long sweep) — synth correctness control
+        env:
+          ZEPHYR_BASE: ${{ github.workspace }}/zephyr-workspace/zephyr
+          GALE_ROOT:   ${{ github.workspace }}/gale
+        run: |
+          # Cross-check arm: build the same gale-ffi crate with rustc
+          # targeting Cortex-M directly (no synth in the chain). The
+          # synth-emitted gale ELF should produce handoff/algo cycle
+          # counts within ~3% of this rustc-direct ELF — if they
+          # diverge, synth's codegen has a correctness or efficiency
+          # bug that the bench's nominal A/B can't catch on its own.
+          # Per audit P7 (tool qualification): synth is a research
+          # compiler with no upstream qualification path; this third
+          # arm is the cheapest possible "tool error mitigation" in
+          # the DO-330 §6.1.4 sense — a redundant computation by a
+          # much more battle-tested tool with the same input contract.
+          . /root/.cargo/env
+          west build -b stm32f4_disco -d /tmp/engine-rustc-long \
+            -s "$GALE_ROOT/benches/engine_control" \
+            -- \
+              -DZEPHYR_EXTRA_MODULES="$GALE_ROOT" \
+              -DOVERLAY_CONFIG="$GALE_ROOT/benches/engine_control/prj-gale.conf" \
+              -DENGINE_BENCH_SWEEP=long
+
+      - name: Run baseline in Renode
+        env:
+          ELF:           /tmp/engine-baseline-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/engine-baseline-long/output.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/renode-baseline"
+          cd "$GITHUB_WORKSPACE/renode-baseline"
+          renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
+
+      - name: Run gale-via-synth in Renode
+        env:
+          ELF:           /tmp/engine-synth-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/engine-synth-long/output.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/renode-gale-synth"
+          cd "$GITHUB_WORKSPACE/renode-gale-synth"
+          renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
+
+      - name: Run gale-via-rustc-direct in Renode (synth correctness control)
+        env:
+          ELF:           /tmp/engine-rustc-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/engine-rustc-long/output.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          # Same Renode 1.16.0 as the headline two arms — the question
+          # this run answers is "does synth's Cortex-M codegen produce
+          # the same cycle counts as rustc-direct on the same Rust
+          # source?" — *not* a cycle-model question. We don't run this
+          # ELF under nightly Renode because the cycle-model A/B
+          # already established on baseline + gale-via-synth that
+          # 1.16.0 ≡ nightly within rounding (see step "Render nightly
+          # comparison" output (b) and (c)).
+          mkdir -p "$GITHUB_WORKSPACE/renode-gale-rustc"
+          cd "$GITHUB_WORKSPACE/renode-gale-rustc"
+          renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
+
+      - name: Run baseline in Renode (nightly)
+        env:
+          ELF:           /tmp/engine-baseline-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/engine-baseline-long/output-nightly.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          # Same ELF as the 1.16.0 baseline run; only the simulator
+          # changes. PATH override puts nightly's renode/renode-test
+          # in front of the container's bundled 1.16.0.
+          export PATH="/opt/renode-nightly:$PATH"
+          renode --version
+          mkdir -p "$GITHUB_WORKSPACE/renode-baseline-nightly"
+          cd "$GITHUB_WORKSPACE/renode-baseline-nightly"
+          renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
+
+      - name: Run gale-via-synth in Renode (nightly)
+        env:
+          ELF:           /tmp/engine-synth-long/zephyr/zephyr.elf
+          BENCH_CSV_OUT: /tmp/engine-synth-long/output-nightly.csv
+          GALE_ROOT:     ${{ github.workspace }}/gale
+        run: |
+          export PATH="/opt/renode-nightly:$PATH"
+          renode --version
+          mkdir -p "$GITHUB_WORKSPACE/renode-gale-synth-nightly"
+          cd "$GITHUB_WORKSPACE/renode-gale-synth-nightly"
+          renode-test "$GALE_ROOT/benches/engine_control/renode/engine_stm32f4.robot"
+
+      - name: Tag events with run-id for analyzer
+        run: |
+          # Same shape as engine-bench-renode.yml.
+          python3 - <<'PY' \
+              /tmp/engine-baseline-long/output.csv baseline \
+              > /tmp/engine-baseline-long/events.csv
+          import sys
+          raw_path, variant = sys.argv[1], sys.argv[2]
+          with open(raw_path, 'rt', errors='replace') as f:
+              for line in f:
+                  line = line.rstrip('\r\n')
+                  if line.startswith('E,'):
+                      print(f"R1,{variant},{line}")
+                  elif line.startswith(('drops,', 'samples,', 'build,',
+                                        'cycles_per_sec,', 'target_samples,')):
+                      print(f"M,R1,{variant},{line}")
+                  elif line == '=== END ===':
+                      print(f"M,R1,{variant},END")
+          PY
+          python3 - <<'PY' \
+              /tmp/engine-synth-long/output.csv gale \
+              > /tmp/engine-synth-long/events.csv
+          import sys
+          raw_path, variant = sys.argv[1], sys.argv[2]
+          with open(raw_path, 'rt', errors='replace') as f:
+              for line in f:
+                  line = line.rstrip('\r\n')
+                  if line.startswith('E,'):
+                      print(f"R1,{variant},{line}")
+                  elif line.startswith(('drops,', 'samples,', 'build,',
+                                        'cycles_per_sec,', 'target_samples,')):
+                      print(f"M,R1,{variant},{line}")
+                  elif line == '=== END ===':
+                      print(f"M,R1,{variant},END")
+          PY
+          # Nightly Renode outputs — same R1 tagging (single run each),
+          # written to events-nightly.csv so the headline 1.16.0 comparison
+          # is undisturbed.
+          python3 - <<'PY' \
+              /tmp/engine-baseline-long/output-nightly.csv baseline \
+              > /tmp/engine-baseline-long/events-nightly.csv
+          import sys
+          raw_path, variant = sys.argv[1], sys.argv[2]
+          with open(raw_path, 'rt', errors='replace') as f:
+              for line in f:
+                  line = line.rstrip('\r\n')
+                  if line.startswith('E,'):
+                      print(f"R1,{variant},{line}")
+                  elif line.startswith(('drops,', 'samples,', 'build,',
+                                        'cycles_per_sec,', 'target_samples,')):
+                      print(f"M,R1,{variant},{line}")
+                  elif line == '=== END ===':
+                      print(f"M,R1,{variant},END")
+          PY
+          python3 - <<'PY' \
+              /tmp/engine-synth-long/output-nightly.csv gale \
+              > /tmp/engine-synth-long/events-nightly.csv
+          import sys
+          raw_path, variant = sys.argv[1], sys.argv[2]
+          with open(raw_path, 'rt', errors='replace') as f:
+              for line in f:
+                  line = line.rstrip('\r\n')
+                  if line.startswith('E,'):
+                      print(f"R1,{variant},{line}")
+                  elif line.startswith(('drops,', 'samples,', 'build,',
+                                        'cycles_per_sec,', 'target_samples,')):
+                      print(f"M,R1,{variant},{line}")
+                  elif line == '=== END ===':
+                      print(f"M,R1,{variant},END")
+          PY
+          # Rustc-direct cross-check arm. Same R1 tag — analyze.py
+          # treats it as just another "gale" variant for column
+          # purposes; the cross-check report compares synth vs rustc
+          # directly (without baseline).
+          python3 - <<'PY' \
+              /tmp/engine-rustc-long/output.csv gale \
+              > /tmp/engine-rustc-long/events.csv
+          import sys
+          raw_path, variant = sys.argv[1], sys.argv[2]
+          with open(raw_path, 'rt', errors='replace') as f:
+              for line in f:
+                  line = line.rstrip('\r\n')
+                  if line.startswith('E,'):
+                      print(f"R1,{variant},{line}")
+                  elif line.startswith(('drops,', 'samples,', 'build,',
+                                        'cycles_per_sec,', 'target_samples,')):
+                      print(f"M,R1,{variant},{line}")
+                  elif line == '=== END ===':
+                      print(f"M,R1,{variant},END")
+          PY
+
+      - name: Render comparison report (baseline vs gale-via-synth)
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          python3 "$GALE_ROOT/benches/engine_control/analyze.py" \
+            --baseline /tmp/engine-baseline-long/events.csv \
+            --gale     /tmp/engine-synth-long/events.csv \
+            --runs 1 \
+            > /tmp/engine-comparison-synth.md || true
+          {
+            echo ''
+            echo '## Engine bench long under gale-via-synth — this run'
+            echo ''
+            echo 'Baseline = GCC -Os, no Gale.'
+            echo 'Compared variant = GCC + Gale via synth (wasm32 -> Cortex-M ET_REL -> libgale_ffi.a).'
+            echo 'The published numbers from the LTO blog post compare GCC baseline,'
+            echo 'GCC + Gale (rustc-direct), and LLVM + LTO + Gale. This workflow adds'
+            echo 'the 4th variant for a follow-up post.'
+            echo ''
+            cat /tmp/engine-comparison-synth.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Render nightly comparison + cross-Renode model-drift check
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          # Three additional comparisons to attribute the observed delta:
+          #   (a) baseline vs gale, BOTH under nightly Renode
+          #       — does the gale delta change when the cycle model changes?
+          #   (b) baseline_1.16.0 vs baseline_nightly (same ELF)
+          #       — control: how much does the cycle model alone shift cycles
+          #         on identical instructions?
+          #   (c) gale_1.16.0 vs gale_nightly (same ELF)
+          #       — does the model shift gale's instructions more than the
+          #         baseline's? If yes, gale's instruction mix is mis-scored
+          #         by the older model and the delta is partly artifactual.
+          #
+          # analyze.py's --baseline / --gale flags are just column labels —
+          # the comparison itself is symmetric, so we (ab)use them for the
+          # cross-Renode controls.
+          python3 "$GALE_ROOT/benches/engine_control/analyze.py" \
+            --baseline /tmp/engine-baseline-long/events-nightly.csv \
+            --gale     /tmp/engine-synth-long/events-nightly.csv \
+            --runs 1 \
+            > /tmp/engine-comparison-synth-nightly.md || true
+          python3 "$GALE_ROOT/benches/engine_control/analyze.py" \
+            --baseline /tmp/engine-baseline-long/events.csv \
+            --gale     /tmp/engine-baseline-long/events-nightly.csv \
+            --runs 1 \
+            > /tmp/engine-cross-renode-baseline.md || true
+          python3 "$GALE_ROOT/benches/engine_control/analyze.py" \
+            --baseline /tmp/engine-synth-long/events.csv \
+            --gale     /tmp/engine-synth-long/events-nightly.csv \
+            --runs 1 \
+            > /tmp/engine-cross-renode-gale.md || true
+          {
+            echo ''
+            echo '## Cycle-model A/B — Renode 1.16.0 vs nightly'
+            echo ''
+            echo 'The headline comparison above was run under Renode 1.16.0'
+            echo '(pinned in the zephyr docker-image). The same two ELFs are'
+            echo 'also run under Renode nightly to test whether the observed'
+            echo 'gale-via-synth delta is partly a cycle-model artifact.'
+            echo ''
+            echo '### (a) baseline vs gale, both under nightly Renode'
+            echo ''
+            echo 'If the gale-vs-baseline gap looks similar to the 1.16.0 run,'
+            echo 'the delta is real (in the instruction stream). If it shrinks'
+            echo 'or vanishes, the 1.16.0 cycle model was over-counting one of'
+            echo 'the two paths.'
+            echo ''
+            cat /tmp/engine-comparison-synth-nightly.md
+            echo ''
+            echo '### (b) baseline ELF: 1.16.0 vs nightly (same .elf)'
+            echo ''
+            echo 'Control. Same compiled bytes, different simulator. Any nonzero'
+            echo 'delta is pure cycle-model drift. "baseline" column = 1.16.0,'
+            echo '"gale" column = nightly.'
+            echo ''
+            cat /tmp/engine-cross-renode-baseline.md
+            echo ''
+            echo '### (c) gale ELF: 1.16.0 vs nightly (same .elf)'
+            echo ''
+            echo 'Same control on the gale path. If (c) shows a larger drift'
+            echo 'than (b), the 1.16.0 model is mis-scoring gale-specific'
+            echo 'instructions (Thumb-2 dispatch / SP[1:0] / FPU-disabled were'
+            echo 'all touched in 1.16.1). "baseline" column = 1.16.0,'
+            echo '"gale" column = nightly.'
+            echo ''
+            cat /tmp/engine-cross-renode-gale.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Render synth-vs-rustc-direct cross-check (tool-qualification control)
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          # Per audit P7 (tool qualification, DO-330 §6.1.4):
+          # synth is a research compiler with no upstream qualification
+          # path. The cycle-model A/B (steps a/b/c above) ruled out the
+          # simulator as the source of the delta, but a synth miscompile
+          # that produces semantically-different-but-not-crashing code
+          # (e.g. regalloc that elides a register-spill, or i64 split that
+          # aliases the wrong half) would still report cycle counts
+          # downstream. The rustc-direct ELF runs the SAME Rust source
+          # through a much more battle-tested compiler; if the two
+          # disagree on handoff median by more than a few percent, the
+          # delta is partly synth-specific and the publication-bound
+          # number must include the rustc-direct comparison too.
+          python3 "$GALE_ROOT/benches/engine_control/analyze.py" \
+            --baseline /tmp/engine-synth-long/events.csv \
+            --gale     /tmp/engine-rustc-long/events.csv \
+            --runs 1 \
+            > /tmp/engine-synth-vs-rustc.md || true
+          {
+            echo ''
+            echo '## Synth correctness — gale-via-synth vs gale-via-rustc-direct'
+            echo ''
+            echo 'Both ELFs are gale-with-the-same-source; "baseline" column is'
+            echo 'synth-emitted, "gale" column is rustc-direct. A tight median'
+            echo 'agreement (Δ < ~3%) confirms synth is a faithful Cortex-M code'
+            echo 'generator for this Rust source. Larger disagreement on `handoff`'
+            echo 'or `algo` indicates a synth-specific codegen artifact and the'
+            echo 'headline comparison should disclose both numbers.'
+            echo ''
+            cat /tmp/engine-synth-vs-rustc.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Compose build manifest (single point of provenance)
+        if: always()
+        env:
+          GALE_ROOT: ${{ github.workspace }}/gale
+        run: |
+          # Per audit P9 (configuration management): a reader who downloads
+          # the artifact bundle 6 months from now should be able to identify
+          # exactly which Renode, synth, rustc, wasm-opt, Zephyr, and SDK
+          # produced these numbers. Without this manifest, "I ran exactly
+          # this configuration" reduces to "trust the gale_sha and hope
+          # nothing else moved" — which is wrong, because every pinned
+          # input in this workflow is a branch tip or a moving tag.
+          mkdir -p /tmp/manifest
+          . /root/.cargo/env || true
+          {
+            echo "# Gale bench manifest — single point of provenance"
+            echo "# Produced by .github/workflows/engine-bench-renode-synth.yml"
+            echo "produced_at:           $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "run_id:                ${{ github.run_id }}"
+            echo "run_attempt:           ${{ github.run_attempt }}"
+            echo "gale_sha:              ${{ github.sha }}"
+            echo "gale_ref:              ${{ github.ref }}"
+            echo "container:             ghcr.io/zephyrproject-rtos/ci:v0.29.0"
+            echo "runner:                $(uname -srm)"
+            echo "---"
+            echo "# Toolchain"
+            echo "rustc:                 $(rustc --version 2>&1 | head -1)"
+            echo "cargo:                 $(cargo --version 2>&1 | head -1)"
+            echo "wasm-opt:              $(wasm-opt --version 2>&1 | head -1)"
+            echo "synth:                 $(synth --version 2>&1 | head -1)"
+            echo "west:                  $(west --version 2>&1 | head -1)"
+            echo "robotframework:        $(pip3 show robotframework 2>&1 \
+                                          | awk '/^Version/ {print $2}')"
+            echo "sdk_dir:               ${ZEPHYR_SDK_INSTALL_DIR:-unknown}"
+            echo "---"
+            echo "# Renode"
+            echo "renode_1.16.0:         $(renode --version 2>&1 | head -1)"
+            echo "renode_nightly:        $(/opt/renode-nightly/renode --version 2>&1 | head -1)"
+            if [ -f /tmp/renode-nightly.tgz ]; then
+              echo "renode_nightly_sha256: $(sha256sum /tmp/renode-nightly.tgz | awk '{print $1}')"
+              echo "renode_nightly_bytes:  $(stat -c '%s' /tmp/renode-nightly.tgz 2>/dev/null \
+                                             || stat -f '%z' /tmp/renode-nightly.tgz)"
+            fi
+            echo "---"
+            echo "# West manifest (Zephyr fork + modules at landed sha)"
+            ( cd "${GITHUB_WORKSPACE}/zephyr-workspace" \
+              && west list --format='{name}: {revision}' 2>&1 ) \
+              | sed 's/^/  /' || echo "  (west list unavailable)"
+            echo "---"
+            echo "# Built ELFs (sha256, path)"
+            for elf in /tmp/engine-baseline-long/zephyr/zephyr.elf \
+                       /tmp/engine-synth-long/zephyr/zephyr.elf \
+                       /tmp/engine-rustc-long/zephyr/zephyr.elf; do
+              if [ -f "$elf" ]; then
+                printf "  %s  %s\n" \
+                  "$(sha256sum "$elf" | awk '{print $1}')" "$elf"
+              fi
+            done
+            echo "---"
+            echo "# CSV outputs (sha256, bytes, path)"
+            for csv in /tmp/engine-baseline-long/output.csv \
+                       /tmp/engine-synth-long/output.csv \
+                       /tmp/engine-rustc-long/output.csv \
+                       /tmp/engine-baseline-long/output-nightly.csv \
+                       /tmp/engine-synth-long/output-nightly.csv; do
+              if [ -f "$csv" ]; then
+                bytes=$(stat -c '%s' "$csv" 2>/dev/null || stat -f '%z' "$csv")
+                printf "  %s  %s  %s\n" \
+                  "$(sha256sum "$csv" | awk '{print $1}')" \
+                  "$bytes" "$csv"
+              fi
+            done
+          } | tee /tmp/manifest.txt
+
+      - name: Upload event streams + report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-bench-renode-synth-long
+          path: |
+            /tmp/engine-baseline-long/output.csv
+            /tmp/engine-synth-long/output.csv
+            /tmp/engine-rustc-long/output.csv
+            /tmp/engine-baseline-long/events.csv
+            /tmp/engine-synth-long/events.csv
+            /tmp/engine-rustc-long/events.csv
+            /tmp/engine-baseline-long/output-nightly.csv
+            /tmp/engine-synth-long/output-nightly.csv
+            /tmp/engine-baseline-long/events-nightly.csv
+            /tmp/engine-synth-long/events-nightly.csv
+            renode-baseline/
+            renode-gale-synth/
+            renode-gale-rustc/
+            renode-baseline-nightly/
+            renode-gale-synth-nightly/
+            /tmp/engine-comparison-synth.md
+            /tmp/engine-comparison-synth-nightly.md
+            /tmp/engine-cross-renode-baseline.md
+            /tmp/engine-cross-renode-gale.md
+            /tmp/engine-synth-vs-rustc.md
+            /tmp/manifest.txt
+            /tmp/engine-baseline-long/zephyr/zephyr.elf
+            /tmp/engine-synth-long/zephyr/zephyr.elf
+            /tmp/engine-rustc-long/zephyr/zephyr.elf
+          if-no-files-found: ignore

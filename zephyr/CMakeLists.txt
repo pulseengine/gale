@@ -7,6 +7,27 @@
 #   3. Links both into the kernel
 
 # ==========================================================================
+# Experimental: wasm → synth (Cortex-M AOT) build mode
+#
+# When GALE_USE_SYNTH=ON, the gale-ffi crate is first compiled to wasm32
+# (cdylib), then run through the `synth` AOT compiler which emits a
+# Cortex-M ET_REL relocatable object. The object is wrapped into the
+# same `libgale_ffi.a` archive path the rest of the build expects, so no
+# downstream consumer changes are required — only the bytes inside
+# differ.
+#
+# Used for the 4th-variant cross-language LTO experiment. Off by default.
+# ==========================================================================
+option(GALE_USE_SYNTH
+  "Build gale-ffi via wasm→synth (Cortex-M AOT) instead of rustc-direct" OFF)
+
+if(GALE_USE_SYNTH)
+  find_program(SYNTH synth REQUIRED)
+  message(STATUS "Gale: GALE_USE_SYNTH=ON — using wasm→synth pipeline (Cortex-M AOT)")
+  message(STATUS "Gale: synth binary: ${SYNTH}")
+endif()
+
+# ==========================================================================
 # Cross-language LTO support (LLVM toolchain only)
 #
 # When building with ZEPHYR_TOOLCHAIN_VARIANT=llvm and CONFIG_LTO=y,
@@ -247,20 +268,126 @@ else()
   set(GALE_CARGO_FEATURE_ARGS --no-default-features)
 endif()
 
-add_custom_command(
-  OUTPUT ${GALE_FFI_LIB}
-  COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_ENV} ${GALE_CARGO_RUSTFLAGS_ENV}
-    cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
-    ${GALE_CARGO_FEATURE_ARGS}
-    --manifest-path ${GALE_FFI_DIR}/Cargo.toml
-  DEPENDS
-    ${GALE_FFI_DIR}/Cargo.toml
-    ${GALE_FFI_DIR}/src/lib.rs
-    ${GALE_DIR}/plain/src/error.rs
-    ${GALE_DIR}/plain/src/lib.rs
-  COMMENT "Building Gale FFI static library for ${RUST_TARGET} [features: ${GALE_CARGO_FEATURES_STR}]"
-  VERBATIM
-)
+if(GALE_USE_SYNTH)
+  # wasm → synth → ar pipeline
+  # 1. cargo rustc -> gale_ffi.wasm (cdylib at wasm32-unknown-unknown)
+  # 2. synth compile -> gale_ffi_synth.o (ET_REL ARM EABI5 for Cortex-Mx)
+  # 3. ar rcs -> wraps the .o into libgale_ffi.a at the same path the
+  #    rustc-direct build would have produced; downstream consumers
+  #    (gale_sem.c link step, etc.) need no changes.
+  set(_GALE_WASM_RAW ${GALE_FFI_DIR}/target/wasm32-unknown-unknown/release/gale_ffi.wasm)
+  set(_GALE_WASM_OPT ${CMAKE_CURRENT_BINARY_DIR}/gale_ffi.opt.wasm)
+  set(_GALE_WASM_LOOM ${CMAKE_CURRENT_BINARY_DIR}/gale_ffi.loom.wasm)
+  set(_GALE_SYNTH_OBJ ${CMAKE_CURRENT_BINARY_DIR}/gale_ffi_synth.o)
+
+  # Resolve synth --target from Kconfig CPU selection
+  if(CONFIG_CPU_CORTEX_M3)
+    set(_SYNTH_TARGET "cortex-m3")
+  elseif(CONFIG_CPU_CORTEX_M7)
+    set(_SYNTH_TARGET "cortex-m7")
+  else()
+    set(_SYNTH_TARGET "cortex-m4")
+  endif()
+  if(CONFIG_FPU)
+    set(_SYNTH_TARGET "${_SYNTH_TARGET}f")
+  endif()
+  message(STATUS "Gale: synth --target = ${_SYNTH_TARGET}")
+
+  # Optional optimizers between rustc and synth. wasm-opt (Binaryen)
+  # gives aggressive size reduction; loom (pulseengine/loom) is the
+  # formally-verified Rust optimizer (each pass proved sound). Both
+  # are optional — if neither is on the path, the pipeline reduces to
+  # rustc -> synth as before.
+  find_program(WASM_OPT wasm-opt)
+  find_program(LOOM loom)
+  if(WASM_OPT)
+    message(STATUS "Gale: wasm-opt found at ${WASM_OPT} — will apply -Oz between rustc and synth")
+  endif()
+  if(LOOM)
+    message(STATUS "Gale: loom found at ${LOOM} — will apply formally-verified passes after wasm-opt")
+  endif()
+
+  # The "input to synth" is the result of whichever optimizer chain is
+  # available. Default: the raw rustc wasm. With wasm-opt: the -Oz wasm.
+  # With wasm-opt + loom: the loom-on-wasm-opt wasm.
+  if(WASM_OPT AND LOOM)
+    set(_GALE_WASM_FOR_SYNTH ${_GALE_WASM_LOOM})
+  elseif(WASM_OPT)
+    set(_GALE_WASM_FOR_SYNTH ${_GALE_WASM_OPT})
+  elseif(LOOM)
+    set(_GALE_WASM_FOR_SYNTH ${_GALE_WASM_LOOM})
+  else()
+    set(_GALE_WASM_FOR_SYNTH ${_GALE_WASM_RAW})
+  endif()
+
+  # Ensure the libgale_ffi.a parent directory exists before ar runs
+  get_filename_component(_GALE_FFI_LIB_DIR ${GALE_FFI_LIB} DIRECTORY)
+
+  # Build the COMMAND list dynamically depending on which optimizers are
+  # present. We always run cargo and synth+ar; wasm-opt and loom slot in
+  # between if available.
+  set(_GALE_PIPELINE_COMMANDS
+    # 1. gale-ffi -> wasm32 cdylib
+    COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_ENV}
+      cargo rustc --release --target wasm32-unknown-unknown
+      --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+      ${GALE_CARGO_FEATURE_ARGS}
+      --crate-type=cdylib
+  )
+  if(WASM_OPT)
+    list(APPEND _GALE_PIPELINE_COMMANDS
+      # 2a. wasm-opt -Oz (Binaryen size optimizer)
+      COMMAND ${WASM_OPT} -Oz ${_GALE_WASM_RAW} -o ${_GALE_WASM_OPT}
+    )
+  endif()
+  if(LOOM)
+    if(WASM_OPT)
+      set(_LOOM_INPUT ${_GALE_WASM_OPT})
+    else()
+      set(_LOOM_INPUT ${_GALE_WASM_RAW})
+    endif()
+    list(APPEND _GALE_PIPELINE_COMMANDS
+      # 2b. loom optimize (formally-verified WASM optimizer)
+      COMMAND ${LOOM} optimize ${_LOOM_INPUT} --attestation false -o ${_GALE_WASM_LOOM}
+    )
+  endif()
+  list(APPEND _GALE_PIPELINE_COMMANDS
+    # 3. wasm -> Cortex-M relocatable .o
+    COMMAND ${SYNTH} compile ${_GALE_WASM_FOR_SYNTH}
+      --target ${_SYNTH_TARGET} --all-exports --relocatable --no-optimize
+      -o ${_GALE_SYNTH_OBJ}
+    # 4. .o -> libgale_ffi.a at the path the rest of the build expects
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${_GALE_FFI_LIB_DIR}
+    COMMAND ${CMAKE_AR} rcs ${GALE_FFI_LIB} ${_GALE_SYNTH_OBJ}
+  )
+
+  add_custom_command(
+    OUTPUT ${GALE_FFI_LIB}
+    ${_GALE_PIPELINE_COMMANDS}
+    DEPENDS
+      ${GALE_FFI_DIR}/Cargo.toml
+      ${GALE_FFI_DIR}/src/lib.rs
+      ${GALE_DIR}/plain/src/error.rs
+      ${GALE_DIR}/plain/src/lib.rs
+    COMMENT "Gale: wasm -> [wasm-opt] -> [loom] -> synth (${_SYNTH_TARGET}) -> libgale_ffi.a [features: ${GALE_CARGO_FEATURES_STR}]"
+    VERBATIM
+  )
+else()
+  add_custom_command(
+    OUTPUT ${GALE_FFI_LIB}
+    COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_ENV} ${GALE_CARGO_RUSTFLAGS_ENV}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      ${GALE_CARGO_FEATURE_ARGS}
+      --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    DEPENDS
+      ${GALE_FFI_DIR}/Cargo.toml
+      ${GALE_FFI_DIR}/src/lib.rs
+      ${GALE_DIR}/plain/src/error.rs
+      ${GALE_DIR}/plain/src/lib.rs
+    COMMENT "Building Gale FFI static library for ${RUST_TARGET} [features: ${GALE_CARGO_FEATURES_STR}]"
+    VERBATIM
+  )
+endif()
 
 add_custom_target(gale_ffi_build DEPENDS ${GALE_FFI_LIB})
 
