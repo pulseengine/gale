@@ -34,7 +34,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: engine-bench-renode-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.run_id }}
   cancel-in-progress: false
 
 # Container default shell is dash; use bash so { ...; } >> file and

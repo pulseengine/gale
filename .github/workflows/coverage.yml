@@ -13,8 +13,8 @@ on:
     branches: [main]
 
 concurrency:
-  group: coverage-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # ── Rust source coverage (cargo-llvm-cov) ─────────────────────────
