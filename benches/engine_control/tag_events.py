@@ -33,6 +33,7 @@ def main(argv: list[str]) -> int:
                     print(f"M,R{run_id},{variant},END")
                 elif (line.startswith("cycles_per_sec,")
                       or line.startswith("target_samples,")
+                      or line.startswith("overhead_cycles,")
                       or line.startswith("build,")):
                     print(f"M,R{run_id},{variant},{line}")
                 elif line.startswith("#"):
