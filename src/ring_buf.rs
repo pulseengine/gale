@@ -595,7 +595,11 @@ pub fn claim_decide(
 ) -> (result: ClaimDecision)
     ensures
         // RB1: a zero-sized buffer yields a zero claim and zero offset.
-        buf_size == 0 ==> result === ClaimDecision { claim_size: 0, buffer_offset: 0 },
+        // Parens around the struct literal are required: Verus's parser
+        // treats unparenthesized struct literals in ensures as
+        // statement-level and rejects them, breaking even
+        // `--verify-module foo` runs (whole-crate parse runs first).
+        buf_size == 0 ==> result === (ClaimDecision { claim_size: 0, buffer_offset: 0 }),
         // RB1: when buf_size > 0 the offset is always in-range.
         buf_size > 0 ==> result.buffer_offset < buf_size,
         // The claim is bounded by the request.
