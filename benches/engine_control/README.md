@@ -86,6 +86,22 @@ measures and what it does NOT measure. That file is the source of
 truth for any downstream copy (blog posts, reports). Do not embed
 scope claims in published copy without first updating SCOPE.md.
 
+## Silicon-anchor protocol
+
+Renode is the CI workhorse; **silicon captures are manual**, periodic,
+and recorded directly into the repo as immutable evidence. See
+[`silicon/README.md`](silicon/README.md) for the procedure, board
+notes, and the `capture.sh` wrapper. Per-board configs live under
+`silicon/boards/`; recorded captures land under `silicon/runs/<dated>/`
+with a manifest, the firmware ELF, and the tagged events CSV.
+
+The first supported board is the NUCLEO-G474RE (STM32G474, Cortex-M4F
++ FPU, 170 MHz) — closest production-shape silicon to the
+`stm32f4_disco` Renode target. The ratio `silicon_median /
+renode_median` per RPM step is what the anchor establishes; once
+consistent across multiple captures it can be cited as the
+Renode-silicon multiplier.
+
 ## Building
 
 ```sh
