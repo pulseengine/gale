@@ -42,8 +42,8 @@ concurrency:
 
 jobs:
   sanitize:
-    name: "${{ matrix.sanitizer }} (ubuntu-22.04)"
-    runs-on: ubuntu-22.04
+    name: "${{ matrix.sanitizer }} (rust-cpu)"
+    runs-on: [self-hosted, linux, x64, rust-cpu]
     timeout-minutes: 45
     strategy:
       fail-fast: false

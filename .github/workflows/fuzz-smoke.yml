@@ -38,7 +38,7 @@ concurrency:
 jobs:
   fuzz:
     name: "${{ matrix.target }} (60s)"
-    runs-on: ubuntu-22.04
+    runs-on: [self-hosted, linux, x64, rust-cpu]
     timeout-minutes: 10
     strategy:
       fail-fast: false
