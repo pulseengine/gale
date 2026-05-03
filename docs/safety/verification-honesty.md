@@ -48,3 +48,38 @@ Option B: Add a nightly/weekly cron job for formal verification (less frequent b
 Option C: Add individual verification tools to GitHub Actions without Bazel (simpler but more workflows)
 
 The seL4 team spent a decade on their proofs. This is honest about where we are.
+
+## Trusted Code: `external_body`, `assume_specification`, and `--no-cheating`
+
+Verus is a partial-correctness checker: it proves what you ask it to prove, given the *trusted base* you declare. Two annotations widen that trusted base, and an honest claim of "verified" must enumerate them:
+
+- **`#[verifier::external_body]`** — Verus does not look inside the function body; it trusts the declared `requires`/`ensures` contract verbatim. Used for FFI shims, raw-pointer arithmetic, and a handful of intrinsics where we model the Zephyr C contract instead of re-proving it.
+- **`assume_specification`** — Verus assumes a specification holds for an *external* function (typically from `core` or `vstd`) without verifying it against the function's body. Used very sparingly.
+
+Running `bazel test //:verus_test` succeeds when the bodies Verus *did* check pass; it does **not** report whether `external_body` and `assume_specification` annotations are sound. The `verus --no-cheating` flag refuses to verify any module that contains either annotation, which is the correct setting for a maximalist soundness claim. Today's gale CI does not pass `--no-cheating` because we accept these trust units; a `--no-cheating` run would correctly fail.
+
+### Trusted-base inventory
+
+133 `#[verifier::external_body]` instances and 2 `assume_specification` calls across the verified surface, concentrated in modules that bridge to C peripherals or low-level memory:
+
+| Module | `external_body` count | What's trusted |
+|---|---:|---|
+| `src/net_buf.rs` | 36 | Network buffer FFI: pointer offsets, raw byte access, `core::ptr` operations |
+| `src/pm.rs` | 22 | Power-management state transitions (hardware registers we don't model) |
+| `src/ipc.rs` | 22 | Inter-process-communication shims (cross-CPU notifications) |
+| `src/mmu.rs` | 20 | Page-table arithmetic and TLB ops |
+| `src/usage.rs` | 18 | CPU-usage statistics counters (atomic increments on shared state) |
+| `src/thread_lifecycle.rs` | 5 | Thread teardown sequences |
+| `src/sched.rs` | 4 | Scheduler entry points called from C |
+| `src/poll.rs` | 3 | `assume_specification` for `core::cell` projections |
+| `src/mpu.rs` | 3 | MPU region setup |
+| **total** | **133** | + 2 `assume_specification` |
+
+### What this means for the headline claim
+
+The "39/39 modules, 805 verified, 0 errors" claim refers to what Verus *checked*. It does NOT mean every line in every module was checked. The 133 `external_body` annotations are the unchecked surface; their correctness is justified by the matching Zephyr C source they shim, not by SMT.
+
+A reader citing the bench numbers should know:
+- The verified bodies are SMT-checked.
+- The `external_body` shims are reviewed-by-eye against the C they bridge to, with FFI-contract docstrings.
+- `verus --no-cheating` would intentionally reject these and is not the gate we run.
