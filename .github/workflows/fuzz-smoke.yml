@@ -32,8 +32,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: fuzz-smoke-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   fuzz:

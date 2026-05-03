@@ -17,8 +17,8 @@ on:
     branches: [main]
 
 concurrency:
-  group: llvm-lto-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Container default shell is /bin/sh → dash on Ubuntu. Scripts in this
 # workflow use bash features (here-strings `<<<`, brace-group

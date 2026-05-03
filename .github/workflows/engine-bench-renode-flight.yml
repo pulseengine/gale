@@ -37,8 +37,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: engine-bench-renode-flight-${{ github.ref }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
   run:
