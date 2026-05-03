@@ -176,6 +176,8 @@ endif()
 # 2 GB of the 64-bit address space (sign-extended 32-bit immediates).
 # Zephyr maps the kernel in the lower address space, so we must use
 # code-model=small (addresses in the lower 2 GB) to match the C code.
+set(GALE_CARGO_EXTRA_ARGS "")
+
 if(CONFIG_X86)
   if(GALE_CARGO_RUSTFLAGS_ENV STREQUAL "")
     set(GALE_CARGO_RUSTFLAGS_ENV "RUSTFLAGS=-Crelocation-model=static -Ccode-model=small")
@@ -184,28 +186,33 @@ if(CONFIG_X86)
            GALE_CARGO_RUSTFLAGS_ENV "${GALE_CARGO_RUSTFLAGS_ENV}")
   endif()
 
-  # Bitcode-merge mismatch on x86_64-unknown-none: the precompiled `core`
-  # rustlib ships bitcode tagged with code-model=kernel (the target's
-  # default). Our `-Ccode-model=small` tags gale-ffi's bitcode with
-  # code-model=small. With ffi/Cargo.toml's release profile `lto = true`
-  # (fat LTO), rustc tries to merge the two bitcode modules and LLVM
-  # rejects the link with:
-  #   warning: linking module flags 'Code Model':
-  #     IDs have conflicting values: 'i32 2' from , and 'i32 1' from gale_ffi...
-  #   error: failed to load bitcode of module "core-...rcgu.o"
-  # Switching to the release-lto profile (lto=false) sidesteps the
-  # bitcode merge — rustc emits a regular static archive. We keep the
-  # rest of the release tuning (opt-level=z, codegen-units=1, panic=abort,
-  # overflow-checks=true). Cortex-M targets are unaffected: their
-  # precompiled core has the same code-model the FFI uses, so fat LTO
-  # works there. (The LLVM+CONFIG_LTO branch above already selects
-  # release-lto for cross-language LTO — this just extends the same
-  # profile choice to plain x86 GCC builds.)
-  if(GALE_CARGO_PROFILE_DIR STREQUAL "release")
-    set(GALE_CARGO_PROFILE_ARGS "--profile" "release-lto")
-    set(GALE_CARGO_PROFILE_DIR "release-lto")
-    message(STATUS "Gale: x86 — using release-lto profile to avoid core bitcode/code-model mismatch")
-  endif()
+  # Two compounding issues with the precompiled `core` rustlib for
+  # x86_64-unknown-none — both root-cause to "core was built with the
+  # target's defaults, which don't match the flags Zephyr needs":
+  #
+  # 1) Its bitcode is tagged code-model=kernel (the target default), but
+  #    we pass -Ccode-model=small to match Zephyr's lower-2 GB kernel
+  #    mapping. Fat LTO can't merge the two:
+  #      warning: linking module flags 'Code Model':
+  #        IDs have conflicting values: 'i32 2' from , and 'i32 1' from gale_ffi...
+  #      error: failed to load bitcode of module "core-...rcgu.o"
+  #
+  # 2) Even with lto=false (the release-lto profile we used to switch to
+  #    as a partial fix), the precompiled core's PIC-emitted symbol
+  #    references trigger:
+  #      ld.bfd: discarded output section: `.got.plt'
+  #      ld.bfd: final link failed
+  #    against Zephyr's non-PIC kernel link script.
+  #
+  # Proper fix: rebuild core from source with our flags via -Zbuild-std.
+  # The rebuilt core picks up RUSTFLAGS=-Ccode-model=small -Crelocation-
+  # model=static (set above), so it's both bitcode-compatible (matches
+  # gale-ffi's code-model) and PIC-free (no GOT/PLT references). Requires
+  # the `rust-src` rustup component AND RUSTC_BOOTSTRAP=1 to permit the
+  # unstable cargo flag on stable rustc. CI installs rust-src in the SMP
+  # test job; see .github/workflows/zephyr-tests.yml.
+  set(GALE_CARGO_EXTRA_ARGS "-Zbuild-std=core")
+  message(STATUS "Gale: x86 — rebuilding core from source via -Zbuild-std (matches code-model + relocation-model)")
 endif()
 
 # --------------------------------------------------------------------------
@@ -227,6 +234,12 @@ set(GALE_CARGO_ENV
   GALE_MAX_SEMS=${CONFIG_GALE_MAX_SEMS}
   GALE_MAX_WAITERS=${CONFIG_GALE_MAX_WAITERS}
 )
+
+# x86 needs RUSTC_BOOTSTRAP=1 to permit -Zbuild-std on stable rustc.
+# See the CONFIG_X86 block above for the full rationale.
+if(CONFIG_X86)
+  list(APPEND GALE_CARGO_ENV "RUSTC_BOOTSTRAP=1")
+endif()
 
 # Collect Cargo features from Kconfig — only compile FFI code for enabled modules
 set(GALE_CARGO_FEATURES "")
@@ -399,7 +412,7 @@ else()
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_ENV} ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       ${GALE_CARGO_FEATURE_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS
@@ -497,7 +510,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
@@ -593,7 +606,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
@@ -687,7 +700,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
@@ -781,7 +794,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
@@ -875,7 +888,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
@@ -969,7 +982,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
@@ -1063,7 +1076,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
@@ -1157,7 +1170,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
@@ -1250,7 +1263,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
@@ -1343,7 +1356,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
@@ -1436,7 +1449,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
@@ -1488,7 +1501,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -1528,7 +1541,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -1568,7 +1581,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -1608,7 +1621,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -1648,7 +1661,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -1688,7 +1701,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -1728,7 +1741,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -1768,7 +1781,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -1808,7 +1821,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -1848,7 +1861,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -1888,7 +1901,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -1928,7 +1941,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -1968,7 +1981,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2016,7 +2029,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2056,7 +2069,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2111,7 +2124,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2156,7 +2169,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2201,7 +2214,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2245,7 +2258,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2285,7 +2298,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2328,7 +2341,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2372,7 +2385,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2415,7 +2428,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2458,7 +2471,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2502,7 +2515,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2545,7 +2558,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2592,7 +2605,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2638,7 +2651,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2687,7 +2700,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
@@ -2774,7 +2787,7 @@ if(NOT TARGET gale_ffi_build)
   add_custom_command(
     OUTPUT ${GALE_FFI_LIB}
     COMMAND ${CMAKE_COMMAND} -E env ${GALE_CARGO_ENV} ${GALE_CARGO_RUSTFLAGS_ENV}
-      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS}
+      cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       ${GALE_CARGO_FEATURE_ARGS}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
     DEPENDS
