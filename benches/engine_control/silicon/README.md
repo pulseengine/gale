@@ -22,7 +22,8 @@ Renode-silicon multiplier for that bench/board combination.
 
 ## Recorded-run-in-git protocol
 
-Every silicon run lives in `silicon/runs/<YYYY-MM-DD>-<board>-<gale-sha>-<variant>/`
+Every silicon run lives in
+`silicon/runs/<YYYY-MM-DD>-<board>-<gale-sha>-<variant>-<tick_source>/`
 and contains:
 
 - `output.csv` — the raw UART capture (firmware-emitted)
@@ -60,24 +61,34 @@ Host setup (one-time):
 - OpenOCD or pyOCD installed (`brew install open-ocd` on macOS, or `apt install openocd`)
 - Python with `pyserial` for the capture script: `pip3 install pyserial`
 
-To take a baseline capture (stock Zephyr):
+A publication-grade anchor on a given board is the **4-run matrix**:
+
+| variant | tick_source | command |
+|---|---|---|
+| baseline | systick | `--variant baseline --tick-source systick` |
+| baseline | lptim   | `--variant baseline --tick-source lptim`   |
+| gale     | systick | `--variant gale     --tick-source systick` |
+| gale     | lptim   | `--variant gale     --tick-source lptim`   |
+
+The two tick-source variants exist because LPTIM has different jitter
+and ISR-overhead characteristics than the Cortex-M default SysTick;
+the `silicon / renode` multiplier is reported per `tick_source`.
 
 ```sh
 cd $GALE_ROOT
-bash benches/engine_control/silicon/capture.sh \
-    --board nucleo_g474re \
-    --variant baseline \
-    --sweep long
+for V in baseline gale; do
+  for T in systick lptim; do
+    bash benches/engine_control/silicon/capture.sh \
+        --board nucleo_g474re \
+        --variant "$V" \
+        --tick-source "$T" \
+        --sweep long
+  done
+done
 ```
 
-To take a gale capture:
-
-```sh
-bash benches/engine_control/silicon/capture.sh \
-    --board nucleo_g474re \
-    --variant gale \
-    --sweep long
-```
+For a smoke run (does the board even talk?), drop `--sweep long`,
+omit `--tick-source` (defaults to `systick`), and pick one variant.
 
 Both invocations:
 
@@ -92,12 +103,14 @@ Both invocations:
    from the date + board).
 7. Write everything into a new `silicon/runs/<dir>/`.
 
-The capture script does not commit. After both variants are
-captured and you've eyeballed `output.csv` for sanity, commit:
+The capture script does not commit. After all four runs are
+captured and you've eyeballed `output.csv` for sanity, commit
+the whole 4-run set together so analyze.py can compute the
+matrix in one pass:
 
 ```sh
-git add benches/engine_control/silicon/runs/<YYYY-MM-DD>-nucleo_g474re-*-{baseline,gale}/
-git commit -m "silicon: NUCLEO-G474RE anchor at gale@<short-sha>"
+git add benches/engine_control/silicon/runs/<YYYY-MM-DD>-nucleo_g474re-*-{baseline,gale}-{systick,lptim}/
+git commit -m "silicon: NUCLEO-G474RE 4-run anchor at gale@<short-sha>"
 ```
 
 ## Comparing silicon vs Renode

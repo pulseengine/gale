@@ -67,6 +67,33 @@ the bus clock the cycle counter ticks at — verify this matches
 170 MHz at runtime by reading the boot banner before relying on
 absolute ns conversions.
 
+## Kernel tick sources
+
+The silicon-anchor protocol captures both Cortex-M SysTick and STM32
+LPTIM as kernel-tick sources, since each has a different jitter,
+drift, and ISR-overhead profile that the published `silicon / renode`
+multiplier may be sensitive to.
+
+| `--tick-source` | Overlay file | Notes |
+|---|---|---|
+| `systick` (default) | none — Cortex-M default | DWT_CYCCNT-aligned tick, ~1700 cycles per 10 µs at 170 MHz |
+| `lptim` | `prj-tick-lptim.conf` | STM32 LPTIM-based tick. See clock-source caveat below. |
+
+### LPTIM clock-source caveat
+
+Zephyr's default LPTIM clock is LSE (32.768 kHz). The bench's
+`CONFIG_SYS_CLOCK_TICKS_PER_SEC=100000` (10 µs granularity) cannot
+run on a 32.768 kHz timer. To make the LPTIM variant apples-to-apples
+with SysTick, layer a device-tree overlay that switches LPTIM1 onto
+PCLK1 (170 MHz / prescaler).
+
+A starter `tick-lptim.overlay` is **not** committed yet — the exact
+G4 device-tree binding for the `clocks` property needs verification
+against `dts/arm/st/g4/stm32g474Xe.dtsi` before it ships. Until that
+overlay lands, the LPTIM variant runs at LSE-derived rates and the
+manifest's `tick_source: lptim` field is the user's signal that the
+two captures are not numerically comparable.
+
 ## Known issues
 
 None yet — populate as captures happen.
