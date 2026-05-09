@@ -62,8 +62,18 @@ target_sources(app PRIVATE
   src/main.c
   src/control.c
   src/tables.c
+  src/smart_dwt.c
 )
 target_include_directories(app PRIVATE src)
+
+# MCU self-monitoring backend: vendor-specific where we have one
+# (currently STM32G4 for the NUCLEO-G474RE silicon-anchor board), the
+# stub on every other target so the CSV row format stays uniform.
+if(CONFIG_SOC_SERIES_STM32G4X)
+  target_sources(app PRIVATE src/smart_mcu_g4.c)
+else()
+  target_sources(app PRIVATE src/smart_mcu_stub.c)
+endif()
 
 # -DENGINE_BENCH_TOTAL_SAMPLES=N on the west build line becomes
 # -DTOTAL_SAMPLES=N to the compiler. Default is 150 (QEMU smoke-test

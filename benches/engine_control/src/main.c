@@ -39,6 +39,8 @@
 #include <string.h>
 
 #include "control.h"
+#include "smart_dwt.h"
+#include "smart_mcu.h"
 
 /* ------------------------------------------------------------- knobs */
 
@@ -240,10 +242,28 @@ static void print_csv_header(void)
 	printf("cycles_per_sec,%u\n", hz);
 	printf("target_samples,%u\n", TOTAL_SAMPLES);
 	printf("# event rows: E,<seq>,<step>,<rpm>,<algo_cycles>,<handoff_cycles>\n");
+	printf("# DWT rows:   D,<at>,<cyccnt>,<cpicnt>,<exccnt>,<sleepcnt>,<lsucnt>,<foldcnt>\n");
+	printf("# health rows:H,<at>,<temp_mC>,<vref_mV>,<vbat_mV>\n");
+
+	struct dwt_snapshot d;
+	smart_dwt_snapshot(&d);
+	smart_dwt_emit("boot", &d);
+
+	struct mcu_health h;
+	smart_mcu_snapshot(&h);
+	smart_mcu_emit("boot", &h);
 }
 
 static void print_csv_footer(void)
 {
+	struct dwt_snapshot d;
+	smart_dwt_snapshot(&d);
+	smart_dwt_emit("end", &d);
+
+	struct mcu_health h;
+	smart_mcu_snapshot(&h);
+	smart_mcu_emit("end", &h);
+
 	printf("drops,%u\n", g_drops);
 	printf("samples,%u\n", count);
 	printf("=== END ===\n");
@@ -314,6 +334,18 @@ static void sweep_driver(void)
 		       (unsigned)count,
 		       budget_exceeded ? " [budget_exceeded]" : "",
 		       drain_timeout   ? " [drain_timeout]"   : "");
+
+		/* Smart-data per-step boundary: DWT + MCU health. Same
+		 * "ISR is quiescent, reader has drained" guarantees as
+		 * the marker printf — no interleaving with E rows. */
+		char tag[16];
+		snprintf(tag, sizeof(tag), "step_%u", (unsigned)(i + 1));
+		struct dwt_snapshot d;
+		smart_dwt_snapshot(&d);
+		smart_dwt_emit(tag, &d);
+		struct mcu_health h;
+		smart_mcu_snapshot(&h);
+		smart_mcu_emit(tag, &h);
 	}
 	/* Final drain. Cap at g_interrupts so we don't hang forever if a
 	 * step hit its budget and produced fewer than planned samples. */
@@ -340,6 +372,12 @@ int main(void)
 	printk("engine_control bench starting "
 	       "(target %u samples, %u sweep steps)\n",
 	       TOTAL_SAMPLES, (unsigned)SWEEP_STEPS);
+
+	/* Bring up smart-data sources before any benchmarking work so the
+	 * boot snapshot in print_csv_header reflects a clean state. DWT
+	 * is universally available on ARMv7-M; MCU health may be a stub. */
+	smart_dwt_enable();
+	(void)smart_mcu_init();
 
 	k_thread_priority_set(k_current_get(), 5);
 

@@ -26,6 +26,12 @@ def main(argv: list[str]) -> int:
                     continue
                 if line.startswith("E,"):
                     print(f"R{run_id},{variant},{line}")
+                elif line.startswith("D,") or line.startswith("H,"):
+                    # Smart-data rows (DWT counters, MCU health
+                    # snapshots) — same R<run>,<variant> prefix as
+                    # event rows so analyze.py can join them against
+                    # the per-run / per-variant samples.
+                    print(f"R{run_id},{variant},{line}")
                 elif (line.startswith("drops,")
                       or line.startswith("samples,")):
                     print(f"M,R{run_id},{variant},{line}")
