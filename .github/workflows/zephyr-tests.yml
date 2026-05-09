@@ -299,12 +299,17 @@ jobs:
         with:
           path: gale
 
-      - name: Install Rust + x86_64 target
+      - name: Install Rust + x86_64 target + rust-src
         run: |
           apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           . /root/.cargo/env
           rustup target add x86_64-unknown-none
+          # rust-src is required by -Zbuild-std=core, which gale's
+          # x86 build path uses to rebuild `core` from source with
+          # matching code-model + relocation-model. See the CONFIG_X86
+          # block in zephyr/CMakeLists.txt for full rationale.
+          rustup component add rust-src
 
       - name: Initialize west workspace
         run: |
