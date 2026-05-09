@@ -109,9 +109,13 @@ jobs:
       - name: Run fuzz target for 3600s
         env:
           TARGET: ${{ matrix.target }}
+        # cargo-fuzz defaults to x86_64-unknown-linux-musl on Linux; libfuzzer-sys
+        # enables -Zsanitizer=address by default and rustc rejects ASan with a
+        # statically-linked musl libc. Pin to gnu, mirroring fuzz-smoke.yml.
         run: |
           mkdir -p fuzz/artifacts fuzz/corpus
           cargo +nightly fuzz run "${TARGET}" \
+            --target x86_64-unknown-linux-gnu \
             -- -max_total_time=3600 -print_final_stats=1
 
       - name: Upload corpus (always)
