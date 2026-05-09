@@ -7,12 +7,19 @@
 #
 # Usage:
 #   capture.sh --board nucleo_g474re --variant {baseline,gale} \
+#              [--tick-source {systick,lptim}] \
 #              [--sweep {short,long}] [--port /dev/cu.usbmodem11403]
 #
 # Defaults:
+#   --tick-source systick  (Cortex-M default; lptim selects the STM32
+#                          LPTIM-based kernel tick — see board README
+#                          for the clock-source caveat)
 #   --sweep short  (use --sweep long for the publication-grade run)
 #   --port: auto-detect first /dev/cu.usbmodem* (macOS) or
 #           /dev/ttyACM0 (Linux). Override if multiple boards present.
+#
+# A publication-grade anchor on a given board is the 4-run matrix:
+#   variant ∈ {baseline, gale}  ×  tick_source ∈ {systick, lptim}.
 
 set -euo pipefail
 
@@ -21,15 +28,17 @@ BOARD=""
 VARIANT=""
 SWEEP="short"
 PORT=""
+TICK_SOURCE="systick"
 SILICON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GALE_ROOT="$(cd "${SILICON_DIR}/../../.." && pwd)"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --board)   BOARD="$2"; shift 2 ;;
-    --variant) VARIANT="$2"; shift 2 ;;
-    --sweep)   SWEEP="$2"; shift 2 ;;
-    --port)    PORT="$2"; shift 2 ;;
+    --board)        BOARD="$2"; shift 2 ;;
+    --variant)      VARIANT="$2"; shift 2 ;;
+    --sweep)        SWEEP="$2"; shift 2 ;;
+    --port)         PORT="$2"; shift 2 ;;
+    --tick-source)  TICK_SOURCE="$2"; shift 2 ;;
     -h|--help)
       awk '/^set -/{exit} NR>1{sub(/^# ?/, ""); print}' "$0"; exit 0 ;;
     *)
@@ -44,6 +53,9 @@ case "$VARIANT" in baseline|gale) ;; *)
 esac
 case "$SWEEP" in short|long) ;; *)
   echo "--sweep must be 'short' or 'long'" >&2; exit 2 ;;
+esac
+case "$TICK_SOURCE" in systick|lptim) ;; *)
+  echo "--tick-source must be 'systick' or 'lptim'" >&2; exit 2 ;;
 esac
 
 # Verify board overlay exists in our silicon/boards/ tree
@@ -61,8 +73,8 @@ GALE_SHA_FULL="$(git -C "$GALE_ROOT" rev-parse HEAD)"
 GALE_SHA="${GALE_SHA_FULL:0:8}"
 DATE="$(date -u +%Y-%m-%d)"
 RUNS_DIR_BASE="${SILICON_DIR}/runs"
-RUN_DIR="${RUNS_DIR_BASE}/${DATE}-${BOARD}-${GALE_SHA}-${VARIANT}"
-BUILD_DIR="/tmp/silicon-${BOARD}-${VARIANT}"
+RUN_DIR="${RUNS_DIR_BASE}/${DATE}-${BOARD}-${GALE_SHA}-${VARIANT}-${TICK_SOURCE}"
+BUILD_DIR="/tmp/silicon-${BOARD}-${VARIANT}-${TICK_SOURCE}"
 
 if [[ -d "$RUN_DIR" ]]; then
   echo "ERROR: run dir already exists: $RUN_DIR" >&2
@@ -85,28 +97,36 @@ if [[ -z "$PORT" ]]; then
 fi
 
 # --------------------------------------------------------------------- build
-echo "==> Building $VARIANT for $BOARD (sweep=$SWEEP)"
+echo "==> Building $VARIANT for $BOARD (sweep=$SWEEP, tick=$TICK_SOURCE)"
 WEST_ARGS=( -b "$BOARD" -d "$BUILD_DIR" -s "${GALE_ROOT}/benches/engine_control" )
 WEST_DEFINES=( -DENGINE_BENCH_SWEEP="$SWEEP" )
 
-# Layer the board's silicon-overlay if it has anything.
+# Compose OVERLAY_CONFIG from up to three layers, in deterministic order:
+#   1. gale primitive overlay      (only when --variant gale)
+#   2. board silicon-overlay       (board-specific defaults)
+#   3. tick-source overlay         (only when not the board's default tick)
+# Zephyr semantics: later overlays override earlier ones.
+OVERLAYS=()
+[[ "$VARIANT" == "gale" ]] && OVERLAYS+=("${GALE_ROOT}/benches/engine_control/prj-gale.conf")
+
 BOARD_OVERLAY="${BOARD_DIR}/prj.conf"
-if [[ -s "$BOARD_OVERLAY" ]]; then
-  # If gale variant, append after the gale overlay; if baseline, this
-  # is the only overlay.
-  if [[ "$VARIANT" == "gale" ]]; then
-    WEST_DEFINES+=(
-      -DZEPHYR_EXTRA_MODULES="$GALE_ROOT"
-      -DOVERLAY_CONFIG="${GALE_ROOT}/benches/engine_control/prj-gale.conf;${BOARD_OVERLAY}"
-    )
-  else
-    WEST_DEFINES+=( -DOVERLAY_CONFIG="${BOARD_OVERLAY}" )
+[[ -s "$BOARD_OVERLAY" ]] && OVERLAYS+=("$BOARD_OVERLAY")
+
+# Tick-source overlay: only layered when the user picked a non-default
+# tick. SysTick is the Cortex-M default so its overlay (if any) is opt-in.
+TICK_OVERLAY="${BOARD_DIR}/prj-tick-${TICK_SOURCE}.conf"
+if [[ "$TICK_SOURCE" != "systick" ]]; then
+  if [[ ! -s "$TICK_OVERLAY" ]]; then
+    echo "no tick-source overlay for '$TICK_SOURCE' at $TICK_OVERLAY" >&2
+    exit 2
   fi
-elif [[ "$VARIANT" == "gale" ]]; then
-  WEST_DEFINES+=(
-    -DZEPHYR_EXTRA_MODULES="$GALE_ROOT"
-    -DOVERLAY_CONFIG="${GALE_ROOT}/benches/engine_control/prj-gale.conf"
-  )
+  OVERLAYS+=("$TICK_OVERLAY")
+fi
+
+[[ "$VARIANT" == "gale" ]] && WEST_DEFINES+=( -DZEPHYR_EXTRA_MODULES="$GALE_ROOT" )
+if [[ ${#OVERLAYS[@]} -gt 0 ]]; then
+  IFS=';' WEST_DEFINES+=( -DOVERLAY_CONFIG="${OVERLAYS[*]}" )
+  unset IFS
 fi
 
 rm -rf "$BUILD_DIR"
@@ -157,6 +177,7 @@ MANIFEST="$RUN_DIR/manifest.txt"
   echo "captured_at:           $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "board:                 ${BOARD}"
   echo "variant:               ${VARIANT}"
+  echo "tick_source:           ${TICK_SOURCE}"
   echo "sweep:                 ${SWEEP}"
   echo "gale_sha:              ${GALE_SHA_FULL}"
   echo "gale_status:           $(cd "$GALE_ROOT" && git status --porcelain | wc -l | tr -d ' ') uncommitted file(s)"
@@ -182,6 +203,7 @@ echo "=========================================================="
 echo " Silicon capture complete"
 echo "  board:        $BOARD"
 echo "  variant:      $VARIANT"
+echo "  tick_source:  $TICK_SOURCE"
 echo "  sweep:        $SWEEP"
 echo "  events:       $(grep -c '^E,' "$RUN_DIR/output.csv" || echo 0)"
 echo "  manifest:     $MANIFEST"
@@ -191,8 +213,9 @@ echo
 echo "Next steps:"
 echo "  1) sanity-check the output: head -20 $RUN_DIR/output.csv"
 echo "  2) commit the run dir:"
-echo "       git add benches/engine_control/silicon/runs/${DATE}-${BOARD}-${GALE_SHA}-${VARIANT}"
-echo "  3) (after both variants captured) compare against the matching Renode CI:"
+echo "       git add benches/engine_control/silicon/runs/${DATE}-${BOARD}-${GALE_SHA}-${VARIANT}-${TICK_SOURCE}"
+echo "  3) (after all 4 variant×tick_source runs captured) compare against"
+echo "     the matching Renode CI:"
 echo "       python3 benches/engine_control/analyze.py \\"
-echo "         --baseline silicon/runs/${DATE}-${BOARD}-${GALE_SHA}-baseline/events.csv \\"
-echo "         --gale     silicon/runs/${DATE}-${BOARD}-${GALE_SHA}-gale/events.csv"
+echo "         --baseline silicon/runs/${DATE}-${BOARD}-${GALE_SHA}-baseline-${TICK_SOURCE}/events.csv \\"
+echo "         --gale     silicon/runs/${DATE}-${BOARD}-${GALE_SHA}-gale-${TICK_SOURCE}/events.csv"
