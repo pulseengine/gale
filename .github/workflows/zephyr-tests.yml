@@ -322,11 +322,13 @@ jobs:
           export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
           export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
           cd zephyr-workspace
-          west build -b qemu_x86_64 \
-            -s "zephyr/${TEST_PATH}" \
-            -- \
-            -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
-            -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf;${GALE_ROOT}/zephyr/gale_smp_overlay.conf"
+          # EXPERIMENT (do not merge): omit -DZEPHYR_EXTRA_MODULES and
+          # -DOVERLAY_CONFIG so the SMP tests build vanilla Zephyr with
+          # no Gale module. PR #38 + #41 ruled out the three Gale SMP
+          # shim Kconfigs as the smp_mutex/smp_threads AP-startup hang
+          # source. This run answers the next discriminator: does the
+          # hang reproduce without Gale at all?
+          west build -b qemu_x86_64 -s "zephyr/${TEST_PATH}"
           timeout 300 west build -t run 2>&1 | tee test.log
           if grep -q "PROJECT EXECUTION SUCCESSFUL" test.log; then
             echo "PASS"
