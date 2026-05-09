@@ -31,7 +31,7 @@ while [[ $# -gt 0 ]]; do
     --sweep)   SWEEP="$2"; shift 2 ;;
     --port)    PORT="$2"; shift 2 ;;
     -h|--help)
-      sed -n '1,/^set -/p' "$0" | sed -n 's/^# \?//p'; exit 0 ;;
+      awk '/^set -/{exit} NR>1{sub(/^# ?/, ""); print}' "$0"; exit 0 ;;
     *)
       echo "unknown arg: $1" >&2; exit 2 ;;
   esac
@@ -168,8 +168,8 @@ MANIFEST="$RUN_DIR/manifest.txt"
   echo "zephyr_sha:            $(git -C "$ZEPHYR_BASE" rev-parse HEAD 2>/dev/null || echo unknown)"
   echo "sdk_dir:               ${ZEPHYR_SDK_INSTALL_DIR:-auto-detected by west}"
   echo "elf_sha256:            ${ELF_SHA}"
-  echo "csv_sha256:            $(sha256sum "$RUN_DIR/output.csv" 2>/dev/null \
-                                || shasum -a 256 "$RUN_DIR/output.csv") | awk '{print $1}'"
+  echo "csv_sha256:            $({ sha256sum "$RUN_DIR/output.csv" 2>/dev/null \
+                                  || shasum -a 256 "$RUN_DIR/output.csv"; } | awk '{print $1}')"
   echo "csv_bytes:             $(wc -c < "$RUN_DIR/output.csv" | tr -d ' ')"
   echo "csv_event_lines:       $(grep -c '^E,' "$RUN_DIR/output.csv" || echo 0)"
   echo "serial_port:           ${PORT}"
