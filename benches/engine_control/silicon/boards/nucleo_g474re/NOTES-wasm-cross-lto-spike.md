@@ -97,7 +97,56 @@ unpacked via generic shifts instead of a direct field access.
 
 Both are fixable in synth's backend.
 
-## Action items (filed against pulseengine/synth and pulseengine/loom)
+## Full integration attempt + new finding — synth memset is broken
+
+After the initial spike I attempted full integration into the bench
+to get silicon-measurable timing. The integration path:
+
+  1. Edit `zephyr/gale_sem.c` to wrap `z_impl_k_sem_give` in
+     `#ifndef GALE_WASM_LTO_OVERRIDE_SEM_GIVE` so the bench's native
+     compilation skips it.
+  2. Build merged.wasm via wasm-ld → synth → ARM ET_REL.
+  3. Wrap merged.o in libgale_ffi.a using arm-zephyr-eabi-ar (not
+     Apple ar — Apple ar's ranlib doesn't index ARM ELF symbols
+     correctly, archive shows up as "no global symbols").
+  4. Place the merged libgale_ffi.a at the bench's expected path
+     (replacing the rustc-direct cargo output).
+  5. Build with `-DEXTRA_CFLAGS=-DGALE_WASM_LTO_OVERRIDE_SEM_GIVE=1
+     -DEXTRA_LDFLAGS=-Wl,--allow-multiple-definition`.
+
+The build succeeded — final ELF: 219 KB FLASH (vs LTO's 26 KB), 66 KB
+RAM. Linker warnings about `.meld_import_table` orphan section
+(synth-emitted, lands at VMA 0 in non-loaded section, harmless).
+
+**But the chip doesn't boot.** PC stays in the synth-emitted `memset`
+function (`0x0802c614`, 454 bytes) for >10 seconds, bouncing between
+0x0802c668 and 0x0802c67e — a tight inner loop that doesn't terminate
+correctly on the boundaries Zephyr's startup uses. Zephyr's z_bss_zero
+calls memset(bss_start, 0, bss_size); synth's memset never returns.
+
+Workaround attempts that didn't stick:
+- `--allow-multiple-definition` + `objcopy --weaken-symbol=memset`:
+  weak-vs-strong resolution didn't override; ld picked synth's.
+- `objcopy --redefine-sym memset=__synth_memset`: renamed the C-symbol
+  but the Rust mangled `_ZN17compiler_builtins3mem6memset17h...E`
+  remained, and the final ELF still resolves `memset` to synth's
+  buggy code at 0x0802c614 (the bytes are still there from merged.o's
+  .text section).
+- `objcopy --strip-symbol=memset`: removes the symbol table entry
+  but doesn't remove the bytes; ld still places synth's code at
+  0x0802c614 and exposes it as `memset` from another reference.
+
+The root cause is that synth's wasm-to-ARM lowering of memset
+produces a loop that doesn't terminate on the boundaries Zephyr's
+startup uses (`memset(bss, 0, bss_size)` where bss_size is in bytes,
+8-byte aligned). The synth output disassembles to a pattern with
+`subs.w r3, r2, #32; bpl.n ...; rsb r3, r2, #32; lsl.w r3, r1, r3 …`
+which is the i64-shift-with-bytecount pattern from Rust's u64
+left-shift implementation — synth seems to have lowered memset's
+inner loop using i64 shift operations that don't apply to byte
+counts.
+
+## Action items, updated (3 synth bugs, 1 loom bug)
 
 ### loom — Z3 i64 sort handling
 
@@ -113,19 +162,57 @@ LLVM-LTO.
 
 ### synth — codegen patterns
 
-1. **u64-packed FFI return unpacking:** when synth lowers a wasm
+1. **memset/memcpy/memmove are MIS-COMPILED** (newly discovered, severity:
+   blocker). Synth's wasm→ARM lowering of compiler_builtins' memset
+   produces a non-terminating loop on Zephyr's startup
+   `memset(bss, 0, sizeof(bss))` invocation. The chip hangs in
+   memset+0x4c forever. Until this is fixed, no integration of
+   merged-wasm into a real bench can boot. **First-priority fix.**
+
+2. **u64-packed FFI return unpacking:** when synth lowers a wasm
    function that returns i64 and the caller immediately bit-masks
    into byte-fields, recognize the packed-struct-return pattern and
    emit register-direct field access (no shifts). Reduces LTO-parity
-   gap by ~50% of the size delta.
-2. **wasm linear-memory access lowering:** when a wasm `i32.load` is
+   gap by ~50% of the size delta. Same root issue as memset's bug —
+   synth's i64 codegen is incomplete.
+
+3. **wasm linear-memory access lowering:** when a wasm `i32.load` is
    from a constant address that's known to be in `.data`, emit
    `ldr rN, [base, #imm]` instead of `movw + movt + ldr`. Reduces
    another ~20% of the size delta.
 
-With both fixes applied, the wasm-LTO route should approach LLVM-LTO
-parity (within ~10% on silicon cycles) while delivering the
-verification-by-construction property LLVM-LTO doesn't have.
+With (1) fixed, the wasm-LTO bench will boot and we get measurable
+silicon cycles. With (2)+(3) on top, the wasm-LTO route should
+approach LLVM-LTO parity (within ~10% on silicon cycles) while
+delivering the verification-by-construction property LLVM-LTO doesn't
+have.
+
+## What we have data-to-compare on
+
+  Silicon (sha b48a81ac/f6f61281):
+    baseline (no Gale, ADC=n)              528 cyc handoff median
+    rustc-direct gale (ADC=n)              574 cyc (+46 = FFI seam)
+    gale via wasm→synth (Rust only, ADC=y) 582 cyc (seam preserved)
+    LLVM-LTO gale (ADC=n)                  471 cyc (-57 below baseline)
+    LLVM-LTO gale (ADC=y, post-fix)        558 cyc (+52 above baseline)
+    wasm-LTO via wasm-ld+synth (ADC=y)     ELF builds, chip won't boot
+
+  Toolchain-level:
+    wasm-ld merge + arm-zephyr-eabi-ar     works
+    synth inlining via merged-module       works (no bl in z_impl_k_sem_give)
+    synth emitted body size                138 bytes (1.68x LTO's 82 bytes)
+    synth memset codegen                   broken (infinite loop)
+    loom inline_functions                  broken (Z3 SortDiffers on i64)
+
+The **structural claim** holds: the wasm-LTO toolchain (meld/wasm-ld → loom
+→ synth) inlines through the C↔Rust seam. The disassembly evidence is
+robust — synth's emitted ARM has zero `bl gale_k_sem_give_decide` in
+the inlined `z_impl_k_sem_give`.
+
+The **silicon-cycle claim** requires fixes upstream: the memset bug
+blocks boot, and the i64 codegen patterns prevent LTO parity once we
+get there. Two PRs against pulseengine/synth and one against
+pulseengine/loom.
 
 ## Why this matters for the publication
 
