@@ -44,7 +44,15 @@
 
 /* ------------------------------------------------------------- knobs */
 
-#define RING_CAPACITY_SAMPLES  256
+/* Sized to absorb the biggest single-step ISR burst on real silicon
+ * without dropping. The long-sweep's largest step is 1000 samples
+ * (steps 3-7); even with the reader stuck on a full UART buffer for
+ * the duration of the burst, 2048 fits 1000 with headroom. RAM cost:
+ * 2048 × sizeof(crank_sample) ≈ 32 KB on STM32G4 (16 KB→48 KB,
+ * 12% → 37% of the 128 KB SRAM). Previous value (256) caused 56%
+ * sample drops at high RPM under 115200-baud UART throughput,
+ * biasing per-RPM medians. */
+#define RING_CAPACITY_SAMPLES  2048
 
 struct sweep_step {
 	uint32_t rpm;
