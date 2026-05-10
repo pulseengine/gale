@@ -125,6 +125,12 @@ static volatile uint32_t g_interrupts = 0U;
  * could notice the sample count had been reached. */
 static volatile uint32_t g_fire_budget = 0U;
 
+/* End-of-sweep handshake. sweep_driver sets this true after its final
+ * drain; reader_loop polls it (with a short k_sem_take timeout) so
+ * the bench terminates cleanly even when high-RPM steps drop samples
+ * and `count` plateaus below TOTAL_SAMPLES. */
+static volatile bool g_sweep_done = false;
+
 /* Side-channel array for handoff_cycles. The ISR measures t_exit AFTER
  * ring_buf_put (which is the point — handoff cost includes the put +
  * sem_give). But by then the sample bytes are already in the ring, so
@@ -216,14 +222,28 @@ static void emit_event(const struct crank_sample *s)
 
 static void reader_loop(void)
 {
-	while (count < TOTAL_SAMPLES) {
-		k_sem_take(&data_ready, K_FOREVER);
+	/* Exit when sweep_driver has signalled done AND the ring is fully
+	 * drained. Use a 500 ms semaphore timeout so we wake periodically
+	 * to re-check the exit condition even if no samples are arriving
+	 * (which is the normal end-of-sweep state). The previous design
+	 * waited K_FOREVER on the semaphore and exited only when
+	 * `count >= TOTAL_SAMPLES`, which hangs the bench whenever a
+	 * step drops samples (count never catches up). */
+	while (!g_sweep_done
+	       || ring_buf_size_get(&sample_ring) >= sizeof(struct crank_sample)) {
+		if (k_sem_take(&data_ready, K_MSEC(500)) != 0) {
+			/* Semaphore timeout — loop back and re-check the exit
+			 * condition. If the sweep is still firing, the next
+			 * sample will give the semaphore quickly. If we're at
+			 * end-of-sweep, the loop guard will see g_sweep_done
+			 * and exit. */
+			continue;
+		}
 		struct crank_sample s;
 		while (ring_buf_get(&sample_ring, (uint8_t *)&s, sizeof(s))
 		       == sizeof(s)) {
 			emit_event(&s);
 			count++;
-			if (count >= TOTAL_SAMPLES) break;
 		}
 	}
 }
@@ -311,12 +331,13 @@ static void sweep_driver(void)
 		/* Drain between steps — the reader emits events over UART
 		 * which is the slow path. Without this back-pressure the
 		 * ring fills and subsequent ISRs drop samples. We wait for
-		 * the reader to catch up (or give up after a generous
-		 * ceiling so a stuck UART doesn't hang CI forever). */
+		 * the ring to actually empty (rather than count to hit
+		 * `target`, which can never happen when high-RPM steps drop
+		 * samples). 30s ceiling so a stuck UART doesn't hang CI. */
+		(void)start_ints;  /* sweep-step diagnostics only — see step printf below */
 		uint32_t drain_t0 = k_uptime_get_32();
-		uint32_t target = start_ints + sweep[i].samples;
 		bool drain_timeout = false;
-		while (count < target && count < g_interrupts) {
+		while (ring_buf_size_get(&sample_ring) >= sizeof(struct crank_sample)) {
 			if ((k_uptime_get_32() - drain_t0) > 30000U) {
 				drain_timeout = true;
 				break;
@@ -347,16 +368,20 @@ static void sweep_driver(void)
 		smart_mcu_snapshot(&h);
 		smart_mcu_emit(tag, &h);
 	}
-	/* Final drain. Cap at g_interrupts so we don't hang forever if a
-	 * step hit its budget and produced fewer than planned samples. */
+	/* Final drain — wait for the ring to fully empty so the reader can
+	 * emit any in-flight samples before we signal end-of-sweep. */
 	uint32_t final_t0 = k_uptime_get_32();
-	while (count < TOTAL_SAMPLES && count < g_interrupts) {
+	while (ring_buf_size_get(&sample_ring) >= sizeof(struct crank_sample)) {
 		if ((k_uptime_get_32() - final_t0) > 30000U) {
 			printk("final drain timeout; count=%u\n", (unsigned)count);
 			break;
 		}
 		k_msleep(5);
 	}
+	/* Signal end-of-sweep. reader_loop polls this with a 500 ms
+	 * semaphore timeout and exits cleanly even when high-RPM steps
+	 * dropped samples (count plateaus below TOTAL_SAMPLES). */
+	g_sweep_done = true;
 }
 
 /* -------------------------------------------------------------- main */
