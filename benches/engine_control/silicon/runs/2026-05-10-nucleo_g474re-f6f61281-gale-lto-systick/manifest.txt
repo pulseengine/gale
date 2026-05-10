@@ -1,0 +1,22 @@
+# Silicon-anchor manifest
+# LTO build with ADC=y, ISR_TABLES_LOCAL_DECLARATION dropped (the fix)
+captured_at:           2026-05-10T12:22:09Z
+board:                 nucleo_g474re
+variant:               gale-lto
+adc_enabled:           true
+lto_overlay_modified:  CONFIG_ISR_TABLES_LOCAL_DECLARATION removed (was the boot-crash trigger)
+tick_source:           systick
+sweep:                 long
+flash_runner:          openocd
+gale_sha:              f6f6128148d12e33603a5bf2b386a0a569e0c234
+host:                  Darwin 25.3.0 arm64
+clang:                 Homebrew clang version 21.1.8
+lld:                   Homebrew LLD 21.1.8 (compatible with GNU linkers)
+rustc:                 rustc 1.94.1 (e408947bf 2026-03-25)
+zephyr_sha:            fc4d89c118fc1d0ff0ad31906a4fa4bd252c9ced
+sdk_dir:               /Volumes/Home/zephyr-sdk/zephyr-sdk-1.0.1
+elf_sha256:            93eadb36a246706b867ebfff74c439640c5de7e28e58e39f9b0720e679e109c0
+csv_sha256:            52e5babfcdd81c5eab4ef9edb2254a23cc69561c956c9ed12f471441a4791931
+csv_bytes:             169963
+csv_event_lines:       7321
+serial_port:           /dev/cu.usbmodem132203
