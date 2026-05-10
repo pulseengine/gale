@@ -1,0 +1,23 @@
+# Silicon-anchor manifest
+# Produced by benches/engine_control/silicon/capture.sh
+captured_at:           2026-05-10T07:33:52Z
+board:                 nucleo_g474re
+variant:               baseline
+tick_source:           systick
+sweep:                 long
+flash_runner:          openocd
+gale_sha:              8a4d817d1c414797f234cb1f7c0b8f3ddbbbaf41
+gale_status:           1 uncommitted file(s)
+host:                  Darwin 25.3.0 arm64
+rustc:                 rustc 1.94.1 (e408947bf 2026-03-25)
+cargo:                 cargo 1.94.1 (29ea6fb6a 2026-03-24)
+west:                  West version: v1.5.0
+zephyr_base:           /Volumes/Home/git/pulseengine/zephyr
+zephyr_sha:            fc4d89c118fc1d0ff0ad31906a4fa4bd252c9ced
+sdk_dir:               /Volumes/Home/zephyr-sdk/zephyr-sdk-1.0.1
+elf_sha256:            5b73e47f7277da0644086844826a8985b143741c259b3a285dcdbdec0f3ee6b4
+csv_sha256:            8e6ee18697503e42eac221ed127ae4e466eb3721b657ab46eb7395ed8d807163
+csv_bytes:             170637
+csv_event_lines:       7353
+serial_port:           /dev/cu.usbmodem132203
+capture_timeout_s:     1800
