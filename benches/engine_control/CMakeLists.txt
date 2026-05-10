@@ -66,10 +66,12 @@ target_sources(app PRIVATE
 )
 target_include_directories(app PRIVATE src)
 
-# MCU self-monitoring backend: vendor-specific where we have one
-# (currently STM32G4 for the NUCLEO-G474RE silicon-anchor board), the
-# stub on every other target so the CSV row format stays uniform.
-if(CONFIG_SOC_SERIES_STM32G4X)
+# MCU self-monitoring backend: vendor-specific where we have one AND
+# the ADC is enabled. The G4 backend uses Zephyr's ADC API; on builds
+# that explicitly disable ADC (e.g. the LTO experiments where the
+# ADC IRQ-table interaction crashes the chip), fall back to the stub
+# so the CSV row format stays uniform regardless of the variant.
+if(CONFIG_SOC_SERIES_STM32G4X AND CONFIG_ADC)
   target_sources(app PRIVATE src/smart_mcu_g4.c)
 else()
   target_sources(app PRIVATE src/smart_mcu_stub.c)
