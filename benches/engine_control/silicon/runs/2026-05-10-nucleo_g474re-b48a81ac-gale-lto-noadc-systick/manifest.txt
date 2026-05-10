@@ -1,0 +1,23 @@
+# Silicon-anchor manifest
+# Produced by manual flash/capture pipeline (LTO + control experiments)
+captured_at:           2026-05-10T11:22:21Z
+board:                 nucleo_g474re
+variant:               gale-lto
+adc_enabled:           false
+dt_overrides:          adc1=disabled
+tick_source:           systick
+sweep:                 long
+flash_runner:          openocd
+gale_sha:              b48a81ac69cbcb6c50495d31b603d910f73a85d5
+gale_status:           clean
+host:                  Darwin 25.3.0 arm64
+rustc:                 rustc 1.94.1 (e408947bf 2026-03-25)
+zephyr_base:           /Volumes/Home/git/pulseengine/zephyr
+zephyr_sha:            fc4d89c118fc1d0ff0ad31906a4fa4bd252c9ced
+sdk_dir:               /Volumes/Home/zephyr-sdk/zephyr-sdk-1.0.1
+elf_sha256:            318f5f46bc3bfa13de908812cb8402f34b0b73910cc64f81cfca6e6dd0bd938d
+csv_sha256:            f6d40f7b487d8d91258de1cca38db825d199aa6d785407cb5e138b0c09cd8115
+csv_bytes:             170676
+csv_event_lines:       7318
+serial_port:           /dev/cu.usbmodem132203
+capture_timeout_s:     1800

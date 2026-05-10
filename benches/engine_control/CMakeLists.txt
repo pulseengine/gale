@@ -62,8 +62,20 @@ target_sources(app PRIVATE
   src/main.c
   src/control.c
   src/tables.c
+  src/smart_dwt.c
 )
 target_include_directories(app PRIVATE src)
+
+# MCU self-monitoring backend: vendor-specific where we have one AND
+# the ADC is enabled. The G4 backend uses Zephyr's ADC API; on builds
+# that explicitly disable ADC (e.g. the LTO experiments where the
+# ADC IRQ-table interaction crashes the chip), fall back to the stub
+# so the CSV row format stays uniform regardless of the variant.
+if(CONFIG_SOC_SERIES_STM32G4X AND CONFIG_ADC)
+  target_sources(app PRIVATE src/smart_mcu_g4.c)
+else()
+  target_sources(app PRIVATE src/smart_mcu_stub.c)
+endif()
 
 # -DENGINE_BENCH_TOTAL_SAMPLES=N on the west build line becomes
 # -DTOTAL_SAMPLES=N to the compiler. Default is 150 (QEMU smoke-test

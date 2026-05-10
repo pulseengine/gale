@@ -1,0 +1,43 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ * Copyright (c) 2026 PulseEngine
+ *
+ * NUCLEO-G474RE bench overlay — enable ADC1 internal channels
+ * for smart-data MCU health snapshots.
+ *
+ * Zephyr's stock nucleo_g474re DTS leaves ADC1 disabled; the
+ * silicon-anchor protocol needs it to read the on-die temperature
+ * sensor (TS, channel 16) and internal reference (VREFINT,
+ * channel 18) so the H-row in the captured CSV records actual
+ * thermal and supply state alongside the algorithm timings.
+ *
+ * Channel numbers per STM32G474RE reference manual RM0440 §21.4.31
+ * (ADC channels) — TS = IN16, VREFINT = IN18.
+ */
+
+&adc1 {
+	status = "okay";
+	st,adc-clock-source = "SYNC";
+	st,adc-prescaler = <4>;
+	pinctrl-0 = <>;
+	pinctrl-names = "default";
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	channel@10 {
+		reg = <16>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME_MAX>;
+		zephyr,resolution = <12>;
+	};
+
+	channel@12 {
+		reg = <18>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME_MAX>;
+		zephyr,resolution = <12>;
+	};
+};

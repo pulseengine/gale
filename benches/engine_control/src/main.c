@@ -39,10 +39,20 @@
 #include <string.h>
 
 #include "control.h"
+#include "smart_dwt.h"
+#include "smart_mcu.h"
 
 /* ------------------------------------------------------------- knobs */
 
-#define RING_CAPACITY_SAMPLES  256
+/* Sized to absorb the biggest single-step ISR burst on real silicon
+ * without dropping. The long-sweep's largest step is 1000 samples
+ * (steps 3-7); even with the reader stuck on a full UART buffer for
+ * the duration of the burst, 2048 fits 1000 with headroom. RAM cost:
+ * 2048 × sizeof(crank_sample) ≈ 32 KB on STM32G4 (16 KB→48 KB,
+ * 12% → 37% of the 128 KB SRAM). Previous value (256) caused 56%
+ * sample drops at high RPM under 115200-baud UART throughput,
+ * biasing per-RPM medians. */
+#define RING_CAPACITY_SAMPLES  2048
 
 struct sweep_step {
 	uint32_t rpm;
@@ -122,6 +132,12 @@ static volatile uint32_t g_interrupts = 0U;
  * would fire hundreds of times before the driver's k_msleep(1) poll
  * could notice the sample count had been reached. */
 static volatile uint32_t g_fire_budget = 0U;
+
+/* End-of-sweep handshake. sweep_driver sets this true after its final
+ * drain; reader_loop polls it (with a short k_sem_take timeout) so
+ * the bench terminates cleanly even when high-RPM steps drop samples
+ * and `count` plateaus below TOTAL_SAMPLES. */
+static volatile bool g_sweep_done = false;
 
 /* Side-channel array for handoff_cycles. The ISR measures t_exit AFTER
  * ring_buf_put (which is the point — handoff cost includes the put +
@@ -214,14 +230,28 @@ static void emit_event(const struct crank_sample *s)
 
 static void reader_loop(void)
 {
-	while (count < TOTAL_SAMPLES) {
-		k_sem_take(&data_ready, K_FOREVER);
+	/* Exit when sweep_driver has signalled done AND the ring is fully
+	 * drained. Use a 500 ms semaphore timeout so we wake periodically
+	 * to re-check the exit condition even if no samples are arriving
+	 * (which is the normal end-of-sweep state). The previous design
+	 * waited K_FOREVER on the semaphore and exited only when
+	 * `count >= TOTAL_SAMPLES`, which hangs the bench whenever a
+	 * step drops samples (count never catches up). */
+	while (!g_sweep_done
+	       || ring_buf_size_get(&sample_ring) >= sizeof(struct crank_sample)) {
+		if (k_sem_take(&data_ready, K_MSEC(500)) != 0) {
+			/* Semaphore timeout — loop back and re-check the exit
+			 * condition. If the sweep is still firing, the next
+			 * sample will give the semaphore quickly. If we're at
+			 * end-of-sweep, the loop guard will see g_sweep_done
+			 * and exit. */
+			continue;
+		}
 		struct crank_sample s;
 		while (ring_buf_get(&sample_ring, (uint8_t *)&s, sizeof(s))
 		       == sizeof(s)) {
 			emit_event(&s);
 			count++;
-			if (count >= TOTAL_SAMPLES) break;
 		}
 	}
 }
@@ -240,10 +270,28 @@ static void print_csv_header(void)
 	printf("cycles_per_sec,%u\n", hz);
 	printf("target_samples,%u\n", TOTAL_SAMPLES);
 	printf("# event rows: E,<seq>,<step>,<rpm>,<algo_cycles>,<handoff_cycles>\n");
+	printf("# DWT rows:   D,<at>,<cyccnt>,<cpicnt>,<exccnt>,<sleepcnt>,<lsucnt>,<foldcnt>\n");
+	printf("# health rows:H,<at>,<temp_mC>,<vref_mV>,<vbat_mV>\n");
+
+	struct dwt_snapshot d;
+	smart_dwt_snapshot(&d);
+	smart_dwt_emit("boot", &d);
+
+	struct mcu_health h;
+	smart_mcu_snapshot(&h);
+	smart_mcu_emit("boot", &h);
 }
 
 static void print_csv_footer(void)
 {
+	struct dwt_snapshot d;
+	smart_dwt_snapshot(&d);
+	smart_dwt_emit("end", &d);
+
+	struct mcu_health h;
+	smart_mcu_snapshot(&h);
+	smart_mcu_emit("end", &h);
+
 	printf("drops,%u\n", g_drops);
 	printf("samples,%u\n", count);
 	printf("=== END ===\n");
@@ -291,12 +339,13 @@ static void sweep_driver(void)
 		/* Drain between steps — the reader emits events over UART
 		 * which is the slow path. Without this back-pressure the
 		 * ring fills and subsequent ISRs drop samples. We wait for
-		 * the reader to catch up (or give up after a generous
-		 * ceiling so a stuck UART doesn't hang CI forever). */
+		 * the ring to actually empty (rather than count to hit
+		 * `target`, which can never happen when high-RPM steps drop
+		 * samples). 30s ceiling so a stuck UART doesn't hang CI. */
+		(void)start_ints;  /* sweep-step diagnostics only — see step printf below */
 		uint32_t drain_t0 = k_uptime_get_32();
-		uint32_t target = start_ints + sweep[i].samples;
 		bool drain_timeout = false;
-		while (count < target && count < g_interrupts) {
+		while (ring_buf_size_get(&sample_ring) >= sizeof(struct crank_sample)) {
 			if ((k_uptime_get_32() - drain_t0) > 30000U) {
 				drain_timeout = true;
 				break;
@@ -314,17 +363,33 @@ static void sweep_driver(void)
 		       (unsigned)count,
 		       budget_exceeded ? " [budget_exceeded]" : "",
 		       drain_timeout   ? " [drain_timeout]"   : "");
+
+		/* Smart-data per-step boundary: DWT + MCU health. Same
+		 * "ISR is quiescent, reader has drained" guarantees as
+		 * the marker printf — no interleaving with E rows. */
+		char tag[16];
+		snprintf(tag, sizeof(tag), "step_%u", (unsigned)(i + 1));
+		struct dwt_snapshot d;
+		smart_dwt_snapshot(&d);
+		smart_dwt_emit(tag, &d);
+		struct mcu_health h;
+		smart_mcu_snapshot(&h);
+		smart_mcu_emit(tag, &h);
 	}
-	/* Final drain. Cap at g_interrupts so we don't hang forever if a
-	 * step hit its budget and produced fewer than planned samples. */
+	/* Final drain — wait for the ring to fully empty so the reader can
+	 * emit any in-flight samples before we signal end-of-sweep. */
 	uint32_t final_t0 = k_uptime_get_32();
-	while (count < TOTAL_SAMPLES && count < g_interrupts) {
+	while (ring_buf_size_get(&sample_ring) >= sizeof(struct crank_sample)) {
 		if ((k_uptime_get_32() - final_t0) > 30000U) {
 			printk("final drain timeout; count=%u\n", (unsigned)count);
 			break;
 		}
 		k_msleep(5);
 	}
+	/* Signal end-of-sweep. reader_loop polls this with a 500 ms
+	 * semaphore timeout and exits cleanly even when high-RPM steps
+	 * dropped samples (count plateaus below TOTAL_SAMPLES). */
+	g_sweep_done = true;
 }
 
 /* -------------------------------------------------------------- main */
@@ -340,6 +405,12 @@ int main(void)
 	printk("engine_control bench starting "
 	       "(target %u samples, %u sweep steps)\n",
 	       TOTAL_SAMPLES, (unsigned)SWEEP_STEPS);
+
+	/* Bring up smart-data sources before any benchmarking work so the
+	 * boot snapshot in print_csv_header reflects a clean state. DWT
+	 * is universally available on ARMv7-M; MCU health may be a stub. */
+	smart_dwt_enable();
+	(void)smart_mcu_init();
 
 	k_thread_priority_set(k_current_get(), 5);
 
