@@ -146,40 +146,36 @@ left-shift implementation — synth seems to have lowered memset's
 inner loop using i64 shift operations that don't apply to byte
 counts.
 
-## Action items, updated (3 synth bugs, 1 loom bug)
+## Action items, filed upstream
 
-### loom — Z3 i64 sort handling
+| # | upstream issue | severity | summary |
+|---|---|---|---|
+| 1 | [pulseengine/synth#93](https://github.com/pulseengine/synth/issues/93) | **blocker** | memset/memcpy/memmove i64-codegen non-termination — chip hangs in memset+0x4c on `z_bss_zero` |
+| 2 | [pulseengine/synth#94](https://github.com/pulseengine/synth/issues/94) | enhancement | u64-packed FFI return unpacking — register-direct field access vs generic 64-bit shifts (~50% of LTO size gap) |
+| 3 | [pulseengine/synth#95](https://github.com/pulseengine/synth/issues/95) | enhancement | wasm linear-memory access lowering — base+offset vs movw+movt+ldr (~20% of LTO size gap) |
+| 4 | [pulseengine/loom#98](https://github.com/pulseengine/loom/issues/98) | bug | Z3 SortDiffers panic in inline_functions on i64 — every gale-ffi function reverts, inliner is no-op |
 
-The `inline_functions` pass reverts every gale-ffi function with:
-```
-SortDiffers { left: (_ BitVec 64), right: (_ BitVec 32) }
-```
-This blocks any verified optimization on i64-heavy modules. The
-gale-ffi crate uses u64-packed returns (per gale's `#10` LTO regression
-guard) so this is a fundamental gap. Without loom, the wasm-LTO route
-loses the formal-verification angle that distinguishes it from
-LLVM-LTO.
+### Status detail per issue
 
-### synth — codegen patterns
+**synth#93 (blocker).** The wasm→ARM lowering of compiler_builtins' memset
+produces a non-terminating loop on Zephyr's startup
+`memset(bss, 0, sizeof(bss))` invocation. The chip hangs at
+memset+0x4c forever. Until this is fixed, no integration of
+merged-wasm into a real bench can boot.
 
-1. **memset/memcpy/memmove are MIS-COMPILED** (newly discovered, severity:
-   blocker). Synth's wasm→ARM lowering of compiler_builtins' memset
-   produces a non-terminating loop on Zephyr's startup
-   `memset(bss, 0, sizeof(bss))` invocation. The chip hangs in
-   memset+0x4c forever. Until this is fixed, no integration of
-   merged-wasm into a real bench can boot. **First-priority fix.**
+**synth#94.** When synth lowers a wasm function that returns i64 and the
+caller immediately bit-masks into byte-fields, it currently emits
+generic 64-bit shift extraction. Recognizing the packed-struct-return
+pattern would close ~50% of the LTO-parity size gap.
 
-2. **u64-packed FFI return unpacking:** when synth lowers a wasm
-   function that returns i64 and the caller immediately bit-masks
-   into byte-fields, recognize the packed-struct-return pattern and
-   emit register-direct field access (no shifts). Reduces LTO-parity
-   gap by ~50% of the size delta. Same root issue as memset's bug —
-   synth's i64 codegen is incomplete.
+**synth#95.** wasm `i32.load` from a constant address currently emits
+`movw + movt + ldr` (10 bytes). Conventional ARM ABI uses base+offset
+addressing (2-4 bytes per load).
 
-3. **wasm linear-memory access lowering:** when a wasm `i32.load` is
-   from a constant address that's known to be in `.data`, emit
-   `ldr rN, [base, #imm]` instead of `movw + movt + ldr`. Reduces
-   another ~20% of the size delta.
+**loom#98.** Z3 backend's i64 sort handling chokes on `BitVec 64` vs
+`BitVec 32` comparisons. Every function in gale-ffi reverts in the
+inline_functions pass, so loom is effectively a no-op for i64-heavy
+modules.
 
 With (1) fixed, the wasm-LTO bench will boot and we get measurable
 silicon cycles. With (2)+(3) on top, the wasm-LTO route should
