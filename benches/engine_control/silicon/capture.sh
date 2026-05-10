@@ -184,11 +184,8 @@ TIMEOUT=1800   # 30 min
 [[ "$SWEEP" == "short" ]] && TIMEOUT=120
 
 echo "==> Capturing from $PORT (timeout ${TIMEOUT}s)"
-# Baud must match the board overlay's lpuart1 current-speed. NUCLEO-G474RE
-# bench overlay sets 921600 to keep up with the long-sweep's high-RPM
-# event rate (drops <5% rather than ~56% at 115200).
 python3 "${SILICON_DIR}/capture.py" \
-  --port "$PORT" --baud 921600 \
+  --port "$PORT" --baud 115200 \
   --sentinel "=== END ===" \
   --timeout "$TIMEOUT" \
   --out "$RUN_DIR/output.csv"

@@ -2,29 +2,18 @@
  * SPDX-License-Identifier: Apache-2.0
  * Copyright (c) 2026 PulseEngine
  *
- * NUCLEO-G474RE bench overlay — two changes:
+ * NUCLEO-G474RE bench overlay — enable ADC1 internal channels
+ * for smart-data MCU health snapshots.
  *
- *   1. Enable ADC1 + internal channels for smart-data MCU health
- *      snapshots (temperature sensor IN16, VREFINT IN18; per
- *      STM32G474RE reference manual RM0440 §21.4.31). Zephyr's
- *      stock nucleo_g474re DTS leaves ADC1 disabled.
+ * Zephyr's stock nucleo_g474re DTS leaves ADC1 disabled; the
+ * silicon-anchor protocol needs it to read the on-die temperature
+ * sensor (TS, channel 16) and internal reference (VREFINT,
+ * channel 18) so the H-row in the captured CSV records actual
+ * thermal and supply state alongside the algorithm timings.
  *
- *   2. Bump LPUART1 to 921600 baud. The bench emits one CSV row per
- *      ISR firing; at the long-sweep's high-RPM steps the ring
- *      buffer fills faster than 115200 baud can drain (~360 events/s
- *      at 30 bytes/event). At 56% drop rate, per-RPM medians come
- *      from biased samples (drop-bias skews toward step-start cold
- *      cache) and the silicon/Renode multiplier loses statistical
- *      validity. 921600 is 8x headroom; comfortably within ST-LINK
- *      V3J9M3 VCP's tested range.
- *
- *      capture.sh's `--baud` flag must match (defaults to 921600 once
- *      this overlay is in the build).
+ * Channel numbers per STM32G474RE reference manual RM0440 §21.4.31
+ * (ADC channels) — TS = IN16, VREFINT = IN18.
  */
-
-&lpuart1 {
-	current-speed = <921600>;
-};
 
 &adc1 {
 	status = "okay";
