@@ -8,7 +8,8 @@
 # Usage:
 #   capture.sh --board nucleo_g474re --variant {baseline,gale} \
 #              [--tick-source {systick,lptim}] \
-#              [--sweep {short,long}] [--port /dev/cu.usbmodem11403]
+#              [--sweep {short,long}] [--port /dev/cu.usbmodem11403] \
+#              [--runner {openocd,stm32cubeprogrammer,pyocd,jlink}]
 #
 # Defaults:
 #   --tick-source systick  (Cortex-M default; lptim selects the STM32
@@ -17,6 +18,10 @@
 #   --sweep short  (use --sweep long for the publication-grade run)
 #   --port: auto-detect first /dev/cu.usbmodem* (macOS) or
 #           /dev/ttyACM0 (Linux). Override if multiple boards present.
+#   --runner openocd  (the brew-installable open-source flasher).
+#                     stm32cubeprogrammer is the upstream Zephyr default
+#                     for nucleo_g474re but needs ST's proprietary app;
+#                     openocd works out of the box with a brew install.
 #
 # A publication-grade anchor on a given board is the 4-run matrix:
 #   variant ∈ {baseline, gale}  ×  tick_source ∈ {systick, lptim}.
@@ -29,6 +34,7 @@ VARIANT=""
 SWEEP="short"
 PORT=""
 TICK_SOURCE="systick"
+RUNNER="openocd"
 SILICON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GALE_ROOT="$(cd "${SILICON_DIR}/../../.." && pwd)"
 
@@ -39,6 +45,7 @@ while [[ $# -gt 0 ]]; do
     --sweep)        SWEEP="$2"; shift 2 ;;
     --port)         PORT="$2"; shift 2 ;;
     --tick-source)  TICK_SOURCE="$2"; shift 2 ;;
+    --runner)       RUNNER="$2"; shift 2 ;;
     -h|--help)
       awk '/^set -/{exit} NR>1{sub(/^# ?/, ""); print}' "$0"; exit 0 ;;
     *)
@@ -147,8 +154,29 @@ fi
 echo "$ELF_SHA  firmware.elf" > "$RUN_DIR/firmware.elf.sha256"
 
 # --------------------------------------------------------------------- flash
-echo "==> Flashing"
-( cd "$GALE_ROOT/.." && west flash -d "$BUILD_DIR" )
+echo "==> Flashing (runner=$RUNNER)"
+( cd "$GALE_ROOT/.." && west flash -d "$BUILD_DIR" --runner "$RUNNER" )
+
+# Explicitly reset+run the target after flashing. west flash via the openocd
+# runner does NOT reliably issue `reset run` after writing on every Zephyr +
+# board combo (specifically observed silent post-flash on STM32G4 LPTIM
+# builds with CONFIG_PM=y — the chip stays halted, no UART output ever
+# reaches the VCP). This 0.5s reset-run handshake fixes that without
+# disturbing builds where the runner already does the right thing.
+if [[ "$RUNNER" == "openocd" ]]; then
+  echo "==> Reset+run (post-flash sanity)"
+  # NB: do NOT pipe openocd through head/grep — SIGPIPE on early close
+  # kills openocd before it processes `reset run`, leaving the chip
+  # halted. Capture full output to a temp log instead.
+  openocd -f interface/stlink.cfg -f target/stm32g4x.cfg \
+          -c "init; reset run; sleep 200; exit" \
+          > /tmp/silicon-reset-${BOARD}.log 2>&1 || true
+  tail -3 /tmp/silicon-reset-${BOARD}.log
+  # Give the chip 500 ms to clear the post-reset UART noise / boot banner
+  # printk before capture.py starts reading, so the sentinel-search
+  # window aligns cleanly with the bench's CSV stream.
+  sleep 0.5
+fi
 
 # --------------------------------------------------------------------- capture
 # Long sweep can take a few minutes wall-time at 168 MHz; short ~10s.
@@ -179,6 +207,7 @@ MANIFEST="$RUN_DIR/manifest.txt"
   echo "variant:               ${VARIANT}"
   echo "tick_source:           ${TICK_SOURCE}"
   echo "sweep:                 ${SWEEP}"
+  echo "flash_runner:          ${RUNNER}"
   echo "gale_sha:              ${GALE_SHA_FULL}"
   echo "gale_status:           $(cd "$GALE_ROOT" && git status --porcelain | wc -l | tr -d ' ') uncommitted file(s)"
   echo "host:                  $(uname -srm)"
