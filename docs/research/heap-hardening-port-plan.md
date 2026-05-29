@@ -6,7 +6,7 @@
 
 ## 1. Upstream feature inventory
 
-Upstream file: `/Users/r/git/pulseengine/z/zephyr/lib/heap/heap.c` (v4.4.0-rc3, 794 lines).
+Upstream file: `/Users/r/git/pulseengine/z/zephyr/lib/heap/heap.c` (v4.4.0, 794 lines; unchanged rc3→final).
 Header: `/Users/r/git/pulseengine/z/zephyr/lib/heap/heap.h` (350 lines).
 
 Level predicates are defined in `heap.h:23-30` as compile-time `#define`s that

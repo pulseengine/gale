@@ -1,7 +1,9 @@
-# Upstream-Drift Audit: Gale Shims vs Zephyr v4.4.0-rc3
+# Upstream-Drift Audit: Gale Shims vs Zephyr v4.4.0
 
-Baseline: Zephyr fork merge-base 2026-03-09. Tip: `v4.4.0-rc3` (commit
-`6182bc08c9d`). Scope: C files replaced via `CONFIG_GALE_KERNEL_*` fork
+Baseline: Zephyr fork merge-base 2026-03-09. Tip: `v4.4.0` (commit
+`684c9e8f3`; rebased from `v4.4.0-rc3`/`6182bc08c9d` on 2026-05-29 — the
+rc3→final delta touched none of the files audited below, so the findings
+and severities are unchanged). Scope: C files replaced via `CONFIG_GALE_KERNEL_*` fork
 guards (21 in `kernel/CMakeLists.txt` + 1 in `lib/heap/CMakeLists.txt`).
 Gap example tracked in gh issue #15 (heap canary hardening missing).
 
