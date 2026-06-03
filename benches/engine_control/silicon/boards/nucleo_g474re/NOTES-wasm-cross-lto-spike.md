@@ -849,3 +849,19 @@ filter_axis 2.42×|2.18×; control_step 2.07×|2.27×; controller_step —|2.33�
 gap both ISAs, widening with complexity; lever = regalloc/spill = **#209 Opt 3 (universal, retargetable)**. Posted
 to #209. RISC-V backend issues #218/#220/#223/#226 ALL FIXED — the same dissolved wasm runs correct on RV32 across
 the whole set. (RV32 = icount proxy; real silicon via ESP32-C3/Renode follow-up.) NEXT: Opt 3 perf release.
+
+## UPDATE 2026-06-03 — v0.11.27 composed-path codegen breakdown (Opt3 increment #2 targets)
+
+After v0.11.27 (#231 leaf-alloc + #232 div fix), the leaves are optimal (filter/controller: 0 frame, 0 spills;
+filter 2.18x->1.35x). The composed `flat_flight` barely moved (2.57x->2.41x). Disassembled its RV32 output
+(186 instr, 756 B) to localize the remaining overhead — three measured inefficiencies, leverage order:
+
+1. **const-CSE (biggest):** 37 const materializations (li/lui, ~20% of body), only 16 distinct -> 21 redundant (57%).
+   Systematic per-axis dup: ±127 saturation each 4x, filter coeffs 980/20/1000 each 2x, shifts 6/7 2-3x, INT_MIN/-1 guards 2x.
+2. **pressure-aware spilling:** flat_flight exhausts 7 caller-saved t-regs -> spills to 32B stack frame (7 sw + 10 lw = 17 instr, 9%);
+   control_step likewise (6 spills, 16B). Caller-saved preference is right for leaves; for pressure functions a callee-saved
+   s-reg (1 save+restore, amortized) beats N stack reloads. RV32 analogue of the ARM "reclaim r9/r10" item.
+3. **copy-coalescing:** 38 mv (20%) in flat_flight, 32 in control_step — value-stack lowering emits a mv per transfer.
+
+Posted to synth #209 (comment 4612930170) as the concrete recommendation for the next Opt3 increment.
+The leaf gap is closed; the composed gap = const-CSE + pressure-aware s-reg spill + mv-coalescing.
