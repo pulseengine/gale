@@ -52,8 +52,19 @@
  * 2048 × sizeof(crank_sample) ≈ 32 KB on STM32G4 (16 KB→48 KB,
  * 12% → 37% of the 128 KB SRAM). Previous value (256) caused 56%
  * sample drops at high RPM under 115200-baud UART throughput,
- * biasing per-RPM medians. */
-#define RING_CAPACITY_SAMPLES  2048
+ * biasing per-RPM medians.
+ *
+ * The large ring is gated on real STM32G4 silicon: that is the only
+ * target with both the 128 KB SRAM to hold it AND the real 115200-baud
+ * UART back-pressure that caused the drops. The QEMU/Renode CI lanes
+ * run on lm3s6965 (64 KB SRAM) where 32 KB of `noinit` overflows RAM,
+ * and they never dropped a sample at 256 (no real UART drain limit),
+ * so they keep the smaller ring. */
+#if defined(CONFIG_SOC_SERIES_STM32G4X)
+#  define RING_CAPACITY_SAMPLES  2048
+#else
+#  define RING_CAPACITY_SAMPLES  256
+#endif
 
 struct sweep_step {
 	uint32_t rpm;
