@@ -16,8 +16,30 @@ static void chk(const char*nm,uint32_t got,uint32_t exp){
   ps_(got==exp?"PASS ":"FAIL ");ps_(nm);ps_(" got=");pd_(got);ps_(" exp=");pd_(exp);pc_('\n');
 }
 int main(void){
-  chk("filter_axis(1000,100,500)",   (uint32_t)filter_axis_decide(1000,100,500), 1088u);
-  chk("controller_step(6400..5)",    controller_step_decide(6400,0,-12800,0,3200,0,5), 97419164u);
-  chk("control_step(3000,50,40,0)",  rv_cs_call(3000,50,40,0), 2165333u);
+  /* Multi-vector coverage: each function exercised across the input edges that
+   * per-axis const-CSE dedup is most likely to break (saturation ±127, signed-div
+   * negatives, table cells). Expecteds are run_testbed.sh's verified ground truth
+   * (native == wasmtime == on-silicon). A const-CSE miscompile that reuses a
+   * clobbered constant register typically only shows on a subset of inputs, so
+   * single-vector coverage would miss it — hence the spread. */
+
+  /* filter_axis: signed mul + signed div by 1000. Zero, positive, negative. */
+  chk("filter_axis(0,0,0)",         (uint32_t)filter_axis_decide(0,0,0),          0u);
+  chk("filter_axis(1000,100,500)",  (uint32_t)filter_axis_decide(1000,100,500),   1088u);
+  chk("filter_axis(-2000,50,-300)", (uint32_t)filter_axis_decide(-2000,50,-300),  (uint32_t)(int32_t)-1917);
+
+  /* controller_step: SAR + ±127 saturation + 8-bit pack. Zero, the packed
+   * mid-range vector, and an over-range vector that drives all 3 axes past the
+   * clamp (each axis re-materializes ±127 — the prime const-CSE dedup site). */
+  chk("controller_step(0..0)",      controller_step_decide(0,0,0,0,0,0,0),                 0u);
+  chk("controller_step(6400..5)",   controller_step_decide(6400,0,-12800,0,3200,0,5),      97419164u);
+  chk("controller_step(satclamp)",  controller_step_decide(99999,99999,-99999,-99999,99999,-99999,255),
+      /* a=-127 e=+127 r=-127, updates=255 -> 0xFF817F81 (wasmtime-verified) */ 0xFF817F81u);
+
+  /* control_step: 2 unsigned-const divides + 2 tables (via s11 tramp). 4 cells. */
+  chk("control_step(3000,50,90,0)", rv_cs_call(3000,50,90,0), 2164988u);
+  chk("control_step(3000,50,40,0)", rv_cs_call(3000,50,40,0), 2165333u);
+  chk("control_step(3000,50,0,0)",  rv_cs_call(3000,50,0,0),  2165678u);
+  chk("control_step(6000,80,40,3)", rv_cs_call(6000,80,40,3), 2230501u);
   ps_("=== END ===\n");for(;;){}
 }

@@ -94,11 +94,12 @@ the wasmtime oracle + verified vectors — all architecture-independent). The pe
 small adapter under `arch/<target>/`:
 
 - **`arch/riscv/run_rv_funccheck.sh`** — RV32 **functional regression lane**: dissolves each leaf, compiles
-  the actual `synth -b riscv` output, links it into a qemu harness and **asserts the verified value** (filter
-  1088, controller 97419164, control 2165333). Exit 0 = all RV32 outputs correct. This is the lane the
-  wasmtime/ARM-only checks lacked — it auto-catches RV32 miscompiles (it flags synth #232, the v0.11.26
-  `i32.div_s` dividend-clobber, as `FAIL filter_axis got=0`). Run on every new synth release alongside
-  `../../run_testbed.sh`.
+  the actual `synth -b riscv` output, links it into a qemu harness and **asserts wasmtime-verified values
+  across 10 vectors** (zero / positive / negative / ±127-saturation / signed-div-overflow / 4 table cells) —
+  the per-axis input edges a const-CSE or liveness miscompile is most likely to break on only a subset of
+  inputs. Exit 0 = all RV32 outputs correct. This is the lane the wasmtime/ARM-only checks lacked — it
+  auto-caught synth #232 (the v0.11.26 `i32.div_s` dividend-clobber) as `FAIL filter_axis got=0`. Run on
+  every new synth release alongside `../../run_testbed.sh`.
 - **`arch/riscv/`** — RISC-V adapter. `run_native.sh` builds the shared algorithm sources with
   `riscv64-elf-gcc -march=rv32imac_zicsr`, links synth's `riscv-runtime` (startup.c + linker.ld), and runs
   on `qemu-system-riscv32 virt -icount` with an `mcycle`-CSR harness (`main.c`). NATIVE baseline (qemu
