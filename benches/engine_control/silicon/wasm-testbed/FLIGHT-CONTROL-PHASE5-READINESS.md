@@ -36,3 +36,25 @@ imu gyro=100,−50,30 accel=300,−200) → `cmd=0x07FDF307`, state pitch=937 ro
   ≤2 ptr args so this is moot for them, but noted for the composed entry.
 - Then measure on silicon as the flight-control second data point (the algo segment must stay
   byte-identical baseline-vs-gale to pass the bench's <10% algo-delta integrity assert).
+
+## UPDATE — bench verified functional + dissolved path validated end-to-end (2026-06-03)
+
+**The bench itself is stood up:** `west build -b qemu_cortex_m3` builds clean and runs — it boots,
+drives the 100 Hz loop, and emits the event stream `E,<seq>,<step>,<load>,<algo>,<handoff>,<t_lock>,
+<t_post>,<t_round>,<t_bcast>`. Baseline `algo` (filter_step+controller_step in the ISR) ≈ **53 cyc**
+on qemu_cortex_m3 — the reference the wasm-cross-LTO path will be compared against.
+
+**The dissolved real `control.c` runs correctly end-to-end with the pointer trampoline (ARM, unicorn):**
+set up `flight_state`/`imu_sample` in memory, `fp(r11)=0` for native `[fp+ptr]=[ptr]` deref, then call
+the synth-compiled `filter_step(&st,&s)` (mutates st → pitch=937 roll=−396 yaw=230) and
+`controller_step(&st)` (→ `cmd=0x07FDF307`). **Exact match** to flat_flight ground truth. This closes the
+last functional gap: the bench's two real pointer-arg functions work through clang→wasm-ld→loom→synth→ARM
+with the fp trampoline, not just the value-in/out shim.
+
+**Phase-5 readiness checklist:**
+- [x] real `control.c` dissolves (loom) + compiles both backends (ARM + RV32)
+- [x] functionally identical to validated flat_flight (native ground truth)
+- [x] dissolved ARM path correct end-to-end with the fp=0 pointer trampoline (unicorn)
+- [x] bench builds + runs in qemu (baseline algo ≈ 53 cyc)
+- [ ] `GALE_WASM_LTO` CMake path: build `control.o` (synth ARM) + fp-trampoline `.S`, link in place of `control.c`
+- [ ] silicon measurement on nucleo_g474re (DWT), algo byte-identity preserved for the <10% integrity assert
