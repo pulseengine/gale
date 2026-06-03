@@ -69,10 +69,14 @@ bool z_spin_unlock_valid(struct k_spinlock *l)
 		return true;
 	}
 
-	if (thread_cpu == 0) {
-		return false;
-	}
-
+	/* NOTE: do NOT early-return false when thread_cpu == 0. During early
+	 * x86_64 CPU init, CPU 0 acquires locks with _current == NULL, so the
+	 * encoded owner is (0 | 0) == 0. Stock z_spin_unlock_valid treats that
+	 * as a valid match (0 == 0); an early `thread_cpu == 0 -> false` here
+	 * instead fails the __ASSERT in k_spin_unlock, whose assert_print ->
+	 * vprintk path re-takes spinlocks that re-fail validation -> infinite
+	 * recursion -> silent hang before the console is up. gale_spin_unlock_valid
+	 * already returns the correct result for the (0,0,0) case. */
 	return gale_spin_unlock_valid(thread_cpu,
 				      _current_cpu->id,
 				      (uintptr_t)_current) != 0;
