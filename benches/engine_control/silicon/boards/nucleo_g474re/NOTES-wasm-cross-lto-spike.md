@@ -865,3 +865,26 @@ filter 2.18x->1.35x). The composed `flat_flight` barely moved (2.57x->2.41x). Di
 
 Posted to synth #209 (comment 4612930170) as the concrete recommendation for the next Opt3 increment.
 The leaf gap is closed; the composed gap = const-CSE + pressure-aware s-reg spill + mv-coalescing.
+
+## UPDATE 2026-06-03 — flight_control wasm-LTO variant: on-silicon functional validation
+
+Flashed both flight_control variants on the real NUCLEO-G474RE (openocd, VCP autodetect):
+- **NATIVE** and **GALE_FC_WASM_LTO=ON** both boot and produce a valid, identically-structured
+  event stream (E,<seq>,<step>,<load>,<algo>,<handoff>,<t_lock>,...). The dissolved flight
+  algorithm (filter_step + controller_step via the r11=0 trampoline) **runs correctly on the
+  actual chip**, not just unicorn/qemu. This is the real-silicon functional checkmark for the
+  Phase-5 wasm variant.
+
+Caveat on measuring the algo cost *from the bench*: the bench's `algo` column times only an
+ISR placeholder (`squelch = |gyro_x+gyro_y+gyro_z|`), NOT filter_step/controller_step (those run
+in the fusion thread + controller, untimed). So `algo` is identical (≈141 cyc) native vs wasm —
+it isn't measuring the dissolved code. Ad-hoc timing around the real calls is dominated by the
+non-inlined `k_cycle_get_32` overhead (~65–145 cyc) and is too noisy for a clean delta without
+the microbench's min-over-200 + overhead-subtraction discipline.
+
+**Authority for the flight-algo silicon cycle delta remains the dedicated microbench**:
+`flat_flight` (= filter+controller composed) = 315 cyc wasm-cross-LTO vs 99 native = 3.18×
+(loom v1.1.10, full dissolution). The bench variant is for *running* the dissolved algorithm in
+the full 5-primitive context; the microbench is for the clean cycle number.
+Follow-up (optional): add overhead-subtracted min-over-N timing around the bench's real
+filter_step/controller_step calls if an in-context number is wanted.
