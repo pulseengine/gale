@@ -100,6 +100,11 @@ small adapter under `arch/<target>/`:
   inputs. Exit 0 = all RV32 outputs correct. This is the lane the wasmtime/ARM-only checks lacked — it
   auto-caught synth #232 (the v0.11.26 `i32.div_s` dividend-clobber) as `FAIL filter_axis got=0`. Run on
   every new synth release alongside `../../run_testbed.sh`.
+- **`arm_funccheck.py`** — the ARM (Cortex-M4 Thumb-2, unicorn) analogue of the RV32 lane: same edge vectors
+  for `filter_axis`/`controller_step`. Also documents synth's ARM arg convention — **args in registers
+  r0..r7** (RISC-V a0..a7 style), NOT AAPCS r0-r3+stack (a 7-arg fn pushes `{r4-r8,lr}` and reads args 5-7
+  from the saved r4/r5/r6 slots). So a >4-arg dissolved function needs a caller matching that, not stock
+  AAPCS. ALL GREEN on v0.11.27.
 - **`arch/riscv/`** — RISC-V adapter. `run_native.sh` builds the shared algorithm sources with
   `riscv64-elf-gcc -march=rv32imac_zicsr`, links synth's `riscv-runtime` (startup.c + linker.ld), and runs
   on `qemu-system-riscv32 virt -icount` with an `mcycle`-CSR harness (`main.c`). NATIVE baseline (qemu
