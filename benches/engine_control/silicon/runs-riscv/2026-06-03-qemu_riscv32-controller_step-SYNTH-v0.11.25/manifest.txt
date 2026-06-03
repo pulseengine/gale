@@ -1,0 +1,1 @@
+synth-rv32 controller_step v0.11.25 (#226 fixed): synth=114 native=49 = 2.33x, CORRECT. qemu_riscv32 -icount proxy.

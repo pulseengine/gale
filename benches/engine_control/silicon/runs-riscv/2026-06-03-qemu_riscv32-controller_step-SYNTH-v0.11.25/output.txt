@@ -1,0 +1,4 @@
+SYNTH-RV32 controller=0x05ce7f9c native=0x05ce7f9c (exp 0x05ce7f9c)
+E,controller_step,synth_rv32=114,native_rv32=49
+=== END ===
+qemu-system-riscv32: terminating on signal 15 from pid 47851 (<unknown process>)

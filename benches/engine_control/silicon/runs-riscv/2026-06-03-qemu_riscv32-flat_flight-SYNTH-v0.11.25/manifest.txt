@@ -1,0 +1,1 @@
+synth-rv32 flat_flight v0.11.25 (#226 fixed): synth=193 native=75 = 2.57x, CORRECT. qemu_riscv32 -icount proxy.

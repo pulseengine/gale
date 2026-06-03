@@ -840,3 +840,12 @@ compiles with `synth -b riscv -t rv32imac`, links the s11 table trampoline, runs
 141/62=2.27×**. Now both arch/riscv adapters are durable + reproducible: run_native.sh (baseline) + run_synth.sh
 (wasm-cross-LTO). Ready to add controller/flat_flight when v0.11.25 lands. RISC-V working: filter_axis 2.18× +
 control_step 2.27×; controller/flat_flight gated on #226/v0.11.25.
+
+### RISC-V update 2026-06-03 (later8) — FULL RISC-V TABLE COMPLETE (v0.11.25, #226 fixed)
+synth v0.11.25 (#226 live-range fix) PUBLISHED; ARM ALL GREEN. **All 4 functions correct on qemu_riscv32:**
+controller_step now correct (0x05ce7f9c, 114/49=**2.33×**); flat_flight now RETURNS correct (0x07fdf307,
+193/75=**2.57×**) — was #226-gated (the defer-filing call was right). **Cross-target table (ARM real-cyc | RISC-V icount):**
+filter_axis 2.42×|2.18×; control_step 2.07×|2.27×; controller_step —|2.33×; flat_flight 3.18×|2.57×. Same ~2–2.6×
+gap both ISAs, widening with complexity; lever = regalloc/spill = **#209 Opt 3 (universal, retargetable)**. Posted
+to #209. RISC-V backend issues #218/#220/#223/#226 ALL FIXED — the same dissolved wasm runs correct on RV32 across
+the whole set. (RV32 = icount proxy; real silicon via ESP32-C3/Renode follow-up.) NEXT: Opt 3 perf release.
