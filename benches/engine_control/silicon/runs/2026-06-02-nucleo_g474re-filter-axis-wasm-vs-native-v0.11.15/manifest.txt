@@ -1,0 +1,19 @@
+Run: filter_axis_decide (flight_control complementary-filter hot math) — wasm-cross-LTO vs native gcc
+Board: NUCLEO-G474RE (STM32G474RE, Cortex-M4F @170 MHz)
+Date: 2026-06-02
+synth: v0.11.15 (control via clang->wasm-ld->loom v1.1.5->synth, --target cortex-m4f --relocatable)
+native: arm-zephyr-eabi-gcc -O2 (Zephyr SDK), identical C source
+Zephyr: v4.4.0-7-g719cc4890346 (gale/sem-replacement-4.4.0)
+Method: DWT CYCCNT, min over 200 iterations per vector, both functions called via volatile
+        function pointer (identical call overhead), overhead (back-to-back CYCCNT read) subtracted.
+App: /tmp/filter-bench (standalone; links /tmp/wasm-algo-poc/filter_algo.o)
+
+RESULT (net cycles):
+  vector            synth   native   ratio
+  (1000,100,500)     41      21      1.95x
+  (-2000,50,-300)    41      21      1.95x
+  (0,2,0)            39      19      2.05x
+  (0,0,0)            36      16      2.25x
+Functional: synth selfcheck 1088,-1917 correct on hardware (matches native + wasmtime).
+Gap attribution: synth emits sdiv + 2 dead guards (div-by-zero + INT_MIN/-1) for /1000;
+  gcc strength-reduces to reciprocal-multiply. See synth#210 Opt 1.

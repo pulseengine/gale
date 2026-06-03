@@ -1,0 +1,11 @@
+variant:            wasm-cross-LTO (seam dissolved: loom inline gale_k_sem_give_decide into z_impl, synth-compiled)
+board:              nucleo_g474re
+date:               2026-05-31
+synth:              v0.11.14 (e8488f0c)
+loom:               v1.1.5 (95a5f982)
+zephyr:             v4.4.0 + gale (gale/sem-replacement)
+toolchain:          clang wasm32 shim + gale-ffi wasm32 -> wasm-ld -> loom --passes inline -> synth --relocatable
+integration:        fp=0 trampoline + out-of-line kernel-API wrappers (gale_wasm_wrappers.c) + GALE_WASM_LTO_SEM_LIB
+handoff_cycles:     median 907 (steady), min 904, max 1607 (cold), n=148
+algo_cycles:        259
+drops:              0

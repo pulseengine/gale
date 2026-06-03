@@ -1,0 +1,17 @@
+Run: filter_axis gap decomposition — wasm-cross-LTO vs native gcc, by operation
+Board: NUCLEO-G474RE (Cortex-M4F @170 MHz); synth v0.11.15; loom v1.1.5; gcc -O2 (Zephyr SDK)
+Method: DWT CYCCNT, min/200 iters; overhead = min/200 back-to-back CYCCNT (=1 cyc); both fns via
+        volatile fn-ptr (identical call overhead). Reproduced identically across two flashes.
+App: /tmp/filter-bench linking /tmp/wasm-algo-poc/fv_algo.o (v_full/v_nodiv/v_div).
+
+RESULT (net cycles):
+  variant                 synth  native  ratio
+  full  ((p+g)*980+a*20)/1000   46     19    2.42x
+  nodiv ((p+g)*980+a*20)        29     12    2.42x
+  div   x/1000                  40     15    2.67x
+Decomposition of the 27-cyc gap on `full`:
+  base codegen (mul+add):  29-12 = 17 cyc  (spills, no constant CSE)  <- LARGER contributor
+  divide handling:        (46-29)-(19-12) = 17-7 = 10 cyc  (sdiv+2 dead guards vs reciprocal-mul)
+CORRECTION to earlier note: the gap is NOT dominated by the divide; base codegen is bigger.
+Functional: synth full=1088, div=-1917 correct on HW. Supersedes the 1.95x figure (that used an
+  overestimated single-sample overhead of 5; true ovh=1).

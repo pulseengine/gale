@@ -1,0 +1,23 @@
+Run: flight_control COMPOSED algo (filter_step + controller_step) FULLY DISSOLVED — wasm-cross-LTO vs native
+Board: NUCLEO-G474RE (Cortex-M4F @170MHz). loom v1.1.10 (full dissolution: both fns inline -> 0 calls, Z3-proven),
+       synth v0.11.16 (#193 fix). flight_algo = ONE flat 784B function. fp=0 trampoline (native ptr deref).
+Native = flat (gcc-inlined) flat_flight_native, volatile fn-ptr. DWT min/200, ovh=1.
+THE BIGGER EXAMPLE composed algo, measured end-to-end.
+
+RESULT (vector st={1000,-500,200,upd7}, s={gx100,gy-50,gz30,ax300,ay-200}):
+  synth (wasm-cross-LTO, fully dissolved)  332 cyc
+  native gcc -O2 (flat)                     99 cyc
+  ratio                                    3.35x
+Functional: synth == native == 0x07fdf307 (CORRECT on hardware).
+Note: synth path includes ~8-cyc fp=0 trampoline; native ~3-cyc indirect call. Gap larger than the
+single-fn algos (sem 1.92x, filter_axis 2.42x, control_step 2.35x) because the fused function has
+multiple divides (filter /1000 x2) + high register pressure -> synth#209 Opt1b (reciprocal-mul) + regalloc.
+
+CORRECTION: fp=0 + real pointers WORKS on HW (earlier "silence" was capture flakiness, not a fault).
+The composed-algo HW number was NOT blocked by a pointer/linmem ABI issue after all.
+
+Full silicon table:
+  k_sem_give handoff : 907 / 471 LLVM-LTO = 1.92x
+  filter_axis        :  46 / 19           = 2.42x
+  control_step       : 188 / 80           = 2.35x
+  flight_algo (composed, fully dissolved) : 332 / 99 = 3.35x

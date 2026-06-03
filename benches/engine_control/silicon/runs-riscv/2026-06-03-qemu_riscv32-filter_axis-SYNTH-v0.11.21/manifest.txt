@@ -1,0 +1,6 @@
+synth-rv32 wasm-cross-LTO filter_axis (synth v0.11.21 -b riscv -t rv32imac), qemu_riscv32 -icount.
+FUNCTIONALLY CORRECT: selfcheck 1088 / -1917 (== native + ARM). The wasm->loom->synth -b riscv->RV32 path
+runs end-to-end. cyc=50 incl ~24-cyc s-register-preserving trampoline (workaround for synth#220: riscv
+backend clobbers callee-saved s1-s6 w/o prologue/epilogue). Core ~26 icount vs native rv32 17. Clean number
+pending #220 fix (drop the trampoline). synth's riscv codegen for the arithmetic/division is correct; only
+the ABI register-preservation is broken.

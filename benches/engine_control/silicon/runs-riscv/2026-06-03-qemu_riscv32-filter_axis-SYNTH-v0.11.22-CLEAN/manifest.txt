@@ -1,0 +1,7 @@
+synth-rv32 filter_axis, v0.11.22 (#220 callee-saved ABI fix), CLEAN — no trampoline, direct call.
+qemu_riscv32 -icount. filter_axis SYNTH-rv32 = 37 icount vs NATIVE rv32 17 = 2.18x. Correct (selfcheck 1088/-1917
+verified earlier). Gap source: v0.11.22 added the s-reg save/restore prologue (addi sp,-32; sw s1-s6; lw s1-s6 ~15 cyc)
+because synth spills into callee-saved s1-s6 where native gcc uses caller-saved/fewer regs -> the RISC-V analogue
+of ARM Opt 3 (regalloc/spill). Cross-target: synth ~2.18x (RV32) vs 2.42x (ARM) for filter_axis -> the ~2x gap is
+general codegen, NOT arch-specific. (icount proxy, not silicon cycles; real RV cycles later via ESP/Renode.)
+control_step/flat_flight here are NATIVE (62/75) baselines; their synth-rv32 awaits v0.11.23 (#223 Select/locals).

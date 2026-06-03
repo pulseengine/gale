@@ -1,0 +1,8 @@
+RISC-V NATIVE baseline, 3 functions (qemu_riscv32 virt -icount, instruction-count proxy NOT silicon cycles).
+riscv64-zephyr-elf-gcc -march=rv32imac_zicsr -mabi=ilp32 -O2, synth riscv-runtime startup/linker, mcycle CSR.
+  filter_axis   : 17   (correct)
+  control_step  : 62   (chk=2165333 = fuel 2645, correct)
+  flat_flight   : 75   (chk=0x07fdf307, correct)  [composed filter+controller, fully inlined]
+All functionally CORRECT on RV32. These are the native baselines for synth-rv32 comparison (pending synth#218
+fix in v0.11.21). Caveat: icount = instruction count; real RV silicon cycles later via ESP32-C3/Renode.
+Harness /tmp/rv-bench/ reusable: swap native obj for `synth -b riscv -t rv32imac` output.

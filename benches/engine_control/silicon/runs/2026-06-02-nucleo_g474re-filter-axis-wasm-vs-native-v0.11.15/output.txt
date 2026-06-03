@@ -1,0 +1,8 @@
+*** Booting Zephyr OS build v4.4.0-7-g719cc4890346 ***
+SELFCHECK synth: 1088,-1917 (exp 1088,-1917)  native: 1088 (exp 1088)
+E,v0,synth_net=36,native_net=16,ovh=5
+E,v1,synth_net=41,native_net=21,ovh=5
+E,v2,synth_net=41,native_net=21,ovh=5
+E,v3,synth_net=39,native_net=19,ovh=5
+SINK=-331200
+=== END ===

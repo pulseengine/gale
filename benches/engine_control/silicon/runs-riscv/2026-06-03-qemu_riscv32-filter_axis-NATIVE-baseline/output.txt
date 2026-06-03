@@ -1,0 +1,4 @@
+RV SELFCHECK filter_axis(1000,100,500)=1088 (exp 1088)  (-2000,50,-300)=-1917 (exp -1917)
+E,filter_axis_native_rv32,cyc=14,ovh=1
+=== END ===
+qemu-system-riscv32: terminating on signal 15 from pid 42710 (<unknown process>)

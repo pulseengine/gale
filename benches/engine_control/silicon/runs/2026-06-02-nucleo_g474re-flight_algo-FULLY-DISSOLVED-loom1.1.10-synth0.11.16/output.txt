@@ -1,0 +1,5 @@
+*** Booting Zephyr OS build v4.4.0-7-g719cc4890346 ***
+BOOT-OK: main reached, about to call flight_algo
+SELFCHECK synth=0x07fdf307 native=0x07fdf307 (exp 0x07fdf307)
+E,flat_flight,synth=332,native=99,ovh=1,sink=2093726448
+=== END ===

@@ -1,0 +1,6 @@
+RV-NATIVE rv32imac (qemu -icount proxy)
+E,filter_axis,cyc=17
+E,control_step,cyc=62,chk=2165333 (exp 2165333)
+E,flat_flight,cyc=75,chk=0x07fdf307 (exp 0x07fdf307)
+=== END ===
+qemu-system-riscv32: terminating on signal 15 from pid 43019 (<unknown process>)

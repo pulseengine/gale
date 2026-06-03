@@ -1,0 +1,12 @@
+Run: flight_control composed bench (5 primitives) — NATIVE baseline, first silicon run
+Board: NUCLEO-G474RE (Cortex-M4F @170 MHz); Zephyr v4.4.0-7-g719cc4890346; build=baseline
+Build: west build -b nucleo_g474re (gale/benches/flight_control, unmodified). FLASH 23728B RAM 52800B.
+Purpose: stand up the "bigger example" on silicon; capture native baseline before wasm-cross-LTO.
+
+RESULT: boots + runs. Step 1/5 (sensor_hz=500, contention=0, payload=16) produced 6 events:
+  algo=141  handoff=1307  t_lock=339  t_post=858  t_round=1987  t_bcast=748/-1  (cycles)
+STALL: step 2/5 (sensor_hz=1000, payload=32) -> count=0 [drain_timeout]; sweep did not reach === END ===.
+  This is a flight_control bench-logic issue at the higher sensor rate (actuator-drain path), NOT a
+  synth/loom matter. Flag for the bench owner; the short sweep's 1000 Hz cell needs the drain fix.
+NOTE: the bench `algo` segment (141 cyc) = filter_step+controller_step — the same math wasm-ified in
+  /tmp/wasm-algo-poc (controller_step + filter_axis). wasm-cross-LTO comparison would swap that segment.

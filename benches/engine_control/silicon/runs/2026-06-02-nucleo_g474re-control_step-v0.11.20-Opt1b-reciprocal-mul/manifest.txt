@@ -1,0 +1,7 @@
+control_step on synth v0.11.20 (Opt1b: UMULL reciprocal-multiply, all 4 unsigned divides; #217 cost-gate fix).
+NUCLEO-G474RE, DWT min/200. synth=168 native=81. correct (0x00210a55). udiv:0 umull:4. text 350->410B.
+Trajectory: 188(v16 guards+udiv) -> 172(v18 guard-elision) -> 168(v20 reciprocal-mul). Opt1b = only -4 cyc.
+KEY FINDING: Cortex-M4 has FAST hardware udiv (~2-12 cyc), so reciprocal-multiply is near-neutral on M4
+(it's a big win only on cores w/o HW divide, e.g. M0/M0+). The remaining 168/81=2.07x gap is GENERAL CODEGEN
+(regalloc/CSE/spilling = #209 Opt3), NOT division — consistent with the filter_axis decomposition (~17cyc base
+codegen vs ~10cyc divide). So Opt3 (regalloc/CSE) is the real lever, not more division work.

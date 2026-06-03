@@ -1,0 +1,11 @@
+RISC-V NATIVE baseline (the "build it yourself native first" step). filter_axis on RV32.
+Toolchain: riscv64-zephyr-elf-gcc -march=rv32imac_zicsr -mabi=ilp32 -O2. Runtime: synth riscv-runtime
+(startup.c+linker.ld, flash@0x80000000 ram@0x80010000 linmem=4K stack=8K). Harness: main.c reads mcycle CSR
+around filter_axis, NS16550 UART @0x10000000. Emulator: qemu-system-riscv32 -machine virt -icount shift=0.
+RESULT: filter_axis_native_rv32 = 14 (icount proxy), ovh=1. Functionally CORRECT (selfcheck 1088 / -1917).
+CAVEAT: qemu -icount = INSTRUCTION COUNT (1 insn = 1 "cycle"), NOT silicon cycles — a relative/structural
+proxy. Valid for native-vs-synth RISC-V comparison ON THE SAME emulator; real RISC-V silicon cycles come
+later from ESP32-C3 / Renode. (ARM filter_axis native was 19 real M4 cyc via DWT — different core/unit, not
+directly comparable; the meaningful RISC-V comparison is synth-rv32 vs native-rv32 on qemu, pending synth#218.)
+Design fact: RISC-V linear-memory base = s11 (riscv-runtime _reset: la s11, __linear_memory_base) — RV analogue of ARM r11.
+Harness dir: /tmp/rv-bench/ (reusable: swap filter_native.o for synth -b riscv .o once #218 lands).

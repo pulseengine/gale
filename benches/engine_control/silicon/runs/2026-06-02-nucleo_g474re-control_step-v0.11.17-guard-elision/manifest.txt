@@ -1,0 +1,3 @@
+control_step on synth v0.11.17 (Opt1 guard-elision). NUCLEO-G474RE, DWT min/200.
+synth=174 (was 188 on v0.11.16) -> -14 cyc from dead-guard elision. native=81. ratio 174/81=2.15x (was 2.35x).
+Correct (0x00210a55). text 390->364 B. The big mover (reciprocal-mul) is Opt1b, pending.

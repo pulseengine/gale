@@ -1,0 +1,1 @@
+flight_algo-composed v0.11.18: synth=315 native=99 ratio=3.18x; correct on HW; guard-elision (Opt1) + #215 fix

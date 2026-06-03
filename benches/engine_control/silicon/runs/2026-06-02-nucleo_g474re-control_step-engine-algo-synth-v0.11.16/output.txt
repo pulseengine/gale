@@ -1,0 +1,4 @@
+*** Booting Zephyr OS build v4.4.0-7-g719cc4890346 ***
+SELFCHECK synth=0x00210a55 native=0x00210a55 (exp 0x00210a55 for 3000,50,40,0)
+E,control_step,synth=188,native=80,ovh=1,sink=866133200
+=== END ===

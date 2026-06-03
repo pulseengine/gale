@@ -86,6 +86,14 @@ int z_vrfy_k_sem_init(struct k_sem *sem, unsigned int initial_count,
 #include <zephyr/syscalls/k_sem_init_mrsh.c>
 #endif /* CONFIG_USERSPACE */
 
+/* GALE_WASM_LTO_OVERRIDE_SEM_GIVE: when defined, z_impl_k_sem_give is
+ * supplied instead by the wasm-cross-LTO object (libwasmsem.a): the C
+ * shim's z_impl_k_sem_give compiled clang->wasm-ld->loom(inline)->synth
+ * to ARM, with gale_k_sem_give_decide inlined (seam dissolved). A native
+ * trampoline zeroes the wasm linmem-base reg (fp) so the synth body's
+ * [fp+ptr] addressing dereferences the real k_sem. Used only by the
+ * silicon wasm-LTO bench variant; default builds keep the native one. */
+#ifndef GALE_WASM_LTO_OVERRIDE_SEM_GIVE
 void z_impl_k_sem_give(struct k_sem *sem)
 {
 	k_spinlock_key_t key = k_spin_lock(&lock);
@@ -123,6 +131,7 @@ void z_impl_k_sem_give(struct k_sem *sem)
 
 	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_sem, give, sem);
 }
+#endif /* GALE_WASM_LTO_OVERRIDE_SEM_GIVE */
 
 #ifdef CONFIG_USERSPACE
 static inline void z_vrfy_k_sem_give(struct k_sem *sem)

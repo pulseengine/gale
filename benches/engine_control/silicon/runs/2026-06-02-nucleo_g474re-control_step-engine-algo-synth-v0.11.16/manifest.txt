@@ -1,0 +1,19 @@
+Run: engine control_step (the second silicon data point) — wasm-cross-LTO vs native gcc
+Board: NUCLEO-G474RE (Cortex-M4F @170 MHz); synth v0.11.16 (a804390, #193 param-clobber FIX); loom v1.1.8 (no-op, single fn)
+Build: /tmp/cs-bench (links synth control_algo.116x.o; gale_tables blob @ [fp+0x10000] via asm trampoline
+       gale_call_control that sets fp=&gale_tables-0x10000 then blx control_step_decide). Native = control_step_native
+       reading the real tables.c arrays, called via volatile fn-ptr. DWT min/200, ovh=min/200 (=1).
+UNBLOCKED BY: synth v0.11.16 fixing the #210/#193 call-free param-register clobber (coolant was clobbered pre-fix).
+
+RESULT (net cycles, vector 3000,50,40,0):
+  synth (wasm-cross-LTO)  188 cyc
+  native gcc -O2           80 cyc
+  ratio                  2.35x
+Functional: synth == native == 0x00210a55 (fuel 2645) on hardware — coolant enrichment now CORRECT.
+Note: synth path includes the fp-setup trampoline (~6-8 cyc, part of the linmem->native integration); native is
+  a direct call. Gap (~108 cyc) = 4x udiv (binning /500 /5 /80 /1000) + table addressing + regalloc/CSE (synth#209 Opt1/Opt3).
+
+Silicon comparison table to date:
+  k_sem_give handoff : 907 (synth) vs 471 LLVM-LTO  = 1.92x
+  filter_axis        :  46 (synth) vs  19 native    = 2.42x
+  control_step       : 188 (synth) vs  80 native    = 2.35x   <-- this run

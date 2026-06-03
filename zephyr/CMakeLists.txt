@@ -407,6 +407,18 @@ zephyr_library_include_directories(
 zephyr_library_link_libraries(${GALE_FFI_LIB})
 add_dependencies(gale_sem gale_ffi_build)
 
+# wasm-cross-LTO sem variant: -DGALE_WASM_LTO_SEM_LIB=<path to libwasmsem.a>
+# excludes the native z_impl_k_sem_give and links the synth-compiled,
+# loom-inlined (seam-dissolved) z_impl + fp=0 trampoline instead.
+if(DEFINED GALE_WASM_LTO_SEM_LIB)
+  message(STATUS "Gale: wasm-cross-LTO sem override -> ${GALE_WASM_LTO_SEM_LIB}")
+  zephyr_library_compile_definitions(GALE_WASM_LTO_OVERRIDE_SEM_GIVE=1)
+  # out-of-line wrappers for inline-only kernel APIs (k_spin_lock etc.)
+  # that the synth object calls; built WITH Zephyr headers.
+  zephyr_library_sources(gale_wasm_wrappers.c)
+  zephyr_library_link_libraries(${GALE_WASM_LTO_SEM_LIB})
+endif()
+
 endif() # CONFIG_GALE_KERNEL_SEM
 
 # ==========================================================================
