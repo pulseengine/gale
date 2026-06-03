@@ -1,0 +1,14 @@
+v0.11.27 re-measure — RV32 leaf re-allocation (Opt3 increment #1: caller-saved preference) + #232 signed-div fix.
+synth v0.11.27 (merged #231 lowest-free alloc + #233 div-guard fix), loom v1.1.10, qemu_riscv32 -icount shift=0 (proxy, not silicon).
+All four leaves FUNCTIONALLY CORRECT; all now spill 0 callee-saved registers (were s1-s6).
+
+leaf              v0.11.25  v0.11.27  native  ratio v25->v27   correct
+filter_axis          37        23       17    2.18x -> 1.35x   1088
+control_step        141       129       62    2.27x -> 2.08x   2165333  (incl ~6-cyc s11 table tramp)
+controller_step     114       100       49    2.33x -> 2.04x   97419164
+flat_flight         193       181       75    2.57x -> 2.41x   0x07fdf307 (composed; benefits least)
+
+Leaves move most (filter ~halves overhead: tiny body was almost all prologue spill). Composed flat_flight
+moves least -> next lever is const-CSE + cross-statement local promotion (Opt3 increment #2), maintainer agrees.
+NOTE: filter_axis + flat_flight were BROKEN on v0.11.26 (#232 i32.div_s dividend-clobber); restored here.
+Caught by the new testbed RV32 funccheck lane (arch/riscv/run_rv_funccheck.sh).

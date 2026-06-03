@@ -1,0 +1,6 @@
+filter synth=1088 native=1088 (exp 1088)
+controller synth=97419164 native=97419164 (exp 97419164)
+E,filter,synth=23,native=17
+E,controller,synth=100,native=49
+=== END ===
+qemu-system-riscv32: terminating on signal 15 from pid 65958 (<unknown process>)
