@@ -46,6 +46,46 @@ This replaces the in-firmware histogram+mean approach whose mean
 divisor (reader `count`) diverged from the numerator (ISR event sum)
 when the sweep truncated early, invalidating the published deltas.
 
+## Framework overhead compensation
+
+Every `algo_cycles` and `handoff_cycles` value emitted on the wire is
+the raw measurement **minus** a constant `bench_overhead_cycles`,
+measured at boot before any per-event timing begins. The
+`measure_overhead()` routine in `src/main.c` runs
+
+```c
+start = k_cycle_get_32();
+end   = k_cycle_get_32();
+delta = end - start;
+```
+
+1000 times under `irq_lock`, sorts the deltas, and stores the
+**median** as `bench_overhead_cycles`. That value is then subtracted
+(saturating at 0) from every per-event count before it reaches the
+CSV stream, so what's reported is the work between the cycle-counter
+reads, not the cost of the cycle-counter reads themselves.
+
+The compensation is **visible**: the measured value is emitted as a
+metadata line `overhead_cycles,<value>` in the CSV header, preserved
+into the artifact bundle, and surfaced in `analyze.py`'s report header
+as "Overhead subtracted (cycles): baseline ...; gale ..." — a
+reviewer can audit the subtraction and re-add it if they want the
+raw numbers back.
+
+This matches the upstream Zephyr 4.4 `ztest_bench` framework's `ctrl`
+benchmark pattern (`subsys/testsuite/ztest/benchmark/`), which
+measures and subtracts the cost of an `empty_function` call from
+every reported result. Pre-compensation and post-compensation numbers
+are **different measurements** — do not combine them in a single
+comparison table.
+
+## Scope and non-claims
+
+See [SCOPE.md](SCOPE.md) for the explicit list of what this bench
+measures and what it does NOT measure. That file is the source of
+truth for any downstream copy (blog posts, reports). Do not embed
+scope claims in published copy without first updating SCOPE.md.
+
 ## Silicon-anchor protocol
 
 Renode is the CI workhorse; **silicon captures are manual**, periodic,

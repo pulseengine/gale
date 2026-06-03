@@ -306,7 +306,7 @@ jobs:
                   if line.startswith('E,'):
                       print(f"R1,{variant},{line}")
                   elif line.startswith(('drops,', 'samples,', 'build,',
-                                        'cycles_per_sec,', 'target_samples,')):
+                                        'cycles_per_sec,', 'target_samples,', 'overhead_cycles,')):
                       print(f"M,R1,{variant},{line}")
                   elif line == '=== END ===':
                       print(f"M,R1,{variant},END")
@@ -322,7 +322,7 @@ jobs:
                   if line.startswith('E,'):
                       print(f"R1,{variant},{line}")
                   elif line.startswith(('drops,', 'samples,', 'build,',
-                                        'cycles_per_sec,', 'target_samples,')):
+                                        'cycles_per_sec,', 'target_samples,', 'overhead_cycles,')):
                       print(f"M,R1,{variant},{line}")
                   elif line == '=== END ===':
                       print(f"M,R1,{variant},END")
@@ -341,7 +341,7 @@ jobs:
                   if line.startswith('E,'):
                       print(f"R1,{variant},{line}")
                   elif line.startswith(('drops,', 'samples,', 'build,',
-                                        'cycles_per_sec,', 'target_samples,')):
+                                        'cycles_per_sec,', 'target_samples,', 'overhead_cycles,')):
                       print(f"M,R1,{variant},{line}")
                   elif line == '=== END ===':
                       print(f"M,R1,{variant},END")
@@ -357,7 +357,7 @@ jobs:
                   if line.startswith('E,'):
                       print(f"R1,{variant},{line}")
                   elif line.startswith(('drops,', 'samples,', 'build,',
-                                        'cycles_per_sec,', 'target_samples,')):
+                                        'cycles_per_sec,', 'target_samples,', 'overhead_cycles,')):
                       print(f"M,R1,{variant},{line}")
                   elif line == '=== END ===':
                       print(f"M,R1,{variant},END")
@@ -377,7 +377,7 @@ jobs:
                   if line.startswith('E,'):
                       print(f"R1,{variant},{line}")
                   elif line.startswith(('drops,', 'samples,', 'build,',
-                                        'cycles_per_sec,', 'target_samples,')):
+                                        'cycles_per_sec,', 'target_samples,', 'overhead_cycles,')):
                       print(f"M,R1,{variant},{line}")
                   elif line == '=== END ===':
                       print(f"M,R1,{variant},END")

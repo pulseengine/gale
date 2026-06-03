@@ -50,6 +50,11 @@ class Meta:
     build: str = "?"
     cycles_per_sec: int = 0
     target_samples: int = 0
+    # Per-run framework overhead (cycles), measured at boot via
+    # measure_overhead() in main.c and subtracted from every algo /
+    # handoff value before emit. Tracked here so the report header
+    # can surface the compensation that's been applied.
+    overhead_cycles: dict[str, int] = field(default_factory=dict)
     # Per-run drops/samples, keyed by run id ("R1", "R2", ...)
     drops: dict[str, int] = field(default_factory=dict)
     samples: dict[str, int] = field(default_factory=dict)
@@ -107,6 +112,11 @@ def parse_events(path: Path) -> tuple[list[Sample], Meta]:
             elif tail == "target_samples" and len(parts) >= 5:
                 try:
                     meta.target_samples = int(parts[4])
+                except ValueError:
+                    pass
+            elif tail == "overhead_cycles" and len(parts) >= 5:
+                try:
+                    meta.overhead_cycles[run] = int(parts[4])
                 except ValueError:
                     pass
     return samples, meta
@@ -271,6 +281,19 @@ def render(base_s: list[Sample], gale_s: list[Sample],
     if hz:
         lines.append(f"- Cycle counter:   {hz:,} Hz "
                      f"(1 cycle ≈ {1e9/hz:.1f} ns)")
+    # Surface the framework-overhead compensation that's been applied
+    # on-target so a reviewer can audit the subtraction. Per audit P7
+    # / ztest_bench parity: every algo / handoff value below is the
+    # raw measurement minus this constant.
+    base_oh = base_m.overhead_cycles
+    gale_oh = gale_m.overhead_cycles
+    if base_oh or gale_oh:
+        b_str = ", ".join(f"{r}={v}" for r, v in sorted(base_oh.items())) \
+                or "n/a"
+        g_str = ", ".join(f"{r}={v}" for r, v in sorted(gale_oh.items())) \
+                or "n/a"
+        lines.append(f"- Overhead subtracted (cycles): "
+                     f"baseline {b_str}; gale {g_str}")
     lines.append("")
 
     # Per-step tables

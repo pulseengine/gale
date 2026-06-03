@@ -36,6 +36,7 @@
 #include <zephyr/sys/ring_buffer.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "control.h"
@@ -220,12 +221,55 @@ static void crank_isr(struct k_timer *t)
 
 static uint32_t count = 0;
 
+/*
+ * Bench framework overhead — measured at boot before any per-event
+ * timing begins (see measure_overhead). Subtracted from every algo /
+ * handoff cycle count emitted to the CSV stream so the published
+ * numbers reflect work between the cycle-counter reads, not the cost
+ * of the cycle-counter reads themselves. The measured value is also
+ * emitted as a metadata line so reviewers can audit the compensation
+ * step. Same idiom as Zephyr 4.4 ztest_bench's `ctrl` benchmark.
+ */
+#define OVERHEAD_SAMPLES 1000U
+static uint32_t bench_overhead_cycles = 0U;
+
+static int cmp_u32(const void *a, const void *b)
+{
+	uint32_t x = *(const uint32_t *)a;
+	uint32_t y = *(const uint32_t *)b;
+	return (x > y) - (x < y);
+}
+
+static void measure_overhead(void)
+{
+	static uint32_t samples[OVERHEAD_SAMPLES];
+	unsigned int key = irq_lock();
+	for (uint32_t i = 0; i < OVERHEAD_SAMPLES; i++) {
+		uint32_t a = k_cycle_get_32();
+		uint32_t b = k_cycle_get_32();
+		samples[i] = b - a;
+	}
+	irq_unlock(key);
+	qsort(samples, OVERHEAD_SAMPLES, sizeof(uint32_t), cmp_u32);
+	bench_overhead_cycles = samples[OVERHEAD_SAMPLES / 2];  /* median */
+}
+
+/* Saturating subtraction — never report a negative cycle count. With
+ * a quiet measurement window plus interrupt-locked overhead probe, the
+ * compensated value should rarely if ever underflow, but we clip to 0
+ * defensively rather than silently wrapping. */
+static inline uint32_t compensate(uint32_t raw)
+{
+	return raw > bench_overhead_cycles ? raw - bench_overhead_cycles : 0U;
+}
+
 static void emit_event(const struct crank_sample *s)
 {
 	uint32_t handoff = g_handoff_by_slot[s->seq % RING_CAPACITY_SAMPLES];
 	printf("E,%u,%u,%u,%u,%u\n",
 	       (unsigned)s->seq, (unsigned)s->step, (unsigned)s->rpm,
-	       (unsigned)s->algo_cycles, (unsigned)handoff);
+	       (unsigned)compensate(s->algo_cycles),
+	       (unsigned)compensate(handoff));
 }
 
 static void reader_loop(void)
@@ -269,7 +313,12 @@ static void print_csv_header(void)
 	);
 	printf("cycles_per_sec,%u\n", hz);
 	printf("target_samples,%u\n", TOTAL_SAMPLES);
+	/* Visible compensation: every algo / handoff value below has had
+	 * this many cycles subtracted. Median of 1000 empty cycle-counter
+	 * read pairs measured at boot under irq_lock (see measure_overhead). */
+	printf("overhead_cycles,%u\n", bench_overhead_cycles);
 	printf("# event rows: E,<seq>,<step>,<rpm>,<algo_cycles>,<handoff_cycles>\n");
+	printf("# algo / handoff cycles are AFTER subtracting overhead_cycles\n");
 	printf("# DWT rows:   D,<at>,<cyccnt>,<cpicnt>,<exccnt>,<sleepcnt>,<lsucnt>,<foldcnt>\n");
 	printf("# health rows:H,<at>,<temp_mC>,<vref_mV>,<vbat_mV>\n");
 
@@ -413,6 +462,12 @@ int main(void)
 	(void)smart_mcu_init();
 
 	k_thread_priority_set(k_current_get(), 5);
+
+	/* Measure framework overhead BEFORE the CSV header so the value
+	 * is recorded in the header line. Runs at thread context with
+	 * IRQs locked for the inner loop only — no other threads exist
+	 * yet, so this is the quietest the system will ever be. */
+	measure_overhead();
 
 	/* Emit CSV header BEFORE starting the sweep so stdout ordering
 	 * is deterministic: header, then events interleaved with sweep
