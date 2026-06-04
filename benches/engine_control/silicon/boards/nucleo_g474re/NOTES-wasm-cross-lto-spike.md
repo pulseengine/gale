@@ -1112,3 +1112,13 @@ algo sensitive to build (157!=141) => measures the ACTUAL dissolved algo, not a 
 In-context overhead ~11% (vs microbench 2.5x) — dissolved algo is a fraction of per-sample work (handoff/lock/
 post/round common). drain_timeouts on hi-rate/contention steps = bench rate tuning, not wasm. Captures in
 benches/flight_control/runs/. RESULTS-SUMMARY macro-bench row added. = the "bigger example/big testbed" deliverable.
+
+## UPDATE 2026-06-05 (r) — quiet period (maintainer offline ~1h, EU evening); filed mla-fusion #257
+No new synth artifacts since #256 (22:01 UTC 06-04, ~1h ago); #209's 22:08 comment was mine (avrabe=me). Maintainer
+likely wrapped for the night after the #250-256 session. 4h rule NOT triggered; open channels #209/#237/#257 satisfy
+no-silence intent (won't file a redundant reminder overnight). Corrected loop clock: last_seen = true maintainer
+activity, not my own.
+EXPAND/OPT (independent): filed #257 — mul+add->mla fusion (lever #2 of the 262->103 gap decomp). Exact evidence:
+flat_flight filter g*980+a*20 emits `mul;...;add.w` x2 sites where gcc-O2 uses `mla` (1 instr). Pure instruction
+selection, composes with VCR-RA-001. Bonus noted: mul-by-const strength-reduction. Microbenches staged for the delta.
+Pending levers: const-CSE application (maintainer building, 12->2 movw), cmp-imm fold (#256-unblocked), #257 mla, clamp-lowering(held).
