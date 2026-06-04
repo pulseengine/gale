@@ -980,3 +980,12 @@ Decoded m.loom.wasm to confirm the SP-anchor pass is necessary+sufficient:
 - SIZING CAVEAT given: frame at TOP of linmem [65520,65536); .bss must reserve full 2 pages = 131072 B, not data high-water.
 Pass = register-promote $__stack_pointer + init __synth_wasm_data+65536 + .bss=full pages; leave frame-size + &lock consts.
 Deliverable clock running (policy: dialogue doesn't reset it); reflash G474RE within min of a build. native ref 124.
+
+## UPDATE 2026-06-04 (d) — v0.11.29 RELEASED (data-statics half only); mutex unchanged (#237 c4623947806)
+v0.11.29 (commit 2305948, #238 merge) = --native-pointer-abi DATA-statics work. Tested:
+- value leaf control_step: clean .text-only ET_REL, NO regression.
+- mutex .o (v0.11.29 --native-pointer-abi) = BYTE-IDENTICAL (cmp) to mutex_v0.11.29_bss_still_faults.o:
+  still 12x R_ARM_THM_CALL, no .bss/.data/__synth_wasm_data. diff v0.11.28..v0.11.29 = 0 stack_pointer changes.
+  -> identical object = identical fault; did NOT reflash (byte-diff suffices per loop rule).
+SP register-promotion pass (the deliverable) NOT in v0.11.29. Asked maintainer: landing in v0.11.30?
+Deliverable clock kept running (policy: a release that doesn't address the deliverable doesn't reset it).
