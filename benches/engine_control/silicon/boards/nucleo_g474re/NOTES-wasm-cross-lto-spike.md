@@ -1047,3 +1047,10 @@ EXPAND: built flat_flight ARM-silicon microbench (flat_flight-microbench/, buffe
 => table's 315/99/3.18x was STALE (synth v0.11.18). Corrected RESULTS-SUMMARY + #209 (c4625286555) to 262/2.54x.
 262 includes ~8-cyc fp-setup tramp; body ~254. const-redundancy 34/13/61% + 17 spills on this current object (unchanged by #245).
 Measurement-ready: flat_flight-microbench (262) + controller-microbench (169) both staged for the const-CSE-application delta.
+
+## UPDATE 2026-06-04 (k) — NUDGED GI-NPA-003 (mutex callee, stalled); #247 test-only
+Allocator track active (#243 liveness -> #245 const-CSE detection -> #247 liveness-vs-selector tests); all pre-codegen-app.
+GI-NPA-003 (mutex callee promotion) STALLED: no maintainer reply to HW rebuttal since 17:23 (~1.75h); deliverable clock
+crossed 2.5h. Posted friendly deliverable nudge (#237 c4625460808): confirm GI-NPA-003 queued, NOT closed by the leaf
+merge (static 12-relocs/0-R9 passes while object BUS-FAULTs via 13 [r11] callee ops). Clock reset post-nudge.
+#209 HEALTHY: measurement-ready (flat_flight 262 + controller 169 harnesses); waiting on const-CSE codegen-application.
