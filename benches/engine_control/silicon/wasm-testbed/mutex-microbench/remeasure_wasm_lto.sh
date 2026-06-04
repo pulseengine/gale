@@ -50,10 +50,16 @@ MB="$GR/benches/engine_control/silicon/wasm-testbed/mutex-microbench"
 west build -b nucleo_g474re -d "$t/mb" -p always "$MB" -- -DZEPHYR_EXTRA_MODULES="$GR" \
   -DOVERLAY_CONFIG="$GR/zephyr/gale_overlay.conf" -DGALE_WASM_LTO_MUTEX_LIB="$t/libwasmmutex.a" >/dev/null 2>&1
 CAP="$GR/benches/engine_control/silicon"
-for try in 1 2 3 4; do
+# Capture loop is intentionally set -e tolerant: serial capture is flaky (0-byte
+# reads) and the firmware may fault, so neither openocd/wait nor the match-grep
+# must abort the script — we always reach the RESULT print below.
+set +e
+for try in 1 2 3 4 5; do
   python3 "$CAP/capture.py" --port "$VCP" --baud 115200 --sentinel "=== END ===" --timeout 15 --out "$t/cap" >/dev/null 2>&1 & c=$!; sleep 2
-  openocd -f interface/stlink.cfg -f target/stm32g4x.cfg -c "program $t/mb/zephyr/zephyr.elf verify reset exit" >/dev/null 2>&1; wait $c 2>/dev/null
-  grep -qaE 'E,k_mutex_unlock|FAULT' "$t/cap" && break
+  openocd -f interface/stlink.cfg -f target/stm32g4x.cfg -c "program $t/mb/zephyr/zephyr.elf verify reset exit" >/dev/null 2>&1 || true
+  wait "$c" 2>/dev/null || true
+  if grep -qaE 'E,k_mutex_unlock|FAULT' "$t/cap"; then break; fi
 done
-echo "=== RESULT ==="; grep -aE 'SELFCHECK|E,k_mutex_unlock|FAULT' "$t/cap" | head
-echo "(native gale ref: 124 cyc)"
+echo "=== RESULT ==="
+grep -aE 'SELFCHECK|E,k_mutex_unlock|FAULT' "$t/cap" 2>/dev/null | head || echo "(no output captured — flaky serial; retry)"
+echo "(native gale ref: 124 cyc; expect E,k_mutex_unlock,cyc=N once synth#237 BSS coverage lands)"
