@@ -1011,3 +1011,12 @@ push{r3-r7,lr}; ldr r4/r5/r6 from [sp+24/28/32]; blx synth body). 169 includes ~
 body alone ~161. Candidate maintainer ask (HOLD until #237 settles, don't pile): does synth's >4-arg
 cortex-m convention intend r0-r7? It means every >4-arg drop-in carries a trampoline + shuffle cost.
 Landed reusable controller-microbench/ (build.sh, ctl_tramp.S, RESULT-2026-06-04-g474re.txt).
+
+## UPDATE 2026-06-04 (g) — v0.11.30 MERGED (leaf core); #237 REOPENED; oracle NOT covered on HW (#237 c4624659657)
+PR#240 merged (22d2df8). Maintainer: leaf+balanced-SP core done; gmutex "covered" (12 relocs/0 R9). REBUTTED w/ HW:
+- built v0.11.30 from merged main -> mutex .o BYTE-IDENTICAL (cmp) to the object that BUS-FAULTed last firing.
+- raw-byte scan: 13x STR.W/LDR.W [r11,...] wide mem-ops (e.g. f84b 600c = STR.W r6,[r11,r12]) in callees
+  func_8/9/10 (loom didn't inline). All 12 __synth_wasm_data relocs are in the leaf body func_7 only.
+- static "12 relocs/0 R9" check MISSES this: [r11+reg] accesses are NOT relocations (readelf -r shows nothing).
+-> GI-NPA-003 (callee/non-leaf linmem promotion) is REQUIRED for the named gmutex oracle to RUN, not a generalization.
+Tag for v0.11.30 held pending on-target diff (GI-NPA-VER-003). Reflash on a callee-promoted build; native ref 124.
