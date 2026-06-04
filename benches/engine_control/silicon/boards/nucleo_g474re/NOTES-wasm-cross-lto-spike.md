@@ -971,3 +971,12 @@ RECOMMENDED self-contained: an R9-base contract defeats drop-in (ISR/ctx-switch/
 2nd synth base reg); reuses v0.11.29 .bss+MOVW/MOVT substrate exactly; collapses both faults to one rule
 (every linmem addr = __synth_wasm_data+N, every host-ptr arg = [0+ptr]); negligible size cost; generalizes
 to any dissolved fn. Tramp stays trivial (mov r11,#0). Maintainer to implement as one coherent pass.
+
+## UPDATE 2026-06-04 (c) — maintainer accepted self-contained, BUILDING; oracle validated (#237 c4623714140)
+Decoded m.loom.wasm to confirm the SP-anchor pass is necessary+sufficient:
+- frame is LIVE: local 1 = SP-16 dereferenced via i32.load offset=4/8/12 (lines 51/58/64) -> SP base MUST be real RAM.
+- 6x i32.const 65536: 1 = SP global init (relocate); 5 = &lock arg to k_spin_lock/unlock (lines 28/54/66/93/104),
+  wrapper-ignored, correctly left bare by the SP-anchor rule.
+- SIZING CAVEAT given: frame at TOP of linmem [65520,65536); .bss must reserve full 2 pages = 131072 B, not data high-water.
+Pass = register-promote $__stack_pointer + init __synth_wasm_data+65536 + .bss=full pages; leave frame-size + &lock consts.
+Deliverable clock running (policy: dialogue doesn't reset it); reflash G474RE within min of a build. native ref 124.
