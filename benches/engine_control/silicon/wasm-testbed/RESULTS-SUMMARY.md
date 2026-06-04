@@ -29,8 +29,8 @@ flight_control bench wasm-LTO variant builds + runs the dissolved algorithm on G
 ## The two open optimization/expansion levers (maintainer-side)
 
 1. **const-CSE + cross-statement local promotion (synth#209)** — the composed path's remaining gap.
-   `flat_flight` is 57% redundant constant materializations (37 const-loads / 16 distinct) + 17 stack
-   spills; the v0.11.27 caller-saved-preference fix nearly halved the leaves (filter 2.18→1.35×) but
+   `flat_flight` is 61% redundant constant materializations (34 const-loads / 13 distinct; clamp
+   bounds `#0x7e`/`#0x7f` ×6 each) + 17 stack spills (refreshed on loom 1.1.10 + synth 0.11.29); the v0.11.27 caller-saved-preference fix nearly halved the leaves (filter 2.18→1.35×) but
    barely moved the composed path (2.57→2.41×). const-CSE is the next lever.
 2. **native-call ABI / `--native-pointer-abi` (synth#237, v0.11.29 in progress)** — unblocks
    host-pointer primitive drop-ins (mutex, sem) by emitting wasm statics as base-independent

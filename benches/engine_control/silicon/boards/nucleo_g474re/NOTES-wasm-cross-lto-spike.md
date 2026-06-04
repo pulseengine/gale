@@ -1020,3 +1020,12 @@ PR#240 merged (22d2df8). Maintainer: leaf+balanced-SP core done; gmutex "covered
 - static "12 relocs/0 R9" check MISSES this: [r11+reg] accesses are NOT relocations (readelf -r shows nothing).
 -> GI-NPA-003 (callee/non-leaf linmem promotion) is REQUIRED for the named gmutex oracle to RUN, not a generalization.
 Tag for v0.11.30 held pending on-target diff (GI-NPA-VER-003). Reflash on a callee-promoted build; native ref 124.
+
+## UPDATE 2026-06-04 (h) — EXPAND/OPT: refreshed #209 const-CSE data, linked to allocator track (#209 c4624854458)
+Mutex/#237 in maintainer hands (no reply to my HW rebuttal yet; PR#243 liveness foundation VCR-RA-001 opened).
+Pushed the #209 lever: re-derived flat_flight codegen on loom 1.1.10 + synth 0.11.29 (measure, don't guess):
+  588B/180 instr; const mat 34 loads/13 distinct = 61% redundant (clamps #0x7e/#0x7f x6 each, #0 x4, shifts 7/6 x3);
+  stack spills 7 str + 10 ldr = 17. (was 37/16/57% — refreshed.) Posted to #209 w/ 2 recs on the allocator track:
+  (1) const-CSE hoist clamp/shift consts (~12% fewer instr, compounds w/ composition);
+  (2) liveness-based spill regalloc (VCR-RA-001/#243) for the 17 [sp] spills. Same lever on RV (2.41x) = retargetable.
+  Offered flat_flight as the silicon regression target; reflash on each allocator-track build.
