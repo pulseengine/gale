@@ -1054,3 +1054,14 @@ GI-NPA-003 (mutex callee promotion) STALLED: no maintainer reply to HW rebuttal 
 crossed 2.5h. Posted friendly deliverable nudge (#237 c4625460808): confirm GI-NPA-003 queued, NOT closed by the leaf
 merge (static 12-relocs/0-R9 passes while object BUS-FAULTs via 13 [r11] callee ops). Clock reset post-nudge.
 #209 HEALTHY: measurement-ready (flat_flight 262 + controller 169 harnesses); waiting on const-CSE codegen-application.
+
+## UPDATE 2026-06-04 (l) — full 262->103 gap decomposition posted (#209 c4625712211)
+Maintainer acting on my #209 data: PR#248 (real-selector evidence -> const-CSE is THE lever, dead-store/#246 a no-op),
+PR#249 (immediate-folding encoder probe, And-imm path dead). Both test/ (pre-codegen-app, no byte change).
+Disassembled both sides of the gap (synth 180 instr/262cyc vs gcc-O2 68 instr/103cyc):
+  clamps: synth 18 IT-blocks vs native 6 (3x; re-materializes 0x7e/0x7f x6) = BIGGEST chunk
+  mla: synth 0 (4 mul + sep add) vs native 2 (fuses g*980+a*20) -> mul+add->mla peephole
+  const-CSE: 21 redundant const-loads (#245); spills: 17 vs 0 (VCR-RA-001); strd: 0 vs 1
+  sdiv 2/2 + branches 0/0 = ALREADY AT PARITY (backend bones right)
+=> const-CSE+spills recover ~40-55 of 159cyc; clamp-lowering + mla-fusion are the bigger instruction-selection levers.
+flat_flight-microbench(262) + controller(169) quantify each lever as it lands. Offered to file clamp/mla as tracked issues.
