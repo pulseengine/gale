@@ -923,3 +923,14 @@ overflow-checks=true). synth emits the export (ET_REL) referencing it as undefin
 internal callees as ET_REL. NOT disabling overflow-checks (would diverge from the faithful production
 build). Workaround options for next firing: export the helper via wasm-tools so --all-exports emits it
 ET_REL, or provide a panic_fmt stub. Once linkable -> flash G474RE -> k_mutex_unlock 2nd primitive number.
+
+## UPDATE 2026-06-04 (cont) — MUTEX UNBLOCKED by synth v0.11.28, links + runs on G474RE
+
+synth#235 fixed in v0.11.28 (#236, my option 1: --all-exports --relocatable emits reachable internal
+callees). Built #236 from source; re-ran the mutex dissolution: merged.o now defines z_impl_k_mutex_unlock
++ func_8/9/10 (the inlined decision + panic_const_add_overflow->panic_fmt chain), only the 7 kernel-API
+imports undefined (all -> gale_w_* wrappers). objcopy-renamed imports -> gale_w_*, ar -> libwasmmutex.a,
+linked into flight_control via GALE_WASM_LTO_MUTEX_LIB: LINKS CLEAN. Flashed nucleo_g474re: boots + runs the
+100Hz loop to the results print with the dissolved mutex live = wasm-cross-LTO k_mutex_unlock works on silicon.
+NEXT: clean k_mutex_unlock cycle microbench (DWT min-over-N, native vs wasm-cross-LTO) for the head-to-head
+number, the 2nd primitive data point alongside sem 907. (v0.11.28 still a PR; canonical once released.)
