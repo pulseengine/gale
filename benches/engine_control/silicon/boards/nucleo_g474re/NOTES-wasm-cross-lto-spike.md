@@ -1103,3 +1103,12 @@ Disassembled flat_flight on #256 -> the "61% redundant const" is EXACTLY the cla
 same shape as #250 AND-fold. Posted #209 c4626463863. Microbenches staged (flat_flight 261, controller 168).
 GI-NPA-003 (mutex): HOLDING re-nudge (nudged once, unanswered; maintainer responsive to reports but prioritizing
 allocator track; re-ask = noise). Threshold extended 2.5h->4h for a genuine escalation if still untouched.
+
+## UPDATE 2026-06-05 (q) — BIGGER EXAMPLE validated: flight_control macro bench runs dissolved algo on silicon
+EXPAND (independent of paused maintainer): built flight_control bench (Phase 5, GALE_FC_WASM_LTO=ON) on current
+toolchain (synth 0.11.30 main256 + loom 1.1.10). Runs on G474RE: full 5-step sweep, NO FAULT, dissolved
+filter_step+controller_step (pointer args, r11=0 tramp). Head-to-head algo: wasm-LTO=157 vs native=141 = 1.11x.
+algo sensitive to build (157!=141) => measures the ACTUAL dissolved algo, not a placeholder (corrects old note).
+In-context overhead ~11% (vs microbench 2.5x) — dissolved algo is a fraction of per-sample work (handoff/lock/
+post/round common). drain_timeouts on hi-rate/contention steps = bench rate tuning, not wasm. Captures in
+benches/flight_control/runs/. RESULTS-SUMMARY macro-bench row added. = the "bigger example/big testbed" deliverable.

@@ -28,6 +28,21 @@ All functionally correct on both backends (RV32 funccheck 10/10, ARM funccheck 6
 † `controller_step` has 7 args; synth’s cortex-m convention passes args in **r0–r7** (not AAPCS r0–r3+stack), so a C/Zephyr caller needs an arg-shuffle trampoline (`controller-microbench/ctl_tramp.S`). The 169 includes that ~8-cyc marshalling (native called directly); the dissolved body alone is ~161. SELFCHECK 0x05e33e81 == native on G474RE.
 flight_control bench wasm-LTO variant builds + runs the dissolved algorithm on G474RE (Phase 5).
 
+## Bigger example — flight_control macro bench (Phase 5, composed)
+
+The flight_control bench composes 5 Zephyr primitives (ring_buf, sem, mutex, msgq, condvar) on a
+100 Hz loop; `GALE_FC_WASM_LTO=ON` dissolves the ISR-side flight algo (`filter_step`+`controller_step`)
+via wasm-cross-LTO. On real G474RE silicon, full 5-step sweep, **no fault**, current toolchain
+(loom 1.1.10 + synth 0.11.30):
+
+| metric (in-bench `algo`) | wasm-cross-LTO | native | ratio |
+|--------------------------|----------------|--------|-------|
+| ISR filter precompute     | **157** cyc     | 141    | **1.11×** |
+
+The in-context overhead is only **~11%** — far tighter than the isolated microbenches (flat_flight 2.54×,
+controller 2.77×), because the dissolved algo is a fraction of per-sample work (handoff/lock/post/round
+are common to both builds). The bigger example is a working testbed for functionality *and* optimization.
+
 ## The two open optimization/expansion levers (maintainer-side)
 
 1. **const-CSE + cross-statement local promotion (synth#209)** — the composed path's remaining gap.

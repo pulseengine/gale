@@ -1,0 +1,27 @@
+*** Booting Zephyr OS build v4.4.0-7-g719cc4890346 ***
+flight_control bench starting (target 50 samples, 5 sweep steps)
+=== FLIGHT-CONTROL BENCH RESULTS ===
+build,gale
+cycles_per_sec,170000000
+target_samples,50
+# event rows: E,<seq>,<step>,<load>,<algo>,<handoff>,<t_lock>,<t_post>,<t_round>,<t_bcast>
+E,4,0,500,157,1359,486,868,2091,-1
+E,9,0,500,157,1359,486,868,2091,936
+E,14,0,500,157,1359,486,868,2091,-1
+E,19,0,500,157,1359,486,868,2091,936
+E,24,0,500,157,1359,486,868,2091,-1
+E,29,0,500,157,1359,486,868,2041,936
+# step 1/5 sensor_hz=500 contention=0 payload=16 ints=30 expected=6 count=6
+# step 2/5 sensor_hz=1000 contention=0 payload=32 ints=30 expected=3 count=0 [drain_timeout]
+# step 3/5 sensor_hz=1000 contention=1 payload=32 ints=30 expected=3 count=0 [drain_timeout]
+E,67,2,2000,157,1359,486,880,4272,-1
+E,77,2,2000,157,1359,486,880,3319,-1
+E,87,2,2000,157,1359,486,880,3319,-1
+E,89,2,2000,157,1359,3774,880,3347,502
+E,99,3,2000,157,1359# step 4/5 sensor_hz=2000 contention=0 payload=32 ints=30 expected=1 count=4
+# step 5/5 sensor_hz=2000 contention=2 payload=64 ints=30 expected=1 count=0 [drain_timeout]
+,486,868,8674,951
+E,119,3,18384,157,1359,486,892,6497,939
+E,126,4,18384,157,1359,486,892,6478,-1
+E,146,4,18384,157,1359,486,892,6478,-1
+E,149,4,18384,157,1359,486,868,2265,502
