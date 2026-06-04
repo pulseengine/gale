@@ -950,3 +950,15 @@ can't be a native drop-in"). HONEST scope: value-in/value-out dissolutions (filt
 flat_flight) work + measured on silicon; host-pointer PRIMITIVE drop-ins (sem z_impl, mutex z_impl) are
 ABI-blocked. The mutex k_mutex_unlock silicon NUMBER is gated on synth#237. Native gale k_mutex_unlock
 (reference) measured = 124 cyc (uncontended, DWT min/200). v0.11.28 gives the LINK; #237 is the runtime ABI.
+
+## UPDATE 2026-06-04 — mutex root cause = linmem STACK (not BSS static); design-Q answered (#237)
+Maintainer fetched mutex_m.loom.wasm@f027273: no (data) segs, no const-addr statics. Real cause =
+the wasm linmem **stack**: `(global $__stack_pointer (mut i32) i32.const 65536)` → 16B frame →
+SP-relative i32.store; synth lowers `[$sp+K]`→`[r11+sp+K]`; r11=0 trampoline → abs 0x1000~ → DAV.
+Measured `$__stack_pointer`/linmem-store usage across shipped leaves (answers maintainer Q-b):
+  filter_axis 0/0, controller_step 0/0 (register-only); control_step 1/**0** (tables via fp=&tables, no stack writes);
+  flat_flight 1/**6** (DID spill — ran via fp=RAM-linmem-base harness, NOT a native fp=0 drop-in).
+Q-a: $__stack_pointer baked from const 65536 in-function; no external/runtime globals-init (just my tramp).
+Fix (maintainer's court): under --native-pointer-abi, materialize `__synth_wasm_data+65536` (MOVW/MOVT) for
+the SP base (+ any global init'd to a linmem addr); host-ptr [0+ptr+off] stays native. Self-contained.
+→ #237 c4623207735. remeasure_wasm_lto.sh staged; reflash+post k_mutex_unlock cyc (native 124) when build lands.
