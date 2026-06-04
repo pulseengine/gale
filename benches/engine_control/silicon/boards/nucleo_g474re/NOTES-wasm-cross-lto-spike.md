@@ -888,3 +888,23 @@ the microbench's min-over-200 + overhead-subtraction discipline.
 the full 5-primitive context; the microbench is for the clean cycle number.
 Follow-up (optional): add overhead-subtracted min-over-N timing around the bench's real
 filter_step/controller_step calls if an in-context number is wanted.
+
+## UPDATE 2026-06-04 — MUTEX dissolves via wasm-cross-LTO (2nd primitive after sem)
+
+Proved the mutex primitive dissolves through the same pipeline as the sem (907 cyc):
+`clang wasm_mutex_shim_poc.c` (wasm-portable z_impl_k_mutex_unlock) → `wasm-ld` merge with
+`libgale_ffi.a` (built `cargo rustc --target wasm32-unknown-unknown --crate-type=staticlib`,
+relocatable objects) → `loom optimize --passes inline` → `synth compile --target cortex-m4f`.
+
+**Seam dissolved** (the success criterion): `merged.o` defines only `z_impl_k_mutex_unlock`
+(530 B ARM) + a synth helper — **no `gale_k_mutex_unlock_decide` symbol** (the verified-Rust
+decision is inlined/folded into the C function, exactly like LLVM-LTO and the sem result).
+Call relocations from the dissolved function are only the kernel APIs:
+`k_spin_lock/unlock`, `gale_w_current`, `z_unpend_first_thread`, `z_ready_thread`,
+`arch_thread_return_value_set`, `z_reschedule` — i.e. it reuses **every** sem `gale_w_*`
+wrapper + the one new `gale_w_current`. No `bl gale_k_mutex_unlock_decide`.
+
+Remaining for the silicon number: objcopy-rename the kernel imports to `gale_w_*` (as the sem
+does), wire `GALE_WASM_LTO_MUTEX_LIB` to override the bench's native `z_impl_k_mutex_unlock`,
+flash G474RE, and measure k_mutex_unlock native / LLVM-LTO / wasm-cross-LTO — the 2nd primitive
+data point alongside the sem's 907.
