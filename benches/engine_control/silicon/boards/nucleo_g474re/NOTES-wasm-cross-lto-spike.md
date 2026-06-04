@@ -1075,3 +1075,10 @@ Folded exactly 1 AND-imm/fn (tail+not-spilled guard gates the other ~3 & 0xFF si
 Validates the maintainer-transform -> my-silicon-reflash loop end-to-end. Posted #250 c4625889530.
 Bigger levers still ahead (per gap decomp): const-CSE on 0x7e/0x7f clamps x6, mla-fusion, clamp-lowering 18->6 IT.
 Captures: flat_flight_pr250_261cyc.txt, controller_pr250_168cyc.txt.
+
+## UPDATE 2026-06-04 (n) — immediate-fold family complete (net -1cyc); #252 no-op on gale; big levers still ahead
+#250 (AND-fold) + #251 (ORR/EOR encoder NOP fix, latent path) MERGED to main (a7676ec). #252 (or/xor fold) OPEN:
+built + byte-diffed vs #250 -> IDENTICAL on flat_flight + controller (no or/xor-const sites; packing ORs registers).
+So AND/OR/XOR immediate-fold family = net -1 cyc on gale benches (the single AND site, #250: 262->261, 169->168).
+Posted #252 note: redirect to the needle-movers (const-CSE on 0x7e/0x7f clamps x6, mla-fusion, clamp-lowering 18->6 IT
+= ~150cyc of the 262->103 gap). Microbenches staged for each. #251 latent (we never emitted ORR/EOR-imm; selfchecks valid).
