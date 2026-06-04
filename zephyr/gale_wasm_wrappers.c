@@ -54,3 +54,14 @@ void gale_w_arch_thread_return_value_set(struct k_thread *thread, unsigned int v
 {
 	arch_thread_return_value_set(thread, value);
 }
+
+/* Out-of-line _current accessor for the wasm-cross-LTO MUTEX shim
+ * (wasm_mutex_shim_poc.c): _current is a macro (z_smp_current_get() /
+ * _kernel.cpus[].current) with no linkable symbol, so the dissolved
+ * z_impl_k_mutex_unlock imports gale_w_current instead. The mutex shim
+ * reuses every other gale_w_* wrapper above (spinlock, unpend, ready,
+ * reschedule, return_value_set) unchanged — only this one is new. */
+struct k_thread *gale_w_current(void)
+{
+	return _current;
+}
