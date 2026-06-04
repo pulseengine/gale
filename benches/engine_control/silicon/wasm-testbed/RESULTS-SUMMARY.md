@@ -18,10 +18,12 @@ min-over-200 (or bench median where noted). RISC-V = `qemu_riscv32 -icount` (ins
 |----------|------------------------------|------------------------------------------|
 | `filter_axis`     | 46 / 19 = **2.42×** | 23 / 17 = **1.35×** |
 | `control_step` (engine algo) | 168 / 81 = **2.07×** | 129 / 62 = **2.08×** |
-| `controller_step` | — | 100 / 49 = **2.04×** |
+| `controller_step` (7-arg) | 169 / 61 = **2.77×**† | 100 / 49 = **2.04×** |
 | `flat_flight` (flight algo, composed) | 315 / 99 = **3.18×** | 181 / 75 = **2.41×** |
 
 All functionally correct on both backends (RV32 funccheck 10/10, ARM funccheck 6/6, wasmtime oracle).
+
+† `controller_step` has 7 args; synth’s cortex-m convention passes args in **r0–r7** (not AAPCS r0–r3+stack), so a C/Zephyr caller needs an arg-shuffle trampoline (`controller-microbench/ctl_tramp.S`). The 169 includes that ~8-cyc marshalling (native called directly); the dissolved body alone is ~161. SELFCHECK 0x05e33e81 == native on G474RE.
 flight_control bench wasm-LTO variant builds + runs the dissolved algorithm on G474RE (Phase 5).
 
 ## The two open optimization/expansion levers (maintainer-side)

@@ -1000,3 +1000,14 @@ BLOCKER 2 (real): BUS FAULT even with SP base relocated (__synth_wasm_data=0x200
   0x4dc `f84b 600c` = STR.W r6,[r11,r12] -> wasm-linmem store with base r11=0 (trampoline). Callees still use [r11+linmem].
   FIX: extend __synth_wasm_data materialization to ALL emitted fns (callees too), so r11 never a linmem base; r11=0 = host ptrs only.
 Repro committed: mutex_v0.11.30_pr240_full.o, _bss64k.o, _busfault.txt. native ref 124. Reflash on a callee-promoted build.
+
+## UPDATE 2026-06-04 (f) — EXPAND: controller_step ARM silicon = 169/61 = 2.77x (filled the "—" cell)
+While mutex/#237 is in maintainer hands (PR#240 callee-promotion fix), pushed the expand thread:
+measured controller_step (7-arg value fn) on G474RE. SELFCHECK 0x05e33e81 == native (functionally correct).
+KEY ABI FINDING: synth's cortex-m convention passes args in r0-r7 (capstone: arg1=r0, arg2=r1, ...,
+arg7 read from saved-r6 slot after `push {r4-r8,lr}`), NOT AAPCS (r0-r3 + stack). So control_step (4 args)
+was AAPCS-clean, but >4-arg fns need an arg-shuffle trampoline (controller-microbench/ctl_tramp.S:
+push{r3-r7,lr}; ldr r4/r5/r6 from [sp+24/28/32]; blx synth body). 169 includes ~8-cyc marshalling;
+body alone ~161. Candidate maintainer ask (HOLD until #237 settles, don't pile): does synth's >4-arg
+cortex-m convention intend r0-r7? It means every >4-arg drop-in carries a trampoline + shuffle cost.
+Landed reusable controller-microbench/ (build.sh, ctl_tramp.S, RESULT-2026-06-04-g474re.txt).
