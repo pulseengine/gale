@@ -1092,3 +1092,14 @@ encode_thumb32_cmp_imm + adds + subs still pack raw i:imm3:imm8 -> silent miscom
 #253 fixed add/sub (ADDW T4 + Err) but not the flag-setting S-variants or cmp. Filed issue #255 w/ suggested
 shared try_thumb_expand_imm guard; offered on-target test vector. cmp_imm likely LIVE (threshold compares >=256).
 Big perf levers (const-CSE on clamps, mla, clamp-lowering) still unlanded; microbenches staged.
+
+## UPDATE 2026-06-05 (p) — #255 FIXED (#256, ~1h!); exact const-CSE target posted; #254 no-op
+My encoder bug report #255 -> FIXED by PR#256 (CMP/ADDS/SUBS via ThumbExpandImm) + closed within ~1h. Validated:
+latent path (selector materializes ALL cmp consts: cmp #1000 -> movw+cmp-reg, even cmp #50), output correct.
+#254 (add/sub fold) + #256: byte-identical no-ops on flat_flight/controller.
+Disassembled flat_flight on #256 -> the "61% redundant const" is EXACTLY the clamp bounds: movw #0x7e x6 + #0x7f x6
+= 12 movw of 2 distinct values. const-CSE APPLICATION (#245 detection -> emission) collapses 12->2 + frees regs
+(relieves part of the 17 spills) = THE pending lever. BONUS: #256 unblocks cmp-imm folding (6 cmp-reg -> cmp #127),
+same shape as #250 AND-fold. Posted #209 c4626463863. Microbenches staged (flat_flight 261, controller 168).
+GI-NPA-003 (mutex): HOLDING re-nudge (nudged once, unanswered; maintainer responsive to reports but prioritizing
+allocator track; re-ask = noise). Threshold extended 2.5h->4h for a genuine escalation if still untouched.
