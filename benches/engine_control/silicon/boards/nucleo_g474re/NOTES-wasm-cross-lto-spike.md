@@ -989,3 +989,14 @@ v0.11.29 (commit 2305948, #238 merge) = --native-pointer-abi DATA-statics work. 
   -> identical object = identical fault; did NOT reflash (byte-diff suffices per loop rule).
 SP register-promotion pass (the deliverable) NOT in v0.11.29. Asked maintainer: landing in v0.11.30?
 Deliverable clock kept running (policy: a release that doesn't address the deliverable doesn't reset it).
+
+## UPDATE 2026-06-04 (e) — PR#240 (synth 0.11.30) TESTED on G474RE: object-correct, but 2 blockers (#237 c4624307408)
+Built PR#240 (91c7ec1). Object matches oracle: 6 MOVW/6 MOVT __synth_wasm_data, .bss NOBITS, 0 R9; control_step bit-identical.
+BLOCKER 1: .bss = 0x20000 (128KB, full 2-page declared mem) = 100% of 128KB RAM -> link overflow 6408B. Real footprint
+  is page-1-only (no data segs, 16B frame). Patched .bss sh_size 0x20000->0x10000 (NOBITS, code unchanged) -> RAM 54.89%, links.
+  FIX: size __synth_wasm_data to high-water addressed offset, NOT min_pages x 65536. (my earlier min_pages caveat was wrong.)
+BLOCKER 2 (real): BUS FAULT even with SP base relocated (__synth_wasm_data=0x20000080) + 64KB .bss. Dissolved obj = 4 fns:
+  func_7=body (SP-promoted, all 6 MOVW/MOVT here) + func_8/9/10 internal callees (loom didn't inline). Fault in func_9 at
+  0x4dc `f84b 600c` = STR.W r6,[r11,r12] -> wasm-linmem store with base r11=0 (trampoline). Callees still use [r11+linmem].
+  FIX: extend __synth_wasm_data materialization to ALL emitted fns (callees too), so r11 never a linmem base; r11=0 = host ptrs only.
+Repro committed: mutex_v0.11.30_pr240_full.o, _bss64k.o, _busfault.txt. native ref 124. Reflash on a callee-promoted build.
