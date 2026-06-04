@@ -234,6 +234,14 @@ static inline int z_vrfy_k_mutex_lock(struct k_mutex *mutex,
 #include <zephyr/syscalls/k_mutex_lock_mrsh.c>
 #endif /* CONFIG_USERSPACE */
 
+/* GALE_WASM_LTO_OVERRIDE_MUTEX_UNLOCK: when defined, z_impl_k_mutex_unlock is
+ * supplied instead by the wasm-cross-LTO object (libwasmmutex.a): this C body
+ * compiled clang->wasm-ld->loom(inline, seam dissolved)->synth to Cortex-M,
+ * with gale_k_mutex_unlock_decide folded in. The synth object's kernel-API
+ * imports are objcopy-renamed to the gale_w_* out-of-line wrappers
+ * (gale_wasm_wrappers.c). Mirrors GALE_WASM_LTO_OVERRIDE_SEM_GIVE; used only by
+ * the mutex wasm-LTO bench variant — default builds keep this native one. */
+#ifndef GALE_WASM_LTO_OVERRIDE_MUTEX_UNLOCK
 int z_impl_k_mutex_unlock(struct k_mutex *mutex)
 {
 	struct k_thread *new_owner;
@@ -311,6 +319,7 @@ k_mutex_unlock_return:
 
 	return 0;
 }
+#endif /* GALE_WASM_LTO_OVERRIDE_MUTEX_UNLOCK */
 
 #ifdef CONFIG_USERSPACE
 static inline int z_vrfy_k_mutex_unlock(struct k_mutex *mutex)

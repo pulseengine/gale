@@ -552,6 +552,20 @@ zephyr_library_include_directories(
 zephyr_library_link_libraries(${GALE_FFI_LIB})
 add_dependencies(gale_mutex gale_ffi_build)
 
+# wasm-cross-LTO mutex variant: -DGALE_WASM_LTO_MUTEX_LIB=<path to libwasmmutex.a>
+# excludes the native z_impl_k_mutex_unlock and links the synth-compiled,
+# loom-inlined (seam-dissolved) z_impl instead. Mirrors GALE_WASM_LTO_SEM_LIB.
+if(DEFINED GALE_WASM_LTO_MUTEX_LIB)
+  message(STATUS "Gale: wasm-cross-LTO mutex override -> ${GALE_WASM_LTO_MUTEX_LIB}")
+  zephyr_library_compile_definitions(GALE_WASM_LTO_OVERRIDE_MUTEX_UNLOCK=1)
+  # out-of-line wrappers for inline-only kernel APIs the synth object calls.
+  # Avoid double-adding if the sem variant already pulled them in.
+  if(NOT DEFINED GALE_WASM_LTO_SEM_LIB)
+    zephyr_library_sources(gale_wasm_wrappers.c)
+  endif()
+  zephyr_library_link_libraries(${GALE_WASM_LTO_MUTEX_LIB})
+endif()
+
 endif() # CONFIG_GALE_KERNEL_MUTEX
 
 # ==========================================================================
