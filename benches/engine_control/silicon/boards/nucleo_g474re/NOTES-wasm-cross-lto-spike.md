@@ -1082,3 +1082,13 @@ built + byte-diffed vs #250 -> IDENTICAL on flat_flight + controller (no or/xor-
 So AND/OR/XOR immediate-fold family = net -1 cyc on gale benches (the single AND site, #250: 262->261, 169->168).
 Posted #252 note: redirect to the needle-movers (const-CSE on 0x7e/0x7f clamps x6, mla-fusion, clamp-lowering 18->6 IT
 = ~150cyc of the 262->103 gap). Microbenches staged for each. #251 latent (we never emitted ORR/EOR-imm; selfchecks valid).
+
+## UPDATE 2026-06-04 (o) — #251/#252/#253 byte-identical no-ops on gale; FILED #255 (encoder bug-class audit)
+Tested merge batch vs body of work: main(5cc26a0, #250+#251+#252+#253) == #250-build for flat_flight + controller
+(small frames, no or/xor-const) and mutex == v0.11.30 (still faults). So #251/#252/#253 are latent-miscompile
+correctness fixes we don't hit; only #250 AND-fold moves us (-1cyc, measured). No reflash needed.
+PROACTIVE: audited arm_encoder.rs for the #251/#253 bug class (Operand2::Imm without ThumbExpandImm). Found 3 more:
+encode_thumb32_cmp_imm + adds + subs still pack raw i:imm3:imm8 -> silent miscompile for imm>0xFF (e.g. cmp #1000).
+#253 fixed add/sub (ADDW T4 + Err) but not the flag-setting S-variants or cmp. Filed issue #255 w/ suggested
+shared try_thumb_expand_imm guard; offered on-target test vector. cmp_imm likely LIVE (threshold compares >=256).
+Big perf levers (const-CSE on clamps, mla, clamp-lowering) still unlanded; microbenches staged.
