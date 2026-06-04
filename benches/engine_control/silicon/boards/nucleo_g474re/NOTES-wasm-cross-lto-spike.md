@@ -1038,3 +1038,12 @@ plan = CFG-aware liveness -> interference graph over virtual regs -> spill-under
 hard-fail); const-CSE enabled by same primitive (local_dead_defs = dead-store dual). Baseline LOCKED:
 315cyc/588B/180instr/34const(13 distinct)/17spills. Posted handshake (#209 c <new>). Reflash+post delta on
 each allocator-track build. Both threads healthy in maintainer hands: GI-NPA-003 (mutex callees) + VCR-RA-001 (#209).
+
+## UPDATE 2026-06-04 (j) — #245 const-CSE detection merged (byte-identical); built flat_flight ARM harness; CORRECTED baseline
+PR#245 (const-CSE detection redundant_const_defs + dead-store dual, VCR-RA-001) merged. Byte-diff vs v0.11.29:
+flat_flight + controller_step IDENTICAL -> pure-analysis (PR says so), codegen-application pending = silicon-delta deliverable.
+EXPAND: built flat_flight ARM-silicon microbench (flat_flight-microbench/, buffer-harness fp=&wasm_linmem, 0 statics,
+64KB linmem). Measured CURRENT: synth=262/native=103 = 2.54x (SELFCHECK 0x07fdf307 OK).
+=> table's 315/99/3.18x was STALE (synth v0.11.18). Corrected RESULTS-SUMMARY + #209 (c4625286555) to 262/2.54x.
+262 includes ~8-cyc fp-setup tramp; body ~254. const-redundancy 34/13/61% + 17 spills on this current object (unchanged by #245).
+Measurement-ready: flat_flight-microbench (262) + controller-microbench (169) both staged for the const-CSE-application delta.

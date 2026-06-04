@@ -19,9 +19,11 @@ min-over-200 (or bench median where noted). RISC-V = `qemu_riscv32 -icount` (ins
 | `filter_axis`     | 46 / 19 = **2.42×** | 23 / 17 = **1.35×** |
 | `control_step` (engine algo) | 168 / 81 = **2.07×** | 129 / 62 = **2.08×** |
 | `controller_step` (7-arg) | 169 / 61 = **2.77×**† | 100 / 49 = **2.04×** |
-| `flat_flight` (flight algo, composed) | 315 / 99 = **3.18×** | 181 / 75 = **2.41×** |
+| `flat_flight` (flight algo, composed) | 262 / 103 = **2.54×**‡ | 181 / 75 = **2.41×** |
 
 All functionally correct on both backends (RV32 funccheck 10/10, ARM funccheck 6/6, wasmtime oracle).
+
+‡ `flat_flight` ARM refreshed 2026-06-04 to **262/103 = 2.54×** (loom 1.1.10 + synth 0.11.30, reproducible `flat_flight-microbench/`, SELFCHECK 0x07fdf307). The prior **315/3.18×** was synth **v0.11.18** — stale; the caller-saved-preference fix (v0.11.27) and later improvements already cut it. 262 includes the fp-setup trampoline (~8 cyc); body ~254.
 
 † `controller_step` has 7 args; synth’s cortex-m convention passes args in **r0–r7** (not AAPCS r0–r3+stack), so a C/Zephyr caller needs an arg-shuffle trampoline (`controller-microbench/ctl_tramp.S`). The 169 includes that ~8-cyc marshalling (native called directly); the dissolved body alone is ~161. SELFCHECK 0x05e33e81 == native on G474RE.
 flight_control bench wasm-LTO variant builds + runs the dissolved algorithm on G474RE (Phase 5).
@@ -29,7 +31,7 @@ flight_control bench wasm-LTO variant builds + runs the dissolved algorithm on G
 ## The two open optimization/expansion levers (maintainer-side)
 
 1. **const-CSE + cross-statement local promotion (synth#209)** — the composed path's remaining gap.
-   `flat_flight` is 61% redundant constant materializations (34 const-loads / 13 distinct; clamp
+   `flat_flight` (262 cyc ARM, current) is 61% redundant constant materializations (34 const-loads / 13 distinct; clamp
    bounds `#0x7e`/`#0x7f` ×6 each) + 17 stack spills (refreshed on loom 1.1.10 + synth 0.11.29); the v0.11.27 caller-saved-preference fix nearly halved the leaves (filter 2.18→1.35×) but
    barely moved the composed path (2.57→2.41×). const-CSE is the next lever.
 2. **native-call ABI / `--native-pointer-abi` (synth#237, v0.11.29 in progress)** — unblocks
@@ -39,6 +41,6 @@ flight_control bench wasm-LTO variant builds + runs the dissolved algorithm on G
 
 ## Headline
 The PulseEngine pipeline dissolves the C↔Rust seam at wasm-IR level and produces correct silicon
-output at ~2–3.2× native (widening with composition), with LLVM-LTO-parity codegen shape. The gap is
+output at ~2–2.6× native (widening with composition), with LLVM-LTO-parity codegen shape. The gap is
 general codegen (regalloc/const-CSE = #209), confirmed cross-target on ARM **and** RISC-V — the
 single retargetable lever. Host-pointer primitive drop-ins await the native-call ABI (#237).
