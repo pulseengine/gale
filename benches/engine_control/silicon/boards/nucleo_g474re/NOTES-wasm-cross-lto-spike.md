@@ -1029,3 +1029,12 @@ Pushed the #209 lever: re-derived flat_flight codegen on loom 1.1.10 + synth 0.1
   (1) const-CSE hoist clamp/shift consts (~12% fewer instr, compounds w/ composition);
   (2) liveness-based spill regalloc (VCR-RA-001/#243) for the 17 [sp] spills. Same lever on RV (2.41x) = retargetable.
   Offered flat_flight as the silicon regression target; reflash on each allocator-track build.
+
+## UPDATE 2026-06-04 (i) — PR#243 liveness MERGED (pure-analysis, byte-identical); #209 plan set
+PR#243 (def/use+liveness primitive, VCR-RA-001 step1) merged to main (026d58b). Regression-tested vs v0.11.29:
+flat_flight + controller_step + control_step ALL byte-IDENTICAL -> pure analysis, no codegen change, no regression.
+Maintainer (#209): adopted flat_flight as Track-A frozen silicon regression target (README North Star, PR#244);
+plan = CFG-aware liveness -> interference graph over virtual regs -> spill-under-pressure (replaces exhaustion
+hard-fail); const-CSE enabled by same primitive (local_dead_defs = dead-store dual). Baseline LOCKED:
+315cyc/588B/180instr/34const(13 distinct)/17spills. Posted handshake (#209 c <new>). Reflash+post delta on
+each allocator-track build. Both threads healthy in maintainer hands: GI-NPA-003 (mutex callees) + VCR-RA-001 (#209).
