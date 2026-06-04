@@ -962,3 +962,12 @@ Q-a: $__stack_pointer baked from const 65536 in-function; no external/runtime gl
 Fix (maintainer's court): under --native-pointer-abi, materialize `__synth_wasm_data+65536` (MOVW/MOVT) for
 the SP base (+ any global init'd to a linmem addr); host-ptr [0+ptr+off] stays native. Self-contained.
 → #237 c4623207735. remeasure_wasm_lto.sh staged; reflash+post k_mutex_unlock cyc (native 124) when build lands.
+
+## UPDATE 2026-06-04 (b) — ABI design call: FULLY SELF-CONTAINED (#237 c4623417761)
+Maintainer decoded synth output: 2 faults — (1) `ldr [r9,#0]` reads $__stack_pointer from an R9 globals
+table my tramp never sets (garbage SP); (2) baked movw/movt #0x10000 stack-top literals. Asked: keep R9
+table (tramp sets r9=__synth_wasm_data) vs self-contained (no R9, globals inlined as __synth_wasm_data-rel consts).
+RECOMMENDED self-contained: an R9-base contract defeats drop-in (ISR/ctx-switch/scheduler must preserve a
+2nd synth base reg); reuses v0.11.29 .bss+MOVW/MOVT substrate exactly; collapses both faults to one rule
+(every linmem addr = __synth_wasm_data+N, every host-ptr arg = [0+ptr]); negligible size cost; generalizes
+to any dissolved fn. Tramp stays trivial (mov r11,#0). Maintainer to implement as one coherent pass.
