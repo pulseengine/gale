@@ -908,3 +908,18 @@ Remaining for the silicon number: objcopy-rename the kernel imports to `gale_w_*
 does), wire `GALE_WASM_LTO_MUTEX_LIB` to override the bench's native `z_impl_k_mutex_unlock`,
 flash G474RE, and measure k_mutex_unlock native / LLVM-LTO / wasm-cross-LTO — the 2nd primitive
 data point alongside the sem's 907.
+
+## UPDATE 2026-06-04 (cont) — mutex integration wired; blocked on synth#235 (ET_REL helper)
+
+Built libwasmmutex.a (merged.o = dissolved z_impl_k_mutex_unlock, kernel imports objcopy-renamed
+to gale_w_*) + wired the integration (gale_mutex.c #ifndef GALE_WASM_LTO_OVERRIDE_MUTEX_UNLOCK guard;
+GALE_WASM_LTO_MUTEX_LIB CMake block, mirroring the sem). Reuses all sem gale_w_* wrappers + gale_w_current.
+
+Link blocker (filed synth#235): the dissolved unlock calls a non-inlinable helper —
+core::panicking::panic_fmt (the lock_count overflow-checks=true panic path; gale Cargo.toml forces
+overflow-checks=true). synth emits the export (ET_REL) referencing it as undefined `func_9`, but
+--func-index (only way to compile a non-export) emits ET_EXEC (with startup stubs), which ld rejects
+("cannot use executable file as input"). So no linkable object set until synth can emit reachable
+internal callees as ET_REL. NOT disabling overflow-checks (would diverge from the faithful production
+build). Workaround options for next firing: export the helper via wasm-tools so --all-exports emits it
+ET_REL, or provide a panic_fmt stub. Once linkable -> flash G474RE -> k_mutex_unlock 2nd primitive number.
