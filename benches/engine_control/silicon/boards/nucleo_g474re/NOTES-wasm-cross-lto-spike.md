@@ -1065,3 +1065,13 @@ Disassembled both sides of the gap (synth 180 instr/262cyc vs gcc-O2 68 instr/10
   sdiv 2/2 + branches 0/0 = ALREADY AT PARITY (backend bones right)
 => const-CSE+spills recover ~40-55 of 159cyc; clamp-lowering + mla-fusion are the bigger instruction-selection levers.
 flat_flight-microbench(262) + controller(169) quantify each lever as it lands. Offered to file clamp/mla as tracked issues.
+
+## UPDATE 2026-06-04 (m) — FIRST codegen-application delta measured on silicon (PR#250)
+PR#250 (feat/selector: fold i32.const C; i32.and -> and rD,rA,#C for C in 0..0xFF) = first delta-emitting transform.
+Built (unmerged, ce6364c) + measured on G474RE:
+  flat_flight: 180->179 instr (movw 33->32, .text 588->584B); silicon 262 -> 261 cyc; SELFCHECK 0x07fdf307 OK
+  controller_step: 120->119 instr (movw 27->26); silicon 169 -> 168 cyc; SELFCHECK 0x05e33e81 MATCH
+Folded exactly 1 AND-imm/fn (tail+not-spilled guard gates the other ~3 & 0xFF sites -> coupled to spill-elim).
+Validates the maintainer-transform -> my-silicon-reflash loop end-to-end. Posted #250 c4625889530.
+Bigger levers still ahead (per gap decomp): const-CSE on 0x7e/0x7f clamps x6, mla-fusion, clamp-lowering 18->6 IT.
+Captures: flat_flight_pr250_261cyc.txt, controller_pr250_168cyc.txt.
