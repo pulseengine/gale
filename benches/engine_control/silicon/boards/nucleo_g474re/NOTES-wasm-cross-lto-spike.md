@@ -934,3 +934,19 @@ linked into flight_control via GALE_WASM_LTO_MUTEX_LIB: LINKS CLEAN. Flashed nuc
 100Hz loop to the results print with the dissolved mutex live = wasm-cross-LTO k_mutex_unlock works on silicon.
 NEXT: clean k_mutex_unlock cycle microbench (DWT min-over-N, native vs wasm-cross-LTO) for the head-to-head
 number, the 2nd primitive data point alongside sem 907. (v0.11.28 still a PR; canonical once released.)
+
+## UPDATE 2026-06-04 (cont) — mutex LINKS (v0.11.28) but drop-in FAULTS on silicon (synth#237)
+
+Installed v0.11.28 (released; #235 fix). The mutex now links + the bench boots, BUT the dissolved
+z_impl_k_mutex_unlock MPU-FAULTS at runtime on the G474RE (str.w r6,[r11,r12], r12≈0x08003101 = a
+flash/.rodata addr → Data Access Violation, before any output). Root cause = base-register conflict:
+the body mixes (a) the host k_mutex* arg [needs linmem_base=0 for native deref] and (b) a function-static
+(the shim's `static k_spinlock lock`) [needs base=&wasm_data]. base can't be both. fp=0 trampoline +
+overflow-checks=off (drop panic) both insufficient — the static-data access still faults. Filed synth#237
+(native-pointer vs wasm-static base conflict; asks for base-independent .data/.rodata reloc for statics).
+
+This is the SAME wall the sem drop-in hit historically (NOTES above: "host-pointer-dereferencing function
+can't be a native drop-in"). HONEST scope: value-in/value-out dissolutions (filter_axis, control_step,
+flat_flight) work + measured on silicon; host-pointer PRIMITIVE drop-ins (sem z_impl, mutex z_impl) are
+ABI-blocked. The mutex k_mutex_unlock silicon NUMBER is gated on synth#237. Native gale k_mutex_unlock
+(reference) measured = 124 cyc (uncontended, DWT min/200). v0.11.28 gives the LINK; #237 is the runtime ABI.
