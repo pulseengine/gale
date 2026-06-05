@@ -1200,3 +1200,17 @@ v0.11.34 (#278 un-wire mla) released. Re-measured all mla-affected benches on G4
 Regression signature is specific: flat_flight's INTERLEAVED 2-fusion (both mul products live at the combining add). filter/control = single fusion, product dead after = clean win.
 Reported #277 c4632454747 (constructive, not revert): cost-guard skips only the interleaved shape (keeps wins now), OR allocator-gate recovers all.
 Corrected control_step baseline to 158 (v0.11.34 released, mla un-wired; mla-on=156). Current released: filter 37, controller 162, control_step 158, flat_flight 255, macro 1.11x.
+
+## UPDATE 2026-06-05 (ab) — MILESTONE: maintainer routes const-CSE + mla through the allocator (my data decisive)
+Maintainer decisions (#209 c14:52, #277 c14:35), explicitly crediting my on-target data:
+- const-CSE (#209): lands via the ALLOCATOR (rematerialization-avoidance), NOT a standalone peephole. My #277 mla
+  regression data was "decisive" — const-CSE is the SAME register-affecting class (resident const extends live range
+  -> regresses over greedy selector). ~14 redundant const materializations confirmed on v0.11.34 flat_flight.
+- mla (#277): cost-guard DECLINED (principled — it's the patch-accretion VCR-RA-001 exists to remove). My suite data
+  = "the concrete justification to prioritize the allocator wiring."
+- Both collapse into ONE prerequisite: virtual-register selector output + allocator wiring (recovers const-CSE + mla + 17 spills together, net-positive by construction).
+- ACCEPTANCE GATE (maintainer set, using MY baselines): re-enable fusion only when net-positive across
+  filter 37 / control_step 158 / flat_flight 255 on-target, NO per-shape guard.
+PR#279 (model SelectMove/Select in reg_effect — see resident clamp consts across IT-block chains) = first increment.
+Confirmed acceptance contract #209 c4632909409: I run the no-guard check + per-bench delta breakdown when the build lands.
+5 silicon benches frozen+staged. The allocator wiring is now THE convergence point for all the optimization levers.
