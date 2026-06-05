@@ -1183,3 +1183,12 @@ v0.11.32 (#274 merged) ships mla fusion default-on. Tested body of work on silic
    NOT blanket default-off (forfeits filter_axis win) -> allocator-gate (#272, resolves pressure) or cost-guard.
 KEY: on-target measurement revealed BOTH the regression AND that it's mixed — byte-count/host checks would see neither.
 Built filter_axis microbench (register-only, 3-arg AAPCS). Clock=v0.11.32.
+
+## UPDATE 2026-06-05 (z) — mla regression RESOLVED: maintainer un-wired (PR#278) per my #277, verified 255 on silicon
+My #277 on-target finding (mla +2 regress, mixed) -> maintainer agreed + un-wired mla default-on (PR#278/v0.11.34).
+VERIFIED on G474RE: #278 flat_flight = 255 (0x07FDF307), byte-identical to v0.11.31 (mla un-wired). Regression gone.
+Maintainer ADOPTED my methodology as their bar: "byte-count insufficient for register-affecting transforms; need
+on-target/allocator-aware gate before default-on." fuse_mul_add stays as infra, re-wires WITH the allocator (#272,
+spill-aware) so it's net-positive on both filter_axis (simple, +win) and flat_flight (interleaved) shapes.
+v0.11.33 (#276 call_indirect reachability) = no-op on our value benches (byte-identical). Posted #277 close c<new>.
+Baselines restored: flat_flight 255, filter_axis 37 (mla un-wired). Allocator wiring (#272) remains the #209 lever.
