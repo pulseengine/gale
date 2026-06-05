@@ -1155,3 +1155,12 @@ flat_flight 261->255, controller 168->162 (both -6cyc, SELFCHECK correct). cmn f
 PR#263 = MLA op-support (#257) but "ready-to-wire", NOT emitting (mul=4/mla=0) -> byte-unchanged, wiring next.
 Arc: flat_flight 315(v18)->262->261(#250)->255(#262); native 103. Pending: const-CSE application (#209, 12->2 movw
 on bound ASSIGNMENTS the cmn fold doesn't touch) + mla wiring (#257/#263). Benches staged. Capture: flat_flight_262clampfold_255cyc.txt
+
+## UPDATE 2026-06-05 (w) — v0.11.31: mla WIRED (#264) but fires 0x on real flat_flight; #266 no-op
+v0.11.31 (#265) released: mla fusion wired (#264) + #266 (AND/CMN ThumbExpandImm). Tested on G474RE-build:
+flat_flight v0.11.31 BYTE-IDENTICAL to #258-build (mul=4/mla=0, 170 instr, still 255 cyc) — MLA fusion fires
+ZERO times on the actual gale flat_flight despite maintainer's "~18 muls fused" (a simpler fixture). Exact reason:
+filter mul->add are scheduler-interleaved across the 2 axes; the adjacent `mul r8,r6,r7; add r2,r5,r8` should fuse
+to `mla r2,r6,r7,r5` but mul is the add's 2nd operand -> likely add-commutativity not matched; the other mul's
+consumer has a ldrsh between (conservative block). Re-commented #257 (c4628718993). #266 byte-identical (cmn #127<=0xFF).
+LEVERS: #258 clamp DONE (-6, 255). #257 mla wired-but-0-fires (reported). #209 const-CSE application pending. Benches staged.
