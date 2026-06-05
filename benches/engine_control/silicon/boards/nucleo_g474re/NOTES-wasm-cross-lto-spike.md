@@ -1173,3 +1173,13 @@ extends r3/r4/r8 live ranges to the mla point, selector pays elsewhere > the 1cy
 (-2 instr / 1891->1819B) looked like a win; on-target cycles regressed. Reported #274 c4631214680: GATE mla behind
 the allocator (VCR-RA-001); its value is coupled to register allocation. Capture: flat_flight_274mla_257cyc_REGRESSION.txt.
 KEY: this is exactly why on-target measurement matters — host/byte checks would have merged a regression.
+
+## UPDATE 2026-06-05 (y) — v0.11.32 mla default-on: MIXED on silicon (filter +win, flat_flight +regress)
+v0.11.32 (#274 merged) ships mla fusion default-on. Tested body of work on silicon (mla fired on filter_axis+control_step+flat_flight):
+  filter_axis: 37 (v31) -> 36 (v32) = -1 cyc WIN (1 fusion, clean). SELFCHECK 1088.
+  flat_flight: 255 -> 257 = +2 cyc REGRESS (2 fusions interleaved across axes, live-range pressure). 0x07FDF307.
+  controller_step: unchanged (no mul). control_step: 2 mla fired but UNMEASURED (needs tables harness) - pending.
+=> mla MIXED: helps simple kernels, hurts the complex interleaved one. Filed #277 + refined (c4631625693):
+   NOT blanket default-off (forfeits filter_axis win) -> allocator-gate (#272, resolves pressure) or cost-guard.
+KEY: on-target measurement revealed BOTH the regression AND that it's mixed — byte-count/host checks would see neither.
+Built filter_axis microbench (register-only, 3-arg AAPCS). Clock=v0.11.32.
