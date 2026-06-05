@@ -1192,3 +1192,11 @@ on-target/allocator-aware gate before default-on." fuse_mul_add stays as infra, 
 spill-aware) so it's net-positive on both filter_axis (simple, +win) and flat_flight (interleaved) shapes.
 v0.11.33 (#276 call_indirect reachability) = no-op on our value benches (byte-identical). Posted #277 close c<new>.
 Baselines restored: flat_flight 255, filter_axis 37 (mla un-wired). Allocator wiring (#272) remains the #209 lever.
+
+## UPDATE 2026-06-05 (aa) — v0.11.34 un-wire mla: full-suite shows mla was net-POSITIVE (control_step also a win)
+v0.11.34 (#278 un-wire mla) released. Re-measured all mla-affected benches on G474RE:
+  filter_axis: mla 36 / no-mla 37 (-1 WIN); control_step: mla 156 / no-mla 158 (-2 WIN); flat_flight: mla 257 / no-mla 255 (+2 REGRESS).
+=> mla WINS 2/3, net -1 across suite. Blanket un-wire (#278) trades the filter+control wins (+3) for the flat_flight fix (-2) = net +1 WORSE.
+Regression signature is specific: flat_flight's INTERLEAVED 2-fusion (both mul products live at the combining add). filter/control = single fusion, product dead after = clean win.
+Reported #277 c4632454747 (constructive, not revert): cost-guard skips only the interleaved shape (keeps wins now), OR allocator-gate recovers all.
+Corrected control_step baseline to 158 (v0.11.34 released, mla un-wired; mla-on=156). Current released: filter 37, controller 162, control_step 158, flat_flight 255, macro 1.11x.
