@@ -1122,3 +1122,13 @@ EXPAND/OPT (independent): filed #257 — mul+add->mla fusion (lever #2 of the 26
 flat_flight filter g*980+a*20 emits `mul;...;add.w` x2 sites where gcc-O2 uses `mla` (1 instr). Pure instruction
 selection, composes with VCR-RA-001. Bonus noted: mul-by-const strength-reduction. Microbenches staged for the delta.
 Pending levers: const-CSE application (maintainer building, 12->2 movw), cmp-imm fold (#256-unblocked), #257 mla, clamp-lowering(held).
+
+## UPDATE 2026-06-05 (s) — gap-decomposition fully tracked: filed #258 (clamp-lowering, lever #3)
+Still quiet (02:01 EU, maintainer offline ~2h, main unchanged). Disassembled flat_flight clamp lowering precisely:
+positive bound = `movw #0x7f; cmp rN,r5` -> should be `cmp rN,#0x7f` (3 sites); negative bound =
+`movw #0x7e; mvns; cmp rN,r7` -> should be `cmn rN,#127` (3 sites). Both materialize instead of using the
+immediate forms (encoders ready: cmp via #256, Cmn already present). Filed #258 (selector peephole): eliminates
+6 movw + 3 mvns + 6 regs, complements const-CSE (dedup vs eliminate), relieves part of the 17 spills.
+=> the measured 262->103 gap is now 3 tracked actionable issues: #209/#245 const-CSE (lever1, maintainer building),
+#257 mla-fusion (lever2), #258 clamp cmp/cmn-fold (lever3). Microbenches + macro bench staged for each delta.
+GI-NPA-003 (mutex) clock >4h but HOLDING re-nudge until maintainer active window (midnight EU; already nudged once).
