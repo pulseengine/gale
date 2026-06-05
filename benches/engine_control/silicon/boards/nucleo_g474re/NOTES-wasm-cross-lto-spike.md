@@ -1164,3 +1164,12 @@ filter mul->add are scheduler-interleaved across the 2 axes; the adjacent `mul r
 to `mla r2,r6,r7,r5` but mul is the add's 2nd operand -> likely add-commutativity not matched; the other mul's
 consumer has a ldrsh between (conservative block). Re-commented #257 (c4628718993). #266 byte-identical (cmn #127<=0xFF).
 LEVERS: #258 clamp DONE (-6, 255). #257 mla wired-but-0-fires (reported). #209 const-CSE application pending. Benches staged.
+
+## UPDATE 2026-06-05 (x) — mla NOW FIRES (PR#274, my diagnosis) but silicon REGRESSES +2cyc
+My instrumented diagnosis (reg-reuse blocks whole-function used_elsewhere) -> maintainer PR#274 (live-range-bounded fix,
+synth 0.11.32). Built: mla NOW fires on flat_flight (mul 4->2, mla 0->2, -2 instr, 0x07FDF307 correct).
+BUT G474RE: 255 -> 257 cyc (+2, STABLE x2 re-measures). mla is net-NEGATIVE over the greedy selector — folding
+extends r3/r4/r8 live ranges to the mla point, selector pays elsewhere > the 1cyc/site MLA saving. byte-count
+(-2 instr / 1891->1819B) looked like a win; on-target cycles regressed. Reported #274 c4631214680: GATE mla behind
+the allocator (VCR-RA-001); its value is coupled to register allocation. Capture: flat_flight_274mla_257cyc_REGRESSION.txt.
+KEY: this is exactly why on-target measurement matters — host/byte checks would have merged a regression.
