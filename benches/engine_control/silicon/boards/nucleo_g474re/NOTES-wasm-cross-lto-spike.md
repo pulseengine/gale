@@ -1140,3 +1140,10 @@ encode_thumb32_ldr/str/ldrb/ldrsb/ldrh/ldrsh/strb/strh _imm all do `offset & 0xF
 Latent for current workload (fields/frames <4096) but defensive-fix-worthy like #251/#256. Filed #259 w/ suggested
 Err+register-offset fallback. INDEPENDENT BACKLOG NOW EXHAUSTED: 3 opt levers (#209/#257/#258) + 2 encoder
 classes (#255 fixed, #259) + macro bench. Future offline firings = minimal holds until maintainer active window.
+
+## UPDATE 2026-06-05 (u) — maintainer AM session: #259 fixed (#261); both encoder classes closed
+Maintainer back ~06:00-06:26 EU: fixed my #259 (load/store imm12 bounds-check) via PR#261 (CLOSED) + changelog #260.
+Tested c91cec9 vs #256-build: flat_flight + controller BYTE-IDENTICAL (latent guard, offsets<4096, no regression).
+Both reported encoder bug-classes now guarded: #255->#256 (arith-imm), #259->#261 (load/store-imm). Posted #259 close-out
+(on-target test moot: guard makes >=4096 an Err -> selector materializes, wrong-address path unreachable). Optimization
+levers #257(mla)/#258(clamp)/#209(const-CSE application) still OPEN — the bigger work, queued. Benches staged.
