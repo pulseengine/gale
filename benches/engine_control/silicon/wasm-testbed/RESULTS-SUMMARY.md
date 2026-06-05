@@ -17,13 +17,15 @@ min-over-200 (or bench median where noted). RISC-V = `qemu_riscv32 -icount` (ins
 | function | ARM silicon (synth / native) | RISC-V icount v0.11.27 (synth / native) |
 |----------|------------------------------|------------------------------------------|
 | `filter_axis`     | 46 / 19 = **2.42×** | 23 / 17 = **1.35×** |
-| `control_step` (engine algo) | 168 / 81 = **2.07×** | 129 / 62 = **2.08×** |
+| `control_step` (engine algo) | 156 / 67 = **2.33×**§ | 129 / 62 = **2.08×** |
 | `controller_step` (7-arg) | 169 / 61 = **2.77×**† | 100 / 49 = **2.04×** |
 | `flat_flight` (flight algo, composed) | 255 / 103 = **2.48×**‡ (262→261 #250 AND, →255 #262 clamp) | 181 / 75 = **2.41×** |
 
 All functionally correct on both backends (RV32 funccheck 10/10, ARM funccheck 6/6, wasmtime oracle).
 
 ‡ `flat_flight` ARM refreshed 2026-06-04 to **262/103 = 2.54×** (loom 1.1.10 + synth 0.11.30, reproducible `flat_flight-microbench/`, SELFCHECK 0x07fdf307). The prior **315/3.18×** was synth **v0.11.18** — stale; the caller-saved-preference fix (v0.11.27) and later improvements already cut it. 262 includes the fp-setup trampoline (~8 cyc); body ~254.
+
+§ `control_step` ARM refreshed 2026-06-05 to **156/67 = 2.33×** (loom 1.1.10 + synth 0.11.33, reproducible `control-step-microbench/`, SELFCHECK 2165333). Prior 168/81 was an older synth. Buffer-harness (tables copied into a RAM linmem buffer, r11=base).
 
 † `controller_step` has 7 args; synth’s cortex-m convention passes args in **r0–r7** (not AAPCS r0–r3+stack), so a C/Zephyr caller needs an arg-shuffle trampoline (`controller-microbench/ctl_tramp.S`). The 169 includes that ~8-cyc marshalling (native called directly); the dissolved body alone is ~161. SELFCHECK 0x05e33e81 == native on G474RE.
 flight_control bench wasm-LTO variant builds + runs the dissolved algorithm on G474RE (Phase 5).
