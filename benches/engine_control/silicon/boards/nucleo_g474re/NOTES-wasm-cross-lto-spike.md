@@ -1132,3 +1132,11 @@ immediate forms (encoders ready: cmp via #256, Cmn already present). Filed #258 
 => the measured 262->103 gap is now 3 tracked actionable issues: #209/#245 const-CSE (lever1, maintainer building),
 #257 mla-fusion (lever2), #258 clamp cmp/cmn-fold (lever3). Microbenches + macro bench staged for each delta.
 GI-NPA-003 (mutex) clock >4h but HOLDING re-nudge until maintainer active window (midnight EU; already nudged once).
+
+## UPDATE 2026-06-05 (t) — encoder audit extended: filed #259 (load/store imm12 no bounds-check)
+Still quiet (02:32 EU, maintainer offline 2.5h). Continued the #255 encoder-bug-class audit into load/store:
+encode_thumb32_ldr/str/ldrb/ldrsb/ldrh/ldrsh/strb/strh _imm all do `offset & 0xFFF` with NO bounds check
+(0 Err in L6256-6470) -> silent wrong-address for offset>=4096. Same class as #253 but on memory (worse).
+Latent for current workload (fields/frames <4096) but defensive-fix-worthy like #251/#256. Filed #259 w/ suggested
+Err+register-offset fallback. INDEPENDENT BACKLOG NOW EXHAUSTED: 3 opt levers (#209/#257/#258) + 2 encoder
+classes (#255 fixed, #259) + macro bench. Future offline firings = minimal holds until maintainer active window.
