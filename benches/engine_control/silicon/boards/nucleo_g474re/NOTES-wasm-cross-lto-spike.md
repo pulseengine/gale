@@ -1147,3 +1147,11 @@ Tested c91cec9 vs #256-build: flat_flight + controller BYTE-IDENTICAL (latent gu
 Both reported encoder bug-classes now guarded: #255->#256 (arith-imm), #259->#261 (load/store-imm). Posted #259 close-out
 (on-target test moot: guard makes >=4096 an Err -> selector materializes, wrong-address path unreachable). Optimization
 levers #257(mla)/#258(clamp)/#209(const-CSE application) still OPEN — the bigger work, queued. Benches staged.
+
+## UPDATE 2026-06-05 (v) — LEVER #3 (clamp cmp/cmn fold #258) LANDED+MEASURED: -6cyc on silicon
+Maintainer wired my lever #3: PR#262 "fold compare bounds into cmp/cmn immediates (#258)". Measured on G474RE:
+flat_flight 261->255, controller 168->162 (both -6cyc, SELFCHECK correct). cmn fold fired on negative bounds
+(movw 32->26, mvns 6->3, cmn 0->3, net -9 instr). First BIG lever (vs immediate-folds -1). Posted #258 c4628561325.
+PR#263 = MLA op-support (#257) but "ready-to-wire", NOT emitting (mul=4/mla=0) -> byte-unchanged, wiring next.
+Arc: flat_flight 315(v18)->262->261(#250)->255(#262); native 103. Pending: const-CSE application (#209, 12->2 movw
+on bound ASSIGNMENTS the cmn fold doesn't touch) + mla wiring (#257/#263). Benches staged. Capture: flat_flight_262clampfold_255cyc.txt
