@@ -1214,3 +1214,11 @@ Maintainer decisions (#209 c14:52, #277 c14:35), explicitly crediting my on-targ
 PR#279 (model SelectMove/Select in reg_effect — see resident clamp consts across IT-block chains) = first increment.
 Confirmed acceptance contract #209 c4632909409: I run the no-guard check + per-bench delta breakdown when the build lands.
 5 silicon benches frozen+staged. The allocator wiring is now THE convergence point for all the optimization levers.
+
+## UPDATE 2026-06-06 (ac) — PR#283 in-place select: BIGGEST lever (-33cyc across clamp benches)
+PR#283 (in-place Select, elide keep-val2 move, VCR-SEL-002). Measured on G474RE, all correct:
+flat_flight 255->241 (-14, 170->157 instr, 0x07FDF307); controller 162->150 (-12, 110->99); control_step 158->151 (-7, 121->113);
+filter_axis unchanged (no select). = -33cyc total. The clamps (18 IT-blocks) were the dominant cost; eliding the per-Select
+keep-val2 move cuts directly in. CONFIRMS instruction-selection (clamp lowering) is the larger slice of the 255->103 gap,
+NOT the allocator (const-CSE was -1). flat_flight now 241/103 = 2.34x. Posted #283 c<new>. New acceptance gate when merged:
+flat_flight 241 / controller 150 / control_step 151 / filter 37 — const-CSE/allocator deltas stack on top.
