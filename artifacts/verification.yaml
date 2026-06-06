@@ -4599,7 +4599,7 @@ artifacts:
   #    the loom concurrency harness (#22), the heap FULL-tier canary
   #    (#15 PR-4), and the LLVM LTO regression-guard (#10) ───────────
 
-  - id: FV-US-003
+  - id: FV-US-002
     type: sw-verification
     title: k_object flag-op delegation to verified userspace model
     status: approved
@@ -4714,7 +4714,7 @@ artifacts:
         target: FV-SEM-001
 
   # ── 2026-04-25 #9 batch 2: 10 RED FFI fns wired to verified models.
-  #    Same delegation pattern as FV-US-003 / FV-RB-002 from batch 1.
+  #    Same delegation pattern as FV-US-002 / FV-RB-002 from batch 1.
 
   - id: FV-KH-002
     type: sw-verification
