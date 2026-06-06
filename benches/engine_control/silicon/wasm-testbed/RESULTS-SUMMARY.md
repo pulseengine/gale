@@ -17,9 +17,9 @@ min-over-200 (or bench median where noted). RISC-V = `qemu_riscv32 -icount` (ins
 | function | ARM silicon (synth / native) | RISC-V icount v0.11.27 (synth / native) |
 |----------|------------------------------|------------------------------------------|
 | `filter_axis`     | 46 / 19 = **2.42×** | 23 / 17 = **1.35×** |
-| `control_step` (engine algo) | 158 / 67 = **2.36×**§ | 129 / 62 = **2.08×** |
+| `control_step` (engine algo) | 151 / 67 = **2.25×**§ (#283 −7) | 129 / 62 = **2.08×** |
 | `controller_step` (7-arg) | 169 / 61 = **2.77×**† | 100 / 49 = **2.04×** |
-| `flat_flight` (flight algo, composed) | 255 / 103 = **2.48×**‡ (262→261 #250 AND, →255 #262 clamp) | 181 / 75 = **2.41×** |
+| `flat_flight` (flight algo, composed) | 241 / 103 = **2.34×**‡ (#283 in-place select −14) (262→261 #250 AND, →255 #262 clamp) | 181 / 75 = **2.41×** |
 
 All functionally correct on both backends (RV32 funccheck 10/10, ARM funccheck 6/6, wasmtime oracle).
 
