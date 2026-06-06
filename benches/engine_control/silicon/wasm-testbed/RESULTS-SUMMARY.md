@@ -18,7 +18,7 @@ min-over-200 (or bench median where noted). RISC-V = `qemu_riscv32 -icount` (ins
 |----------|------------------------------|------------------------------------------|
 | `filter_axis`     | 46 / 19 = **2.42×** | 23 / 17 = **1.35×** |
 | `control_step` (engine algo) | 151 / 67 = **2.25×**§ (#283 −7) | 129 / 62 = **2.08×** |
-| `controller_step` (7-arg) | 169 / 61 = **2.77×**† | 100 / 49 = **2.04×** |
+| `controller_step` (7-arg) | 150 / 61 = **2.46×**† | 100 / 49 = **2.04×** |
 | `flat_flight` (flight algo, composed) | 241 / 103 = **2.34×**‡ (#283 in-place select −14) (262→261 #250 AND, →255 #262 clamp) | 181 / 75 = **2.41×** |
 
 All functionally correct on both backends (RV32 funccheck 10/10, ARM funccheck 6/6, wasmtime oracle).
@@ -27,7 +27,7 @@ All functionally correct on both backends (RV32 funccheck 10/10, ARM funccheck 6
 
 § `control_step` ARM refreshed 2026-06-05 to **158/67 = 2.36×** (v0.11.34, mla un-wired; mla-on would be 156). loom 1.1.10 + synth 0.11.34, reproducible `control-step-microbench/`, SELFCHECK 2165333). Prior 168/81 was an older synth. Buffer-harness (tables copied into a RAM linmem buffer, r11=base).
 
-† `controller_step` has 7 args; synth’s cortex-m convention passes args in **r0–r7** (not AAPCS r0–r3+stack), so a C/Zephyr caller needs an arg-shuffle trampoline (`controller-microbench/ctl_tramp.S`). The 169 includes that ~8-cyc marshalling (native called directly); the dissolved body alone is ~161. SELFCHECK 0x05e33e81 == native on G474RE.
+† `controller_step` has 7 args; synth’s cortex-m convention passes args in **r0–r7** (not AAPCS r0–r3+stack), so a C/Zephyr caller needs an arg-shuffle trampoline (`controller-microbench/ctl_tramp.S`). Arc 169→168 (#250 AND)→162 (#258 clamp)→**150** (#283 in-place select); the 150 includes the ~8-cyc arg-shuffle (native called directly). SELFCHECK 0x05e33e81 == native on G474RE.
 flight_control bench wasm-LTO variant builds + runs the dissolved algorithm on G474RE (Phase 5).
 
 ## Bigger example — flight_control macro bench (Phase 5, composed)
