@@ -73,7 +73,7 @@ artifacts:
       initialization with count and limit, give (signal), take (wait),
       and reset.  Must maintain priority-ordered wait queue for blocked
       threads and never exhibit undefined behavior or arithmetic overflow.
-    tags: [sem, kernel]
+    tags: [sem, kernel, release-v0.1.0]
     fields:
       req-type: functional
       priority: must
@@ -101,7 +101,7 @@ artifacts:
       The semaphore count is always between 0 and limit inclusive.
       This is the fundamental invariant — it must hold after init, give,
       take, reset, and any interleaving of operations.
-    tags: [sem, invariant, asil-d]
+    tags: [sem, invariant, asil-d, release-v0.1.0]
     fields:
       req-type: safety
       priority: must
@@ -131,7 +131,7 @@ artifacts:
     description: >
       The semaphore limit is always strictly positive.
       Enforced by init rejecting limit == 0 with -EINVAL.
-    tags: [sem, invariant, asil-d]
+    tags: [sem, invariant, asil-d, release-v0.1.0]
     fields:
       req-type: safety
       priority: must
@@ -152,7 +152,7 @@ artifacts:
       if count < limit, count increments by 1 (GiveResult::Incremented).
       If count == limit, count is unchanged (GiveResult::Saturated).
       Maps to z_impl_k_sem_give lines 109-111 in kernel/sem.c.
-    tags: [sem, give, asil-d]
+    tags: [sem, give, asil-d, release-v0.1.0]
     fields:
       req-type: functional
       priority: must
@@ -176,7 +176,7 @@ artifacts:
       highest-priority (numerically lowest) waiting thread is woken with
       return value 0 (OK).  The count does not change.
       Maps to z_impl_k_sem_give lines 103-108 in kernel/sem.c.
-    tags: [sem, give, wake, asil-d]
+    tags: [sem, give, wake, asil-d, release-v0.1.0]
     fields:
       req-type: functional
       priority: must
@@ -197,7 +197,7 @@ artifacts:
       When take is called and count > 0, count decrements by 1 and
       returns 0 (OK).
       Maps to z_impl_k_sem_take lines 143-148 in kernel/sem.c.
-    tags: [sem, take, asil-d]
+    tags: [sem, take, asil-d, release-v0.1.0]
     fields:
       req-type: functional
       priority: must
@@ -219,7 +219,7 @@ artifacts:
       When take is called with K_NO_WAIT and count == 0, returns -EBUSY
       without modifying the semaphore.
       Maps to z_impl_k_sem_take lines 150-154 in kernel/sem.c.
-    tags: [sem, take, asil-d]
+    tags: [sem, take, asil-d, release-v0.1.0]
     fields:
       req-type: functional
       priority: must
@@ -239,7 +239,7 @@ artifacts:
       When take is called with a timeout and count == 0, the calling
       thread is blocked and inserted into the wait queue in priority order.
       Maps to z_impl_k_sem_take line 158 (z_pend_curr) in kernel/sem.c.
-    tags: [sem, take, blocking, asil-d]
+    tags: [sem, take, blocking, asil-d, release-v0.1.0]
     fields:
       req-type: functional
       priority: must
@@ -263,7 +263,7 @@ artifacts:
       Reset clears count to 0 and wakes every waiting thread with
       return value -EAGAIN.  Returns the number of threads woken.
       Maps to z_impl_k_sem_reset lines 166-192 in kernel/sem.c.
-    tags: [sem, reset, asil-d]
+    tags: [sem, reset, asil-d, release-v0.1.0]
     fields:
       req-type: functional
       priority: must
@@ -286,7 +286,7 @@ artifacts:
       or underflow.  Give at limit saturates; take at 0 returns error.
       The C code uses (count != limit) ? 1U : 0U pattern (line 110).
       Gale uses checked_add/saturating_sub.
-    tags: [sem, safety, overflow, asil-d]
+    tags: [sem, safety, overflow, asil-d, release-v0.1.0]
     fields:
       req-type: safety
       priority: must
@@ -306,7 +306,7 @@ artifacts:
       The wait queue maintains priority ordering (numerically lowest
       priority value = highest priority) at all times.  Threads are
       woken strictly in priority order.
-    tags: [sem, wait-queue, ordering, asil-d]
+    tags: [sem, wait-queue, ordering, asil-d, release-v0.1.0]
     fields:
       req-type: functional
       priority: must
