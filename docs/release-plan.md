@@ -16,7 +16,7 @@ requirement in its scope is `verified`/`accepted` and its V is closed
 ```sh
 REL=release-v0.1.0
 total=$(rivet list --filter "(has-tag \"$REL\")" --format json | python3 -c 'import json,sys;print(json.load(sys.stdin)["count"])')
-done=$(rivet list  --filter "(and (has-tag \"$REL\") (in status \"verified\" \"accepted\"))" --format json | python3 -c 'import json,sys;print(json.load(sys.stdin)["count"])')
+done=$(rivet list  --filter "(and (has-tag \"$REL\") (or (= status \"verified\") (= status \"accepted\")))" --format json | python3 -c 'import json,sys;print(json.load(sys.stdin)["count"])')
 echo "$REL: $done / $total verified"
 ```
 
