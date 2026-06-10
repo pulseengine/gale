@@ -1260,3 +1260,24 @@ nodiv 29→21, div 30→22 (−8 uniform)**, all SELFCHECKs OK, funccheck ALL GR
 {r4,lr} for AAPCS alignment (~4 cyc left on the table). Posted validation + falsification + v2 lever to #309:
 **leaf-function prologue elimination** (no outgoing calls ⇒ no push/pop at all, bx lr) → expected 29→~25.
 Verdict posted: good to merge + tag. Gap vs native: filter full 1.95×→1.53×.
+
+## UPDATE 2026-06-10 17:1x — 907 PROVENANCE BROKEN: sem shim was never faithful; faithful rebuild hangs (investigation open)
+
+Re-built the sem .o on v0.11.35 + loom 1.1.11 (the loop's "rebuild the sem .o" check, first since v0.11.15):
+code 702→524 B (−25% across 20 releases). Drop-in re-measure on the engine_control bench:
+
+1. **MPU FAULT** (DAV @0x8002b35, `sys_dlist_remove`←`z_abort_timeout`) — root-caused: **`wasm_host_shim_poc.c`
+   has ALWAYS passed `(void*)0)` as the wait_q** (git history confirms, single commit) and declared
+   `struct k_sem {count,limit}` — skewed −8 B vs the real layout (`wait_q` first). `z_unpend_first_thread(NULL)`
+   reads the vector table; the rebased zephyr v4.4.0 final (#44, June 6) turned that latent unsoundness into
+   a hard fault. ⇒ **The May-31 907-cyc run's wake path was never semantically sound; 907 needs re-validation.**
+2. **Shim FIXED to faithful** (real k_sem mirror {wq_head,wq_tail,count,limit}, `z_unpend_first_thread((void*)sem)` —
+   identical contract to gale_sem.c's give: unpend→retval_set(0)→ready). v0.11.35 object: 532 B, links clean
+   (localize gale_k_sem_give_decide vs native FFI duplicate — new step, wasm-ld now keeps it global).
+3. **No fault now, but bench HANGS at first handoff** (headers + D,boot, then silence; reader poll rows absent too).
+   Prime suspect: the **u64-packed decide return** (r0:r1) under v0.11.35's changed i64 lowering — action field
+   reads wrong → neither WAKE nor count update. NEXT: unicorn-emulate the v0.11.35 sem body with stubbed gale_w_*
+   imports; check decide's u64 return + count store offset; if miscompiled → NEW synth issue with the repro.
+   (v0.11.14 cross-check impossible on today's module: it predates internal-callee emission — module shape drifted.)
+
+Isolation status: NOT yet attributable to synth — could be shim/contract. Do NOT file until unicorn isolates it.

@@ -27,7 +27,15 @@ struct k_spinlock { uint8_t lock_internal; };
 
 /* Match gale-smart-data layout — count + limit are the first two u32s
  * in a k_sem. We don't touch the rest. */
+/* Faithful mirror of Zephyr v4.4.0 struct k_sem with CONFIG_POLL=n,
+ * CONFIG_WAITQ_SCALABLE=n: _wait_q_t == sys_dlist_t == {head, tail}.
+ * The earlier 2-field {count,limit} shape skewed count/limit by 8 bytes
+ * against the REAL k_sem the bench passes in, and the NULL wait_q below
+ * made z_unpend_first_thread read the vector table — MPU fault on
+ * zephyr v4.4.0 final (and semantically-unsound wakes before that). */
 struct k_sem {
+    void    *wq_head;
+    void    *wq_tail;
     uint32_t count;
     uint32_t limit;
 };
@@ -67,7 +75,7 @@ void z_impl_k_sem_give(struct k_sem *sem) {
     k_spinlock_key_t key = k_spin_lock(&shim_lock_raw);
 
     /* Extract: try to unpend first waiter (kernel side effect). */
-    struct k_thread *thread = z_unpend_first_thread((void *)0);
+    struct k_thread *thread = z_unpend_first_thread((void *)sem); /* wait_q is k_sem\x27s first member */
 
     /* Decide: Rust determines action via 8-byte u64-packed decision. */
     union gale_sem_give_decision_u du;
