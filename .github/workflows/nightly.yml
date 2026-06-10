@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@nightly
 
@@ -86,7 +86,7 @@ jobs:
           - mem_slab_fuzz
           - precondition_erasure
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@nightly
 
@@ -162,7 +162,7 @@ jobs:
             test_path: tests/kernel/semaphore/semaphore
     steps:
       - name: Checkout Gale
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: gale
 
