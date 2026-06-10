@@ -1333,3 +1333,14 @@ Posted full annotated disasm + 50-line wat to #311 (answers the maintainer's ope
 Final RV32 v0.11.35 re-baseline: filter 23 / controller 100 / control_step 129 (all = v0.11.27),
 flat_flight 172 (−9). Only the composed path moved — leaves were already harvest-complete after v0.11.27's
 caller-saved preference. Run dir complete.
+
+## UPDATE 2026-06-10 21:2x — #311 defect #3 found (callee i64 return drops hi half); loom v1.1.12 unbuildable → loom#198
+
+**#310 re-test (90e3c5a):** MOVS→CMP transmutation fix VERIFIED — u64 lane 4/4 GREEN (maintainer credited the
+disasm as "the whole diagnosis"; our wat = their committed fixture u64_unpack_inlined.wat). But the REAL sem
+body still stores count=0 → traced INSIDE decide: packed result computed correctly in r5/r6, epilogue emits
+`mov r0,r5` and **NO `mov r1,r6`** — callee-side i64 return materializes only the lo half whenever the value
+isn't already in r0/r1. Defect #3 posted to #311 (call-site tagging ✔, return-site pair move missing).
+**loom v1.1.12** (CRITICAL #196 elem-segment fix): tag does NOT build from source (stale CodegenOptions
+literal + ISLE u32 prelude collision vs locked cranelift-isle 0.132.1) → filed **loom#198**. We stay on
+v1.1.11 SAFELY: all suite modules verified 0 elem segments (#196 class can't bite them).
