@@ -1281,3 +1281,15 @@ code 702→524 B (−25% across 20 releases). Drop-in re-measure on the engine_c
    (v0.11.14 cross-check impossible on today's module: it predates internal-callee emission — module shape drifted.)
 
 Isolation status: NOT yet attributable to synth — could be shim/contract. Do NOT file until unicorn isolates it.
+
+## UPDATE 2026-06-10 17:1x — sem hang ISOLATED → synth#311 filed (i64 unpack clobbers the live u64 pair)
+
+Unicorn isolation of the faithful-shim hang: the give body stores **[sem+8]=0 where the verified decide
+contract requires 1** — disasm shows `bl gale_k_sem_give_decide; movw r0,#8; movw r1,#255` — the unpack's
+mask constants are materialized INTO the live u64 return pair before being read. Built a 15-line minimal
+repro (`u64repro.c`): wasmtime ground truth `check(3,4)=8` vs synth ARM under unicorn `=0xDEAD` — and loom
+had inlined the callee there, so the single-function i64 shift/mask path is wrong too, not just post-call.
+**Silent wrong-code** (no fault) — k_sem_give does nothing → bench hangs. Reproduces byte-identical on the
+PR #309 head. Same class as #232/#255 (constants vs liveness) → **filed synth#311** with both repros + the
+alloc_temp_avoiding suggestion. BLOCKS: sem re-baseline (907 refresh) + every packed-u64 verified-decide
+primitive. Staged for same-day re-measure on the fix.
