@@ -1293,3 +1293,12 @@ had inlined the callee there, so the single-function i64 shift/mask path is wron
 PR #309 head. Same class as #232/#255 (constants vs liveness) → **filed synth#311** with both repros + the
 alloc_temp_avoiding suggestion. BLOCKS: sem re-baseline (907 refresh) + every packed-u64 verified-decide
 primitive. Staged for same-day re-measure on the fix.
+
+## UPDATE 2026-06-10 18:1x — #311 BISECTED: v0.11.18's #214 (R12 reservation) is the culprit; broken since June 2
+
+u64 lane across tags: v0.11.14/17 GREEN; **v0.11.18 first RED** (single commit f7190fc = #214 R12/IP
+encoder-scratch reservation, itself the #212 fix); RED through v0.11.35 + #309 head. Mechanism: constants
+formerly materialized into R12; with R12 reserved the fallback picks r0/r1 with NO liveness check → clobbers
+live u64 returns. NOT a v0.11.35 regression — every release since v0.11.18 silently miscompiles packed-u64
+unpacks; our sem survived only because it was pinned on v0.11.15 faithful4.o. Posted bisect + mechanism +
+fix scope (alloc_temp_avoiding on the scratch-less constant fallback) to #311.
