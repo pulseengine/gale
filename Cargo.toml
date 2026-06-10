@@ -18,7 +18,7 @@ path = "plain/src/lib.rs"
 # Property-based testing
 proptest = "1"
 # Benchmarking
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.7", features = ["html_reports"] }
 # Concurrency permutation testing — tokio-rs/loom (NOT pulseengine/loom WASM optimizer).
 # Only pulled in when the `--cfg loom` compile flag is set so that default
 # `cargo test` builds do not fetch or link it.
