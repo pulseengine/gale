@@ -1240,3 +1240,14 @@ realloc** — filter's prologue still saves the now-dead {r4–r8} (~12 of 37 cy
 Ops: macOS cleaned /tmp/opt3 + /tmp/wasm-algo-poc (funccheck modules + fv_algo.o) — recreated; fv_algo.c
 + build_fv_algo.sh now LIVE IN-REPO (silicon-microbench/). Serial-capture flakiness root-caused: cat/stty
 drops boot output ~50% of runs; **pyserial captures every time** → capture_serial.py added to wasm-testbed/.
+
+## UPDATE 2026-06-10 15:45 — #209 reply: all 3 accepted; v0.11.36 today (flag ON + dead-save elim); PREDICTION on record
+
+Maintainer (13:15Z): v0.11.35 validation recorded (241/150/151/37 = the reference set), **`SYNTH_RANGE_REALLOC`
+default-ON in v0.11.36** (authorized by our silicon gate), **dead callee-saved-save elimination ships in the
+same v0.11.36** (v1 scope: shrink push/pop to post-realloc used set, only for fns with NO SP-relative body
+accesses; frame-bearing fns = v2 with offset rebasing). #237 (mutex SP-init) → v0.11.37. Tag incoming today.
+
+**Prediction (pre-tag, falsifiable):** filter full 37→25±2, nodiv 29→17±2, div 30→18±2 (push{r4-r8,lr}+
+ldmia≈12 cyc eliminated). flat_flight/controller/control_step: NO change (realloc byte-NO-OP + v1 scope
+excludes SP-relative fns). If the big-3 move or filter lands outside 23–27 → publish the falsification.
