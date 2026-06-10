@@ -50,7 +50,7 @@ jobs:
       matrix:
         sanitizer: [address, thread, leak]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install nightly Rust + rust-src
         uses: dtolnay/rust-toolchain@nightly
