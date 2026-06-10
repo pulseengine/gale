@@ -1310,3 +1310,11 @@ at op LocalTee(2): expected i32, found i64`) — fail-safe vs ARM's silent wrong
 the packed-u64 verified-decide pattern currently has NO working backend (ARM = #311 silent miscompile since
 v0.11.18; RV32 = #312 compile rejection). Filed #312 with the cross-backend table + ask (i64 local ops via
 a-reg pairs). u64_funccheck.py grows an RV32 leg when it compiles.
+
+## UPDATE 2026-06-10 19:1x — RV32 re-baseline on v0.11.35: flat_flight 181→172 (−9); filter/control_step unchanged
+
+qemu_riscv32 -icount, RV32 funccheck ALL GREEN. filter 23 / control_step 129 (both = v0.11.27),
+**flat_flight 172 (was 181, native 75: 2.41×→2.29×)**, chk correct. Cross-target read: the v0.11.28-35
+allocator levers moved RV32's composed path while ARM flat_flight stayed 241 — RV32 had more residual
+register pressure to harvest. controller icount number pending (funccheck-correct). Run archived:
+runs-riscv/2026-06-10-qemu_riscv32-v0.11.35-rebaseline/.

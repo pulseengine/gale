@@ -1,0 +1,13 @@
+v0.11.35 RV32 re-baseline (loom 1.1.11), qemu_riscv32 -icount shift=0 (proxy, not silicon).
+RV32 funccheck lane: ALL GREEN (all 4 leaves correct).
+
+leaf              v0.11.27  v0.11.35  native  ratio
+filter_axis          23        23       17    1.35x (unchanged)
+control_step        129       129       62    2.08x (unchanged; incl ~6-cyc s11 tramp)
+flat_flight         181      *172*      75    2.41x -> 2.29x  (chk=0x07fdf307 correct)
+controller_step     100      (pending)  49    funccheck-correct; icount number next pass
+
+flat_flight -9: the v0.11.28-35 codegen work (const-CSE remat-avoidance, in-place select, Chaitin
+spill-cost) moved the COMPOSED RV32 path where ARM flat_flight stayed flat (241) — the allocator levers
+fire on RV32's register pressure. Harness: arch/riscv (in-repo), pointer leaves via s11=0 startup variant,
+control_step via run_synth.sh s11-table trampoline.
