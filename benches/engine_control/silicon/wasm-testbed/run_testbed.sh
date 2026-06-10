@@ -61,5 +61,12 @@ if build filter_axis_decide filter_axis_decide filter_wasm.c; then
 else echo "  [BAD] build failed"; fail=1; fi
 
 rm -rf "$tmp"
+
+echo "i64-unpack differential (synth#311 guard: wasmtime vs unicorn, packed-u64 return):"
+u64out=$(python3 "$(dirname "$0")/u64_funccheck.py" 2>&1) && u64rc=0 || u64rc=1
+echo "$u64out" | sed 's/^/  /'
+[ $u64rc -ne 0 ] && { echo "  [BAD] i64-unpack lane RED (synth#311 class — silent wrong-code)"; fail=1; }
+
 echo "== $( [ $fail -eq 0 ] && echo 'ALL GREEN' || echo 'FAILURES — see [BAD] above' ) =="
+exit $fail
 exit $fail
