@@ -1318,3 +1318,12 @@ qemu_riscv32 -icount, RV32 funccheck ALL GREEN. filter 23 / control_step 129 (bo
 allocator levers moved RV32's composed path while ARM flat_flight stayed 241 — RV32 had more residual
 register pressure to harvest. controller icount number pending (funccheck-correct). Run archived:
 runs-riscv/2026-06-10-qemu_riscv32-v0.11.35-rebaseline/.
+
+## UPDATE 2026-06-10 20:1x — PR #310 pre-merge tested: call-form FIXED, inlined shape still RED → 2 new defects pinpointed on #311
+
+Built #310 head (9107188): u64 lane still 4/4 RED on the loom-inlined shape — but the #310 fixes all hold
+(8-byte tee slot, both halves stored, shifts/masks correct). Capstone'd the tail and pinpointed the REAL
+remaining defects: (1) **i64.eq boolean materialization emits `cmpeq/cmpne` instead of `moveq/movne`** —
+result computed in flags, thrown away; (2) **`select` conditions on a stale vstack reg (r8** = the
+extend_u hi-half from 40 insns earlier). The inlined failure is the i64.eq→select chain, NOT constants.
+Posted full annotated disasm + 50-line wat to #311 (answers the maintainer's open question pre-tag).
