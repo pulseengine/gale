@@ -1327,3 +1327,9 @@ remaining defects: (1) **i64.eq boolean materialization emits `cmpeq/cmpne` inst
 result computed in flags, thrown away; (2) **`select` conditions on a stale vstack reg (r8** = the
 extend_u hi-half from 40 insns earlier). The inlined failure is the i64.eq→select chain, NOT constants.
 Posted full annotated disasm + 50-line wat to #311 (answers the maintainer's open question pre-tag).
+
+## UPDATE 2026-06-10 20:4x — RV32 table completed: controller_step 100 on v0.11.35 (unchanged, correct)
+
+Final RV32 v0.11.35 re-baseline: filter 23 / controller 100 / control_step 129 (all = v0.11.27),
+flat_flight 172 (−9). Only the composed path moved — leaves were already harvest-complete after v0.11.27's
+caller-saved preference. Run dir complete.
