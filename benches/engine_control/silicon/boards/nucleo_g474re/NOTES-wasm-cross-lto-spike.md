@@ -1251,3 +1251,12 @@ accesses; frame-bearing fns = v2 with offset rebasing). #237 (mutex SP-init) →
 **Prediction (pre-tag, falsifiable):** filter full 37→25±2, nodiv 29→17±2, div 30→18±2 (push{r4-r8,lr}+
 ldmia≈12 cyc eliminated). flat_flight/controller/control_step: NO change (realloc byte-NO-OP + v1 scope
 excludes SP-relative fns). If the big-3 move or filter lands outside 23–27 → publish the falsification.
+
+## UPDATE 2026-06-10 16:10 — PR #309 (v0.11.36 cand.) pre-merge validated: filter −8 cyc uniform; prediction FALSIFIED on magnitude
+
+Built b762ac1 pre-merge: big-3 **byte-identical** (241/150/151 stand); filter family on silicon: **full 37→29,
+nodiv 29→21, div 30→22 (−8 uniform)**, all SELFCHECKs OK, funccheck ALL GREEN both flag states. Prologue
+`push {r4-r8,lr}` → 16-bit `push {r4,lr}` (40→34 B). **Prediction (−12) falsified: −8 measured** — v1 retains
+{r4,lr} for AAPCS alignment (~4 cyc left on the table). Posted validation + falsification + v2 lever to #309:
+**leaf-function prologue elimination** (no outgoing calls ⇒ no push/pop at all, bx lr) → expected 29→~25.
+Verdict posted: good to merge + tag. Gap vs native: filter full 1.95×→1.53×.
