@@ -38,7 +38,7 @@ jobs:
 
       - name: Upload LCOV to Codecov
         if: env.CODECOV_TOKEN != ''
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: lcov-rust.info
           flags: rust
@@ -104,7 +104,7 @@ jobs:
 
       - name: Upload LCOV to Codecov
         if: env.CODECOV_TOKEN != ''
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           directory: twister-out/coverage/
           flags: zephyr
