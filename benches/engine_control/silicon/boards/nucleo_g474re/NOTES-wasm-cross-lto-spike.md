@@ -1302,3 +1302,11 @@ formerly materialized into R12; with R12 reserved the fallback picks r0/r1 with 
 live u64 returns. NOT a v0.11.35 regression — every release since v0.11.18 silently miscompiles packed-u64
 unpacks; our sem survived only because it was pinned on v0.11.15 faithful4.o. Posted bisect + mechanism +
 fix scope (alloc_temp_avoiding on the scratch-less constant fallback) to #311.
+
+## UPDATE 2026-06-10 18:4x — #311 backend scope-check → filed synth#312 (RV32 rejects i64 local.tee)
+
+Ran the u64 repro through the RV32 backend: **refuses to compile** (`RISC-V selector: stack type mismatch
+at op LocalTee(2): expected i32, found i64`) — fail-safe vs ARM's silent wrong-code, but a hard blocker:
+the packed-u64 verified-decide pattern currently has NO working backend (ARM = #311 silent miscompile since
+v0.11.18; RV32 = #312 compile rejection). Filed #312 with the cross-backend table + ask (i64 local ops via
+a-reg pairs). u64_funccheck.py grows an RV32 leg when it compiles.
