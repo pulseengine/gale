@@ -1222,3 +1222,21 @@ filter_axis unchanged (no select). = -33cyc total. The clamps (18 IT-blocks) wer
 keep-val2 move cuts directly in. CONFIRMS instruction-selection (clamp lowering) is the larger slice of the 255->103 gap,
 NOT the allocator (const-CSE was -1). flat_flight now 241/103 = 2.34x. Posted #283 c<new>. New acceptance gate when merged:
 flat_flight 241 / controller 150 / control_step 151 / filter 37 — const-CSE/allocator deltas stack on top.
+
+## UPDATE 2026-06-10 07:55 — v0.11.35 validated (cycle-neutral, −6% code); #288 realloc flag-on gate CLEARED on silicon
+
+synth **v0.11.35** (#285 Chaitin spill-cost ranking): full suite re-measured on G474RE — **flat_flight 241,
+controller 150, control_step 151, filter 37 — all identical to v0.11.34, all selfchecks OK**, code −6%
+(ff 560→526B, ctl 316→296, cs 370→346). Cycle-neutral release, no issue needed.
+
+**#288 `SYNTH_RANGE_REALLOC=1`** (main b657521, "first consequential allocator step", flag default-off
+*pending gale's on-target confirmation*) — confirmation DELIVERED same-day to #209: flag-on is
+**byte-identical** on ff/ctl/cs; fires only on the filter family (r4–r8 re-coloured → r0/r1, add.w→adds,
+−2B), correct on unicorn funccheck + silicon SELFCHECK, **cycles neutral (37/29/30 both states)** →
+gate cleared to default-ON. Next lever posted with the data: **dead callee-saved-save elimination after
+realloc** — filter's prologue still saves the now-dead {r4–r8} (~12 of 37 cyc is push/pop overhead →
+−25%+ on small leaves; composes with VCR-RA-002 R10-pool).
+
+Ops: macOS cleaned /tmp/opt3 + /tmp/wasm-algo-poc (funccheck modules + fv_algo.o) — recreated; fv_algo.c
++ build_fv_algo.sh now LIVE IN-REPO (silicon-microbench/). Serial-capture flakiness root-caused: cat/stty
+drops boot output ~50% of runs; **pyserial captures every time** → capture_serial.py added to wasm-testbed/.
