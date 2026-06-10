@@ -114,7 +114,7 @@ jobs:
 
       - name: Upload Renode results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: "renode-results-${{ matrix.arch }}"
           path: renode-results/
@@ -122,7 +122,7 @@ jobs:
 
       - name: Upload ELF
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: "elf-${{ matrix.arch }}"
           path: zephyr-workspace/build/zephyr/zephyr.elf
