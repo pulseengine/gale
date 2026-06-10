@@ -46,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: cachix/install-nix-action@v30
+      - uses: cachix/install-nix-action@v31
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -84,7 +84,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: cachix/install-nix-action@v30
+      - uses: cachix/install-nix-action@v31
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
