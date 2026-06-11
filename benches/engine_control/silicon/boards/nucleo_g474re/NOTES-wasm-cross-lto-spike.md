@@ -1370,3 +1370,10 @@ number: faithful shim (real wait_q, correct unpend/wake — all three #311 legs 
 (caller-saved pref, const-CSE remat, in-place select, spill-cost, i64 pair work) on the same path.
 860/471 = 1.83× LLVM-LTO (was 1.92×). ADC interaction = separate tracked thread (pre-existing class).
 Run: runs/2026-06-11-nucleo_g474re-wasm-cross-lto-v0.11.37-faithful/.
+
+## UPDATE 2026-06-11 10:4x — #312 VERIFIED on v0.11.37; u64 lane grows the promised RV32 leg (3-way differential)
+
+`synth compile -b riscv -t rv32imac` on the u64 repro: compiles (328 B; was a hard selector rejection) and
+under unicorn RISCV32 computes **4/4 correct**. u64_funccheck.py is now a **wasm/ARM/RV32 three-way
+differential** — both backends of the packed-u64 verified-decide pattern are guarded per release. The
+"fail-safe vs silently-wrong" backend split is closed, both lanes correct, exactly as scheduled.
