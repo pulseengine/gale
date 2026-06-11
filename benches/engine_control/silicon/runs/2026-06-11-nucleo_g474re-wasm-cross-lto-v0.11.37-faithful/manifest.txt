@@ -1,0 +1,13 @@
+variant:            wasm-cross-LTO sem (FAITHFUL shim: real k_sem layout + real wait_q; old 907 shim was unsound)
+board:              nucleo_g474re
+date:               2026-06-11
+synth:              v0.11.37 (all three #311 i64 fixes + #237 sizing + realloc-ON + dead-save elim)
+loom:               v1.1.13
+zephyr:             v4.4.0 final + gale (gale/sem-replacement @719cc4890)
+integration:        r11=0 trampoline + gale_w_* wrappers + GALE_WASM_LTO_SEM_LIB; CONFIG_ADC=n
+                    (ADC health stubbed: the ADC IRQ-path interaction hangs the wasm-sem build —
+                    pre-existing class, see engine_control CMakeLists comment re LTO variants; tracked separately)
+handoff_cycles:     median 860 (steady), min 860, max 1586 (cold), n=148
+drops:              0
+references:         old UNSOUND number 907 (v0.11.14, NULL-wait_q shim); baseline ~528; rustc-direct ~574; LLVM-LTO ~471
+ratio:              860/471 = 1.83x LLVM-LTO (was 1.92x); sound wake path included for the first time

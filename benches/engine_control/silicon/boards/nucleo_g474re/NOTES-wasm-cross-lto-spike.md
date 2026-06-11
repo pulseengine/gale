@@ -1360,3 +1360,13 @@ symbol shadowing; native-gale control = full sweep CLEAN. The give is object-lev
 hang is in the ADC driver lock/start sequence, only with the override linked. NEXT: gdb thread walk +
 trampoline hit-count through the H-read window; consider bench variant with health stub (smart_mcu_stub.c)
 to decouple the sem number from the ADC question. Status posted to #311 (comment 4677468542).
+
+## UPDATE 2026-06-11 10:1x — SOUND SEM RE-BASELINE: **860 cyc** (v0.11.37, faithful shim); ADC-hang bypassed + confirmed as the blocker
+
+CONFIG_ADC=n (health stub — the bench's own comment notes ADC IRQ-table interactions crash LTO variants too)
+→ full sweep clean: **handoff median 860, min 860, max 1586 cold, n=148, drops=0**. First semantically-sound
+number: faithful shim (real wait_q, correct unpend/wake — all three #311 legs verified on silicon) is
+**47 cyc FASTER than the unsound 907** while doing more work correctly — 20+ releases of codegen
+(caller-saved pref, const-CSE remat, in-place select, spill-cost, i64 pair work) on the same path.
+860/471 = 1.83× LLVM-LTO (was 1.92×). ADC interaction = separate tracked thread (pre-existing class).
+Run: runs/2026-06-11-nucleo_g474re-wasm-cross-lto-v0.11.37-faithful/.
