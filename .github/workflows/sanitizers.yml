@@ -80,8 +80,13 @@ jobs:
           # mmap_rnd_bits newer kernels default to — it aborts at startup
           # with "FATAL: ThreadSanitizer: memory layout is incompatible,
           # even though ASLR is disabled". 28 bits is the documented
-          # workaround (same one rustc CI uses).
-          sudo sysctl -w vm.mmap_rnd_bits=28
+          # workaround (same one rustc CI uses). Best-effort here: the
+          # self-hosted rust-cpu runners have no passwordless sudo, so the
+          # DURABLE fix is host-level (persist vm.mmap_rnd_bits=28 in
+          # /etc/sysctl.d on the runner hosts); the setarch -R fallback in
+          # the test step below covers runners where that isn't done yet.
+          sudo -n sysctl -w vm.mmap_rnd_bits=28 \
+            || echo "::warning::no passwordless sudo; relying on setarch -R fallback (configure vm.mmap_rnd_bits=28 on the runner host)"
 
       - name: cargo test with -Zsanitizer=${{ matrix.sanitizer }}
         env:
@@ -97,6 +102,14 @@ jobs:
           set -o pipefail
           if [ "${SAN}" = "leak" ]; then
             ASAN_OPTIONS="detect_leaks=1:abort_on_error=0" \
+              cargo +nightly test --workspace \
+                -Z build-std \
+                --target "${TARGET}" \
+                --tests 2>&1 | tee "sanitizer-logs/${SAN}.log"
+          elif [ "${SAN}" = "thread" ]; then
+            # setarch -R disables ASLR for the child without sudo —
+            # covers runner hosts where vm.mmap_rnd_bits wasn't lowered.
+            setarch "$(uname -m)" -R \
               cargo +nightly test --workspace \
                 -Z build-std \
                 --target "${TARGET}" \
