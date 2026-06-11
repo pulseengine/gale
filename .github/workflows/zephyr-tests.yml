@@ -30,7 +30,7 @@ jobs:
     name: "${{ matrix.primitive }} (qemu_cortex_m3)"
     runs-on: ubuntu-22.04
     container:
-      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       options: --user root
     strategy:
       fail-fast: false
@@ -187,7 +187,7 @@ jobs:
     name: "${{ matrix.primitive }} (mps2/an385)"
     runs-on: ubuntu-22.04
     container:
-      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       options: --user root
     strategy:
       fail-fast: false
@@ -276,7 +276,7 @@ jobs:
     name: "${{ matrix.primitive }} (qemu_x86_64, SMP)"
     runs-on: ubuntu-22.04
     container:
-      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       options: --user root
     strategy:
       fail-fast: false
@@ -347,7 +347,7 @@ jobs:
     name: "Binary size comparison"
     runs-on: ubuntu-22.04
     container:
-      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       options: --user root
     env:
       HOME: /root
