@@ -282,12 +282,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Suites here must be DESIGNED for SMP: mutex_api and thread_apis
+          # pin CONFIG_MP_MAX_NUM_CPUS=1 in their own prj.conf — forcing
+          # MP=2 over that ran them outside their design envelope (stock
+          # zephyr v4.4.0 fails them identically at MP=2). Replaced with
+          # the kernel's real SMP suites; mutex/thread API coverage at MP=1
+          # stays in the qemu_cortex_m3 matrix above.
           - primitive: smp_semaphore
             test_path: tests/kernel/semaphore/semaphore
-          - primitive: smp_mutex
-            test_path: tests/kernel/mutex/mutex_api
-          - primitive: smp_threads
-            test_path: tests/kernel/threads/thread_apis
+          - primitive: smp_sched
+            test_path: tests/kernel/smp
+          - primitive: smp_spinlock
+            test_path: tests/kernel/spinlock
 
     env:
       HOME: /root
