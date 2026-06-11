@@ -9701,17 +9701,20 @@ mod kani_cpu_mask_proofs {
         }
     }
 
+    /// CM4 ("result mask never zero") was removed 2026-06-11: upstream
+    /// cpu_mask.c legally clears to zero (k_thread_cpu_mask_clear), and
+    /// the old invariant failed thread_apis::test_threads_cpu_mask on
+    /// qemu_x86_64. Outside PIN_ONLY a zero result is success; under
+    /// PIN_ONLY it stays rejected (cpu_mask_pin_only_single_bit below).
     #[kani::proof]
-    fn cpu_mask_result_nonzero() {
+    fn cpu_mask_zero_legal_outside_pin_only() {
         let current: u32 = kani::any();
         let enable: u32 = kani::any();
         let disable: u32 = kani::any();
-        let pin_only: u32 = kani::any();
-        kani::assume(pin_only <= 1);
-        let r = gale_cpu_mask_mod(current, enable, disable, 0, pin_only);
-        if r.err == OK {
-            assert!(r.mask != 0);
-        }
+        let r = gale_cpu_mask_mod(current, enable, disable, 0, 0);
+        // non-running, non-pin: always OK, result always the formula
+        assert!(r.err == OK);
+        assert!(r.mask == (current | enable) & !disable);
     }
 
     #[kani::proof]

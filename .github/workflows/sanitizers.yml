@@ -43,12 +43,23 @@ concurrency:
 jobs:
   sanitize:
     name: "${{ matrix.sanitizer }} (rust-cpu)"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    # thread runs on a GitHub-hosted runner: the self-hosted rust-cpu
+    # containers block personality(2) via seccomp AND have no passwordless
+    # sudo, so neither the vm.mmap_rnd_bits sysctl nor a setarch -R
+    # fallback can satisfy TSan's shadow-layout requirement there. On
+    # GitHub-hosted runners the sysctl works.
+    runs-on: ${{ fromJSON(matrix.runner) }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        sanitizer: [address, thread, leak]
+        include:
+          - sanitizer: address
+            runner: '["self-hosted", "linux", "x64", "rust-cpu"]'
+          - sanitizer: thread
+            runner: '"ubuntu-24.04"'
+          - sanitizer: leak
+            runner: '["self-hosted", "linux", "x64", "rust-cpu"]'
     steps:
       - uses: actions/checkout@v6
 
@@ -72,6 +83,17 @@ jobs:
           HOST=$(rustc -vV | awk '/^host:/ {print $2}')
           echo "target=${HOST}" >> "$GITHUB_OUTPUT"
           echo "Host target: ${HOST}"
+
+      - name: Lower mmap randomization entropy for TSan
+        if: matrix.sanitizer == 'thread'
+        run: |
+          # TSan's shadow memory layout is incompatible with the 32-bit
+          # mmap_rnd_bits newer kernels default to — it aborts at startup
+          # with "FATAL: ThreadSanitizer: memory layout is incompatible,
+          # even though ASLR is disabled". 28 bits is the documented
+          # workaround (same one rustc CI uses). The thread lane runs on
+          # GitHub-hosted runners (see runs-on) where this sysctl works.
+          sudo sysctl -w vm.mmap_rnd_bits=28
 
       - name: cargo test with -Zsanitizer=${{ matrix.sanitizer }}
         env:

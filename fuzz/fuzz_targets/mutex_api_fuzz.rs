@@ -45,12 +45,21 @@ fuzz_target!(|data: &[u8]| {
     }
 
     if depth > 0 {
-        // other_id cannot lock
-        assert_eq!(m.try_lock(other_tid), LockResult::WouldBlock);
-
-        // other_id cannot unlock
         if other_id != owner_id {
+            // a different thread cannot lock...
+            assert_eq!(m.try_lock(other_tid), LockResult::WouldBlock);
+            // ...and cannot unlock
             assert!(matches!(m.unlock(other_tid), Err(EPERM)));
+        } else {
+            // same id: "other" IS the owner — recursive re-acquire is
+            // Acquired by contract (the WouldBlock assert previously ran
+            // unguarded here and panicked the moment the fuzzer found the
+            // owner_id == other_id collision: fuzz-smoke CI red, the model
+            // was right). Re-acquire and unwind once to restore depth.
+            assert_eq!(m.try_lock(other_tid), LockResult::Acquired);
+            assert_eq!(m.lock_count_get(), depth + 1);
+            assert!(m.unlock(other_tid).is_ok());
+            assert_eq!(m.lock_count_get(), depth);
         }
 
         // Unwind all locks

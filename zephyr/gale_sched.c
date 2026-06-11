@@ -817,8 +817,18 @@ void z_reschedule(struct k_spinlock *lock, k_spinlock_key_t key)
 	if (resched(key.key) && need_swap()) {
 		z_swap(lock, key);
 	} else {
-		k_spin_unlock(lock, key);
+		/* Signal pending IPIs BEFORE dropping the lock (upstream
+		 * reschedule() ordering). Signaling after the unlock races
+		 * with a remote CPU flagging us under _sched_spinlock —
+		 * the same lost-self-IPI window documented at the
+		 * z_swap_next_thread() site above: the remote wakeup is
+		 * silently consumed and the other CPU never reschedules.
+		 * Observed as mutex_api test_complex_inversion handing
+		 * ownership correctly but the woken waiter on the second
+		 * CPU never running (qemu_x86_64, SMP=2).
+		 */
 		signal_pending_ipi();
+		k_spin_unlock(lock, key);
 	}
 }
 
@@ -827,8 +837,12 @@ void z_reschedule_irqlock(uint32_t key)
 	if (resched(key) && need_swap()) {
 		z_swap_irqlock(key);
 	} else {
-		irq_unlock(key);
+		/* Same ordering as z_reschedule above (upstream keeps the
+		 * signal before irq_unlock here too, with its documented
+		 * caveat that only the IRQ lock is held).
+		 */
 		signal_pending_ipi();
+		irq_unlock(key);
 	}
 }
 
