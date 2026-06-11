@@ -1377,3 +1377,13 @@ Run: runs/2026-06-11-nucleo_g474re-wasm-cross-lto-v0.11.37-faithful/.
 under unicorn RISCV32 computes **4/4 correct**. u64_funccheck.py is now a **wasm/ARM/RV32 three-way
 differential** — both backends of the packed-u64 verified-decide pattern are guarded per release. The
 "fail-safe vs silently-wrong" backend split is closed, both lanes correct, exactly as scheduled.
+
+## UPDATE 2026-06-11 15:4x — mutex lane: NEW blocker (register exhaustion since v0.11.36) → synth#326
+
+remeasure_wasm_lto.sh on v0.11.39: #237's bss/SP fixes hold (no -z stack-size needed), but z_impl_k_mutex_unlock
+now SKIPS at compile: "register exhaustion: no free callee-saved register to hold a call result while reloading
+a preserved param". Bisect: compiled on v0.11.35, first-bad **v0.11.36** (the #311 call-result PAIR tagging =
+likely pressure source — the fix that made sem correct costs a reg pair across calls; mutex is our densest body).
+v0.11.38's 3b-lite spill-retry does NOT cover this site. Fail-safe (skip) but blocks the mutex silicon number
+(native ref 124). Filed **synth#326** w/ bisect + mechanism + ask (extend 3b retry or note as known-limitation
+until full RA-001 wiring). Staged for same-day measure on fix.
