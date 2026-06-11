@@ -73,6 +73,16 @@ jobs:
           echo "target=${HOST}" >> "$GITHUB_OUTPUT"
           echo "Host target: ${HOST}"
 
+      - name: Lower mmap randomization entropy for TSan
+        if: matrix.sanitizer == 'thread'
+        run: |
+          # TSan's shadow memory layout is incompatible with the 32-bit
+          # mmap_rnd_bits newer kernels default to — it aborts at startup
+          # with "FATAL: ThreadSanitizer: memory layout is incompatible,
+          # even though ASLR is disabled". 28 bits is the documented
+          # workaround (same one rustc CI uses).
+          sudo sysctl -w vm.mmap_rnd_bits=28
+
       - name: cargo test with -Zsanitizer=${{ matrix.sanitizer }}
         env:
           SAN: ${{ matrix.sanitizer }}
