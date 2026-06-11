@@ -1344,3 +1344,19 @@ isn't already in r0/r1. Defect #3 posted to #311 (call-site tagging ✔, return-
 **loom v1.1.12** (CRITICAL #196 elem-segment fix): tag does NOT build from source (stale CodegenOptions
 literal + ISLE u32 prelude collision vs locked cranelift-isle 0.132.1) → filed **loom#198**. We stay on
 v1.1.11 SAFELY: all suite modules verified 0 elem segments (#196 class can't bite them).
+
+## UPDATE 2026-06-11 08:1x — v0.11.36+37 TAGGED overnight; all #311 legs VERIFIED; sem silicon number blocked on NEW integration hang (ADC lock)
+
+v0.11.36 (#311 all 3 legs + #237 globals/sizing + realloc-ON + dead-save elim) and v0.11.37 (#312 RV32 i64
+locals) both tagged. Installed v0.11.37: **testbed ALL GREEN incl u64 lane (both shapes)**; sem unicorn gates
+PASS (no-waiter count 0→1 ✔, WAKE arm retval+ready ✔); big-3 byte-identical (241/150/151 stand); filter .o
+byte-identical to measured #309 head → **29/21/22 ships in the release**; sem module .bss ELIMINATED (#237
+used-extent sizing — no stack-size workaround).
+
+**BLOCKER:** engine_control + wasm-sem hangs at H,boot (ADC health read) BEFORE any bench give. Evidence:
+1 give system-wide (adc init unlock, correct/surgical); main pended on ADC ctx LOCK (live: waiter, count=0,
+limit=1) with ADSTART=0/IER=0 (conversion never started, lock held); no fault; idle PC; relocs correct; no
+symbol shadowing; native-gale control = full sweep CLEAN. The give is object-level correct everywhere —
+hang is in the ADC driver lock/start sequence, only with the override linked. NEXT: gdb thread walk +
+trampoline hit-count through the H-read window; consider bench variant with health stub (smart_mcu_stub.c)
+to decouple the sem number from the ADC question. Status posted to #311 (comment 4677468542).
