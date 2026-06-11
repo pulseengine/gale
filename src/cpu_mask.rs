@@ -99,7 +99,12 @@ pub fn validate_pin_mask(mask: u32) -> (result: bool)
 /// CM1: Running threads cannot have mask modified (returns EINVAL).
 /// CM2: PIN_ONLY mode requires exactly one bit set in the result.
 /// CM3: New mask = (current | enable) & !disable.
-/// CM4: Result mask is never zero.
+/// CM4 (REMOVED 2026-06-11): "result mask is never zero" was STRONGER than
+///   the upstream contract — k_thread_cpu_mask_clear() legally sets the mask
+///   to 0 (the thread is simply unschedulable until bits are re-enabled), and
+///   tests/kernel/threads/thread_apis::test_threads_cpu_mask asserts clear()
+///   returns 0. The over-strong invariant broke API conformance on v4.4.0
+///   qemu_x86_64 SMP. A zero mask remains invalid under PIN_ONLY (CM2).
 /// CM5: All arithmetic is overflow-safe (bitwise ops on u32).
 pub fn cpu_mask_mod(
     current_mask: u32,
@@ -113,8 +118,6 @@ pub fn cpu_mask_mod(
         is_running ==> result.error == EINVAL,
         // CM3: on success, mask matches the formula
         result.error == OK ==> result.mask == (((current_mask | enable) & !disable) as u32),
-        // CM4: on success, mask is never zero
-        result.error == OK ==> result.mask != 0u32,
         // CM2: on success with pin_only, exactly one bit is set
         (result.error == OK && pin_only) ==>
             (result.mask != 0u32 && (result.mask & sub(result.mask, 1u32)) == 0u32),
@@ -129,13 +132,8 @@ pub fn cpu_mask_mod(
     // CM3: compute the new mask
     let new_mask: u32 = (current_mask | enable) & !disable;
 
-    // CM4: at least one CPU must remain enabled
-    if new_mask == 0 {
-        return CpuMaskResult { mask: current_mask, error: EINVAL };
-    }
-
-    // CM2: PIN_ONLY requires exactly one bit set
-    if pin_only && (new_mask & (new_mask - 1)) != 0 {
+    // CM2: PIN_ONLY requires exactly one bit set (zero or multi-bit rejected)
+    if pin_only && (new_mask == 0 || (new_mask & (new_mask - 1)) != 0) {
         return CpuMaskResult { mask: current_mask, error: EINVAL };
     }
 

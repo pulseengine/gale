@@ -109,19 +109,32 @@ fn disable_already_clear_bit_is_idempotent() {
 }
 
 // ==========================================================================
-// CM4: Result mask is never zero (at least one CPU)
+// Zero masks are LEGAL outside PIN_ONLY (CM4 removed 2026-06-11):
+// upstream cpu_mask.c places no nonzero constraint — k_thread_cpu_mask_clear
+// legally produces 0 (thread unschedulable until re-enabled), and
+// thread_apis::test_threads_cpu_mask asserts clear() returns 0. The old CM4
+// was stronger than the API contract and failed that suite on qemu_x86_64.
 // ==========================================================================
 
 #[test]
-fn cannot_clear_all_cpus() {
-    // Disable all bits: mask would become 0 => EINVAL
+fn clear_all_cpus_is_legal() {
+    // k_thread_cpu_mask_clear: disable everything -> mask 0, OK
     let result = cpu_mask_mod(0xFF, 0x00, 0xFFFFFFFF, false, false);
-    assert_eq!(result.error, EINVAL);
+    assert_eq!(result.error, OK);
+    assert_eq!(result.mask, 0x00);
 }
 
 #[test]
-fn cannot_produce_zero_mask() {
+fn zero_mask_result_is_legal() {
     let result = cpu_mask_mod(0x01, 0x00, 0x01, false, false);
+    assert_eq!(result.error, OK);
+    assert_eq!(result.mask, 0x00);
+}
+
+#[test]
+fn zero_mask_still_rejected_under_pin_only() {
+    // PIN_ONLY requires exactly one bit set — zero stays EINVAL (CM2)
+    let result = cpu_mask_mod(0x01, 0x00, 0x01, false, true);
     assert_eq!(result.error, EINVAL);
 }
 
@@ -259,16 +272,18 @@ fn enable_max_u32() {
 
 #[test]
 fn disable_max_u32_from_full() {
-    // Disabling all bits from a full mask => zero mask => EINVAL
+    // Disabling all bits from a full mask -> zero mask, legal (clear)
     let result = cpu_mask_mod(u32::MAX, 0x00, u32::MAX, false, false);
-    assert_eq!(result.error, EINVAL);
+    assert_eq!(result.error, OK);
+    assert_eq!(result.mask, 0x00);
 }
 
 #[test]
 fn enable_and_disable_max_u32() {
-    // enable all then disable all: (0 | 0xFFFFFFFF) & !0xFFFFFFFF == 0 => EINVAL
+    // enable all then disable all: (0 | 0xFFFFFFFF) & !0xFFFFFFFF == 0, legal
     let result = cpu_mask_mod(0x00, u32::MAX, u32::MAX, false, false);
-    assert_eq!(result.error, EINVAL);
+    assert_eq!(result.error, OK);
+    assert_eq!(result.mask, 0x00);
 }
 
 #[test]
