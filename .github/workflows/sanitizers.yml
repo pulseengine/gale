@@ -43,12 +43,23 @@ concurrency:
 jobs:
   sanitize:
     name: "${{ matrix.sanitizer }} (rust-cpu)"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    # thread runs on a GitHub-hosted runner: the self-hosted rust-cpu
+    # containers block personality(2) via seccomp AND have no passwordless
+    # sudo, so neither the vm.mmap_rnd_bits sysctl nor a setarch -R
+    # fallback can satisfy TSan's shadow-layout requirement there. On
+    # GitHub-hosted runners the sysctl works.
+    runs-on: ${{ fromJSON(matrix.runner) }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        sanitizer: [address, thread, leak]
+        include:
+          - sanitizer: address
+            runner: '["self-hosted", "linux", "x64", "rust-cpu"]'
+          - sanitizer: thread
+            runner: '"ubuntu-24.04"'
+          - sanitizer: leak
+            runner: '["self-hosted", "linux", "x64", "rust-cpu"]'
     steps:
       - uses: actions/checkout@v4
 
@@ -80,13 +91,9 @@ jobs:
           # mmap_rnd_bits newer kernels default to — it aborts at startup
           # with "FATAL: ThreadSanitizer: memory layout is incompatible,
           # even though ASLR is disabled". 28 bits is the documented
-          # workaround (same one rustc CI uses). Best-effort here: the
-          # self-hosted rust-cpu runners have no passwordless sudo, so the
-          # DURABLE fix is host-level (persist vm.mmap_rnd_bits=28 in
-          # /etc/sysctl.d on the runner hosts); the setarch -R fallback in
-          # the test step below covers runners where that isn't done yet.
-          sudo -n sysctl -w vm.mmap_rnd_bits=28 \
-            || echo "::warning::no passwordless sudo; relying on setarch -R fallback (configure vm.mmap_rnd_bits=28 on the runner host)"
+          # workaround (same one rustc CI uses). The thread lane runs on
+          # GitHub-hosted runners (see runs-on) where this sysctl works.
+          sudo sysctl -w vm.mmap_rnd_bits=28
 
       - name: cargo test with -Zsanitizer=${{ matrix.sanitizer }}
         env:
@@ -102,14 +109,6 @@ jobs:
           set -o pipefail
           if [ "${SAN}" = "leak" ]; then
             ASAN_OPTIONS="detect_leaks=1:abort_on_error=0" \
-              cargo +nightly test --workspace \
-                -Z build-std \
-                --target "${TARGET}" \
-                --tests 2>&1 | tee "sanitizer-logs/${SAN}.log"
-          elif [ "${SAN}" = "thread" ]; then
-            # setarch -R disables ASLR for the child without sudo —
-            # covers runner hosts where vm.mmap_rnd_bits wasn't lowered.
-            setarch "$(uname -m)" -R \
               cargo +nightly test --workspace \
                 -Z build-std \
                 --target "${TARGET}" \
