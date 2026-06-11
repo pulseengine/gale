@@ -1,0 +1,66 @@
+# Build + attach the wasm-cross-LTO module artifacts to gale releases.
+# See docs/wasm-module-distribution.md. The manifest is the trust anchor;
+# sigil signing rides once the sigil release flow lands (TODO below).
+name: Release wasm modules
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-wasm-dist:
+    name: "wasm dist (sem, cortex-m4f)"
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
+      options: --user root
+    env:
+      HOME: /root
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust + wasm32 target
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          . /root/.cargo/env
+          rustup target add wasm32-unknown-unknown
+
+      - name: Install pinned loom + synth
+        run: |
+          . /root/.cargo/env
+          # Pinned versions — bump deliberately; the manifest records them.
+          cargo install loom-cli --git https://github.com/pulseengine/loom --tag v1.1.11 --locked
+          cargo install synth-cli --git https://github.com/pulseengine/synth --tag v0.11.37 --locked
+
+      - name: Install arm toolchain (objcopy for the import renames)
+        run: |
+          pip3 install west
+          west sdk install -t arm-zephyr-eabi || true
+          echo "$HOME/zephyr-sdk/arm-zephyr-eabi/bin" >> "$GITHUB_PATH" || true
+
+      - name: Build distribution
+        run: |
+          . /root/.cargo/env
+          export TC=arm-zephyr-eabi
+          scripts/build-wasm-dist.sh dist "${GITHUB_REF_NAME}"
+
+      # TODO(sigil): sign gale-wasm-manifest-<ver>.json once the sigil
+      # release/signing flow is wired; until then the sha256 manifest is
+      # attached unsigned and the release notes must say so.
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
+
+      - name: Upload artifact (dispatch runs)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gale-wasm-dist
+          path: dist/

@@ -86,6 +86,12 @@ int z_vrfy_k_sem_init(struct k_sem *sem, unsigned int initial_count,
 #include <zephyr/syscalls/k_sem_init_mrsh.c>
 #endif /* CONFIG_USERSPACE */
 
+/* GALE_WASM_LTO_OVERRIDE_SEM_GIVE: when defined (CONFIG_GALE_WASM_LTO_SEM),
+ * z_impl_k_sem_give is supplied by the released wasm-cross-LTO object
+ * instead (see wasm/gale_wasm_sem_tramp.S + docs/wasm-module-distribution.md);
+ * the native implementation below is compiled out.
+ */
+#ifndef GALE_WASM_LTO_OVERRIDE_SEM_GIVE
 void z_impl_k_sem_give(struct k_sem *sem)
 {
 	k_spinlock_key_t key = k_spin_lock(&lock);
@@ -123,6 +129,7 @@ void z_impl_k_sem_give(struct k_sem *sem)
 
 	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_sem, give, sem);
 }
+#endif /* GALE_WASM_LTO_OVERRIDE_SEM_GIVE */
 
 #ifdef CONFIG_USERSPACE
 static inline void z_vrfy_k_sem_give(struct k_sem *sem)
