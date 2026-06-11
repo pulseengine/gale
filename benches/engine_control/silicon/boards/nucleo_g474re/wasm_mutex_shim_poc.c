@@ -14,8 +14,16 @@ struct k_spinlock { uint8_t lock_internal; };
 typedef struct { uint32_t key; } k_spinlock_key_t;
 
 /* k_mutex hot-path fields (layout-compatible prefix; kernel owns the rest). */
+/* Faithful mirror of Zephyr v4.4.0 struct k_mutex (CONFIG_POLL=n,
+ * CONFIG_WAITQ_SCALABLE=n): _wait_q_t == sys_dlist_t == {head, tail} —
+ * TWO pointers. The earlier single-pointer wait_q skewed owner/count by
+ * 4 bytes (owner read the dlist tail -> always "not current" -> -EPERM;
+ * observed on silicon as SELFCHECK rc=-1 owner=<dlist ptr>). Same
+ * unfaithful-shim class as the sem shim's 2026-06-10 fix.
+ */
 struct k_mutex {
-    void     *wait_q;            /* _wait_q_t — opaque to the shim */
+    void     *wq_head;
+    void     *wq_tail;
     struct k_thread *owner;
     uint32_t  lock_count;
     int       owner_orig_prio;
@@ -61,7 +69,7 @@ int z_impl_k_mutex_unlock(struct k_mutex *mutex)
         return 0;
     }
     /* UNLOCKED: hand off to the highest-priority waiter, if any. */
-    struct k_thread *new_owner = z_unpend_first_thread(mutex->wait_q);
+    struct k_thread *new_owner = z_unpend_first_thread((void *)mutex); /* wait_q is k_mutex\x27s first member */
     mutex->owner = new_owner;
     if (new_owner != (struct k_thread *)0) {
         mutex->lock_count = 1U;

@@ -1387,3 +1387,14 @@ likely pressure source — the fix that made sem correct costs a reg pair across
 v0.11.38's 3b-lite spill-retry does NOT cover this site. Fail-safe (skip) but blocks the mutex silicon number
 (native ref 124). Filed **synth#326** w/ bisect + mechanism + ask (extend 3b retry or note as known-limitation
 until full RA-001 wiring). Staged for same-day measure on fix.
+
+## UPDATE 2026-06-11 17:5x — v0.11.40: #326 VERIFIED (mutex lane compiles+runs); TWO shim faithfulness bugs fixed; one anomaly left
+
+v0.11.40 installed: suite + sem BYTE-IDENTICAL, testbed ALL GREEN, and **the mutex lane compiles again**
+(#326 resolver-scratch fix verified). First run exposed the mutex shim's own unfaithfulness — SAME class as
+the sem-907 finding: (1) `wait_q` declared as ONE pointer (v4.4 _wait_q_t = dlist = TWO) → owner read at +4
+= dlist tail → always "not current" → rc=-EPERM (observed owner=0x200101b0); (2) unpend called with the
+wait_q CONTENT not its address. Both fixed (faithful k_mutex mirror + `(void*)mutex`). After fixes:
+**rc=0** on silicon — but **owner reads 0x1 post-release (exp NULL)** and the cycle line is pending that.
+NEXT: clean unicorn isolation of the release path (the ad-hoc flat-bin harness mis-assembled — use the
+section-aware loader like the sem one). Native ref 124 cyc; measurement follows the owner fix.
