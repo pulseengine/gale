@@ -70,7 +70,20 @@ bool z_spin_unlock_valid(struct k_spinlock *l)
 	}
 
 	if (thread_cpu == 0) {
-		return false;
+		/* A zero owner tag is legitimate in exactly one window: early
+		 * boot before the dummy thread exists, where set_owner encoded
+		 * (cpu 0 | _current == NULL) == 0. Stock spinlock_validate.c
+		 * accepts this via its plain comparison (0 == (0 | NULL)) —
+		 * e.g. x86_64 virt_region_init() locks the virt-region bitmap
+		 * long before the console or threads come up; rejecting it
+		 * here recursed assert->printk->spinlock and hung boot
+		 * silently (no console yet). Mirror stock for this arm; the
+		 * Verus call below stays protected by its thread_ptr_valid
+		 * (non-NULL, aligned) precondition. Post-boot, a zero tag
+		 * still means unlock-of-unheld and is rejected, because
+		 * (_current | cpu_id) != 0 once threads exist.
+		 */
+		return ((uintptr_t)_current | _current_cpu->id) == 0;
 	}
 
 	return gale_spin_unlock_valid(thread_cpu,
