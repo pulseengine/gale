@@ -202,21 +202,25 @@ fn cpu_mask_mod_formula_correct() {
 }
 
 // =====================================================================
-// Property: CM4 — result mask is never zero
+// Property: result always matches the upstream formula (CM3), including
+// legal zero results. CM4 ("never zero") was removed 2026-06-11: upstream
+// cpu_mask.c allows clear-to-zero (k_thread_cpu_mask_clear), and the old
+// invariant failed thread_apis::test_threads_cpu_mask on qemu_x86_64.
+// Zero stays rejected under PIN_ONLY (CM2), checked separately above.
 // =====================================================================
 
 #[test]
-fn cpu_mask_mod_never_zero() {
+fn cpu_mask_mod_matches_formula_including_zero() {
     for current in 0u32..=0xF {
         for enable in 0u32..=0xF {
             for disable in 0u32..=0xF {
                 let (ffi_mask, ffi_err) =
                     ffi_cpu_mask_mod(current, enable, disable, false, false);
 
-                if ffi_err == OK {
-                    assert_ne!(ffi_mask, 0,
-                        "CM4: result mask must never be zero");
-                }
+                assert_eq!(ffi_err, OK,
+                    "non-running, non-pin mods always succeed (upstream has no other reject path)");
+                assert_eq!(ffi_mask, (current | enable) & !disable,
+                    "CM3: result must match the upstream formula");
             }
         }
     }
