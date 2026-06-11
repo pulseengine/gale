@@ -443,6 +443,42 @@ zephyr_library_include_directories(
 zephyr_library_link_libraries(${GALE_FFI_LIB})
 add_dependencies(gale_sem gale_ffi_build)
 
+# --------------------------------------------------------------------------
+# wasm-cross-LTO sem variant (CONFIG_GALE_WASM_LTO_SEM):
+# link the RELEASED dissolved object (gale-wasm-sem-<ver>-<target>.o) in
+# place of the native z_impl_k_sem_give. Artifact discovery:
+#   -DGALE_WASM_LTO_SEM_OBJ=<path to the .o>            (explicit), or
+#   -DGALE_WASM_LTO_OBJ_DIR=<release-assets dir>        (matches gale-wasm-sem-*-cortex-m4f.o)
+# The object's kernel imports are pre-renamed to gale_w_* at release-build
+# time; wasm/gale_wasm_wrappers.c provides those entry points and
+# wasm/gale_wasm_sem_tramp.S provides the r11=0 AAPCS bridge.
+# See docs/wasm-module-distribution.md.
+# --------------------------------------------------------------------------
+if(CONFIG_GALE_WASM_LTO_SEM)
+  if(NOT DEFINED GALE_WASM_LTO_SEM_OBJ AND DEFINED GALE_WASM_LTO_OBJ_DIR)
+    file(GLOB _gale_wasm_sem_candidates "${GALE_WASM_LTO_OBJ_DIR}/gale-wasm-sem-*cortex-m4f.o")
+    list(LENGTH _gale_wasm_sem_candidates _n)
+    if(_n EQUAL 1)
+      list(GET _gale_wasm_sem_candidates 0 GALE_WASM_LTO_SEM_OBJ)
+    elseif(_n GREATER 1)
+      message(FATAL_ERROR "GALE_WASM_LTO_OBJ_DIR contains ${_n} sem objects; pass -DGALE_WASM_LTO_SEM_OBJ explicitly")
+    endif()
+  endif()
+  if(NOT DEFINED GALE_WASM_LTO_SEM_OBJ)
+    message(FATAL_ERROR "CONFIG_GALE_WASM_LTO_SEM=y needs -DGALE_WASM_LTO_SEM_OBJ=<.o> or -DGALE_WASM_LTO_OBJ_DIR=<dir> (release assets; see docs/wasm-module-distribution.md)")
+  endif()
+  if(NOT EXISTS ${GALE_WASM_LTO_SEM_OBJ})
+    message(FATAL_ERROR "wasm sem object not found: ${GALE_WASM_LTO_SEM_OBJ}")
+  endif()
+  message(STATUS "Gale: wasm-cross-LTO sem give -> ${GALE_WASM_LTO_SEM_OBJ}")
+  zephyr_library_compile_definitions(GALE_WASM_LTO_OVERRIDE_SEM_GIVE=1)
+  zephyr_library_sources(
+    wasm/gale_wasm_wrappers.c
+    wasm/gale_wasm_sem_tramp.S
+  )
+  zephyr_library_link_libraries(${GALE_WASM_LTO_SEM_OBJ})
+endif() # CONFIG_GALE_WASM_LTO_SEM
+
 endif() # CONFIG_GALE_KERNEL_SEM
 
 # ==========================================================================
