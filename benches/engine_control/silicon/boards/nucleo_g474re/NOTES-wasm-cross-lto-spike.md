@@ -1664,3 +1664,17 @@ bench (GALE_FC_WASM_LTO=ON, 5 primitives on 100Hz loop) on v0.11.41 + measured o
 Wrote runs/RESULT-2026-06-13-v0.11.41.txt, refreshed RESULTS-SUMMARY Phase-5 paragraph. The bigger
 example is validated current. Net current-toolchain picture stable: sem 860, mutex 501,
 control_step 151, flat_flight 241, macro-bench algo 157/1.11x.
+
+## UPDATE 2026-06-13 21:1x — EXPAND: shippable mutex wasm-cross-LTO module -> gale PR #60
+
+No release (v0.11.41 latest). synth 1h30m; loom 6h43m (channel non-null -> no reminder). #209
+VCR-SEL-004/VCR-RA accepted, no PR yet (maintainer confirmed VCR-RA-002 still `proposed` on #242)
+-> passive, I'm the on-silicon gate. EXPAND step: promoted the silicon-validated mutex to a
+shippable module mirroring sem #59 (unblocked by the v0.11.41 #331 fix). gale PR #60:
+- zephyr/wasm/mutex_unlock_shim.c (production, faithful k_mutex layout)
+- zephyr/wasm/gale_wasm_mutex_tramp.S (r11=0 native-pointer trampoline)
+- scripts/build-wasm-dist.sh refactored -> build_module() helper, emits BOTH sem+mutex + manifest.
+Verified: valid ET_REL mutex .o (body global, decide localized, imports->gale_w_*, no leftover
+un-renamed), #331 signature absent (arg0 home #0x68 write-once), primitives lane GREEN, first
+silicon 501 cyc. Follow-up PR: Kconfig CONFIG_GALE_WASM_LTO_MUTEX + CMakeLists consume + release.yml
+attach. PR #60 pending CI+review (gale main protected).
