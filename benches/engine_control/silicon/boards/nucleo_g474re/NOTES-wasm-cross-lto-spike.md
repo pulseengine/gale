@@ -1713,3 +1713,21 @@ parts sound; consumption of a wasm-statics-bearing module is the gap. Also 64KB 
 is itself wrong (synth emits full linmem; decide uses little) -> raise synth-side separately.
 KEY: caught by running the FULL test on hardware — link-only + no-waiter microbench both passed and
 masked it. Owed next: root-cause the MOVW_ABS corruption (linker flag vs synth reloc) + the 64KB .data.
+
+## UPDATE 2026-06-13 20:4x — PR#60 mutex fault: ruled out objcopy + synth-reloc; it's link-context/64KB-.data
+
+No release. synth 3h0m; loom 8h12m (no reminder). #209 no response. Owed root-cause advanced:
+ - RULED OUT my objcopy change: --keep-global-symbol vs --localize-symbol -> MOVW_ABS/MOVT_ABS
+   reloc tables + .data size BYTE-IDENTICAL. Not the func_N-dedup objcopy.
+ - RULED OUT malformed synth reloc: the no-waiter microbench links the SAME .o and executes
+   body+0xc EVERY call without faulting -> that movw __synth_globals is VALID when linked there.
+   An undefined insn would fault unconditionally. So synth's reloc is well-formed.
+ => Corruption is LINK-CONTEXT-specific: mutex_api Zephyr image's MOVW_ABS_NC __synth_globals
+    application yields 0xfac8 (undefined); microbench image links the identical reloc fine.
+    Distinguishing factor = the ~64KB .data (full wasm linmem, __synth_globals @.data+0x10008)
+    and where it lands in the larger image.
+DEEPER LEVER (the real fix): the dissolved object shouldn't carry 64KB wasm linmem for a decide
+using a few constants — that's both the abs-reloc source AND a non-starter on 128KB RAM. Trimming
+emitted linmem to what the decide references (synth-side) removes the reloc shape (like sem, which
+has none). Posted to PR#60 (4699721494); held draft. Owed: raise the 64KB-linmem with synth +
+the bfd/.data-placement angle.
