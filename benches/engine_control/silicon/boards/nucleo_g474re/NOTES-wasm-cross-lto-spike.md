@@ -1414,3 +1414,27 @@ REMAINING (ours): bench selfcheck rc=0 (unlock OK) but owner=0x1 post-release (e
 absent → measure loop faults/hangs. Shim logic inspects correct (owner@+8 matches v4.4 dumb-waitq k_mutex).
 NEXT: instrument the shim with printk of {cur, decide fields, new_owner} + reflash, observe on silicon
 (don't guess); serial capture is flaky so retry. The 124-cyc-ref number follows once owner round-trips.
+
+## UPDATE 2026-06-13 10:1x — mutex owner=0x1 isolated to a REAL on-silicon failure (root cause NOT yet found; two hypotheses falsified)
+
+Instrumented the mutex-microbench selfcheck + the unpend wrapper, clean pyserial capture (reset+retry):
+```
+DBG pre-unlock: owner=0x200101b0 lock_count=1 cur=0x200101b0   ← correct (owner==cur, count=1; shim reads real k_mutex fine)
+DBG unpend(wait_q=0x20010238) -> 0                             ← correct (no waiter -> NULL)
+SELFCHECK ... owner=0x6f42202a lock_count=1852404847           ← GARBAGE (ASCII fragments) after unlock
+***** BUS FAULT *****
+```
+So: pre-state correct, unpend correct → corruption happens DURING the unlock body's no-waiter tail
+(owner:=NULL; lock_count:=0; spin_unlock; return). Real, reproducible on hardware (not a capture/harness
+artifact — earlier garbled run was capture corruption; this is clean).
+
+FALSIFIED hypotheses (do NOT report as synth bugs):
+1. "undefined encoding f5e0 0109" — was my flat-link harness (retracted on #326).
+2. "body writes past its stack frame" — naive max[sp,#56] vs sub-sp#40 looked like overflow, BUT the
+   push {r4-r8,lr} moves sp down 24 first, so [sp,#56] = entry-8 = inside the saved-reg block, NOT past frame.
+   Frame math is sound; overflow hypothesis dead.
+
+NEXT (do not guess): gdb on the live target — break at the trampoline `pop {r11,pc}`, read sp vs entry-sp
+(stack-balance check), and on the BUS FAULT read CFSR/BFAR + stacked PC to see the faulting access. Only
+after that, attribute to synth (body codegen) vs our trampoline/shim. Sem path (860, same trampoline) works,
+so it's mutex-body-specific. Diagnostic instrumentation reverted from the shared wrapper.
