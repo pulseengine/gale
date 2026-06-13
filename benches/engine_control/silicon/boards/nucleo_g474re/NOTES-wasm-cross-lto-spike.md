@@ -1525,3 +1525,20 @@ CONSEQUENCE: mutex k_mutex_unlock silicon cycle number (native ref 124) is BLOCK
 synth#331 fix — the deadlock prevents measurement. Owed-by-me item is now a sharp,
 maintainer-owned blocker (bucket 2). sem(860) unaffected; testbed control/controller/filter
 + u64 lane all green on v0.11.40 (run this firing).
+
+## UPDATE 2026-06-13 16:3x — optimize thread: quantified flag-fold recommendation -> synth#209
+
+Mutex thread blocked on synth#331 (filed last firing, no maintainer response yet). Pushed the
+OPTIMIZE thread instead. Disassembled a CORRECT dissolved body (control_step_decide, v0.11.40,
+113 insns/354B, silicon 151 cyc vs 67 native = 2.25x) to find where we lose to native/LLVM-LTO.
+
+DOMINANT loss = comparison->select FLAG ROUND-TRIP, 6 occurrences in this one body:
+synth does `cmp <real>; ite; movCC #1/#0` (materialize i32 bool) then `cmp bool,#0; it; movCC`
+(re-test it). 7 insns where 3 suffice (cmp; it; movCC). Bool is dead after the re-test
+(verified r8 redefined at 0x90). ~4 removable insns x6 ~= 24 cyc ~= 29% of the 84-cyc gap, from
+ONE pattern — and it recurs in every body with a compare feeding a select (controller/filter
+clamps; likely a chunk of the sem 907-vs-471 gap too). Posted to #209 with disasm evidence,
+quantified impact, the recommended compare->select fusion peephole (keep condition in NZCV, don't
+materialize), kill-criterion (re-measure control_step toward ~127 when a release lands).
+Secondary: 10 mov rX,rY reg-shuffles/113 (coalescing) + single [sp] scratch churn — noted as
+lower-priority allocator items.
