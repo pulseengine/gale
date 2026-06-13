@@ -1559,3 +1559,19 @@ synth). 540B/165 insns, 4 funcs, seam folded (no bl decide). Findings:
 CAUGHT a misattribution risk first: my initial shim-only build still had `bl decide` (not the
 measured shape) -> rebuilt the real dissolved form before analyzing. Did not present shim-only
 numbers as the headline.
+
+## UPDATE 2026-06-13 17:3x — synth#331 ANSWERED by maintainer -> delivered committed repro (jess#28)
+
+synth-side loop confirmed #331 is a real high-priority silent miscompile; ruled out (a) static
+frame-layout overlap and (b) the i64-pool result-park by code-reading; reproduced the SHAPE but
+NOT the collision (register-pressure-dependent) -> asked for the failing module in jess.
+DELIVERED: rebuilt the dissolved k_mutex_unlock fresh on v0.11.40 (clang->wasm-ld+FFI staticlib->
+loom inline->synth --native-pointer-abi), CONFIRMED the collision still reproduces (identical
+signature, offsets rel body-start 0x138: arg0 home [sp,#0x24]@+0x8, clobbered by unpend result
+@+0x13a, no-waiter reload @+0x1e2 -> lock_count store misses). Committed to pulseengine/jess
+repro/synth-331/ (PR #28): dissolved.wasm + wat + FAILING.o + shim + README (repro cmd, annotated
+collision, expected/actual, silicon symptom, kill-criterion). Replied on #331 (comment 4698973255)
+pinpointing the gap their ruling-out leaves: the result is parked on arg0's #204 PARAM-HOME slot
+(not an i64-pool slot) under R4-R8 pressure -> param-home HashMap slot handed out as spill dest.
+Agreed interim = exhaustion-Err skip; +1 on VCR-RA-003 v-next slot-non-aliasing validation.
+Mutex cycle number (ref 124) still gated on the fix; clock reset (maintainer engaged).
