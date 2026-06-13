@@ -1504,3 +1504,24 @@ CLEAN ATTRIBUTION METHOD (next): disasm the body, breakpoint exactly at the lock
 single-step the no-waiter tail), confirm whether a store to [mutex+12]=0 is emitted/executed. If dropped →
 synth issue w/ the deadlock as impact; if shim → fix in gale-smart-data. Either way the fix is small now
 that the mechanism is pinned. Sem(860) unaffected.
+
+## UPDATE 2026-06-13 16:1x — mutex deadlock ATTRIBUTED & FILED (synth#331): spill-slot collision miscompile
+
+Got the clean attribution WITHOUT a flaky watchpoint run — by decoding the actual compiled
+`body.o` (synth v0.11.40) with llvm-objdump (thumbv7em). The lock_count=0 store IS emitted
+(falsifies "synth drops the store"); the bug is a SPILL-SLOT COLLISION:
+- `[sp,#0x24]` = mutex-ptr arg0 home slot (entry 0x8), live to 0x1e2.
+- 0x13a reuses that slot for `gale_w_unpend_first_thread`'s result (reloc-confirmed).
+- no-waiter path 0x1e2 reloads the clobbered slot (=0 when no waiter) as the mutex base,
+  so `lock_count=0` store (0x1ee) writes linmem[12] not mutex->lock_count -> stays 1.
+- owner store (0x156) survived via register copy r7; predicts EXACT observed (owner=0,
+  lock_count=1) -> the hardware deadlock. Has-waiter path (0x16a) corrupt too (unexercised).
+Decode rests on the real flashed binary + the real hardware symptom (not a guess). Filed
+synth#331 with disasm + reloc evidence + kill-criterion + fix direction (don't reuse a live
+arg's spill slot for a call result; keep mutex base in callee-saved reg across the body).
+Same family as #311 (live-value clobber) / related to #326 (exhaustion at same site).
+
+CONSEQUENCE: mutex k_mutex_unlock silicon cycle number (native ref 124) is BLOCKED on the
+synth#331 fix — the deadlock prevents measurement. Owed-by-me item is now a sharp,
+maintainer-owned blocker (bucket 2). sem(860) unaffected; testbed control/controller/filter
++ u64 lane all green on v0.11.40 (run this firing).
