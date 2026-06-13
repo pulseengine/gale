@@ -10,7 +10,7 @@ min-over-200 (or bench median where noted). RISC-V = `qemu_riscv32 -icount` (ins
 | primitive | wasm-cross-LTO | LLVM-LTO | native gale | notes |
 |-----------|---------------|----------|-------------|-------|
 | `k_sem_give` handoff (ARM silicon) | **907** cyc | 471 | — | 1.92×; dissolved drop-in, seam folded (no `bl ..._decide`), n=148 median |
-| `k_mutex_unlock` (ARM silicon) | *pending #237* | — | **124** (ref) | dissolves + links (v0.11.28); native-drop-in gated on the `--native-pointer-abi` ABI fix |
+| `k_mutex_unlock` (ARM silicon) | **501** cyc | — | **124** (ref) | 4.04×; first measurement 2026-06-13 on synth **v0.11.41** (the #331 spill-slot-collision fix; prior synth silently miscompiled → silicon deadlock). SELFCHECK rc=0 owner=0 OK. Worst ratio in suite — 31% of the 269-insn body is `[sp]` spills (see synth#209). |
 
 ## Algorithm functions (value-in/value-out — dissolve cleanly, both backends)
 

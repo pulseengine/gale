@@ -1600,3 +1600,20 @@ Measure thread: re-measured flat_flight on G474RE at v0.11.40 = 241/103 = 2.34x,
 0x07fdf307 OK -> STABLE vs v0.11.35 (241), down from 262 (v0.11.30). Wrote RESULT-2026-06-13-v0.11.40,
 refreshed RESULTS-SUMMARY ‡ footnote. Current-toolchain silicon picture now: control_step 151 (was 156),
 flat_flight 241 (stable). Both functionally correct on v0.11.40.
+
+## UPDATE 2026-06-13 17:0x — 🎯 MUTEX UNBLOCKED & MEASURED: synth#331 fix verified on silicon
+
+synth#331 FIXED (PR#333/681f0bf), shipped as v0.11.41 release commit on main (GH Release not
+published yet; gh release list still shows v0.11.40). Built synth 0.11.41 FROM MAIN (cargo build,
+31s) and ran the long-blocked mutex re-measurement:
+- DISASM: collision gone. arg0 home moved to [sp,#0x68], written ONCE (never re-clobbered); unpend
+  result parks on DISTINCT [sp,#0x28]; no-waiter lock_count=0 store (0x31a-0x326) reloads the
+  un-clobbered mutex base -> CORRECT. (area_reserved guard fix, exactly as diagnosed.)
+- SILICON (G474RE): SELFCHECK k_mutex_unlock rc=0 owner=0 OK (no deadlock!); E,k_mutex_unlock,cyc=501.
+- FIRST mutex wasm-cross-LTO number: 501/124 native = 4.04x — WORST ratio in suite. Cause: 86/269
+  insns (31%) are [sp] spills (vs sem 21%, control_step 5%) -> spill density tracks the ratio.
+Posted: #331 silicon-verified close (4699204002) closing the kill-criterion; #209 mutex spill
+evidence (4699204055, the spill%-vs-ratio table) reinforcing spill-reduction as #1 lever.
+RESULT-2026-06-13-v0.11.41.txt written, RESULTS-SUMMARY mutex row 501. The long-self-owed mutex
+deliverable is DONE. Next: re-measure on the published v0.11.41 GH release when it lands (sanity);
+push synth on the spill-reduction pass -> re-measure mutex (best test case).
