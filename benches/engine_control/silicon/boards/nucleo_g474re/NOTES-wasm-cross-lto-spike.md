@@ -1575,3 +1575,14 @@ pinpointing the gap their ruling-out leaves: the result is parked on arg0's #204
 (not an i64-pool slot) under R4-R8 pressure -> param-home HashMap slot handed out as spill dest.
 Agreed interim = exhaustion-Err skip; +1 on VCR-RA-003 v-next slot-non-aliasing validation.
 Mutex cycle number (ref 124) still gated on the fix; clock reset (maintainer engaged).
+
+## UPDATE 2026-06-13 15:5x — expand/measure: control_step silicon RE-MEASURED at v0.11.40
+
+No release (v0.11.40/v1.1.13). 4h N/A (synth 0h25m post-#331-reply; loom 3h42m). #331/#209 no
+new response. Pushed the measure thread (hardware, not guess): rebuilt control_step-microbench at
+the CURRENT toolchain, flashed G474RE, captured:
+  SELFCHECK 2165333 OK ; E,control_step,synth=151,native=67 = 2.25x  (reproducible x2 boots)
+-> down from 158 (v0.11.34) = ~3% codegen improvement 0.11.34->0.11.40, functionally correct.
+Confirms the 151 I used in the #209 flag-fold analysis is the CURRENT on-silicon truth (not an
+estimate) -> hardware-locked the "before" baseline for the #209 kill-criterion (target ~127).
+Wrote RESULT-2026-06-13-g474re.txt, refreshed RESULTS-SUMMARY footnote §, posted baseline-lock to #209.
