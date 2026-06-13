@@ -1454,3 +1454,16 @@ offset isn't yet confirmed against the real k_mutex DWARF, so this read may be u
 bus fault (measure loop / printk) not yet caught at z_arm_fault with CFSR/BFAR. NEXT focused session: confirm
 k_mutex field offsets from DWARF, re-read owner/lock_count at the verified offsets, and trap the fault PC.
 Decision: stop multi-firing rabbit-hole here — body-level correctness is established; residual is bounded.
+
+## UPDATE 2026-06-13 11:0x — mutex residual sharpened to ONE fact (DWARF-confirmed); attribution method pinned
+
+DWARF (ptype /o struct k_mutex): wait_q@0(8) owner@8 lock_count@12 owner_orig_prio@16 — so the prior gdb
+reads were at CORRECT offsets. Post-unlock (no-waiter): **owner@8=NULL (correct), lock_count@12=1 (anomalous —
+the UNLOCKED branch sets it 0)**. Real, not a misread.
+Disasm of the body: all mutex-field stores are linmem-relative `str.w rX,[fp,ip]` (computed offset, fp=0 via
+tramp), so static disasm CANNOT confirm whether the lock_count store fires — owner@8 demonstrably written,
+lock_count@12 not (or overwritten). DEFINITIVE next step (focused session, NOT this firing's rabbit-hole):
+gdb hardware watchpoint on (&m+12) across the unlock to see if/when it's stored; that attributes synth
+(missing/mis-offset store) vs shim. NOT posting to any issue until attributed. Note: the "bus fault" only
+appeared in the corrupted-capture serial run; clean gdb runs hit entry+pop with no fault — fault reality
+still open (re-confirm in the watchpoint session).
