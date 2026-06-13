@@ -1731,3 +1731,18 @@ using a few constants — that's both the abs-reloc source AND a non-starter on 
 emitted linmem to what the decide references (synth-side) removes the reloc shape (like sem, which
 has none). Posted to PR#60 (4699721494); held draft. Owed: raise the 64KB-linmem with synth +
 the bfd/.data-placement angle.
+
+## UPDATE 2026-06-13 21:1x — PR#60 ROOT CAUSE pinned: decide struct-return -> sret/linmem (fix = pack u64 like sem)
+
+No release. synth 3h30m; loom 8h42m (no reminder). #209 no response. Definitively root-caused the
+PR#60 mutex link-corruption to the DECIDE RETURN ABI:
+ - gale_k_mutex_unlock_decide returns a 12-byte struct {ret,action,new_lock_count} -> clang/wasm32
+   lowers via SRET -> wasm needs a linmem stack frame: (memory 2) + (global $__stack_pointer
+   i32.const 65536), 12 mem ops. synth emits that as the 64KB .data (__synth_wasm_data) +
+   __synth_globals (stack ptr) -> MOVW_ABS relocs the Zephyr link mangles -> undefined insn -> fault.
+ - gale_k_sem_give_decide returns PACKED u64 -> (param i32 i32 i32)(result i64), register return,
+   ZERO MOVW_ABS, no linmem. That's why sem is a clean drop-in and mutex isn't.
+FIX (gale-side, mirrors sem): pack gale_k_mutex_unlock_decide's return into a u64 (no struct) ->
+no sret -> no 64KB linmem -> no abs-relocs -> drop-in like sem. Touches FFI decide + Verus proof +
+wasm shim decode + native gale_mutex.c decode. Posted to PR#60 (4699802546). This is the unblock.
+Also kills the 64KB-RAM cost (non-starter on 128KB). PR#60 held draft until the decide is repacked.
