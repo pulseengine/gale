@@ -234,6 +234,12 @@ static inline int z_vrfy_k_mutex_lock(struct k_mutex *mutex,
 #include <zephyr/syscalls/k_mutex_lock_mrsh.c>
 #endif /* CONFIG_USERSPACE */
 
+/* GALE_WASM_LTO_OVERRIDE_MUTEX_UNLOCK: when defined (CONFIG_GALE_WASM_LTO_MUTEX),
+ * z_impl_k_mutex_unlock is supplied by the released wasm-cross-LTO object
+ * instead (see wasm/gale_wasm_mutex_tramp.S + docs/wasm-module-distribution.md);
+ * the native implementation below is compiled out.
+ */
+#ifndef GALE_WASM_LTO_OVERRIDE_MUTEX_UNLOCK
 int z_impl_k_mutex_unlock(struct k_mutex *mutex)
 {
 	struct k_thread *new_owner;
@@ -311,6 +317,7 @@ k_mutex_unlock_return:
 
 	return 0;
 }
+#endif /* GALE_WASM_LTO_OVERRIDE_MUTEX_UNLOCK */
 
 #ifdef CONFIG_USERSPACE
 static inline int z_vrfy_k_mutex_unlock(struct k_mutex *mutex)

@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build-wasm-dist:
-    name: "wasm dist (sem, cortex-m4f)"
+    name: "wasm dist (sem + mutex, cortex-m4f)"
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0

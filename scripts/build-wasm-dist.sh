@@ -37,7 +37,11 @@ build_module() {
   local rargs=(); local p; for p in "${renames[@]}"; do rargs+=(--redefine-sym "$p"); done
   rargs+=(--redefine-sym "$entry=$bodysym")
   "${TC}-objcopy" "${rargs[@]}" "$t/$name.o" "$t/$name.renamed.o"
-  "${TC}-objcopy" --localize-symbol="$decide" "$t/$name.renamed.o"
+  # Export ONLY the body entry; localize the decide AND synth's internal helpers
+  # (func_N), which otherwise stay global with generic names and collide across
+  # modules at final link (sem.o and mutex.o both carry func_7/func_8). The
+  # gale_w_* imports are undefined references and unaffected by localization.
+  "${TC}-objcopy" --keep-global-symbol="$bodysym" "$t/$name.renamed.o"
   cp "$t/$name.renamed.o" "$OUT/gale-wasm-$name-$VER-cortex-m4f.o"
 }
 
