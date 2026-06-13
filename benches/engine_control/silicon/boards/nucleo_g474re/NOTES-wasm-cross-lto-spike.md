@@ -1486,3 +1486,21 @@ RESUME RECIPE (one sitting): rebuild /tmp/mtx-gdb; gdb break at the measure-loop
 2-3 watching m.owner/m.lock_count + sp at each tramp pop; find the iteration where it diverges/faults; read
 CFSR/BFAR if it faults. Then attribute + either fix the shim or file a sharp synth issue. NO issue post until then.
 Sem lane (860, sound) unaffected; mutex was always the harder host-pointer primitive.
+
+## UPDATE 2026-06-13 15:4x — mutex measure-loop blocker = DEADLOCK, mechanism fully traced (attribution still bounded-open)
+
+Ran the owed gdb session. The measure loop does NOT bus-fault — it DEADLOCKS:
+- Halted hung target → backtrace = **idle thread** (idle→k_cpu_idle→arch_cpu_idle→__enable_irq), lock_count=1 owner=0.
+- Mechanism (sound from Zephyr k_mutex_lock logic): dissolved unlock no-waiter path writes owner=NULL ✓ but
+  leaves **lock_count=1**; next `k_mutex_lock(&m,K_FOREVER)` sees lock_count≠0 ∧ owner≠current → BLOCK path →
+  z_pend_curr forever on an ownerless mutex → main never returns → CPU idle → cycle line never emits.
+- So the earlier "hang" + "lock_count=1" findings UNIFY: lock_count-not-zeroed IS the deadlock cause.
+
+Shim source IS correct (no-waiter else-branch: `mutex->owner=NULL; mutex->lock_count=0U;`). owner@8 store
+lands (gdb), lock_count@12 store does NOT → strong indication the compiled body drops the 2nd adjacent
+field store. NOT yet confirmed (auto-continue hw-watchpoint traces were inconclusive — the boot-time
+selfcheck unlock races reset-then-break). NO synth issue filed until confirmed (4th-false-alarm guard).
+CLEAN ATTRIBUTION METHOD (next): disasm the body, breakpoint exactly at the lock_count-store site (or
+single-step the no-waiter tail), confirm whether a store to [mutex+12]=0 is emitted/executed. If dropped →
+synth issue w/ the deadlock as impact; if shim → fix in gale-smart-data. Either way the fix is small now
+that the mechanism is pinned. Sem(860) unaffected.
