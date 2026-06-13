@@ -1763,3 +1763,18 @@ my over-claim):
     sem-shape fix. The full u64-repack (FFI+6 kani harnesses+header+native+tests, re-verified +
     SILICON mutex_api re-test) remains worth doing but must be CONFIRMED on hardware, not assumed.
 DISCIPLINE: tested the fix at artifact level before committing -> caught the over-claim. PR#60 draft.
+
+## UPDATE 2026-06-13 22:2x — filed synth#345 (mutex-module fix lever) + issue-hunt pass
+
+No release. synth 4h44m / loom 9h56m (both reminder channels non-null -> no reminder).
+ISSUE-HUNT: synth#313 CLOSED (if/else-result fix, ARM, v0.11.41 — aligned, our bodies verified);
+synth#343 NEW (rv32 split of #313, synth-owned, passive); rivet#514 NEW (variant init/check/validate
+schema disagreement) -> gale hits a RELATED manifestation (validate mis-parses artifacts/variants/
+bindings.yaml as a single-variant config -> benign 'missing field name' warning) -> posted honest
+corroboration (4699969065). Watermark advanced.
+WASM-OPT step3 (owed): filed synth#345 — dissolved --relocatable objects emit the full 64KB wasm
+linmem .data + absolute MOVW relocs (root of PR#60's link corruption + 128KB-RAM non-starter); sem
+has none (packed-u64 decide). Asks: emit only referenced data (.bss the zero-init linmem) + avoid
+abs MOVW for kernel-linkable objects. Kill-criterion = mutex_api links+runs on G474RE no-fault,
+.data bounded. Linked to PR#60 (held draft pending #345). This is the real sem-shape fix lever,
+now tracked upstream w/ the maintainer.
