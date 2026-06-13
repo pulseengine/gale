@@ -34,8 +34,10 @@ flight_control bench wasm-LTO variant builds + runs the dissolved algorithm on G
 
 The flight_control bench composes 5 Zephyr primitives (ring_buf, sem, mutex, msgq, condvar) on a
 100 Hz loop; `GALE_FC_WASM_LTO=ON` dissolves the ISR-side flight algo (`filter_step`+`controller_step`)
-via wasm-cross-LTO. On real G474RE silicon, full 5-step sweep, **no fault**, current toolchain
-(loom 1.1.10 + synth 0.11.30):
+via wasm-cross-LTO. On real G474RE silicon, full 5-step sweep, **no fault**, **re-confirmed
+2026-06-13 on the current toolchain (synth 0.11.41 + loom 1.1.13): in-bench `algo` = 157 cyc,
+perfectly stable (min=median=max, n=9 across the sweep)** — unchanged from the first measurement
+(synth 0.11.30), so the composed-context result holds on the post-#331 toolchain:
 
 | metric (in-bench `algo`) | wasm-cross-LTO | native | ratio |
 |--------------------------|----------------|--------|-------|
