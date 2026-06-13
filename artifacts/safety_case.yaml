@@ -17,7 +17,7 @@ artifacts:
 
   # ── Contexts ──────────────────────────────────────────────────────────────
 
-  - id: C-1
+  - id: CTX-1
     type: safety-context
     title: Target platform — ARM Cortex-M, no MMU
     status: approved
@@ -41,7 +41,7 @@ artifacts:
       - type: scopes
         target: G-1
 
-  - id: C-2
+  - id: CTX-2
     type: safety-context
     title: Zephyr RTOS v3.x kernel API compatibility
     status: approved
