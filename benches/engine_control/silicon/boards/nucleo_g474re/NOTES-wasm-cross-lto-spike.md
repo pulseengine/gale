@@ -1398,3 +1398,19 @@ wait_q CONTENT not its address. Both fixed (faithful k_mutex mirror + `(void*)mu
 **rc=0** on silicon — but **owner reads 0x1 post-release (exp NULL)** and the cycle line is pending that.
 NEXT: clean unicorn isolation of the release path (the ad-hoc flat-bin harness mis-assembled — use the
 section-aware loader like the sem one). Native ref 124 cyc; measurement follows the owner fix.
+
+## UPDATE 2026-06-13 09:4x — RETRACTED the #326 "undefined encoding": it was MY flat-link harness, synth is clean
+
+Reconciled the rc=0-on-silicon vs undefined-encoding contradiction. synth v0.11.40 mutex object is CLEAN:
+882 B, 269 insns, capstone covers 100% of .text, no f5e0 anywhere; byte-identical to the object I'd
+disassembled. The `f5e0 0109` at body+0xc was my `ld -Ttext=0x8000` unicorn-prep harness mis-applying the
+R_ARM_THM_MOVW_ABS_NC reloc on a `movw r1,#imm` against a zero stub — NOT synth codegen. Posted full
+retraction to #326 (comment 4697891080); the exhaustion fix is verified working, #326 can close.
+LESSON: never disasm a flat -Ttext link of a relocatable with unresolved MOVW/MOVT data relocs — the
+patched immediates masquerade as undefined opcodes. Use section-aware load + real symbol resolution
+(the sem isolation harness did this correctly).
+
+REMAINING (ours): bench selfcheck rc=0 (unlock OK) but owner=0x1 post-release (exp NULL) + cycle line
+absent → measure loop faults/hangs. Shim logic inspects correct (owner@+8 matches v4.4 dumb-waitq k_mutex).
+NEXT: instrument the shim with printk of {cur, decide fields, new_owner} + reflash, observe on silicon
+(don't guess); serial capture is flaky so retry. The 124-cyc-ref number follows once owner round-trips.
