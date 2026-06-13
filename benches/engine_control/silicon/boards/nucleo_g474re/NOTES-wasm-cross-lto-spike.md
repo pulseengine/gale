@@ -1638,3 +1638,15 @@ loom clock: 5h12m but reminder channel non-null + already responded #142 -> no n
 NEXT expand frontier (queued, multi-firing): promote mutex to a shippable wasm module (the sem #59
 pattern: build-wasm-dist.sh + Kconfig + release-wasm.yml) now that it works. Optimize thread (#209)
 comprehensive + awaiting maintainer (flag-fold + spill-reduction, 3-pt spill%-vs-ratio evidence, hw baselines).
+
+## UPDATE 2026-06-13 17:5x — expand: testbed now covers kernel primitives (sem+mutex) + #331 guard
+
+No release (v0.11.41 latest). synth 0h29m; loom 5h42m (channel non-null + responded #142 -> no
+reminder). #209 VCR-SEL-004/VCR-RA accepted, no PR yet -> passive (I'm the on-silicon gate).
+EXPAND step: run_testbed.sh covered only the 4 algos + u64 lane; the kernel primitives (where
+#331 lived) were NOT in per-release validation. Added primitives_codegen_check.sh (wired into
+run_testbed.sh): for sem+mutex via the dist recipe -> compiles (no exhaustion-skip) + seam folded
+(no bl decide reloc) + mutex arg0-home spill slot WRITE-ONCE = the #331 collision signature
+(v0.11.40 wrote [sp,#0x24] twice — entry + unpend-result park; fixed v0.11.41 writes [sp,#0x68]
+once). GREEN on v0.11.41. Now every synth release I test auto-checks both primitives' codegen
+health + guards the #331 fix in OUR consumption (complements the synth-side jess fixture).
