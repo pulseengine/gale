@@ -1809,3 +1809,17 @@ synth v0.11.42 RELEASED (PR#342, #313 if/else-with-result reconciliation fix) ->
 synth#345 (dissolved-object 64KB .data/.bss + PC-rel): BOTH asks accepted, maintainer building
 .bss-first, next on-target after v0.11.42; I'm the on-silicon gate (re-test mutex_api when it lands).
 #209 VCR-SEL-004/VCR-RA: partition delivered (algos=flag-fold, primitives=spill), awaiting PR.
+
+## UPDATE 2026-06-13 23:1x — expand-roadmap survey: FFI decide ABIs (5 u64-shaped / 51 struct) -> #345 blast radius
+
+No release (v0.11.42 latest). synth 0h28m / loom 11h12m (no reminder). #345/#209 no new maintainer
+move (just my ack echo). All optimize threads maintainer-side. EXPAND step (non-blocked): surveyed
+all 56 FFI *_decide return ABIs:
+ - 5 u64-shaped (no-sret, drop-in-ready): sem_give, sem_take, pipe_write, pipe_read, fatal.
+ - 51 struct-return (GaleXxxDecision): mutex/msgq/stack/timer/mem_slab/event/fifo/lifo/queue/mbox/
+   poll/thread/work/... -> share the mutex sret->linmem path (#345 family).
+=> #345 isn't mutex-specific: fixing it unblocks shipping the WHOLE struct-return family as wasm
+   modules. Posted blast-radius to #345 (honest scope: mutex confirmed, 50 others share ABI/likely
+   same, not individually verified). NEXT drop-in candidate = pipe (u64-shaped like sem; verify the
+   shim body avoids a linmem stack frame when built — mutex u64-repack showed shim complexity can
+   reintroduce linmem even with a u64 decide). Roadmap: #345 -> struct family; pipe -> shim-gated only.
