@@ -67,6 +67,11 @@ u64out=$(python3 "$(dirname "$0")/u64_funccheck.py" 2>&1) && u64rc=0 || u64rc=1
 echo "$u64out" | sed 's/^/  /'
 [ $u64rc -ne 0 ] && { echo "  [BAD] i64-unpack lane RED (synth#311 class — silent wrong-code)"; fail=1; }
 
+echo
+echo "kernel-primitives codegen lane (k_sem_give + k_mutex_unlock; synth#331 guard):"
+bash "$(dirname "$0")/primitives_codegen_check.sh" 2>&1 | sed 's/^/  /'
+prc=${PIPESTATUS[0]}
+[ "$prc" -ne 0 ] && { echo "  [BAD] kernel-primitives lane RED (codegen/seam-fold or synth#331 collision)"; fail=1; }
+
 echo "== $( [ $fail -eq 0 ] && echo 'ALL GREEN' || echo 'FAILURES — see [BAD] above' ) =="
-exit $fail
 exit $fail
