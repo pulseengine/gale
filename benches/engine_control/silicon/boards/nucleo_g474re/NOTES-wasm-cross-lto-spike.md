@@ -1793,3 +1793,19 @@ DELIVERED to #209 (4699999657): the flag-fold-vs-spill PARTITION across all 4 bo
 HYGIENE: fixed the stale RESULTS-SUMMARY headline 907 -> 860 (the SOUND re-baseline: faithful v4.4.0
 shim, v0.11.37, n=148, drops=0, ADC bypassed; 907 was unsound NULL-wait_q/skewed-layout). Wrote
 controller RESULT-2026-06-13-v0.11.41, updated controller footnote.
+
+## UPDATE 2026-06-13 23:0x — v0.11.42 installed + body-of-work regression-clean
+
+synth v0.11.42 RELEASED (PR#342, #313 if/else-with-result reconciliation fix) -> built from main
+(ff4e843/7e02115), installed, clock reset. Tested against body of work:
+- testbed run_testbed.sh: ALL GREEN (algos + u64 3-way lane + primitives lane), no regression.
+- BYTE-DIFF (loop rule): sem 20/230/6/284 IDENTICAL to v0.11.41 (-> 860 holds); controller 296B
+  IDENTICAL (-> 150); control_step 354B/113insn IDENTICAL (-> 151). No thumb-2 codegen change for
+  our bodies -> NO reflash needed; silicon numbers hold.
+- #342 (if/else-WITH-RESULT) is orthogonal to our select-based clamp/saturation bodies (they use
+  wasm `select`, not `if (result)`), so no codegen delta expected or observed.
+=> v0.11.42 regression-clean. Current-toolchain silicon picture unchanged: sem 860, control_step
+   151, controller 150, flat_flight 241, macro-algo 157/1.11x; mutex blocked on synth#345.
+synth#345 (dissolved-object 64KB .data/.bss + PC-rel): BOTH asks accepted, maintainer building
+.bss-first, next on-target after v0.11.42; I'm the on-silicon gate (re-test mutex_api when it lands).
+#209 VCR-SEL-004/VCR-RA: partition delivered (algos=flag-fold, primitives=spill), awaiting PR.
