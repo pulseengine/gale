@@ -1650,3 +1650,17 @@ run_testbed.sh): for sem+mutex via the dist recipe -> compiles (no exhaustion-sk
 (v0.11.40 wrote [sp,#0x24] twice — entry + unpend-result park; fixed v0.11.41 writes [sp,#0x68]
 once). GREEN on v0.11.41. Now every synth release I test auto-checks both primitives' codegen
 health + guards the #331 fix in OUR consumption (complements the synth-side jess fixture).
+
+## UPDATE 2026-06-13 20:3x — expand: Phase-5 macro bench re-measured on v0.11.41 (the bigger example)
+
+No release (v0.11.41 latest). synth 1h0m; loom 6h12m (channel non-null + responded #142 -> no
+reminder). #209 VCR-SEL-004/VCR-RA accepted, no PR yet (open synth PRs all dependabot) -> passive.
+EXPAND step (the mandate's "bigger example"): rebuilt + reflashed the flight_control Phase-5 macro
+bench (GALE_FC_WASM_LTO=ON, 5 primitives on 100Hz loop) on v0.11.41 + measured on G474RE silicon:
+- full 5-step sweep, NO FAULT; in-bench algo = 157 cyc, perfectly stable (min=med=max, n=9).
+- = native 141 (gcc, synth-independent) -> 1.11x, ~11% in-context overhead -> UNCHANGED from
+  v0.11.30. The composed-context result holds on the post-#331 toolchain. (Measured wasm side on
+  hw; native carried forward — gcc -O2, unaffected by synth version.)
+Wrote runs/RESULT-2026-06-13-v0.11.41.txt, refreshed RESULTS-SUMMARY Phase-5 paragraph. The bigger
+example is validated current. Net current-toolchain picture stable: sem 860, mutex 501,
+control_step 151, flat_flight 241, macro-bench algo 157/1.11x.
