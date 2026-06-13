@@ -1467,3 +1467,22 @@ gdb hardware watchpoint on (&m+12) across the unlock to see if/when it's stored;
 (missing/mis-offset store) vs shim. NOT posting to any issue until attributed. Note: the "bus fault" only
 appeared in the corrupted-capture serial run; clean gdb runs hit entry+pop with no fault — fault reality
 still open (re-confirm in the watchpoint session).
+
+## UPDATE 2026-06-13 11:3x — mutex lane: blocker characterized, ISOLATION PAUSED (needs focused session, not loop firings)
+
+Consolidated after 4 loop-firings of isolation. Established facts (hardware/gdb-grounded):
+- SINGLE unlock (selfcheck) WORKS: gdb confirms sp balanced (entry-8 at tramp pop) + owner@8 written NULL.
+- The 200× measure loop NEVER emits "E,k_mutex_unlock,cyc=" (5 robust pyserial retries) — hangs or silently
+  faults in the loop. This (not the selfcheck) is the blocker.
+- lock_count@12 reads 1 post-unlock (DWARF-confirmed offset; UNLOCKED branch should zero it) — prime suspect
+  for loop-state divergence across the 200 lock/unlock iterations.
+- serial "owner=0x1" is a printk/capture ARTIFACT (gdb reads the same field = 0 = NULL). Don't trust serial
+  field values here; trust gdb.
+- watchpoint on 0x20001244 (lock_count) caught a `<-1` write but the stop-PC decode was inlined-noise;
+  attribution (synth missing/mis-offset store vs shim) still OPEN.
+
+DECISION: pause loop-firing isolation (4 firings is enough; this is a focused-debug task, not a 30-min tick).
+RESUME RECIPE (one sitting): rebuild /tmp/mtx-gdb; gdb break at the measure-loop body; STEP through iterations
+2-3 watching m.owner/m.lock_count + sp at each tramp pop; find the iteration where it diverges/faults; read
+CFSR/BFAR if it faults. Then attribute + either fix the shim or file a sharp synth issue. NO issue post until then.
+Sem lane (860, sound) unaffected; mutex was always the harder host-pointer primitive.
