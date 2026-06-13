@@ -1438,3 +1438,19 @@ NEXT (do not guess): gdb on the live target — break at the trampoline `pop {r1
 (stack-balance check), and on the BUS FAULT read CFSR/BFAR + stacked PC to see the faulting access. Only
 after that, attribute to synth (body codegen) vs our trampoline/shim. Sem path (860, same trampoline) works,
 so it's mutex-body-specific. Diagnostic instrumentation reverted from the shared wrapper.
+
+## UPDATE 2026-06-13 10:4x — gdb on-target: mutex unlock BODY executes correctly (3rd hypothesis falsified); residual queued
+
+gdb/openocd on the live G474RE (break trampoline entry 0x08003d78 + post-body pop 0x08003d84):
+- ENTRY sp=0x20002560, r0=0x20001238 (&m). AT-POP sp=0x20002558 = **entry−8 exactly** (the push{r11,lr})
+  → **stack is balanced**; the synth body restores sp perfectly. Stack-imbalance hypothesis FALSIFIED.
+- post-body read m@+8 (owner)=**0x0 (correct NULL)**, m@+12 (lock_count)=0x1. So the body DID write
+  owner=NULL on the no-waiter path; the earlier serial "owner=0x6f42202a garbage" was CAPTURE corruption,
+  not real memory. The #326 resolver-scratch fix genuinely works at the body level.
+
+THREE hypotheses now falsified, ZERO claimed: encoding (harness), frame-overflow (sp math), stack-imbalance (gdb).
+RESIDUAL (queued, not a synth claim): (a) lock_count reads 0x1 where the no-waiter path sets 0 — but the +12
+offset isn't yet confirmed against the real k_mutex DWARF, so this read may be untrustworthy; (b) a later
+bus fault (measure loop / printk) not yet caught at z_arm_fault with CFSR/BFAR. NEXT focused session: confirm
+k_mutex field offsets from DWARF, re-read owner/lock_count at the verified offsets, and trap the fault PC.
+Decision: stop multi-firing rabbit-hole here — body-level correctness is established; residual is bounded.
