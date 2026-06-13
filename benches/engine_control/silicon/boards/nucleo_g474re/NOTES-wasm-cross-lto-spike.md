@@ -1746,3 +1746,20 @@ FIX (gale-side, mirrors sem): pack gale_k_mutex_unlock_decide's return into a u6
 no sret -> no 64KB linmem -> no abs-relocs -> drop-in like sem. Touches FFI decide + Verus proof +
 wasm shim decode + native gale_mutex.c decode. Posted to PR#60 (4699802546). This is the unblock.
 Also kills the 64KB-RAM cost (non-starter on 128KB). PR#60 held draft until the decide is repacked.
+
+## UPDATE 2026-06-13 22:0x — PR#60: u64-repack hypothesis TESTED on scratch -> promising-but-partial (corrected)
+
+No release. synth 4h0m (reminder channels open, VCR maintainer-owned -> no nudge); loom 9h12m (no
+reminder). Owed item: implement the packed-u64 mutex decide. Before committing, prototyped FFI+shim
+repack on SCRATCH + rebuilt the wasm object to TEST the "drop-in like sem" claim. RESULT (corrected
+my over-claim):
+ - Repack REMOVED all __synth_globals relocs (the sret/stack-pointer frame). The faulting body+0xc
+   movw was __synth_globals -> that specific reloc class is eliminated. Real progress.
+ - BUT 64KB .data + 6 __synth_wasm_data MOVW_ABS relocs PERSIST in the body (MOVW_ABS 10->6, not 0);
+   wasm still declares (memory 2)+(global $__stack_pointer). So NOT drop-in like sem (sem=0 such relocs).
+ => u64 ABI is necessary-not-sufficient. Reverted scratch (incomplete: breaks native gale_mutex.c).
+    Posted correction to PR#60 (4699931960). The deeper issue = synth emitting full wasm linmem +
+    __synth_wasm_data refs for a body touching few bytes; trimming that (synth-side) is the real
+    sem-shape fix. The full u64-repack (FFI+6 kani harnesses+header+native+tests, re-verified +
+    SILICON mutex_api re-test) remains worth doing but must be CONFIRMED on hardware, not assumed.
+DISCIPLINE: tested the fix at artifact level before committing -> caught the over-claim. PR#60 draft.
