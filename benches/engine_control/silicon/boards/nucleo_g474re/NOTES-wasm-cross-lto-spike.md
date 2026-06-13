@@ -1617,3 +1617,24 @@ evidence (4699204055, the spill%-vs-ratio table) reinforcing spill-reduction as 
 RESULT-2026-06-13-v0.11.41.txt written, RESULTS-SUMMARY mutex row 501. The long-self-owed mutex
 deliverable is DONE. Next: re-measure on the published v0.11.41 GH release when it lands (sanity);
 push synth on the spill-reduction pass -> re-measure mutex (best test case).
+
+## UPDATE 2026-06-13 17:3x — v0.11.41 PUBLISHED + installed + body-of-work regression-clean
+
+synth v0.11.41 published (17:18) -> installed to ~/.cargo/bin (was 0.11.40), reset clock. Tested
+against the full body of work on the official release:
+- testbed run_testbed.sh: ALL GREEN (12 OK + u64 3-way lane 4/4), no skip/exhaustion.
+- sem: rebuilt .o = byte-structurally IDENTICAL to 0.11.40 (540B, 4 funcs 20/230/6/284, 165 insns,
+  35 spills/21%) -> #331 fix (has_i64==false path) doesn't touch sem (has_i64==true) -> 860 HOLDS.
+- control_step: rebuilt = IDENTICAL (354B, 113 insns) -> 151 HOLDS.
+- flat_flight: testbed-green (functional) -> 241 HOLDS.
+- mutex: 501 (FIXED, was deadlock <=0.11.40).
+=> v0.11.41 regression-clean AND fixes the mutex. CONSOLIDATED current-toolchain silicon picture
+   (synth 0.11.41 + loom 1.1.13, G474RE):
+     k_sem_give     860 / 471 LLVM-LTO = 1.82x
+     k_mutex_unlock 501 / 124 native   = 4.04x  (NEW; worst ratio, 31% spill)
+     control_step   151 / 67           = 2.25x
+     flat_flight    241 / 103          = 2.34x
+loom clock: 5h12m but reminder channel non-null + already responded #142 -> no new reminder.
+NEXT expand frontier (queued, multi-firing): promote mutex to a shippable wasm module (the sem #59
+pattern: build-wasm-dist.sh + Kconfig + release-wasm.yml) now that it works. Optimize thread (#209)
+comprehensive + awaiting maintainer (flag-fold + spill-reduction, 3-pt spill%-vs-ratio evidence, hw baselines).
