@@ -1678,3 +1678,21 @@ Verified: valid ET_REL mutex .o (body global, decide localized, imports->gale_w_
 un-renamed), #331 signature absent (arg0 home #0x68 write-once), primitives lane GREEN, first
 silicon 501 cyc. Follow-up PR: Kconfig CONFIG_GALE_WASM_LTO_MUTEX + CMakeLists consume + release.yml
 attach. PR #60 pending CI+review (gale main protected).
+
+## UPDATE 2026-06-13 21:5x — EXPAND: completed mutex module (PR #60) + caught 2 real bugs by building
+
+No release. synth 1h59m; loom 7h12m (channel non-null -> no reminder). #209 no VCR PR yet (passive).
+PR #60 CI: MERGEABLE, no failures (UNSTABLE = qemu matrix still running). Completed #60 from
+build-pipeline-only into the FULL mutex module (consumption wiring mirroring sem): gale_mutex.c
+#ifndef guard, Kconfig CONFIG_GALE_WASM_LTO_MUTEX, CMakeLists consume block, release.yml name.
+Verified by BUILDING tests/kernel/mutex/mutex_api on nucleo_g474re — caught TWO real bugs assuming
+would have shipped:
+ 1. func_N collision: sem.o & mutex.o each export synth's internal func_7/func_8 as GLOBAL ->
+    multiple-definition at final link when both modules on (#59 never hit, sem shipped alone).
+    Fixed: build-wasm-dist.sh exports ONLY the body (objcopy --keep-global-symbol), localizing
+    decide + func_N. Verified both-on links.
+ 2. Kconfig mis-gate: GALE_WASM_LTO_MUTEX landed inside `if GALE_KERNEL_SEM` -> unreachable w/o
+    sem kernel. Fixed: moved under GALE_KERNEL_MUTEX (depends on). Verified with SEM kernel OFF +
+    mutex wasm ON: .config accepts CONFIG_GALE_WASM_LTO_MUTEX=y, links (elf OK).
+Both dedup-guard branches (sem-on / sem-off) exercised. PR #60 updated to "complete module".
+Consumption verified: native unlock compiled out, synth_k_mutex_unlock_body + tramp linked, 501 cyc.
