@@ -1586,3 +1586,17 @@ the CURRENT toolchain, flashed G474RE, captured:
 Confirms the 151 I used in the #209 flag-fold analysis is the CURRENT on-silicon truth (not an
 estimate) -> hardware-locked the "before" baseline for the #209 kill-criterion (target ~127).
 Wrote RESULT-2026-06-13-g474re.txt, refreshed RESULTS-SUMMARY footnote §, posted baseline-lock to #209.
+
+## UPDATE 2026-06-13 16:1x — loom#142 still-reproduces confirmation + flat_flight silicon refresh
+
+No release. synth 0h55m. loom 4h12m (over 4h) BUT reminder_issue_open non-null -> per rule, no new
+reminder issue; responded on the open channel instead. Confirmed loom#142 STILL reproduces on the
+LATEST release v1.1.13: measured assets across v1.1.10-13 = compliance-report tarball only, NO loom
+binary -> release-build-fails root cause unaddressed (#198 build-from-tag fix didn't touch the
+release-artifact path). Re-commented on #142 (4699120397) with the asset table + kill-criterion;
+not blocking gale (we build loom from source).
+
+Measure thread: re-measured flat_flight on G474RE at v0.11.40 = 241/103 = 2.34x, SELFCHECK
+0x07fdf307 OK -> STABLE vs v0.11.35 (241), down from 262 (v0.11.30). Wrote RESULT-2026-06-13-v0.11.40,
+refreshed RESULTS-SUMMARY ‡ footnote. Current-toolchain silicon picture now: control_step 151 (was 156),
+flat_flight 241 (stable). Both functionally correct on v0.11.40.

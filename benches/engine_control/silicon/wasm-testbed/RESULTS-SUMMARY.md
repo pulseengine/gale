@@ -23,7 +23,7 @@ min-over-200 (or bench median where noted). RISC-V = `qemu_riscv32 -icount` (ins
 
 All functionally correct on both backends (RV32 funccheck 10/10, ARM funccheck 6/6, wasmtime oracle).
 
-‡ `flat_flight` ARM refreshed 2026-06-04 to **262/103 = 2.54×** (loom 1.1.10 + synth 0.11.30, reproducible `flat_flight-microbench/`, SELFCHECK 0x07fdf307). The prior **315/3.18×** was synth **v0.11.18** — stale; the caller-saved-preference fix (v0.11.27) and later improvements already cut it. 262 includes the fp-setup trampoline (~8 cyc); body ~254.
+‡ `flat_flight` ARM **re-measured 2026-06-13 on G474RE at the current toolchain (synth 0.11.40 + loom 1.1.13): 241/103 = 2.34×**, SELFCHECK 0x07fdf307 OK, reproducible `flat_flight-microbench/build.sh` + `RESULT-2026-06-13-g474re-v0.11.40.txt`. Stable vs v0.11.35 (241); down from 262 (v0.11.30, 2026-06-04) and 315 (v0.11.18, stale). 241 includes the fp-setup trampoline (~8 cyc); body ~233. Composed flight algo (filter_step+controller_step).
 
 § `control_step` ARM **re-measured 2026-06-13 on G474RE at the current toolchain (synth 0.11.40 + loom 1.1.13): 151/67 = 2.25×**, SELFCHECK 2165333 OK, reproducible `control-step-microbench/build.sh` + `RESULT-2026-06-13-g474re.txt`. Down from 158/67 (v0.11.34, 2026-06-05) — ~5 cyc (~3%) from codegen improvements between 0.11.34→0.11.40. Prior 168/81 was an older synth. Buffer-harness (tables copied into a RAM linmem buffer, r11=base). This 151 is the hardware-locked "before" baseline for the synth#209 flag-fold/spill-reduction kill-criterion (target ~127).
 
