@@ -1542,3 +1542,20 @@ quantified impact, the recommended compare->select fusion peephole (keep conditi
 materialize), kill-criterion (re-measure control_step toward ~127 when a release lands).
 Secondary: 10 mov rX,rY reg-shuffles/113 (coalescing) + single [sp] scratch churn — noted as
 lower-priority allocator items.
+
+## UPDATE 2026-06-13 17:0x — optimize thread: headline (sem) overhead breakdown -> synth#209 follow-up
+
+No new release (v0.11.40/v1.1.13). 4h rule N/A (~2h42m). #331/#209 no maintainer response yet.
+Pushed optimize thread to the HEADLINE: rebuilt the fully-dissolved k_sem_give path with the
+exact release recipe (build-wasm-dist.sh, FFI wasm staticlib + shim -> wasm-ld -> loom inline ->
+synth). 540B/165 insns, 4 funcs, seam folded (no bl decide). Findings:
+- Flag round-trip (the #209 finding) RECURS in sem (sites 0x50/54, 0x7c/80, 0x186/8e) -> not
+  control_step-specific.
+- BIGGER lever: 35/165 insns (21%) are str/ldr [sp] data spills (+14 mov rX,rY) -> excess
+  spilling, ~70 cyc estimate, plausibly a large slice of the 389-cyc gap to LLVM-LTO (471).
+  Recommended spill-reduction/regalloc as #1 priority, flag-fold as #2. Posted to #209
+  (comment 4698894095) with honest scope: static counts from real object, cycle figures are
+  ESTIMATES, kill-criterion = re-measure on-silicon when a release lands.
+CAUGHT a misattribution risk first: my initial shim-only build still had `bl decide` (not the
+measured shape) -> rebuilt the real dissolved form before analyzing. Did not present shim-only
+numbers as the headline.
