@@ -9,7 +9,7 @@ min-over-200 (or bench median where noted). RISC-V = `qemu_riscv32 -icount` (ins
 
 | primitive | wasm-cross-LTO | LLVM-LTO | native gale | notes |
 |-----------|---------------|----------|-------------|-------|
-| `k_sem_give` handoff (ARM silicon) | **907** cyc | 471 | — | 1.92×; dissolved drop-in, seam folded (no `bl ..._decide`), n=148 median |
+| `k_sem_give` handoff (ARM silicon) | **860** cyc | 471 | — | 1.83×; **sound re-baseline** (faithful Zephyr v4.4.0 shim, v0.11.37, n=148, drops=0, ADC path bypassed). **Supersedes the unsound 907** (NULL `wait_q` + skewed layout — semantically wrong). Seam folded (no `bl ..._decide`). 21% of the 165-insn body is `[sp]` spills (see synth#209 / VCR-RA). |
 | `k_mutex_unlock` (ARM silicon) | **501** cyc | — | **124** (ref) | 4.04×; first measurement 2026-06-13 on synth **v0.11.41** (the #331 spill-slot-collision fix; prior synth silently miscompiled → silicon deadlock). SELFCHECK rc=0 owner=0 OK. Worst ratio in suite — 31% of the 269-insn body is `[sp]` spills (see synth#209). |
 
 ## Algorithm functions (value-in/value-out — dissolve cleanly, both backends)
@@ -27,7 +27,7 @@ All functionally correct on both backends (RV32 funccheck 10/10, ARM funccheck 6
 
 § `control_step` ARM **re-measured 2026-06-13 on G474RE at the current toolchain (synth 0.11.40 + loom 1.1.13): 151/67 = 2.25×**, SELFCHECK 2165333 OK, reproducible `control-step-microbench/build.sh` + `RESULT-2026-06-13-g474re.txt`. Down from 158/67 (v0.11.34, 2026-06-05) — ~5 cyc (~3%) from codegen improvements between 0.11.34→0.11.40. Prior 168/81 was an older synth. Buffer-harness (tables copied into a RAM linmem buffer, r11=base). This 151 is the hardware-locked "before" baseline for the synth#209 flag-fold/spill-reduction kill-criterion (target ~127).
 
-† `controller_step` has 7 args; synth’s cortex-m convention passes args in **r0–r7** (not AAPCS r0–r3+stack), so a C/Zephyr caller needs an arg-shuffle trampoline (`controller-microbench/ctl_tramp.S`). Arc 169→168 (#250 AND)→162 (#258 clamp)→**150** (#283 in-place select); the 150 includes the ~8-cyc arg-shuffle (native called directly). SELFCHECK 0x05e33e81 == native on G474RE.
+† `controller_step` has 7 args; synth’s cortex-m convention passes args in **r0–r7** (not AAPCS r0–r3+stack), so a C/Zephyr caller needs an arg-shuffle trampoline (`controller-microbench/ctl_tramp.S`). Arc 169→168 (#250 AND)→162 (#258 clamp)→**150** (#283 in-place select); the 150 includes the ~8-cyc arg-shuffle (native called directly). SELFCHECK 0x05e33e81 == native on G474RE. **Re-confirmed 2026-06-13 on synth 0.11.41: 150/61 = 2.46x** (down from 169 @ v0.11.30; 6 flag-fold round-trips / 3 spills in the 99-insn body -> flag-fold-dominated).
 flight_control bench wasm-LTO variant builds + runs the dissolved algorithm on G474RE (Phase 5).
 
 ## Bigger example — flight_control macro bench (Phase 5, composed)

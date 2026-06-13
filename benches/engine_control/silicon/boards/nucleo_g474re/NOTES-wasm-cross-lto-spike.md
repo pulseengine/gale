@@ -1778,3 +1778,18 @@ has none (packed-u64 decide). Asks: emit only referenced data (.bss the zero-ini
 abs MOVW for kernel-linkable objects. Kill-criterion = mutex_api links+runs on G474RE no-fault,
 .data bounded. Linked to PR#60 (held draft pending #345). This is the real sem-shape fix lever,
 now tracked upstream w/ the maintainer.
+
+## UPDATE 2026-06-13 22:3x — controller_step re-measured v0.11.41 + flag-fold/spill PARTITION -> #209; sem headline 907->860 fix
+
+No release. synth 4h59m / loom 10h12m (channels non-null -> no reminder). #345/#209 no maintainer
+response yet (passive). MEASURE: controller_step re-measured on G474RE at v0.11.41 = 150/61 = 2.46x,
+SELFCHECK 0x05e33e81 MATCH (down from 169 @ v0.11.30). Body 99 insns: 6 flag-fold round-trips, only
+3 spills -> FLAG-FOLD-dominated. Completes v0.11.41 silicon set.
+DELIVERED to #209 (4699999657): the flag-fold-vs-spill PARTITION across all 4 bodies —
+ control_step 113i/6-fold/6-spill 151; controller 99i/6-fold/3-spill 150 -> FLAG-FOLD-bound (algos);
+ sem 165i/3-fold/35-spill(21%) 860; mutex 269i/5-fold/86-spill(31%) 501 -> SPILL-bound (primitives).
+ => VCR-SEL-004 owns the algos (isolated, low spill confound -> fast win, 151->~127/150->~126);
+    VCR-RA owns the primitives. Clean non-overlapping partition for sequencing.
+HYGIENE: fixed the stale RESULTS-SUMMARY headline 907 -> 860 (the SOUND re-baseline: faithful v4.4.0
+shim, v0.11.37, n=148, drops=0, ADC bypassed; 907 was unsound NULL-wait_q/skewed-layout). Wrote
+controller RESULT-2026-06-13-v0.11.41, updated controller footnote.
