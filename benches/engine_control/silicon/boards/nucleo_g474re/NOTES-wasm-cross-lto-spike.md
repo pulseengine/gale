@@ -1696,3 +1696,20 @@ would have shipped:
     mutex wasm ON: .config accepts CONFIG_GALE_WASM_LTO_MUTEX=y, links (elf OK).
 Both dedup-guard branches (sem-on / sem-off) exercised. PR #60 updated to "complete module".
 Consumption verified: native unlock compiled out, synth_k_mutex_unlock_body + tramp linked, 501 cyc.
+
+## UPDATE 2026-06-13 20:1x — PR #60 mutex module FAULTS in full mutex_api (silicon) -> draft
+
+No release. synth 2h29m; loom 7h42m (no reminder). #209 no VCR PR (passive). Ran the REAL consume
+path (not just link): tests/kernel/mutex/mutex_api on G474RE w/ CONFIG_GALE_WASM_LTO_MUTEX=y ->
+USAGE FAULT on test_complex_inversion. Pinned: faulting insn body+0xc = 0xfac8 0100 = UNDEFINED;
+working body has `movw r1,#0` (R_ARM_MOVW_ABS_NC __synth_globals). The mutex dissolved body refs
+wasm STATICS (__synth_globals @.data+0x10008, __synth_wasm_data) via MOVW_ABS/MOVT_ABS relocs + a
+~64KB .data section; the Zephyr link corrupts those movw->undefined. Localized:
+ - SEM .o has ZERO MOVW_ABS relocs (no wasm statics) -> #59 works in-kernel, mutex doesn't.
+ - No-waiter microbench links the SAME .o clean (501 cyc) -> .o fine; Zephyr-link consume path
+   mis-applies the relocs (flag/placement of 64KB .data, e.g. --no-relax).
+Converted PR #60 -> DRAFT, posted characterization (comment 4699667490). The build-pipeline+shim
+parts sound; consumption of a wasm-statics-bearing module is the gap. Also 64KB .data on 128KB RAM
+is itself wrong (synth emits full linmem; decide uses little) -> raise synth-side separately.
+KEY: caught by running the FULL test on hardware — link-only + no-waiter microbench both passed and
+masked it. Owed next: root-cause the MOVW_ABS corruption (linker flag vs synth reloc) + the 64KB .data.
