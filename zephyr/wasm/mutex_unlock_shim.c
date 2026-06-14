@@ -44,6 +44,11 @@ extern void              z_ready_thread(struct k_thread *);
 extern void              arch_thread_return_value_set(struct k_thread *, uint32_t);
 extern int               z_reschedule(struct k_spinlock *, k_spinlock_key_t);
 extern struct k_thread * gale_w_current(void);   /* _current, out-of-line */
+/* Priority-inheritance restoration (gale#62): k_thread is opaque here, so these
+ * out-of-line wrappers do what the real z_impl_k_mutex_unlock's adjust_owner_prio
+ * needs — restore a thread's prio (z_thread_prio_set) and read base.prio. */
+extern int               gale_w_adjust_thread_prio(struct k_thread *, int new_prio);
+extern int               gale_w_thread_prio(struct k_thread *);
 
 /* The verified Rust decision — same wasm module after merge; loom inlines it. */
 struct gale_mutex_unlock_decision { int32_t ret; uint8_t action; uint32_t new_lock_count; };
@@ -75,11 +80,18 @@ int z_impl_k_mutex_unlock(struct k_mutex *mutex)
         k_spin_unlock(&lock, key);
         return 0;
     }
-    /* UNLOCKED: hand off to the highest-priority waiter, if any.
+    /* UNLOCKED: restore the unlocking owner (cur)'s inherited-priority boost
+     * BEFORE the handoff — mirrors adjust_owner_prio(mutex, owner_orig_prio) in
+     * the real z_impl_k_mutex_unlock, where mutex->owner is still `cur` at this
+     * point (gale#62: omitting this broke test_mutex_priority_inheritance).
      * wait_q is k_mutex's first member, so &mutex == &mutex->wait_q. */
+    gale_w_adjust_thread_prio(cur, mutex->owner_orig_prio);
     struct k_thread *new_owner = z_unpend_first_thread((void *)mutex);
     mutex->owner = new_owner;
     if (new_owner != (struct k_thread *)0) {
+        /* New owner already has >= the first waiter's prio (priority-ordered
+         * wait_q), so no boost needed; just record its original prio. */
+        mutex->owner_orig_prio = gale_w_thread_prio(new_owner);
         mutex->lock_count = 1U;
         arch_thread_return_value_set(new_owner, 0);
         z_ready_thread(new_owner);
