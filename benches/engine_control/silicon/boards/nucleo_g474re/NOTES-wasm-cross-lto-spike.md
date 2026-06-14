@@ -2242,3 +2242,19 @@ mutex/stack/msgq all synth-shippable; event/queue/mbox small-struct register-ret
 Updated gale#63 msgq row (dissolved impl now shippable for the kernel-primitives WIT world — no synth
 blockers left). Next: shim+silicon stack/msgq end-to-end (full module like mutex) when wanted, or the
 gale#63 component model (jess-led).
+
+## UPDATE 2026-06-14 18:36 — OPTIMIZE: filed loom#219 (seam-SROA) — the path to LLVM-LTO parity
+
+Researched the wasm-cross-LTO→LLVM-LTO gap (sem 860 vs 471 = 1.83×) at the codegen level. Root: loom
+inlines the seam but doesn't DISSOLVE it — the decide's u64-packed return ABI survives as a pack-
+immediately-unpack round-trip. wasm-IR evidence (sem.loom.wasm): `i64.extend/shl/or` (pack {action,
+new_count}) -> `i64.and/shr_u` (unpack), with a dead `(local i64)`. synth ARM cost: 83-insn body, 23%
+[sp] traffic (ptr reloaded 5x), 11 movw/movt, the u64 round-trip spilled to [sp,#0x8/0xc].
+
+Filed **loom#219** with 3 ranked wasm-IR passes (benefit ARM+RISC-V, complement synth#209 backend
+regalloc): (1) SROA/scalar-forwarding through the inline = kills the u64 pack/unpack ["inlined -> dissolved"];
+(2) wasm-local mem2reg/coalesce = kills the reload churn; (3) const dedup/hoist. Parity read: bit-exact
+1.0x unlikely, within ~20% achievable, in-context already +11%; #1+#2 should take sem 83->~55-60 insns.
+Frozen repro: repro-loom-seam-sroa/ (sem.loom.wasm + shim). Kill-criterion: no i64 pack/unpack in the
+dissolved body, ARM body <~70 insns. I'm the on-silicon gate (will re-measure sem/mutex + composed
+deltas when a build lands).
