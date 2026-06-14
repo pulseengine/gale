@@ -2226,3 +2226,19 @@ deltas are exactly what synth#209 (spill reduction) would shrink. drain_timeouts
 
 NOTE: local gale main was STALE (f5fa4cd, pre-#60/#61) — `git pull --ff-only` synced it to 4654734
 (mutex shim + CMake mutex consume + nightly fix). Surfaced by the missing mutex_unlock_shim.c; fixed.
+
+## UPDATE 2026-06-14 18:0x — synth#354 VERIFIED FIXED on v0.11.45 → stack+msgq SHIPPABLE; all 4 synth bugs cleared
+
+v0.11.45 published (SHA-verified, 90s). Ran staged DUAL-gate re-survey → **GREEN (EXIT=0)**:
+- #350 (compile): stack_push/pop + msgq_put/get all OK.
+- #354 (.data bounded): msgq .data 65556→**20**, stack_push shim 65552→**16** — per-region .bss split works,
+  64KB blob gone (only the -ENOMEM/-EAGAIN init consts in .data; zero gap in .bss).
+No regression: 6-primitive codegen lane GREEN, sem .o byte-identical (540B). Reported verified to synth#354.
+
+**stack + msgq are now MCU-shippable wasm-cross-LTO modules.** The four synth bugs I surfaced this session
+are ALL cleared: #331 (spill-slot collision, v0.11.41) → #345 (.bss+PC-relative, v0.11.43) → #350 (ADD-imm
+lowering, v0.11.44) → #354 (per-region .bss/.data split, v0.11.45). Struct-return drop-in map: sem/pipe/
+mutex/stack/msgq all synth-shippable; event/queue/mbox small-struct register-return (trivially clean).
+Updated gale#63 msgq row (dissolved impl now shippable for the kernel-primitives WIT world — no synth
+blockers left). Next: shim+silicon stack/msgq end-to-end (full module like mutex) when wanted, or the
+gale#63 component model (jess-led).
