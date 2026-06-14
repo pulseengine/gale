@@ -10,7 +10,7 @@ min-over-200 (or bench median where noted). RISC-V = `qemu_riscv32 -icount` (ins
 | primitive | wasm-cross-LTO | LLVM-LTO | native gale | notes |
 |-----------|---------------|----------|-------------|-------|
 | `k_sem_give` handoff (ARM silicon) | **860** cyc | 471 | — | 1.83×; **sound re-baseline** (faithful Zephyr v4.4.0 shim, v0.11.37, n=148, drops=0, ADC path bypassed). **Supersedes the unsound 907** (NULL `wait_q` + skewed layout — semantically wrong). Seam folded (no `bl ..._decide`). 21% of the 165-insn body is `[sp]` spills (see synth#209 / VCR-RA). |
-| `k_mutex_unlock` (ARM silicon) | **501** cyc | — | **124** (ref) | 4.04×; first measurement 2026-06-13 on synth **v0.11.41** (the #331 spill-slot-collision fix; prior synth silently miscompiled → silicon deadlock). SELFCHECK rc=0 owner=0 OK. Worst ratio in suite — 31% of the 269-insn body is `[sp]` spills (see synth#209). |
+| `k_mutex_unlock` (ARM silicon) | **472** cyc | — | **124** (ref) | 3.81×; **re-measured 2026-06-14 on synth v0.11.43** (#345 `.bss`+PC-relative fix; module merged via gale PR #60). Down from 501 (v0.11.41) — −29 cyc / −5.8% across 0.11.41→0.11.43. SELFCHECK rc=0 owner=0 OK. Full `mutex_api` suite 9/9 PASS on G474RE (not just no-waiter). Worst ratio in suite — 34% of the 167-insn dissolved body is `[sp]` spills (see synth#209 — the lever). |
 
 ## Algorithm functions (value-in/value-out — dissolve cleanly, both backends)
 

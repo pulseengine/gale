@@ -2045,3 +2045,14 @@ both blockers resolved: synth#345 (link survivability, v0.11.43) + gale#62 (shim
 Committed to feat/wasm-mutex-module (PR#60, "Closes #62"). PR#60 is silicon-verified-correct; next =
 confirm CI green on the v0.11.43 toolchain, then flip draft→ready. mutex JOINS sem(give+take) +
 pipe(rd/wr) as a verified-correct dissolved primitive (mutex now full-suite on HW, not just shape).
+
+## UPDATE 2026-06-14 11:05 — mutex_unlock re-measured on v0.11.43: 501→472 cyc (−5.8%), #209 still the lever
+
+PR#60 merged (mutex module in gale main). Re-measured k_mutex_unlock cycles on the current toolchain
+(synth v0.11.43, remeasure_wasm_lto.sh, G474RE DWT min/200 uncontended): **472 cyc** (was 501 on
+v0.11.41) — **−29 cyc / −5.8%** across 0.11.41→0.11.43 (#313 if/else-result fix v0.11.42 + #345
+.bss/PC-relative v0.11.43). SELFCHECK rc=0 owner=0 OK. Ratio vs native 124 = **3.81×** (was 4.04×).
+Re-measured the dissolved body spill density on v0.11.43: **167 insns, 56 (34%) [sp] spills** (method:
+objdump z_impl body isolation) — still ~a third spills, consistent with v0.11.41's ~31% → **synth#209
+(spill reduction) remains the dominant lever**, now the worst-ratio primitive in the suite. RESULTS
+mutex line updated; RESULT-2026-06-14-g474re-v0.11.43.txt saved. Posted the updated #209 baseline.
