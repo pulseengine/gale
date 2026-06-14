@@ -2163,3 +2163,19 @@ the sret→wasm-linmem path:
 So the meaningful sret expansion is mutex (done) + stack/msgq (#350-gated); the small-struct primitives
 need no separate verification. No high-value non-#350-gated primitive step remains — surface is at a
 verified resting state pending the #350 release (then stack/msgq) and synth#209 (spill).
+
+## UPDATE 2026-06-14 15:0x — synth#350 VERIFIED FIXED on v0.11.44; stack/msgq now compile but hit synth#354 (64KB .data)
+
+v0.11.44 published (SHA-verified install). Ran staged resurvey_struct_return_decides.sh → **GREEN**:
+stack_push/pop + msgq_put/get all COMPILE now (were ADD-imm FAIL); controls OK. **#350 fix verified on
+the real gale decides.** No regression: 6-primitive codegen lane GREEN on v0.11.44, sem .o byte-identical
+(540B). Reported verified-fixed to synth#350 (closed loop).
+
+NEW finding — **stack_push compiles but dissolves to a 64KB PROGBITS .data** (filed synth#354). From the
+loom.wasm: a 12-byte .rodata init segment at linmem offset 65536 (`\f4\ff\ff\ff` = -12 = -ENOMEM, the
+stack-full const) drags the `[0,65536)` zero gap into PROGBITS .data instead of .bss. #345 handled
+pure-zero-init (mutex → all .bss); this is the mixed case (high-offset init segment). Link-survivable
+(ABS32=6, MOVW_ABS=0, seam-folded) but MCU-unshippable (64KB flash). Fix = per-region .data/.bss split.
+So: #350 (compile) cleared → #354 (64KB .data) is the NEXT blocker for shipping stack/msgq as wasm-LTO
+modules. mutex remains the only shippable struct-return primitive; stack/msgq gated on #354 now.
+Updated struct-return map: stack/msgq COMPILE (v0.11.44) but not shippable until #354.
