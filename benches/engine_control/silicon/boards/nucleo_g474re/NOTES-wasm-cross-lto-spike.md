@@ -2071,3 +2071,19 @@ a different/total count; the authoritative per-function byte sizes 20/230/6/284 
 Current-toolchain (v0.11.43) silicon perf pair: **sem_give 860 (stable, byte-identical), mutex_unlock
 472 (re-measured, −5.8% from 501)**. The #313 if/else-result fix did NOT alter sem's give/wake branch
 codegen (byte-identical confirms it). Spill density unchanged (same bytes) → synth#209 still the lever.
+
+## UPDATE 2026-06-14 12:03 — k_fatal gate-2 clean → u64-clean partition 5/5 COMPLETE
+
+Built the k_fatal shim (dissolved k_sys_fatal_error_handler policy: gale_k_fatal_decide(reason,is_isr,
+test_mode)->u64, actions ABORT_THREAD/HALT/IGNORE; esf not deref'd → sem-class, no --native-pointer-abi).
+Dissolved on synth v0.11.43: gate-2 **sem-shaped** — .text 524B, **.data=0, 0 MOVW/MOVT_ABS, seam folded**.
+Added a `k_fatal` lane to primitives_codegen_check.sh; full lane GREEN across **6 primitives** (sem_give,
+sem_take, pipe_write, pipe_read, fatal, mutex_unlock — TRUE_EXIT=0). POC: wasm_fatal_shim_poc.c.
+
+**The maintainer's u64-shaped clean decide partition is now 5/5 statically verified:** sem_give, sem_take,
+pipe_write, pipe_read, fatal — all sem-shaped (.data=0, 0 abs-relocs, seam-folded), drop-in-ready,
+#345-independent. The struct-return family (51, incl mutex) is separately UNBLOCKED now that #345 is
+fixed+merged (mutex proved it end-to-end on silicon: full mutex_api 9/9). So the wasm-cross-LTO surface
+status: u64-clean set fully verified (shape); mutex shipped (full-suite-correct on HW); the rest of the
+struct-return family is the open expansion frontier (each needs a faithful shim + correctness pass like
+gale#62's priority-inheritance work).

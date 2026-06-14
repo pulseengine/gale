@@ -26,6 +26,7 @@ MTX_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_mutex_shi
 PIPE_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_pipe_write_shim_poc.c"
 PIPE_RD_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_pipe_read_shim_poc.c"
 SEM_TAKE_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_sem_take_shim_poc.c"
+FATAL_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_fatal_shim_poc.c"
 LIBFFI="$GALE/ffi/target/wasm32-unknown-unknown/release/libgale_ffi.a"
 fail=0; t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 
@@ -106,6 +107,20 @@ if [ $rc -eq 0 ]; then
   elif [ "$absr" -ne 0 ]; then echo "  [BAD] $absr abs MOVW/MOVT relocs — NOT sem-shaped (linmem leak like #345)"; fail=1
   elif [ "$data" -gt 16 ]; then echo "  [BAD] .data=$data B — linmem blob leaked (not a clean drop-in)"; fail=1
   else echo "  [OK ] compiles + seam folded + .data=${data}B + 0 abs-relocs (SEM-SHAPED — pipe clean both directions)"; fi
+else echo "  [BAD] build/codegen rc=$rc"; fail=1; fi
+
+# --- k_fatal (5th/last u64-shaped clean decide — closes the u64-clean partition) ---
+echo "k_fatal (dissolved k_sys_fatal_error_handler policy — gate-2 sem-shape check):"
+build_primitive fatal "$FATAL_SHIM" k_sys_fatal_error_handler ""
+rc=$?
+if [ $rc -eq 0 ]; then
+  seam=$($OBJDUMP -r "$t/fatal.o" 2>/dev/null | grep -c gale_k_fatal_decide)
+  absr=$($OBJDUMP -r "$t/fatal.o" 2>/dev/null | grep -cE "R_ARM_MOVW_ABS|R_ARM_MOVT_ABS")
+  data=$($SIZE -A "$t/fatal.o" 2>/dev/null | awk '$1==".data"{print $2}'); data=${data:-0}
+  if [ "$seam" -ne 0 ]; then echo "  [BAD] seam not folded (decide reloc present)"; fail=1
+  elif [ "$absr" -ne 0 ]; then echo "  [BAD] $absr abs MOVW/MOVT relocs — NOT sem-shaped"; fail=1
+  elif [ "$data" -gt 16 ]; then echo "  [BAD] .data=$data B — linmem blob leaked"; fail=1
+  else echo "  [OK ] compiles + seam folded + .data=${data}B + 0 abs-relocs (SEM-SHAPED — u64-clean partition 5/5 complete)"; fi
 else echo "  [BAD] build/codegen rc=$rc"; fail=1; fi
 
 # --- k_mutex_unlock (+ synth#331 signature) ---
