@@ -2179,3 +2179,11 @@ pure-zero-init (mutex → all .bss); this is the mixed case (high-offset init se
 So: #350 (compile) cleared → #354 (64KB .data) is the NEXT blocker for shipping stack/msgq as wasm-LTO
 modules. mutex remains the only shippable struct-return primitive; stack/msgq gated on #354 now.
 Updated struct-return map: stack/msgq COMPILE (v0.11.44) but not shippable until #354.
+
+## UPDATE 2026-06-14 15:33 — synth#354 blast radius: stack + msgq (2-page linmem w/ high-offset const); msgq at decide level
+
+Decide-only survey (v0.11.44, --native-pointer-abi): mutex_unlock = 1 linmem page, .data=0 (clean).
+stack_push/pop = 2 pages, decide-alone .data=0 but FULL shim 65552B. msgq_put/get = 2 pages, decide-alone
+ALREADY .data=65556 (64KB). Pattern: bounded-buffer decides request 2 linmem pages (128KB) with a
+.rodata const at offset 65536 -> zero-fill gap -> 64KB PROGBITS .data (#354). #354 gates stack+msgq (same
+set as #350); mutex/event/queue/mbox unaffected. Posted the table to synth#354. msgq is worse (decide-level).
