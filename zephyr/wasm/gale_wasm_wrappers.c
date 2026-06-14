@@ -65,3 +65,24 @@ struct k_thread *gale_w_current(void)
 {
 	return _current;
 }
+
+/* Mutex priority-inheritance restoration (gale#62): the dissolved unlock shim
+ * treats k_thread as opaque, so it can't read base.prio or call z_thread_prio_set
+ * (what the real z_impl_k_mutex_unlock reaches via the static adjust_owner_prio).
+ * These two thin wrappers expose exactly that:
+ *   - gale_w_adjust_thread_prio: restore `thread` to `new_prio` (undo the
+ *     inherited boost on unlock) — mirrors adjust_owner_prio's body.
+ *   - gale_w_thread_prio: read base.prio (so the shim can stash the new owner's
+ *     original priority into mutex->owner_orig_prio on handoff). */
+int gale_w_adjust_thread_prio(struct k_thread *thread, int new_prio)
+{
+	if (thread->base.prio != new_prio) {
+		return z_thread_prio_set(thread, new_prio) ? 1 : 0;
+	}
+	return 0;
+}
+
+int gale_w_thread_prio(struct k_thread *thread)
+{
+	return thread->base.prio;
+}

@@ -576,6 +576,46 @@ zephyr_library_include_directories(
 zephyr_library_link_libraries(${GALE_FFI_LIB})
 add_dependencies(gale_mutex gale_ffi_build)
 
+# --------------------------------------------------------------------------
+# wasm-cross-LTO mutex variant (CONFIG_GALE_WASM_LTO_MUTEX):
+# link the RELEASED dissolved object (gale-wasm-mutex-<ver>-<target>.o) in
+# place of the native z_impl_k_mutex_unlock. Artifact discovery:
+#   -DGALE_WASM_LTO_MUTEX_OBJ=<path to the .o>          (explicit), or
+#   -DGALE_WASM_LTO_OBJ_DIR=<release-assets dir>        (matches gale-wasm-mutex-*-cortex-m4f.o)
+# The object's kernel imports are pre-renamed to gale_w_* at release-build
+# time; wasm/gale_wasm_wrappers.c provides those entry points and
+# wasm/gale_wasm_mutex_tramp.S provides the r11=0 native-pointer bridge.
+# See docs/wasm-module-distribution.md.
+# --------------------------------------------------------------------------
+if(CONFIG_GALE_WASM_LTO_MUTEX)
+  if(NOT DEFINED GALE_WASM_LTO_MUTEX_OBJ AND DEFINED GALE_WASM_LTO_OBJ_DIR)
+    file(GLOB _gale_wasm_mutex_candidates "${GALE_WASM_LTO_OBJ_DIR}/gale-wasm-mutex-*cortex-m4f.o")
+    list(LENGTH _gale_wasm_mutex_candidates _n)
+    if(_n EQUAL 1)
+      list(GET _gale_wasm_mutex_candidates 0 GALE_WASM_LTO_MUTEX_OBJ)
+    elseif(_n GREATER 1)
+      message(FATAL_ERROR "GALE_WASM_LTO_OBJ_DIR contains ${_n} mutex objects; pass -DGALE_WASM_LTO_MUTEX_OBJ explicitly")
+    endif()
+  endif()
+  if(NOT DEFINED GALE_WASM_LTO_MUTEX_OBJ)
+    message(FATAL_ERROR "CONFIG_GALE_WASM_LTO_MUTEX=y needs -DGALE_WASM_LTO_MUTEX_OBJ=<.o> or -DGALE_WASM_LTO_OBJ_DIR=<dir> (release assets; see docs/wasm-module-distribution.md)")
+  endif()
+  if(NOT EXISTS ${GALE_WASM_LTO_MUTEX_OBJ})
+    message(FATAL_ERROR "wasm mutex object not found: ${GALE_WASM_LTO_MUTEX_OBJ}")
+  endif()
+  message(STATUS "Gale: wasm-cross-LTO mutex unlock -> ${GALE_WASM_LTO_MUTEX_OBJ}")
+  zephyr_library_compile_definitions(GALE_WASM_LTO_OVERRIDE_MUTEX_UNLOCK=1)
+  zephyr_library_sources(wasm/gale_wasm_mutex_tramp.S)
+  # gale_wasm_wrappers.c defines the shared gale_w_* entry points (incl
+  # gale_w_current, used only by the mutex shim). When CONFIG_GALE_WASM_LTO_SEM
+  # is also on, the sem library already compiles it into the image — adding it
+  # here too would double-define gale_w_*; so only add it when sem didn't.
+  if(NOT CONFIG_GALE_WASM_LTO_SEM)
+    zephyr_library_sources(wasm/gale_wasm_wrappers.c)
+  endif()
+  zephyr_library_link_libraries(${GALE_WASM_LTO_MUTEX_OBJ})
+endif() # CONFIG_GALE_WASM_LTO_MUTEX
+
 endif() # CONFIG_GALE_KERNEL_MUTEX
 
 # ==========================================================================
