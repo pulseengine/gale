@@ -2087,3 +2087,27 @@ fixed+merged (mutex proved it end-to-end on silicon: full mutex_api 9/9). So the
 status: u64-clean set fully verified (shape); mutex shipped (full-suite-correct on HW); the rest of the
 struct-return family is the open expansion frontier (each needs a faithful shim + correctness pass like
 gale#62's priority-inheritance work).
+
+## UPDATE 2026-06-14 12:33 — full v0.11.43 byte-diff sweep: perf table confirmed CURRENT
+
+Loop step-1 byte-diff sweep of the algo microbenches on the merged toolchain (synth v0.11.43):
+- control_step  = **354B** → IDENTICAL (151 cyc holds)
+- controller    = **296B** → IDENTICAL (150 cyc holds)
+- flat_flight   = **526B** → IDENTICAL to v0.11.35/40 baseline (241 cyc holds; RESULT note "560→526B" @v0.11.35)
+- sem_give      = 540B (20/230/6/284) → IDENTICAL (860 holds, confirmed 11:34)
+
+So **the entire perf table is current on v0.11.43 with no reflash** — every value-in/value-out algo +
+sem is byte-identical; the #313 if/else-result fix + #345 reloc change touched NONE of them. The only
+primitive that moved is **mutex_unlock: 501 (v0.11.41) → 472 (v0.11.43)** (re-measured on HW). Coherent
+current-toolchain (v0.11.43 + loom 1.1.13) silicon table:
+
+| primitive | wasm-cross-LTO | native/ref | LLVM-LTO | ratio |
+|---|---|---|---|---|
+| k_sem_give handoff | 860 | — | 471 | 1.83× vs LLVM-LTO |
+| k_mutex_unlock | 472 | 124 | — | 3.81× (worst; 34% [sp] spills → #209) |
+| control_step | 151 | 67 | — | 2.25× |
+| controller_step | 150 | 61 | — | 2.46× |
+| flat_flight | 241 | 103 | — | 2.34× |
+| flight_control macro algo | 157 | 141 | — | 1.11× (in-context) |
+
+#209 (regalloc spill reduction) remains the single retargetable lever; I'm the on-silicon gate (baselines above).
