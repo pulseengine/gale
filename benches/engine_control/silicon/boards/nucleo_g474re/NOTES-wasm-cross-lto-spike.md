@@ -2111,3 +2111,24 @@ current-toolchain (v0.11.43 + loom 1.1.13) silicon table:
 | flight_control macro algo | 157 | 141 | — | 1.11× (in-context) |
 
 #209 (regalloc spill reduction) remains the single retargetable lever; I'm the on-silicon gate (baselines above).
+
+## UPDATE 2026-06-14 13:06 — struct-return family NOT uniformly clean: stack_push hits synth#350 (ARM ADD-imm bug)
+
+Tried k_stack_push as a 2nd struct-return primitive (to substantiate "#345 generalizes the family" +
+de-risk the gale#63 component epic). Built the faithful shim, dissolved, and synth FAILED:
+`gale_k_stack_push_decide` → "ARM encoding failed: ADD immediate too large for single instruction";
+body then skipped ("branch-resolve size probe"). **Nothing emitted — empty object.**
+
+**Discipline catch:** the empty object's zero .data/.bss/relocs FIRST looked "sem-shaped clean" in my
+ad-hoc shape check — but re-running with full synth output showed `no functions compiled (2 skipped)`.
+An empty object is not a clean object. (The codegen lane's build_primitive guards this via the
+"skipping function" grep → rc=2; my inline check didn't, so I verified before recording. Never read a
+zero-reloc object as clean without confirming the compile succeeded.)
+
+**Filed synth#350.** Characterized: repros on 0.11.42 AND 0.11.43 (pre-existing, not a regression),
+with AND without --native-pointer-abi (flag not implicated) → an ARM-backend bug lowering an
+out-of-range ADD immediate. Frozen repro: `wasm-testbed/repro-synth-stack-add-imm/` (stack_push.loom.wasm
++ shim + ERROR). **Refines the partition:** it's NOT simply "5 u64 clean / 51 struct-return need #345" —
+some struct-return decides (stack_push) additionally hit ARM-encoding bugs that block them entirely.
+Verified-clean set stays: sem give+take, pipe rd+wr, fatal (u64) + mutex_unlock (struct-return, shipped).
+stack_push BLOCKED on synth#350. Codegen lane unchanged (stays 6-green; stack_push not added until #350 fixed).
