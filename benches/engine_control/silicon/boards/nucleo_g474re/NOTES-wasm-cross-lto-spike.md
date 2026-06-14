@@ -1948,3 +1948,33 @@ The 64KB zero-init linmem reservation now rides SHT_NOBITS `.bss` (Zephyr loader
 re-measure once BOTH land**. Per their explicit flag: **NOT doing a step-1-only reflash** (would just
 hit the same fault). `verify_mutex_module_silicon.sh` stays staged; PR #60 stays draft-blocked.
 #347 is not yet in a tagged release (0.11.42 = #313); will test when the bundled step-1+step-2 ships.
+
+## UPDATE 2026-06-14 08:07 — pipe is the 2nd clean u64-shaped drop-in (gate-2 VERIFIED, #345-independent)
+
+Expansion step: built the `k_pipe_write` shim and dissolved it (clang wasm32 → wasm-ld+ffi →
+loom inline → synth 0.11.42 cortex-m4f, NO `--native-pointer-abi` — sem-class). Answers the
+maintainer's open question (synth#345 blast-radius thread: "pipe is the next likely drop-in-ready
+module … a complex shim body can still allocate a linmem frame; I'll verify pipe's when I build it").
+
+**Gate-1 (decide ABI):** `gale_k_pipe_write_decide` + `_read_decide` both return packed `u64`
+(`#[repr(C)] GalePipeWriteDecision{action:u8, actual_bytes:u32}` transmuted to u64, asserted ==8B).
+No sret → no decide-forced linmem. Same shape as sem (one of the 5 u64 decides; the other 51 are
+`#[repr(C)]`-struct → sret → linmem, gated on #345).
+
+**Gate-2 (shim body shape) — the new result:** despite a more complex 5-action body
+(WRITE_OK / WAKE_READER / WRITE_PEND / ERROR_EPIPE / ERROR_ECANCELED) reading more state
+(ring_buf used+size, flags, reader probe) than sem's 2-action body, the dissolved object is
+**SEM-SHAPED**:
+- `.text` 1290 B, **`.data` = 0** (no 64KB linmem blob)
+- **0 `R_ARM_MOVW_ABS`/`MOVT_ABS`** (no link-fragility — the #345 fault signature is absent)
+- **seam folded** (0 relocs to `gale_k_pipe_write_decide` — loom inlined it)
+- 12 relocs = all import-call (THM_CALL to kernel APIs), resolved at Zephyr link — the sem pattern.
+
+→ **pipe's write body stays in registers; it's a clean drop-in, NOT blocked by synth#345.** sem + pipe
+are now the two confirmed-clean u64 primitives; the 51 struct-return ones still wait on #345 step 2.
+
+**Wired into the permanent gate:** `primitives_codegen_check.sh` now has a `k_pipe_write` lane with
+the gate-2 shape assertions (.data==0, abs-relocs==0, seam-folded). Lane GREEN on 0.11.42
+(TRUE_EXIT=0, re-run w/o tail-pipe). POC shim: `boards/nucleo_g474re/wasm_pipe_write_shim_poc.c`.
+NOT silicon-measured yet (shape gate only); next step = a pipe microbench + reflash for a cycle number,
+or promote to a full gale pipe module (PR, like #60) when pipe ships. gale main untouched this pass.

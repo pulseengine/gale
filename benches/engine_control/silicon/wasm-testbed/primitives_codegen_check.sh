@@ -18,16 +18,22 @@ set -u
 CLANG="${CLANG:-/opt/homebrew/opt/llvm/bin/clang}"; WASMLD="${WASMLD:-/opt/homebrew/bin/wasm-ld}"
 SYNTH="${SYNTH:-synth}"
 OBJDUMP="${OBJDUMP:-/opt/homebrew/opt/llvm/bin/llvm-objdump}"
+SIZE="${SIZE:-/opt/homebrew/opt/llvm/bin/llvm-size}"
 GALE=/Volumes/Home/git/pulseengine/gale
 GR=/Volumes/Home/git/pulseengine/gale-smart-data
 SEM_SHIM="$GALE/zephyr/wasm/sem_give_shim.c"
 MTX_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_mutex_shim_poc.c"
+PIPE_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_pipe_write_shim_poc.c"
 LIBFFI="$GALE/ffi/target/wasm32-unknown-unknown/release/libgale_ffi.a"
 fail=0; t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 
 echo "== kernel-primitives codegen lane (synth $($SYNTH --version|head -1|awk '{print $2}'), loom $(loom --version|head -1|awk '{print $2}')) =="
 
-[ -f "$LIBFFI" ] || ( cd "$GALE/ffi" && cargo rustc --release --target wasm32-unknown-unknown --crate-type=staticlib >/dev/null 2>&1 )
+# libffi must carry the `pipe` feature (gale_k_pipe_write_decide is #[cfg(feature="pipe")]);
+# rebuild if absent or stale (additive feature — sem/mutex decode unchanged).
+if [ ! -f "$LIBFFI" ] || ! "$OBJDUMP" -t "$LIBFFI" 2>/dev/null | grep -q gale_k_pipe_write_decide; then
+  ( cd "$GALE/ffi" && cargo rustc --release --target wasm32-unknown-unknown --features pipe --crate-type=staticlib >/dev/null 2>&1 )
+fi
 
 build_primitive() { # name shim export extra-synth-flags
   local name="$1" shim="$2" exp="$3" flags="$4"
@@ -52,6 +58,24 @@ if [ $rc -eq 0 ]; then
   if $OBJDUMP -r "$t/sem_give.o" 2>/dev/null | grep -q gale_k_sem_give_decide; then
     echo "  [BAD] seam not folded (decide reloc present)"; fail=1
   else echo "  [OK ] compiles + seam folded"; fi
+else echo "  [BAD] build/codegen rc=$rc"; fail=1; fi
+
+# --- k_pipe_write (2nd u64-shaped drop-in; NOT --native-pointer-abi; NOT gated on #345) ---
+# Gate-2 shape check: pipe's decide returns a packed u64 (gate-1, like sem), so the
+# question is whether the more complex 5-action write BODY stays in registers or spills
+# to a wasm linmem frame (the synth#345 sret→linmem→64KB .data + MOVW_ABS shape). The
+# drop-in criterion is sem-shaped: .data==0, abs-relocs==0, seam folded.
+echo "k_pipe_write (dissolved write path; 2nd u64 drop-in — gate-2 sem-shape check):"
+build_primitive pipe_write "$PIPE_SHIM" z_impl_k_pipe_write ""
+rc=$?
+if [ $rc -eq 0 ]; then
+  seam=$($OBJDUMP -r "$t/pipe_write.o" 2>/dev/null | grep -c gale_k_pipe_write_decide)
+  absr=$($OBJDUMP -r "$t/pipe_write.o" 2>/dev/null | grep -cE "R_ARM_MOVW_ABS|R_ARM_MOVT_ABS")
+  data=$($SIZE -A "$t/pipe_write.o" 2>/dev/null | awk '$1==".data"{print $2}'); data=${data:-0}
+  if [ "$seam" -ne 0 ]; then echo "  [BAD] seam not folded (decide reloc present)"; fail=1
+  elif [ "$absr" -ne 0 ]; then echo "  [BAD] $absr abs MOVW/MOVT relocs — NOT sem-shaped (linmem leak like #345)"; fail=1
+  elif [ "$data" -gt 16 ]; then echo "  [BAD] .data=$data B — linmem blob leaked (not a clean drop-in)"; fail=1
+  else echo "  [OK ] compiles + seam folded + .data=${data}B + 0 abs-relocs (SEM-SHAPED — clean drop-in, #345-independent)"; fi
 else echo "  [BAD] build/codegen rc=$rc"; fail=1; fi
 
 # --- k_mutex_unlock (+ synth#331 signature) ---
