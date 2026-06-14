@@ -1923,3 +1923,28 @@ retire build-loom-from-source + consume the released binary (build-from-source w
 (2) rivet 0.15.0 -> 0.16.0+ upgrade brings #518 dup-id-guard + (once tagged) #514 variant-schema fix
 -> clears the benign bindings.yaml validate warning (validate is green, not urgent). synth #345 .bss
 fix still building (no PR yet); harness staged.
+
+## UPDATE 2026-06-14 07:35 — synth 0.11.42 tested (no change for us); #345 STEP 1 landed (.bss), reflash HELD for step 2
+
+**Step 1 of loop — synth v0.11.42 (the #313 if/else-result miscompile fix) vs our body of work:**
+- Codegen lane (`primitives_codegen_check.sh`) GREEN on 0.11.42 (TRUE_EXIT=0, re-run w/o tail-pipe):
+  sem + mutex both compile + seam-folded; mutex arg0-home #0x68 WRITE-ONCE (#331 signature absent).
+- `control_step` rebuilt on 0.11.42 = **354 bytes code size — byte-identical to the recorded
+  0.11.40/41 baseline (354B / 113 insn)**. No thumb-2 codegen change → **151 cyc HOLDS, no reflash**.
+- Rationale (measure-don't-guess): #313 only changes code that was *miscompiled*; control_step's
+  SELFCHECK was already correct (2165333==native) on 0.11.40, so it was never affected. 0.11.42 is a
+  no-op for our dissolved bodies. → step-1 satisfied without a gratuitous reflash.
+
+**synth#345 (the .bss/abs-reloc fix that blocks PR#60) — STEP 1 LANDED (synth PR #347, auto-merge):**
+| section | before | after |
+|---|---|---|
+| `.data`  | 65548 | **4** |
+| `.bss` (NOBITS) | 0 | **65544** |
+
+The 64KB zero-init linmem reservation now rides SHT_NOBITS `.bss` (Zephyr loader zeroes it). BUT the
+**22 MOVW/MOVT_ABS relocs are UNCHANGED** — those are the link-fragility that USAGE-FAULTed
+`test_complex_inversion`. So **step 1 alone won't make `mutex_api` pass**; the no-fault result needs
+**STEP 2 (PC-relative relocs)** — the next synth PR. Maintainer will **bundle a release so we
+re-measure once BOTH land**. Per their explicit flag: **NOT doing a step-1-only reflash** (would just
+hit the same fault). `verify_mutex_module_silicon.sh` stays staged; PR #60 stays draft-blocked.
+#347 is not yet in a tagged release (0.11.42 = #313); will test when the bundled step-1+step-2 ships.
