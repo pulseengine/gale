@@ -2011,3 +2011,19 @@ u64-shaped set verified clean (sem_give, sem_take, pipe_write, pipe_read); only 
 The 51 struct-return decides remain gated on synth#345 step 2. Did NOT re-comment on synth#345 (no
 maintainer activity since my 08:11 pipe report; sem_take is gale-internal completion). Silicon cycle
 numbers for take/pipe still pending the module-promotion step (shape is the drop-in gate; that's met).
+
+## UPDATE 2026-06-14 09:46 — #345 VERIFIED FIXED on silicon; new gale finding: mutex shim omits prio-inheritance
+
+synth **v0.11.43** (SHA-verified install) bundles #345 step1+step2. Rebuilt dissolved k_mutex_unlock:
+reloc shape flipped — **MOVW/MOVT_ABS 22->0, R_ARM_ABS32 0->11, .data 65548->4, .bss 65536**. Ran the
+staged kill-criterion (full mutex_api on G474RE, CONFIG_GALE_WASM_LTO_MUTEX=y, --native-pointer-abi):
+- `test_complex_inversion` **PASS** (was USAGE FAULT) ; `test_mutex_recursive` **PASS** (was MPU FAULT).
+- **#345 link-corruption fault is GONE — verified on hardware.** Posted the verdict to synth#345.
+
+BUT the link fault was masking a deeper bug: **`test_mutex_priority_inheritance` FAILS on the wasm-LTO
+module (0.520s, fails fast) while PASSING on the native gale mutex (6.001s, full suite PASS)** —
+measured both on G474RE (CONFIG_GALE_WASM_LTO_MUTEX=y vs =n). Localized: the dissolved
+`mutex_unlock_shim.c` UNLOCKED path **omits `adjust_owner_prio(mutex, owner_orig_prio)` + `owner`/
+`owner_orig_prio` management** that the real z_impl_k_mutex_unlock does → unlocking thread keeps its
+inherited prio boost. Filed **gale#62**. PR#60 stays draft — gated on gale#62 now, NOT on #345 (done).
+Fix needs a gale_w_* wrapper for the priority-set (adjust_owner_prio is static in kernel/mutex.c).
