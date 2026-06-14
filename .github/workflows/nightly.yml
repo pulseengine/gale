@@ -7,7 +7,7 @@
 #   - kani-extended: re-runs Kani with higher unwind/object bits for
 #     deeper bounded model checking.
 #   - fuzz-long:     each cargo-fuzz target for 1h (3600s).
-#   - zephyr-qemu-matrix: Cortex-M33 (mps2/an521) and R5 (qemu_cortex_r5).
+#   - zephyr-qemu-matrix: Cortex-M33 (mps2/an521/cpu0) and R5 (qemu_cortex_r5).
 #     M3 is covered on every PR via zephyr-tests.yml; M4F is Renode-only
 #     since there is no upstream QEMU board for Cortex-M4F with FPU.
 
@@ -151,7 +151,7 @@ jobs:
       matrix:
         include:
           - arch: cortex-m33
-            board: mps2/an521
+            board: mps2/an521/cpu0
             rust_target: thumbv8m.main-none-eabi
             sdk_target: arm-zephyr-eabi
             test_path: tests/kernel/semaphore/semaphore
