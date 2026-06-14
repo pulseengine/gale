@@ -2144,3 +2144,22 @@ Posted the table + bisect suggestion (stack_pop = smallest failing decide) to sy
 Refined drop-in map: u64 set (sem/pipe/fatal) + mutex + event/queue/mbox = synth-compilable; stack+msgq
 blocked on #350. (Note: the OK struct-return decides still need shim+gate-2+silicon to be true drop-ins;
 this survey only establishes synth CAN compile them.)
+
+## UPDATE 2026-06-14 14:33 — synth#350 fix landing (PR#351 merged + #352 follow-up); struct-return map clarified
+
+synth#350 fix: **PR#351 MERGED** (lower out-of-range ADD #imm to MOVW/MOVT+ADD); **PR#352 OPEN** —
+fix-forward for a CI fuzz red #351 introduced (`debug_assert!(scratch != rn_bits)` R12-alias when
+rd==rn==R12). So the kill-criterion release must bundle **#351 AND #352** (not bare #351; #351-only has
+the R12-alias follow-up bug). No v0.11.44 tag yet. Staged re-survey (resurvey_struct_return_decides.sh)
+ready; will run on the bundled release. Did NOT build the stale local ../synth clone to #351-only —
+testing an incomplete fix isn't a clean measurement.
+
+**Struct-return drop-in map clarified (sret threshold):** only decides returning a struct >8 bytes hit
+the sret→wasm-linmem path:
+- ≥12B sret: **mutex_unlock** (GaleMutexUnlockDecision 12B) — VERIFIED+shipped; **stack** (12B) +
+  **msgq** — #350-gated (ADD-imm, fix landing).
+- ≤8B register-return (NOT sret, trivially clean): event_post (GaleEventPostDecision = u32, 4B),
+  queue/mbox (small) — no linmem path, no value in shimming for the drop-in question.
+So the meaningful sret expansion is mutex (done) + stack/msgq (#350-gated); the small-struct primitives
+need no separate verification. No high-value non-#350-gated primitive step remains — surface is at a
+verified resting state pending the #350 release (then stack/msgq) and synth#209 (spill).
