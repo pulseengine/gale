@@ -1978,3 +1978,19 @@ the gate-2 shape assertions (.data==0, abs-relocs==0, seam-folded). Lane GREEN o
 (TRUE_EXIT=0, re-run w/o tail-pipe). POC shim: `boards/nucleo_g474re/wasm_pipe_write_shim_poc.c`.
 NOT silicon-measured yet (shape gate only); next step = a pipe microbench + reflash for a cycle number,
 or promote to a full gale pipe module (PR, like #60) when pipe ships. gale main untouched this pass.
+
+## UPDATE 2026-06-14 08:33 — pipe_read gate-2 also clean → pipe verified clean BOTH directions
+
+Completed the static pipe verification (shipping pipe needs both directions): built the
+`k_pipe_read` shim (mirror of write; `has_writer`, wakes a writer on WAKE_WRITER) and dissolved it
+(synth 0.11.42, no `--native-pointer-abi`). Gate-2 **sem-shaped**: `.data=0`, 0 MOVW/MOVT_ABS,
+seam folded. Added a `k_pipe_read` lane to `primitives_codegen_check.sh`; full lane GREEN
+(sem_give, pipe_write, pipe_read, mutex_unlock — TRUE_EXIT=0, re-run w/o tail-pipe). POC shim:
+`boards/nucleo_g474re/wasm_pipe_read_shim_poc.c`. So the clean-u64 partition now has **sem + pipe
+(both directions)** statically verified drop-in-ready, #345-independent; the 51 struct-return decides
+remain gated on #345 step 2. Did NOT re-comment on synth#345 (write result posted at 08:07; will
+report pipe consolidated with a silicon number or at module-promotion). Board IS connected
+(2× /dev/cu.usbmodem*, openocd present) → a pipe silicon microbench is feasible next, but a faithful
+on-target pipe cycle measurement = building the production pipe module (override+tramp+CMake), which
+is the "promote to gale module" step, not a one-firing probe. Shape gate is the drop-in criterion;
+that's met for pipe.

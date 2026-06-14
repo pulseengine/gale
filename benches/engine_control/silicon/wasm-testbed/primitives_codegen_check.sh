@@ -24,6 +24,7 @@ GR=/Volumes/Home/git/pulseengine/gale-smart-data
 SEM_SHIM="$GALE/zephyr/wasm/sem_give_shim.c"
 MTX_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_mutex_shim_poc.c"
 PIPE_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_pipe_write_shim_poc.c"
+PIPE_RD_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_pipe_read_shim_poc.c"
 LIBFFI="$GALE/ffi/target/wasm32-unknown-unknown/release/libgale_ffi.a"
 fail=0; t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 
@@ -76,6 +77,20 @@ if [ $rc -eq 0 ]; then
   elif [ "$absr" -ne 0 ]; then echo "  [BAD] $absr abs MOVW/MOVT relocs — NOT sem-shaped (linmem leak like #345)"; fail=1
   elif [ "$data" -gt 16 ]; then echo "  [BAD] .data=$data B — linmem blob leaked (not a clean drop-in)"; fail=1
   else echo "  [OK ] compiles + seam folded + .data=${data}B + 0 abs-relocs (SEM-SHAPED — clean drop-in, #345-independent)"; fi
+else echo "  [BAD] build/codegen rc=$rc"; fail=1; fi
+
+# --- k_pipe_read (read half — pipe ships only if BOTH directions are clean) ---
+echo "k_pipe_read (dissolved read path; pipe's 2nd direction — gate-2 sem-shape check):"
+build_primitive pipe_read "$PIPE_RD_SHIM" z_impl_k_pipe_read ""
+rc=$?
+if [ $rc -eq 0 ]; then
+  seam=$($OBJDUMP -r "$t/pipe_read.o" 2>/dev/null | grep -c gale_k_pipe_read_decide)
+  absr=$($OBJDUMP -r "$t/pipe_read.o" 2>/dev/null | grep -cE "R_ARM_MOVW_ABS|R_ARM_MOVT_ABS")
+  data=$($SIZE -A "$t/pipe_read.o" 2>/dev/null | awk '$1==".data"{print $2}'); data=${data:-0}
+  if [ "$seam" -ne 0 ]; then echo "  [BAD] seam not folded (decide reloc present)"; fail=1
+  elif [ "$absr" -ne 0 ]; then echo "  [BAD] $absr abs MOVW/MOVT relocs — NOT sem-shaped (linmem leak like #345)"; fail=1
+  elif [ "$data" -gt 16 ]; then echo "  [BAD] .data=$data B — linmem blob leaked (not a clean drop-in)"; fail=1
+  else echo "  [OK ] compiles + seam folded + .data=${data}B + 0 abs-relocs (SEM-SHAPED — pipe clean both directions)"; fi
 else echo "  [BAD] build/codegen rc=$rc"; fail=1; fi
 
 # --- k_mutex_unlock (+ synth#331 signature) ---
