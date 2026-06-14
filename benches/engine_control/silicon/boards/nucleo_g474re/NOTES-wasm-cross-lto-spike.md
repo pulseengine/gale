@@ -2187,3 +2187,24 @@ stack_push/pop = 2 pages, decide-alone .data=0 but FULL shim 65552B. msgq_put/ge
 ALREADY .data=65556 (64KB). Pattern: bounded-buffer decides request 2 linmem pages (128KB) with a
 .rodata const at offset 65536 -> zero-fill gap -> 64KB PROGBITS .data (#354). #354 gates stack+msgq (same
 set as #350); mutex/event/queue/mbox unaffected. Posted the table to synth#354. msgq is worse (decide-level).
+
+## UPDATE 2026-06-14 16:3x — BIGGER TESTBED: flight_control bench now runs dissolved algo + dissolved sem on G474RE
+
+Expanded the flight_control bench (Phase 5) into a composed dissolved testbed: built the shipped sem
+module (build-wasm-dist.sh -> gale-wasm-sem-f5fa4cd-cortex-m4f.o, synth 0.11.44) and west-built the bench
+with **GALE_FC_WASM_LTO=ON (algo) + CONFIG_GALE_WASM_LTO_SEM=y (dissolved sem module)** +
+-DGALE_WASM_LTO_OBJ_DIR. Builds clean (zephyr.elf 722KB; only benign .meld_import_table orphan-section
+warnings). Flashed G474RE, ran the full 5-step sweep.
+
+**Functionally equivalent to native (measure-don't-guess: ran the native-sem comparison to interpret):**
+| | native-sem | dissolved-sem |
+|---|---|---|
+| sweep pattern (drain_timeouts steps 1/2/3/5; 2/3/4 emit) | — | IDENTICAL |
+| dissolved algo | 157 | 157 |
+| in-bench handoff | 1374 | **1661 (+287, +21%)** |
+
+The drain_timeouts are **bench-inherent** (present in BOTH variants, same steps) — NOT a dissolved-sem
+regression. So the composed dissolved testbed (algo+sem) builds + boots + runs the full sweep on real
+silicon, no fault, functionally == native. **Measured composed-context cost of dissolving sem_give =
++287 cyc / +21% on the handoff** (1374->1661) — relevant to synth#209 (spill reduction is what would
+shrink this). Next: add the dissolved mutex module too (CONFIG_GALE_WASM_LTO_MUTEX=y) for algo+sem+mutex.

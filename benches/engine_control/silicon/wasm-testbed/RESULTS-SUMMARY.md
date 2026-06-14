@@ -63,3 +63,5 @@ The PulseEngine pipeline dissolves the C↔Rust seam at wasm-IR level and produc
 output at ~2–2.6× native (widening with composition), with LLVM-LTO-parity codegen shape. The gap is
 general codegen (regalloc/const-CSE = #209), confirmed cross-target on ARM **and** RISC-V — the
 single retargetable lever. Host-pointer primitive drop-ins await the native-call ABI (#237).
+
+> **Composed dissolved testbed (2026-06-14, G474RE):** flight_control bench with GALE_FC_WASM_LTO=ON + CONFIG_GALE_WASM_LTO_SEM=y runs algo+sem **both dissolved**, full 5-step sweep, no fault, functionally == native (drain_timeouts bench-inherent, confirmed by native comparison). In-bench **handoff: native 1374 → dissolved-sem 1661 cyc (+287, +21%)**; dissolved algo 157 both. The dissolved sem works in a composed real-bench context.
