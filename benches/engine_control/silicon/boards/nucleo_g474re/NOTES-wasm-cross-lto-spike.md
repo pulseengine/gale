@@ -1910,3 +1910,16 @@ SHARED file, for modest value (give is the measured hot path). DEFERRED (consist
 spending a firing on modest-value multi-file production work touching shared wrappers while #345 is
 mid-flight + #60 blocked. Turnkey scope recorded. Build when take-coverage wanted OR post-#345
 (family unblocks together -> batch the modules). sem_take drop-in-readiness already verified.
+
+## UPDATE 2026-06-14 06:5x — loom#142 FIXED (#216, diagnosis confirmed); rivet#518/#514 closed; gale follow-ups
+
+loom#142 CLOSED/COMPLETED — resolved in loom #216 (release.yml rewrite), EXACTLY the diagnosed root
+cause (wasm32-wasip2 rayon/__wasi_init_tp link failure gated the `release` job). v1.1.13 NOW ships
+per-OS loom binaries (aarch64/x86_64-darwin, x86_64-linux-gnu, windows + SHA256SUMS/cosign) — verified
+live, where before it had only the compliance tarball. Posted consumer-confirmation (4700980365).
+rivet#518 (colon-corruption/REQ-198) + #514 (variant-config schema) also CLOSED/COMPLETED (both gale
+corroborated). GALE FOLLOW-UPS (low priority, non-urgent): (1) loom binaries now ship -> gale can
+retire build-loom-from-source + consume the released binary (build-from-source works fine, optional);
+(2) rivet 0.15.0 -> 0.16.0+ upgrade brings #518 dup-id-guard + (once tagged) #514 variant-schema fix
+-> clears the benign bindings.yaml validate warning (validate is green, not urgent). synth #345 .bss
+fix still building (no PR yet); harness staged.
