@@ -1881,3 +1881,17 @@ RETURNS (sret) + complex-shim register-pressure trigger the linmem.
    need #345. Building the full sem_take module (shim->dist->Kconfig->CMakeLists->measure) is a
    queued increment (modest shipping value — give is the measured hot path; do it if take coverage
    wanted). This firing = grounded gate-2 verification.
+
+## UPDATE 2026-06-14 03:0x — sem_take gate-2 RE-VERIFIED with faithful 2-arg decide (corrected prior error)
+
+No release (v0.11.42). synth 2h54m / loom 14h42m (no reminder). All threads maintainer-building.
+Caught a correctness error: last firing's sem_take gate-2 scratch used a WRONG 3-arg decide
+(count,limit,no_wait); the real FFI gale_k_sem_take_decide is 2-arg (count, is_no_wait) per
+gale_sem.c. Re-verified with the FAITHFUL 2-arg shim (correct k_sem layout + the gale_sem.c take
+hot path: spin_lock -> u64 decide -> ACQUIRED/WOULD_BLOCK/z_pend_curr): dissolved = .data=0,
+MOVW_ABS=0, seam folded (0 decide relocs) = SEM-SHAPED. So sem_take IS faithfully drop-in-ready
+(no #345). The shape result held across the signature fix (it's structural), but the build is now
+faithful. Full sem_take module (gale/zephyr/wasm shim+tramp + dist + Kconfig + CMakeLists +
+gale_sem.c guard + PR) remains a QUEUED increment — modest value (give is the measured hot path),
+not opening a 2nd module PR while #60 is blocked + maintainer heads-down on #345/#209/#275. Build
+it when take-coverage is wanted or post-#345 (when the whole struct family unblocks).
