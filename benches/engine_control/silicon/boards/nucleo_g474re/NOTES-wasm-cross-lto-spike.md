@@ -1823,3 +1823,21 @@ all 56 FFI *_decide return ABIs:
    same, not individually verified). NEXT drop-in candidate = pipe (u64-shaped like sem; verify the
    shim body avoids a linmem stack frame when built — mutex u64-repack showed shim complexity can
    reintroduce linmem even with a u64 decide). Roadmap: #345 -> struct family; pipe -> shim-gated only.
+
+## UPDATE 2026-06-14 00:0x — maintainer registered #345 blast radius (building .bss-first); roadmap refined (pipe gate-2)
+
+No release (v0.11.42). synth clock reset on maintainer #345 reply (registered the 5-u64/51-struct
+blast radius, ELEVATED #345 to "gates the whole struct-return family" = priority driver; plan
+.bss-first then PC-rel; my G474RE mutex_api link-test = their kill-criterion; will ping on (1)).
+loom 11h42m (no reminder). All threads maintainer-side.
+ROADMAP REFINED (corrects last firing's "pipe is next drop-in"): drop-in-readiness needs TWO gates:
+ - gate1 = u64 decide (no sret): 5 pass (sem give/take, pipe write/read, fatal).
+ - gate2 = shim body stays in registers (no linmem stack frame): sem give PROVEN pass (ships clean);
+   mutex PROVEN fail (linmem even after u64-repack scratch — union decode + multi-field stores +
+   5 calls); pipe LIKELY fail (ring-memcpy + dual reader/writer wait queues, hot path >= mutex
+   complexity, untested). So pipe is NOT a clean pre-#345 win.
+=> #345 (.bss/PC-rel) is the UNIVERSAL unblock (fixes linmem regardless of gate2) -> unblocks ALL
+   51 struct primitives AND the gate2-failing u64 ones (pipe). Only sem-family (give shipped, take
+   likely gate2-pass) is pre-#345-clean. No clean non-blocked module-build right now -> wait for #345
+   (maintainer building, will ping) then build modules across the family. Did NOT 4th-comment #345
+   (maintainer's "whole family" framing already captures it).
