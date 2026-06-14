@@ -2132,3 +2132,15 @@ out-of-range ADD immediate. Frozen repro: `wasm-testbed/repro-synth-stack-add-im
 some struct-return decides (stack_push) additionally hit ARM-encoding bugs that block them entirely.
 Verified-clean set stays: sem give+take, pipe rd+wr, fatal (u64) + mutex_unlock (struct-return, shipped).
 stack_push BLOCKED on synth#350. Codegen lane unchanged (stays 6-green; stack_push not added until #350 fixed).
+
+## UPDATE 2026-06-14 13:33 — synth#350 blast radius: stack + msgq only (bounded-buffer decides)
+
+Decide-only survey (no shims; wasm-ld --export each decide + --gc-sections -> loom -> synth 0.11.43):
+- ❌ ADD-imm (#350): stack_push, stack_pop, msgq_put, msgq_get  (the bounded-buffer arithmetic ones)
+- ✓ OK: sem_give(256B), mutex_unlock(308B), event_post(18B)/wait(110B), queue_insert(14B)/get(30B), mbox_put/get(30B)
+synth#350 is NARROW — stack+msgq, not the whole struct-return family. Likely root: a capacity/byte-span
+constant (msgq max_msgs*msg_size, stack top-base span) overflowing Thumb-2 modified-immediate range.
+Posted the table + bisect suggestion (stack_pop = smallest failing decide) to synth#350.
+Refined drop-in map: u64 set (sem/pipe/fatal) + mutex + event/queue/mbox = synth-compilable; stack+msgq
+blocked on #350. (Note: the OK struct-return decides still need shim+gate-2+silicon to be true drop-ins;
+this survey only establishes synth CAN compile them.)
