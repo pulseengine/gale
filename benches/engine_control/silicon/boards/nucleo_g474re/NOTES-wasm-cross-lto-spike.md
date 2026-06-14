@@ -2056,3 +2056,18 @@ Re-measured the dissolved body spill density on v0.11.43: **167 insns, 56 (34%) 
 objdump z_impl body isolation) — still ~a third spills, consistent with v0.11.41's ~31% → **synth#209
 (spill reduction) remains the dominant lever**, now the worst-ratio primitive in the suite. RESULTS
 mutex line updated; RESULT-2026-06-14-g474re-v0.11.43.txt saved. Posted the updated #209 baseline.
+
+## UPDATE 2026-06-14 11:34 — sem .o byte-diff on v0.11.43: IDENTICAL → 860 holds (no reflash)
+
+Loop step-1 byte-diff of the sem .o on the current toolchain (synth v0.11.43, post #313+#345). Rebuilt
+the dissolved sem_give .o: **Total 540 B, 4 funcs 20/230/6/284, z_impl_k_sem_give=284 B, seam-folded
+(0 decide relocs)** — **byte-structurally IDENTICAL to the recorded 0.11.40 baseline (line ~1626:
+540B, 20/230/6/284, 165 insns)**. So no thumb-2 codegen change for sem across 0.11.40→0.11.43 →
+**k_sem_give handoff = 860 cyc HOLDS, no reflash needed**. (Caught a self-trap: an awk that isolated
+only the z_impl body counted 83 insns and looked like a change vs the recorded "165" — but that 165 is
+a different/total count; the authoritative per-function byte sizes 20/230/6/284 match exactly, so the
+.o is identical. Verified against the recorded sizes before any reflash — measure, don't guess.)
+
+Current-toolchain (v0.11.43) silicon perf pair: **sem_give 860 (stable, byte-identical), mutex_unlock
+472 (re-measured, −5.8% from 501)**. The #313 if/else-result fix did NOT alter sem's give/wake branch
+codegen (byte-identical confirms it). Spill density unchanged (same bytes) → synth#209 still the lever.
