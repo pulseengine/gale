@@ -1866,3 +1866,18 @@ with-flag shape #345 fixes); mutex_api -> USAGE FAULT -> "KILL-CRITERION NOT MET
 link-corruption STILL reproduces on v0.11.42 (v0.11.42 was the if/else-result fix #313, NOT the
 linmem fix) -> #345 still needed, not coincidentally resolved. No #345 comment (maintainer building
 the fix; already 5 comments there). Harness ready for the ping.
+
+## UPDATE 2026-06-14 02:0x — sem_take VERIFIED sem-shaped (gate-2 pass) = next pre-#345 module
+
+No release. synth 1h54m / loom 13h42m (no reminder). All threads maintainer-building. EXPAND
+(non-blocked): wrote a scratch sem_take shim (mirrors sem_give + the take hot path: spin_lock ->
+u64 decide -> ACQUIRED/WOULD_BLOCK/z_pend_curr) and dissolved it -> .data=0, MOVW_ABS=0 = SEM-SHAPED
+(gate-2 PASS). Notably the k_timeout_t (8-byte struct) BY-VALUE arg did NOT force linmem (clang
+passed it in registers) -> refines the 2-gate model: struct-by-value ARGS are fine; only struct
+RETURNS (sret) + complex-shim register-pressure trigger the linmem.
+=> sem_take is a genuinely DROP-IN-READY next module (no #345 needed), proving the wasm surface CAN
+   expand pre-#345 for sem-family primitives. Pre-#345-buildable set: sem_give (shipped), sem_take
+   (verified ready), likely fatal. pipe fails gate-2 (complex hot path); mutex + 51 struct-decides
+   need #345. Building the full sem_take module (shim->dist->Kconfig->CMakeLists->measure) is a
+   queued increment (modest shipping value — give is the measured hot path; do it if take coverage
+   wanted). This firing = grounded gate-2 verification.
