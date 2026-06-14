@@ -1855,3 +1855,14 @@ emission is a synth WITH-flag-path decision, not the shim. HARDWARE-tested dropp
 => Flag REQUIRED for correct host-pointer deref; dropping it trades link-corruption for deref-fault.
    NO gale-side workaround -> #345 (.bss + PC-rel in the WITH-flag path) is the only correct route.
    Posted to #345 (the with/without table). Validates the maintainer's scope. Re-test on (1) landing.
+
+## UPDATE 2026-06-14 01:1x — dry-ran the #345 harness on v0.11.42 (validated + bug re-confirmed)
+
+No release. synth 1h24m / loom 13h12m (no reminder). All threads maintainer-building. Dry-ran the
+staged verify_mutex_module_silicon.sh on v0.11.42 (from feat/wasm-mutex-module): build -> flash ->
+capture -> verdict all WORK end-to-end. Output: module shape .data=65548B / 11 MOVW_ABS (the
+with-flag shape #345 fixes); mutex_api -> USAGE FAULT -> "KILL-CRITERION NOT MET: still reproduces".
+=> (1) harness mechanics validated -> #345 ping = instant one-command verdict; (2) the mutex
+link-corruption STILL reproduces on v0.11.42 (v0.11.42 was the if/else-result fix #313, NOT the
+linmem fix) -> #345 still needed, not coincidentally resolved. No #345 comment (maintainer building
+the fix; already 5 comments there). Harness ready for the ping.
