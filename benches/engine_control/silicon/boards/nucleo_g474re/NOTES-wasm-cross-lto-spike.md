@@ -2208,3 +2208,21 @@ regression. So the composed dissolved testbed (algo+sem) builds + boots + runs t
 silicon, no fault, functionally == native. **Measured composed-context cost of dissolving sem_give =
 +287 cyc / +21% on the handoff** (1374->1661) — relevant to synth#209 (spill reduction is what would
 shrink this). Next: add the dissolved mutex module too (CONFIG_GALE_WASM_LTO_MUTEX=y) for algo+sem+mutex.
+
+## UPDATE 2026-06-14 17:0x — BIGGER TESTBED complete: flight_control runs algo+sem+MUTEX all dissolved on G474RE
+
+Extended the composed dissolved testbed to all three: GALE_FC_WASM_LTO=ON (algo) + CONFIG_GALE_WASM_LTO_SEM=y
++ CONFIG_GALE_WASM_LTO_MUTEX=y. Built sem + mutex modules into OBJ_DIR (VER 4654734), west-built (clean;
+benign .meld_import_table orphan warnings), flashed G474RE. **Full 5-step sweep, NO FAULT** — all three
+primitives dissolved, running composed. In-bench costs (E-row algo/handoff/t_lock):
+| in-bench | native | dissolved |
+|---|---|---|
+| handoff (sem) | 1374 | ~1719 |
+| t_lock (mutex) | 486 | **887 (+401, +82%)** |
+| algo | 157 | ~146-157 (in-bench variance; isolated control_step 151 unchanged) |
+Dissolved mutex's +82% in-bench lock cost tracks its worst-in-suite isolated ratio (3.81x); the +401/+287
+deltas are exactly what synth#209 (spill reduction) would shrink. drain_timeouts bench-inherent. The
+"bigger testbed for functionality + optimization" is now fully composed (algo+sem+mutex) on real silicon.
+
+NOTE: local gale main was STALE (f5fa4cd, pre-#60/#61) — `git pull --ff-only` synced it to 4654734
+(mutex shim + CMake mutex consume + nightly fix). Surfaced by the missing mutex_unlock_shim.c; fixed.

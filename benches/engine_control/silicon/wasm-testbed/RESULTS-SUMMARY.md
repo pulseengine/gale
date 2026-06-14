@@ -65,3 +65,5 @@ general codegen (regalloc/const-CSE = #209), confirmed cross-target on ARM **and
 single retargetable lever. Host-pointer primitive drop-ins await the native-call ABI (#237).
 
 > **Composed dissolved testbed (2026-06-14, G474RE):** flight_control bench with GALE_FC_WASM_LTO=ON + CONFIG_GALE_WASM_LTO_SEM=y runs algo+sem **both dissolved**, full 5-step sweep, no fault, functionally == native (drain_timeouts bench-inherent, confirmed by native comparison). In-bench **handoff: native 1374 → dissolved-sem 1661 cyc (+287, +21%)**; dissolved algo 157 both. The dissolved sem works in a composed real-bench context.
+
+> **Composed testbed COMPLETE (2026-06-14, G474RE):** flight_control with algo+sem+**mutex** all dissolved (GALE_FC_WASM_LTO=ON + CONFIG_GALE_WASM_LTO_SEM=y + CONFIG_GALE_WASM_LTO_MUTEX=y) — full sweep, **no fault**. In-bench: t_lock native 486 → dissolved-mutex **887 (+401, +82%)**; handoff native 1374 → dissolved-sem ~1719; algo ~146-157. The +82%/+21% in-context deltas are the synth#209 spill-reduction target.
