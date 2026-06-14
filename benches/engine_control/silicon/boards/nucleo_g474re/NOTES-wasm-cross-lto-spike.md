@@ -1841,3 +1841,17 @@ ROADMAP REFINED (corrects last firing's "pipe is next drop-in"): drop-in-readine
    likely gate2-pass) is pre-#345-clean. No clean non-blocked module-build right now -> wait for #345
    (maintainer building, will ping) then build modules across the family. Did NOT 4th-comment #345
    (maintainer's "whole family" framing already captures it).
+
+## UPDATE 2026-06-14 00:4x — ruled out the --native-pointer-abi-drop workaround on hardware (#345)
+
+No release. Investigated the #345 linmem mechanism + tested a gale-side workaround. PINNED:
+--native-pointer-abi is the SOLE trigger of the 64KB .data + MOVW_ABS (with flag: 65548B/11 relocs;
+WITHOUT: 0B/0 relocs, sem-shaped). Both wasm modules declare (memory 2) identically -> the .data
+emission is a synth WITH-flag-path decision, not the shim. HARDWARE-tested dropping the flag
+(mutex_api on G474RE):
+ - WITH flag: test_complex_inversion USAGE FAULT (MOVW_ABS link-corruption).
+ - WITHOUT flag: test_complex_inversion PASSES (no .data to corrupt) BUT test_mutex_recursive MPU
+   FAULT (PC in body, r2=0x01030180 wild addr -> deref wrong without the flag; the synth#237 scenario).
+=> Flag REQUIRED for correct host-pointer deref; dropping it trades link-corruption for deref-fault.
+   NO gale-side workaround -> #345 (.bss + PC-rel in the WITH-flag path) is the only correct route.
+   Posted to #345 (the with/without table). Validates the maintainer's scope. Re-test on (1) landing.
