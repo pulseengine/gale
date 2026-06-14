@@ -1895,3 +1895,18 @@ faithful. Full sem_take module (gale/zephyr/wasm shim+tramp + dist + Kconfig + C
 gale_sem.c guard + PR) remains a QUEUED increment — modest value (give is the measured hot path),
 not opening a 2nd module PR while #60 is blocked + maintainer heads-down on #345/#209/#275. Build
 it when take-coverage is wanted or post-#345 (when the whole struct family unblocks).
+
+## UPDATE 2026-06-14 04:5x — sem_take module precisely scoped (5 files incl shared wrapper); deferred w/ fuller scope
+
+No release (v0.11.42; gh release briefly net-timed-out, retried clean). synth 4h55m / loom 16h43m
+(both >4h, reminder_open non-null, synth maintainer-active, loom#142 non-blocking+diagnosed -> no
+reminder). No synth PR/activity. Scoped the sem_take module build (the one non-blocked, MERGEABLE
+sem-shaped expand): requires (1) gale/zephyr/wasm/sem_take_shim.c [production, faithful 2-arg decide,
+union {action;pad[3];new_count}], (2) gale_wasm_sem_take_tramp.S [r11=0 -> synth_k_sem_take_body],
+(3) NEW gale_w_pend_curr wrapper in the SHARED gale_wasm_wrappers.c [z_pend_curr is take-specific,
+not in existing wrappers], (4) build-wasm-dist build_module stanza, (5) Kconfig CONFIG_GALE_WASM_LTO_
+SEM_TAKE + CMakeLists consume + gale_sem.c take-guard. So it's a 5-file production change touching a
+SHARED file, for modest value (give is the measured hot path). DEFERRED (consistent reasoning): not
+spending a firing on modest-value multi-file production work touching shared wrappers while #345 is
+mid-flight + #60 blocked. Turnkey scope recorded. Build when take-coverage wanted OR post-#345
+(family unblocks together -> batch the modules). sem_take drop-in-readiness already verified.
