@@ -2027,3 +2027,21 @@ measured both on G474RE (CONFIG_GALE_WASM_LTO_MUTEX=y vs =n). Localized: the dis
 `owner_orig_prio` management** that the real z_impl_k_mutex_unlock does → unlocking thread keeps its
 inherited prio boost. Filed **gale#62**. PR#60 stays draft — gated on gale#62 now, NOT on #345 (done).
 Fix needs a gale_w_* wrapper for the priority-set (adjust_owner_prio is static in kernel/mutex.c).
+
+## UPDATE 2026-06-14 10:05 — gale#62 FIXED + verified on silicon → mutex module passes FULL suite
+
+Fixed the dissolved mutex_unlock shim's missing priority-inheritance restoration (gale#62). Added two
+`gale_w_*` wrappers (k_thread opaque to the shim): `gale_w_adjust_thread_prio` (z_thread_prio_set if
+changed) + `gale_w_thread_prio` (read base.prio). Shim UNLOCKED path now restores `cur` to
+owner_orig_prio BEFORE handoff (mutex->owner still == cur there) + records new owner's orig prio.
+
+Verified on G474RE (synth v0.11.43, CONFIG_GALE_WASM_LTO_MUTEX=y), full upstream mutex_api:
+- `test_mutex_priority_inheritance`: **FAIL (0.520s) → PASS (6.001s)** — matches native.
+- `mutex_api` 4/4 + `mutex_api_1cpu` **5/5** PASS. **KILL-CRITERION PASS, no fault.**
+- Module shape unchanged (.data=4, MOVW_ABS=0; prio wrappers add only import-call relocs).
+
+**The wasm-cross-LTO mutex module now passes the COMPLETE upstream mutex_api suite on silicon** —
+both blockers resolved: synth#345 (link survivability, v0.11.43) + gale#62 (shim prio restoration).
+Committed to feat/wasm-mutex-module (PR#60, "Closes #62"). PR#60 is silicon-verified-correct; next =
+confirm CI green on the v0.11.43 toolchain, then flip draft→ready. mutex JOINS sem(give+take) +
+pipe(rd/wr) as a verified-correct dissolved primitive (mutex now full-suite on HW, not just shape).
