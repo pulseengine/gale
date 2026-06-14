@@ -25,6 +25,7 @@ SEM_SHIM="$GALE/zephyr/wasm/sem_give_shim.c"
 MTX_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_mutex_shim_poc.c"
 PIPE_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_pipe_write_shim_poc.c"
 PIPE_RD_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_pipe_read_shim_poc.c"
+SEM_TAKE_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_sem_take_shim_poc.c"
 LIBFFI="$GALE/ffi/target/wasm32-unknown-unknown/release/libgale_ffi.a"
 fail=0; t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 
@@ -59,6 +60,20 @@ if [ $rc -eq 0 ]; then
   if $OBJDUMP -r "$t/sem_give.o" 2>/dev/null | grep -q gale_k_sem_give_decide; then
     echo "  [BAD] seam not folded (decide reloc present)"; fail=1
   else echo "  [OK ] compiles + seam folded"; fi
+else echo "  [BAD] build/codegen rc=$rc"; fail=1; fi
+
+# --- k_sem_take (completes the sem primitive: give + take, v0.1.0 release target) ---
+echo "k_sem_take (dissolved blocking-acquire path; completes sem primitive — gate-2 sem-shape):"
+build_primitive sem_take "$SEM_TAKE_SHIM" z_impl_k_sem_take ""
+rc=$?
+if [ $rc -eq 0 ]; then
+  seam=$($OBJDUMP -r "$t/sem_take.o" 2>/dev/null | grep -c gale_k_sem_take_decide)
+  absr=$($OBJDUMP -r "$t/sem_take.o" 2>/dev/null | grep -cE "R_ARM_MOVW_ABS|R_ARM_MOVT_ABS")
+  data=$($SIZE -A "$t/sem_take.o" 2>/dev/null | awk '$1==".data"{print $2}'); data=${data:-0}
+  if [ "$seam" -ne 0 ]; then echo "  [BAD] seam not folded (decide reloc present)"; fail=1
+  elif [ "$absr" -ne 0 ]; then echo "  [BAD] $absr abs MOVW/MOVT relocs — NOT sem-shaped"; fail=1
+  elif [ "$data" -gt 16 ]; then echo "  [BAD] .data=$data B — linmem blob leaked"; fail=1
+  else echo "  [OK ] compiles + seam folded + .data=${data}B + 0 abs-relocs (SEM-SHAPED — sem primitive complete: give+take)"; fi
 else echo "  [BAD] build/codegen rc=$rc"; fail=1; fi
 
 # --- k_pipe_write (2nd u64-shaped drop-in; NOT --native-pointer-abi; NOT gated on #345) ---

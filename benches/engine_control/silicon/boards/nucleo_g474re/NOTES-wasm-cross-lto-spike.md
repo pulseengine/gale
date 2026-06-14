@@ -1994,3 +1994,20 @@ report pipe consolidated with a silicon number or at module-promotion). Board IS
 on-target pipe cycle measurement = building the production pipe module (override+tramp+CMake), which
 is the "promote to gale module" step, not a one-firing probe. Shape gate is the drop-in criterion;
 that's met for pipe.
+
+## UPDATE 2026-06-14 09:03 — sem_take gate-2 clean → sem primitive COMPLETE (give+take) for wasm-cross-LTO
+
+#59 ships only k_sem_give (the handoff half). Built the k_sem_take shim (the blocking-acquire half —
+faithful z_impl_k_sem_take: count>0 acquire/count--; K_NO_WAIT → -EBUSY; else z_pend_curr; uses
+k_spin_unlock not z_reschedule, unlike give) and dissolved it (synth 0.11.42, no --native-pointer-abi).
+Gate-2 **sem-shaped**: `.data=0`, 0 MOVW/MOVT_ABS, seam folded (3 actions ACQUIRED/WOULD_BLOCK/PEND).
+Added a `k_sem_take` lane; codegen gate now GREEN across **5 primitives** (sem_give, sem_take,
+pipe_write, pipe_read, mutex_unlock — TRUE_EXIT=0, re-run w/o tail-pipe). POC shim:
+`boards/nucleo_g474re/wasm_sem_take_shim_poc.c`.
+
+So the **sem primitive is now fully wasm-cross-LTO drop-in-verified (give + take)** — the v0.1.0 release
+target's kernel surface dissolves cleanly. clean-u64 partition status: 4/5 of the maintainer's named
+u64-shaped set verified clean (sem_give, sem_take, pipe_write, pipe_read); only `k_fatal` unchecked.
+The 51 struct-return decides remain gated on synth#345 step 2. Did NOT re-comment on synth#345 (no
+maintainer activity since my 08:11 pipe report; sem_take is gale-internal completion). Silicon cycle
+numbers for take/pipe still pending the module-promotion step (shape is the drop-in gate; that's met).
