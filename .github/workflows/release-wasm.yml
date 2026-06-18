@@ -60,7 +60,7 @@ jobs:
 
       - name: Upload artifact (dispatch runs)
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gale-wasm-dist
           path: dist/
