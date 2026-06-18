@@ -1,0 +1,7 @@
+[build]
+target = "thumbv7m-none-eabi"
+# qemu lm3s6965evb (Cortex-M3) for fast local boot. -icount makes the virtual clock
+# instruction-driven (SysTick fires deterministically + a deterministic instr count).
+[target.thumbv7m-none-eabi]
+runner = "qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic -icount shift=1 -semihosting-config enable=on,target=native -kernel"
+rustflags = ["-C", "link-arg=-Tlink.x"]
