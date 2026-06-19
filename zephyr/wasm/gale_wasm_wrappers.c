@@ -16,6 +16,7 @@
  */
 #include <zephyr/kernel.h>
 #include <zephyr/kernel_structs.h>
+#include <string.h>
 #include <wait_q.h>
 #include <ksched.h>
 
@@ -85,4 +86,38 @@ int gale_w_adjust_thread_prio(struct k_thread *thread, int new_prio)
 int gale_w_thread_prio(struct k_thread *thread)
 {
 	return thread->base.prio;
+}
+
+/* msgq put shim (msgq_put_shim.c) wrappers. k_thread is opaque in the shim and
+ * k_msgq_put can copy arbitrary-size messages and block, none of which the
+ * dissolved object can do against an opaque thread / without Zephyr headers:
+ *   - gale_w_thread_swap_data: read base.swap_data — the waiting reader's
+ *     destination buffer (set by k_msgq_get before it pended); the put copies
+ *     the message into it on WAKE_READER.
+ *   - gale_w_memcpy: out-of-line memcpy (the wasm shim has no libc; this keeps
+ *     the byte copy a clean native call rather than a wasm bulk-memory op).
+ *   - gale_w_msgq_pend: the PUT_PEND blocking path. wait_q / scheduling stay
+ *     native (docs/wasm-module-distribution.md). The shim passes &msgq (==
+ *     &msgq->wait_q, first member) and the 8-byte timeout as int64 ticks; we
+ *     stash the message pointer in swap_data and z_pend_curr on gale_wasm_lock
+ *     — the same lock the shim's spin ops use, so the put-pend / get-wake
+ *     handshake shares one critical section (valid for the !SMP 0-byte-spinlock
+ *     config these modules target). */
+void *gale_w_thread_swap_data(struct k_thread *thread)
+{
+	return thread->base.swap_data;
+}
+
+void gale_w_memcpy(void *dst, const void *src, uint32_t n)
+{
+	(void)memcpy(dst, src, (size_t)n);
+}
+
+int gale_w_msgq_pend(void *wait_q, k_spinlock_key_t key,
+		     const void *data, int64_t timeout_ticks)
+{
+	k_timeout_t timeout = { .ticks = (k_ticks_t)timeout_ticks };
+
+	_current->base.swap_data = (void *)data;
+	return z_pend_curr(&gale_wasm_lock, key, (_wait_q_t *)wait_q, timeout);
 }

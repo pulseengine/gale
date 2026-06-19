@@ -61,8 +61,20 @@ bench integration):
 
 Scope note: the **give** hot path is the shipped surface today (the silicon-measured
 907-cyc handoff path, re-baseline pending synth#311-fix validation); take/init stay
-native. The same pattern extends per-primitive (`GALE_WASM_LTO_MUTEX` next, gated on
-synth#237/v0.11.37 validation).
+native. The same pattern now extends across three primitives, each shipping its hot
+path with the rest of the object native:
+
+| module | `CONFIG_GALE_WASM_LTO_*` | dissolved surface | native | tramp |
+|--------|-------------------------|-------------------|--------|-------|
+| sem    | `_SEM`   | `z_impl_k_sem_give`   | take/init             | value-path (none) |
+| mutex  | `_MUTEX` | `z_impl_k_mutex_unlock` | lock/init           | `r11=0` (`gale_wasm_mutex_tramp.S`) |
+| msgq   | `_MSGQ`  | `z_impl_k_msgq_put` (wake-reader / put-ok / return-full) | put-pend (`gale_w_msgq_pend`), get/init | `r11=0` (`gale_wasm_msgq_tramp.S`) |
+
+msgq is the first module whose dissolved surface delegates one decided action
+(`PUT_PEND`, the blocking full-queue case) back to a native wrapper — the wait
+queue and scheduling stay native, so only the non-blocking hot path is dissolved.
+Its third argument (`k_timeout_t`, an 8-byte `{ ticks }` struct) crosses the wasm
+seam as an `int64_t` (AAPCS r2:r3-identical).
 
 ## Release flow
 
