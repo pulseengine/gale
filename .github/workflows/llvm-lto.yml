@@ -31,6 +31,11 @@ defaults:
 env:
   HOME: /root
   DOCKER_CONFIG: /tmp/.docker
+  # Authenticate `west sdk install`'s GitHub API release-list fetch (anonymous
+  # 60 req/hr -> 5000/hr) so concurrent jobs don't 403 and fail to install the
+  # SDK. Same root cause fixed in zephyr-tests.yml. Workflow-level -> all jobs.
+  # github.token (the secrets context is not available at workflow-level env).
+  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   llvm-lto-build:

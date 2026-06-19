@@ -24,6 +24,14 @@ concurrency:
 env:
   HOME: /root
   DOCKER_CONFIG: /tmp/.docker
+  # Authenticate `west sdk install`'s GitHub API release-list fetch. Without a
+  # token the fetch is anonymous (60 req/hr per runner IP); with ~59 concurrent
+  # jobs all calling it, the limit is blown and jobs fail with
+  #   "Failed to fetch: 403, API rate limit exceeded"
+  # -> the SDK never installs -> CMake FindZephyr-sdk errors. A token raises the
+  # limit to 5000/hr. Propagates to all jobs (workflow-level env). Uses
+  # github.token (the secrets context is not available at workflow-level env).
+  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   zephyr-test:
