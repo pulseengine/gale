@@ -31,6 +31,11 @@ defaults:
 env:
   HOME: /root
   DOCKER_CONFIG: /tmp/.docker
+  # Authenticate `west sdk install`'s GitHub API release-list fetch (anonymous
+  # 60 req/hr -> 5000/hr) so concurrent jobs don't 403 and fail to install the
+  # SDK. Same root cause fixed in zephyr-tests.yml. Workflow-level -> all jobs.
+  # github.token (the secrets context is not available at workflow-level env).
+  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   llvm-lto-build:
@@ -38,7 +43,11 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
-      options: --user root
+      # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB). These jobs
+      # run multiple west builds on the full `ci` image — more disk than a
+      # single-build job — so the west workspace + build dirs go on /mnt to avoid
+      # ENOSPC on the ~14 GB root fs (same fix as zephyr-tests.yml).
+      options: --user root --volume /mnt:/mnt
     env:
       HOME: /root
       DOCKER_CONFIG: /tmp/.docker
@@ -74,10 +83,10 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
-          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
-          cd zephyr-workspace
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
+          cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi && break || sleep 5; done
+          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Setup SDK paths
         run: |
@@ -116,8 +125,8 @@ jobs:
       - name: "Build baseline (GCC, no Gale)"
         run: |
           . /root/.cargo/env
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
-          cd zephyr-workspace
+          export ZEPHYR_BASE="/mnt/zephyr-workspace/zephyr"
+          cd /mnt/zephyr-workspace
           west build -b qemu_cortex_m3 \
             -s zephyr/tests/kernel/semaphore/semaphore \
             -d build-gcc-baseline
@@ -127,9 +136,9 @@ jobs:
       - name: "Build GCC + Gale"
         run: |
           . /root/.cargo/env
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export ZEPHYR_BASE="/mnt/zephyr-workspace/zephyr"
           export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
-          cd zephyr-workspace
+          cd /mnt/zephyr-workspace
           west build -b qemu_cortex_m3 \
             -s zephyr/tests/kernel/semaphore/semaphore \
             -d build-gcc-gale \
@@ -154,9 +163,9 @@ jobs:
       - name: "Build LLVM + Gale (no LTO)"
         run: |
           . /root/.cargo/env
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export ZEPHYR_BASE="/mnt/zephyr-workspace/zephyr"
           export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
-          cd zephyr-workspace
+          cd /mnt/zephyr-workspace
           west build -b qemu_cortex_m3 \
             -s zephyr/tests/kernel/semaphore/semaphore \
             -d build-llvm-gale \
@@ -180,9 +189,9 @@ jobs:
       - name: "Build LLVM + Gale + LTO"
         run: |
           . /root/.cargo/env
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export ZEPHYR_BASE="/mnt/zephyr-workspace/zephyr"
           export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
-          cd zephyr-workspace
+          cd /mnt/zephyr-workspace
           west build -b qemu_cortex_m3 \
             -s zephyr/tests/kernel/semaphore/semaphore \
             -d build-llvm-lto \
@@ -201,7 +210,7 @@ jobs:
       - name: "Run semaphore tests (LLVM+LTO)"
         run: |
           . /root/.cargo/env
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export ZEPHYR_BASE="/mnt/zephyr-workspace/zephyr"
           # QEMU may not be found by LLVM toolchain variant. Use SDK QEMU directly.
           # SDK 1.0.x: hosttools/sysroots/... (Poky hosttools layout).
           # SDK 0.x:   sysroots/... (flat layout).
@@ -214,7 +223,7 @@ jobs:
             QEMU=$(which qemu-system-arm 2>/dev/null || echo "")
           fi
           if [ -n "${QEMU}" ]; then
-            cd zephyr-workspace
+            cd /mnt/zephyr-workspace
             timeout 120 "${QEMU}" -cpu cortex-m3 -machine lm3s6965evb -nographic \
               -vga none -net none -icount shift=6,align=off,sleep=off \
               -rtc clock=vm -kernel build-llvm-lto/zephyr/zephyr.elf 2>&1 | tee test-llvm-lto.log &
@@ -233,7 +242,7 @@ jobs:
       - name: "Check inlining + compare sizes"
         if: always()
         run: |
-          cd zephyr-workspace
+          cd /mnt/zephyr-workspace
           echo "=== Symbol check ==="
           # Count + list gale_ FFI symbols that survived the link. The goal
           # of cross-language LTO is for these to be inlined into the C
@@ -296,7 +305,11 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
-      options: --user root
+      # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB). These jobs
+      # run multiple west builds on the full `ci` image — more disk than a
+      # single-build job — so the west workspace + build dirs go on /mnt to avoid
+      # ENOSPC on the ~14 GB root fs (same fix as zephyr-tests.yml).
+      options: --user root --volume /mnt:/mnt
     strategy:
       fail-fast: false
       matrix:
@@ -348,10 +361,10 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
-          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
-          cd zephyr-workspace
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
+          cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi && break || sleep 5; done
+          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Setup SDK paths
         run: |
@@ -384,9 +397,9 @@ jobs:
       - name: Build and run test (LLVM+LTO)
         run: |
           . /root/.cargo/env
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export ZEPHYR_BASE="/mnt/zephyr-workspace/zephyr"
           export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
-          cd zephyr-workspace
+          cd /mnt/zephyr-workspace
           west build -b qemu_cortex_m3 \
             -s "zephyr/${TEST_PATH}" \
             -- \

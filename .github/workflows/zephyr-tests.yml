@@ -24,6 +24,15 @@ concurrency:
 env:
   HOME: /root
   DOCKER_CONFIG: /tmp/.docker
+  # Token value for `west sdk install --personal-access-token` (see the install
+  # steps). `west sdk install`'s "Fetching Zephyr SDK list" hits the GitHub API;
+  # anonymous = 60 req/hr per runner IP, and with ~59 concurrent jobs that limit
+  # is blown -> "403 API rate limit exceeded" -> SDK never installs -> CMake
+  # FindZephyr-sdk error. west does NOT read GITHUB_TOKEN from the env (it told
+  # us so: "Try ... --personal-access-token argument or a .netrc file"), so the
+  # steps pass it explicitly; this env just carries the value. github.token is
+  # used because the secrets context is unavailable at workflow-level env.
+  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   zephyr-test:
@@ -31,7 +40,13 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
-      options: --user root
+      # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB) into the
+      # container. The ci-base image layers (full multi-arch Zephyr SDK) already
+      # consume most of the host root fs (~14 GB free); putting the west
+      # workspace + build artifacts on / tips unlucky jobs into ENOSPC (the
+      # runner itself crashes writing its diag log). The west workspace below is
+      # created under /mnt so the heavy writes land on the big disk instead.
+      options: --user root --volume /mnt:/mnt
     strategy:
       fail-fast: false
       matrix:
@@ -152,19 +167,19 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
-          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
-          cd zephyr-workspace
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
+          cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi && break || sleep 5; done
+          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Build and run test
         env:
           TEST_PATH: ${{ matrix.test_path }}
         run: |
           . /root/.cargo/env
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export ZEPHYR_BASE="/mnt/zephyr-workspace/zephyr"
           export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
-          cd zephyr-workspace
+          cd /mnt/zephyr-workspace
           west build -b qemu_cortex_m3 \
             -s "zephyr/${TEST_PATH}" \
             -- \
@@ -188,7 +203,13 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
-      options: --user root
+      # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB) into the
+      # container. The ci-base image layers (full multi-arch Zephyr SDK) already
+      # consume most of the host root fs (~14 GB free); putting the west
+      # workspace + build artifacts on / tips unlucky jobs into ENOSPC (the
+      # runner itself crashes writing its diag log). The west workspace below is
+      # created under /mnt so the heavy writes land on the big disk instead.
+      options: --user root --volume /mnt:/mnt
     strategy:
       fail-fast: false
       matrix:
@@ -226,19 +247,19 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
-          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
-          cd zephyr-workspace
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
+          cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi && break || sleep 5; done
+          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Build and run test
         env:
           TEST_PATH: ${{ matrix.test_path }}
         run: |
           . /root/.cargo/env
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export ZEPHYR_BASE="/mnt/zephyr-workspace/zephyr"
           export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
-          cd zephyr-workspace
+          cd /mnt/zephyr-workspace
           west build -b mps2/an385 \
             -s "zephyr/${TEST_PATH}" \
             -- \
@@ -277,7 +298,13 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
-      options: --user root
+      # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB) into the
+      # container. The ci-base image layers (full multi-arch Zephyr SDK) already
+      # consume most of the host root fs (~14 GB free); putting the west
+      # workspace + build artifacts on / tips unlucky jobs into ENOSPC (the
+      # runner itself crashes writing its diag log). The west workspace below is
+      # created under /mnt so the heavy writes land on the big disk instead.
+      options: --user root --volume /mnt:/mnt
     strategy:
       fail-fast: false
       matrix:
@@ -320,19 +347,19 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
-          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
-          cd zephyr-workspace
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
+          cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t x86_64-zephyr-elf && break || sleep 5; done
+          for attempt in 1 2 3; do west sdk install -t x86_64-zephyr-elf --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Build and run test
         env:
           TEST_PATH: ${{ matrix.test_path }}
         run: |
           . /root/.cargo/env
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export ZEPHYR_BASE="/mnt/zephyr-workspace/zephyr"
           export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
-          cd zephyr-workspace
+          cd /mnt/zephyr-workspace
           west build -b qemu_x86_64 \
             -s "zephyr/${TEST_PATH}" \
             -- \
@@ -354,7 +381,13 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
-      options: --user root
+      # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB) into the
+      # container. The ci-base image layers (full multi-arch Zephyr SDK) already
+      # consume most of the host root fs (~14 GB free); putting the west
+      # workspace + build artifacts on / tips unlucky jobs into ENOSPC (the
+      # runner itself crashes writing its diag log). The west workspace below is
+      # created under /mnt so the heavy writes land on the big disk instead.
+      options: --user root --volume /mnt:/mnt
     env:
       HOME: /root
       DOCKER_CONFIG: /tmp/.docker
@@ -375,10 +408,10 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
-          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
-          cd zephyr-workspace
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
+          cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi && break || sleep 5; done
+          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Setup SDK paths
         run: |
@@ -395,8 +428,8 @@ jobs:
       - name: Build baseline (stock Zephyr)
         run: |
           . /root/.cargo/env
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
-          cd zephyr-workspace
+          export ZEPHYR_BASE="/mnt/zephyr-workspace/zephyr"
+          cd /mnt/zephyr-workspace
           west build -b qemu_cortex_m3 \
             -s zephyr/tests/kernel/semaphore/semaphore \
             -d build-baseline
@@ -405,9 +438,9 @@ jobs:
       - name: Build with Gale
         run: |
           . /root/.cargo/env
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export ZEPHYR_BASE="/mnt/zephyr-workspace/zephyr"
           export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
-          cd zephyr-workspace
+          cd /mnt/zephyr-workspace
           west build -b qemu_cortex_m3 \
             -s zephyr/tests/kernel/semaphore/semaphore \
             -d build-gale \
@@ -421,21 +454,21 @@ jobs:
           echo "=== Binary Size Comparison ==="
           echo ""
           echo "--- Baseline (stock Zephyr) ---"
-          cat zephyr-workspace/baseline-size.txt
+          cat /mnt/zephyr-workspace/baseline-size.txt
           echo ""
           echo "--- With Gale ---"
-          cat zephyr-workspace/gale-size.txt
+          cat /mnt/zephyr-workspace/gale-size.txt
           echo ""
 
-          BASELINE_TEXT=$(tail -1 zephyr-workspace/baseline-size.txt | awk '{print $1}')
-          BASELINE_DATA=$(tail -1 zephyr-workspace/baseline-size.txt | awk '{print $2}')
-          BASELINE_BSS=$(tail -1 zephyr-workspace/baseline-size.txt | awk '{print $3}')
-          BASELINE_TOTAL=$(tail -1 zephyr-workspace/baseline-size.txt | awk '{print $4}')
+          BASELINE_TEXT=$(tail -1 /mnt/zephyr-workspace/baseline-size.txt | awk '{print $1}')
+          BASELINE_DATA=$(tail -1 /mnt/zephyr-workspace/baseline-size.txt | awk '{print $2}')
+          BASELINE_BSS=$(tail -1 /mnt/zephyr-workspace/baseline-size.txt | awk '{print $3}')
+          BASELINE_TOTAL=$(tail -1 /mnt/zephyr-workspace/baseline-size.txt | awk '{print $4}')
 
-          GALE_TEXT=$(tail -1 zephyr-workspace/gale-size.txt | awk '{print $1}')
-          GALE_DATA=$(tail -1 zephyr-workspace/gale-size.txt | awk '{print $2}')
-          GALE_BSS=$(tail -1 zephyr-workspace/gale-size.txt | awk '{print $3}')
-          GALE_TOTAL=$(tail -1 zephyr-workspace/gale-size.txt | awk '{print $4}')
+          GALE_TEXT=$(tail -1 /mnt/zephyr-workspace/gale-size.txt | awk '{print $1}')
+          GALE_DATA=$(tail -1 /mnt/zephyr-workspace/gale-size.txt | awk '{print $2}')
+          GALE_BSS=$(tail -1 /mnt/zephyr-workspace/gale-size.txt | awk '{print $3}')
+          GALE_TOTAL=$(tail -1 /mnt/zephyr-workspace/gale-size.txt | awk '{print $4}')
 
           DELTA_TEXT=$((GALE_TEXT - BASELINE_TEXT))
           DELTA_DATA=$((GALE_DATA - BASELINE_DATA))
@@ -467,7 +500,7 @@ jobs:
             printf "gale_overhead_total %d ns/iter (+/- 0)\n" "$DELTA_TOTAL"
             printf "gale_flash_bytes %d ns/iter (+/- 0)\n" "$GALE_TOTAL"
             printf "baseline_flash_bytes %d ns/iter (+/- 0)\n" "$BASELINE_TOTAL"
-          } > zephyr-workspace/benchmark-output.txt
+          } > /mnt/zephyr-workspace/benchmark-output.txt
 
           # Fail if total overhead exceeds 10% (SYSREQ-PERF-001)
           PERCENT=$((DELTA_TOTAL * 100 / BASELINE_TOTAL))
@@ -484,7 +517,7 @@ jobs:
         with:
           name: Binary Size (semaphore test, qemu_cortex_m3)
           tool: cargo
-          output-file-path: zephyr-workspace/benchmark-output.txt
+          output-file-path: /mnt/zephyr-workspace/benchmark-output.txt
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           comment-on-alert: true
