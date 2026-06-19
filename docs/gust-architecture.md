@@ -4,6 +4,24 @@ title: "gust — maximal-wasm mini-RTOS: architecture & promise"
 type: documentation
 status: draft
 tags: [gust, mini-os, kiln-async, cortex-m3, stm32f100, req-pix-009, wcet, tcb]
+links:
+  # Research artifacts this doc is built on (see artifacts/gust_research.yaml).
+  - type: related-to
+    target: FIND-GUST-001      # novelty: no public precedent
+  - type: related-to
+    target: SYSREQ-GUST-001    # the gust thesis as a requirement
+  - type: related-to
+    target: FIND-GUST-002      # gap: native-shim WCET
+  - type: related-to
+    target: REQ-GUST-WCET-001
+  - type: related-to
+    target: FIND-GUST-003      # gap: wake-from-ISR proof
+  - type: related-to
+    target: REQ-GUST-ISR-001
+  - type: related-to
+    target: FIND-GUST-004      # gap: compiler/toolchain TCB trust
+  - type: related-to
+    target: REQ-GUST-TCB-001
 ---
 
 # gust — a maximal-wasm mini-RTOS for tiny bare-metal nodes
@@ -25,6 +43,27 @@ The result is a tiny RTOS that is, by construction:
 - **WCET-provable** (kiln-async is fuel-bounded; the fuel unit is the same one spar's RTA/EDF Lean proofs use ⇒ schedulability is a *proof*, not a stress test),
 - **dissolution-verified** (loom's Z3 acyclic-CF verifier proves the wasm→M3 compile is semantics-preserving — loom#219),
 - with a **~4-function native TCB**.
+
+## What's novel (and what's still owed)
+
+A prior-art scan found **no public precedent** for this construction — a wasm *kernel*
+dissolved to native with a translation-validation oracle and a ~4-function TCB
+(`FIND-GUST-001`). The adjacent work is categorically different: wasm microruntimes
+(WAMR, wasm3) run a wasm *app* on a native kernel; language-RTOSes (Hubris, Tock, seL4)
+are native kernels. gust inverts that — the kernel *is* the wasm, and nothing interprets
+it at runtime. That novel combination is captured as the gust thesis requirement
+`SYSREQ-GUST-001`.
+
+The same scrutiny exposed three rigor gaps that must close before the thesis is a
+**safety** claim rather than a demonstration — each tracked as a finding → requirement:
+
+| gap | finding | requirement |
+|-----|---------|-------------|
+| native-shim WCET is outside the fuel model | `FIND-GUST-002` | `REQ-GUST-WCET-001` |
+| wake-from-ISR needs a lost-wakeup/torn-read proof | `FIND-GUST-003` | `REQ-GUST-ISR-001` |
+| the wasm→native toolchain is itself in the TCB | `FIND-GUST-004` | `REQ-GUST-TCB-001` |
+
+(Artifacts: `artifacts/gust_research.yaml`.)
 
 ## Architecture — the layer cake & TCB boundary
 
@@ -110,6 +149,8 @@ only #369. So gust is synth-gap-free on v0.11.47 with a fixed-point mixer.
 2. `kiln#338` (`no_alloc` gating `kiln-error/recovery.rs`) is **stubbed** with a Noop allocator
    to link; the failsafe path never allocates. Must land for a clean image.
 3. SysTick needs qemu `-icount` to advance (qemu virtual-time artifact); native on the F100 (Renode).
-4. The native shim has a WCET the fuel model does **not** cover (ISR + MMIO worst-case) — bound separately.
+4. The native shim has a WCET the fuel model does **not** cover (ISR + MMIO worst-case) — bound separately (`FIND-GUST-002` → `REQ-GUST-WCET-001`).
+5. The wake-from-ISR path (single `pending` word, BASEPRI read-clear) is argued by construction, not yet proven free of lost-wakeup/torn-read races (`FIND-GUST-003` → `REQ-GUST-ISR-001`).
+6. The `meld→loom→synth` toolchain is itself in the TCB; loom#219 validates the seam step, but an end-to-end tool-qualification / proof-carrying trust story is still owed (`FIND-GUST-004` → `REQ-GUST-TCB-001`).
 
 Build/run: `benches/gust/run-qemu.sh` (local) · `renode-test renode/gust_f100.robot` (F100).
