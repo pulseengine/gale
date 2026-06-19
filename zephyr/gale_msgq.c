@@ -171,6 +171,14 @@ int z_msgq_cleanup_sched_locked(struct k_msgq *msgq)
  * Apply:   C executes the decision (memcpy, wake, pend, or return).
  * ----------------------------------------------------------------------- */
 
+/* GALE_WASM_LTO_OVERRIDE_MSGQ_PUT: when defined (CONFIG_GALE_WASM_LTO_MSGQ),
+ * z_impl_k_msgq_put is supplied by the released wasm-cross-LTO object instead
+ * (see wasm/gale_wasm_msgq_tramp.S + docs/wasm-module-distribution.md); the
+ * native implementation below is compiled out. Same-TU callers (e.g.
+ * z_impl_k_msgq_put_front's full-queue fallthrough) bind to the external
+ * symbol at link time.
+ */
+#ifndef GALE_WASM_LTO_OVERRIDE_MSGQ_PUT
 int z_impl_k_msgq_put(struct k_msgq *msgq, const void *data,
 		       k_timeout_t timeout)
 {
@@ -234,6 +242,7 @@ int z_impl_k_msgq_put(struct k_msgq *msgq, const void *data,
 
 	return 0;
 }
+#endif /* GALE_WASM_LTO_OVERRIDE_MSGQ_PUT */
 
 /* -----------------------------------------------------------------------
  * z_impl_k_msgq_put_front  (uses Phase 1 gale_msgq_put_front)

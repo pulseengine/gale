@@ -86,6 +86,24 @@ config GALE_KERNEL_MSGQ
 	  polling, and tracing remain native Zephyr C.
 	  Requires a Rust toolchain for the target architecture.
 
+config GALE_WASM_LTO_MSGQ
+	bool "Link the released wasm-cross-LTO message-queue put path"
+	depends on GALE_KERNEL_MSGQ
+	default n
+	help
+	  Replace the native z_impl_k_msgq_put with the prebuilt
+	  wasm-cross-LTO object shipped with gale releases
+	  (gale-wasm-msgq-<ver>-<target>.o): the verified Rust decision
+	  function seam-dissolved into the C put hot path at the wasm
+	  level (clang -> wasm-ld -> loom inline -> synth), compiled to a
+	  relocatable native object. The dissolved surface is the put hot
+	  path (wake-reader / put-ok / return-full); the blocking pend path
+	  and k_msgq_get / init / cleanup remain native Zephyr C. Point the
+	  build at the artifact via -DGALE_WASM_LTO_OBJ_DIR=<dir of release
+	  assets> or -DGALE_WASM_LTO_MSGQ_OBJ=<path to the .o>. Verify the
+	  release manifest signature (sigil) before consuming the artifacts
+	  in a safety build. See docs/wasm-module-distribution.md.
+
 config GALE_KERNEL_STACK
 	bool "Use Gale formally verified stack"
 	depends on MULTITHREADING

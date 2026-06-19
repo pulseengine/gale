@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the gale wasm-cross-LTO release artifacts (sem + mutex, cortex-m4f lane).
+# Build the gale wasm-cross-LTO release artifacts (sem + mutex + msgq, cortex-m4f lane).
 #
 # Pipeline per docs/wasm-module-distribution.md:
 #   clang(wasm32) shim+FFI -> wasm-ld (DCE, exported entry) -> loom inline
@@ -73,16 +73,35 @@ build_module mutex "$GALE_ROOT/zephyr/wasm/mutex_unlock_shim.c" \
   z_impl_k_mutex_unlock gale_k_mutex_unlock_decide synth_k_mutex_unlock_body \
   "--native-pointer-abi" "${MTX_RENAMES[@]}"
 
+# msgq imports the same spinlock/wake set as mutex (k_spin_lock + k_spin_unlock,
+# unpend, ready, return_value_set, reschedule). gale_w_thread_swap_data /
+# gale_w_memcpy / gale_w_msgq_pend are already gale_w_* symbols (undefined
+# imports resolved at consume link) so they need no rename.
+MSGQ_RENAMES=(
+  k_spin_lock=gale_w_spin_lock
+  k_spin_unlock=gale_w_spin_unlock
+  z_unpend_first_thread=gale_w_unpend_first_thread
+  z_ready_thread=gale_w_ready_thread
+  arch_thread_return_value_set=gale_w_arch_thread_return_value_set
+  z_reschedule=gale_w_reschedule
+)
+
+# 2/3. msgq (pointer-arg path -> --native-pointer-abi + r11=0 trampoline at consume time)
+build_module msgq "$GALE_ROOT/zephyr/wasm/msgq_put_shim.c" \
+  z_impl_k_msgq_put gale_k_msgq_put_decide synth_k_msgq_put_body \
+  "--native-pointer-abi" "${MSGQ_RENAMES[@]}"
+
 # 4. manifest (the trust anchor; sigil signs this)
 cat > "$OUT/gale-wasm-manifest-$VER.json" <<JSON
 {
   "version": "$VER",
-  "primitives": ["sem", "mutex"],
+  "primitives": ["sem", "mutex", "msgq"],
   "surfaces": {
     "sem": "z_impl_k_sem_give (give hot path; take/init native)",
-    "mutex": "z_impl_k_mutex_unlock (unlock hot path; lock/init native; needs r11=0 trampoline)"
+    "mutex": "z_impl_k_mutex_unlock (unlock hot path; lock/init native; needs r11=0 trampoline)",
+    "msgq": "z_impl_k_msgq_put (put hot path: wake-reader / put-ok / return-full dissolved; pend delegates to native gale_w_msgq_pend; get/init native; needs r11=0 trampoline)"
   },
-  "pipeline": "clang -> wasm-ld -> loom optimize --passes inline -> synth --target cortex-m4f [--native-pointer-abi for mutex] --all-exports --relocatable -> objcopy gale_w_* renames",
+  "pipeline": "clang -> wasm-ld -> loom optimize --passes inline -> synth --target cortex-m4f [--native-pointer-abi for mutex+msgq] --all-exports --relocatable -> objcopy gale_w_* renames",
   "tools": {
     "clang": "$($CLANG --version | head -1)",
     "wasm-ld": "$($WASMLD --version | head -1)",
@@ -93,9 +112,11 @@ cat > "$OUT/gale-wasm-manifest-$VER.json" <<JSON
     "gale-wasm-sem-$VER.wasm": "$(sha "$OUT/gale-wasm-sem-$VER.wasm")",
     "gale-wasm-sem-$VER-cortex-m4f.o": "$(sha "$OUT/gale-wasm-sem-$VER-cortex-m4f.o")",
     "gale-wasm-mutex-$VER.wasm": "$(sha "$OUT/gale-wasm-mutex-$VER.wasm")",
-    "gale-wasm-mutex-$VER-cortex-m4f.o": "$(sha "$OUT/gale-wasm-mutex-$VER-cortex-m4f.o")"
+    "gale-wasm-mutex-$VER-cortex-m4f.o": "$(sha "$OUT/gale-wasm-mutex-$VER-cortex-m4f.o")",
+    "gale-wasm-msgq-$VER.wasm": "$(sha "$OUT/gale-wasm-msgq-$VER.wasm")",
+    "gale-wasm-msgq-$VER-cortex-m4f.o": "$(sha "$OUT/gale-wasm-msgq-$VER-cortex-m4f.o")"
   },
-  "consume": "CONFIG_GALE_KERNEL_{SEM,MUTEX}=y CONFIG_GALE_WASM_LTO_{SEM,MUTEX}=y + -DGALE_WASM_LTO_OBJ_DIR=<this dir>; the mutex object links with gale_wasm_mutex_tramp.S (r11=0); verify manifest signature first (sigil)"
+  "consume": "CONFIG_GALE_KERNEL_{SEM,MUTEX,MSGQ}=y CONFIG_GALE_WASM_LTO_{SEM,MUTEX,MSGQ}=y + -DGALE_WASM_LTO_OBJ_DIR=<this dir>; the mutex+msgq objects link with gale_wasm_{mutex,msgq}_tramp.S (r11=0); verify manifest signature first (sigil)"
 }
 JSON
 echo "wasm dist -> $OUT"; ls -la "$OUT"
