@@ -1,0 +1,198 @@
+name: Release
+
+# Tag-triggered creator for a standardised PulseEngine release. gale ships no
+# CLI binary — its release "binaries" are the wasm-cross-LTO kernel modules
+# (gale-wasm-{sem,mutex,msgq}-<tag>-cortex-m4f.o + .wasm + manifest). This
+# workflow builds them, then publishes them with the standardised provenance
+# bundle. Pattern mirrors pulseengine/synth and pulseengine/relay release.yml:
+# cosign-signed SHA256SUMS.txt, CycloneDX SBOM, SLSA build provenance,
+# build-env capture.
+#
+# Standardised release assets:
+#   gale-wasm-<mod>-<tag>.wasm / .wat            # loom-dissolved modules (evidence)
+#   gale-wasm-<mod>-<tag>-cortex-m4f.o           # synth ET_REL relocatable objects
+#   gale-wasm-manifest-<tag>.json                # sha256 + pinned toolchain (trust anchor)
+#   gale-<bare-ver>.cdx.json                     # CycloneDX SBOM (gale-ffi)
+#   SHA256SUMS.txt{,.sig,.pem,.cosign.bundle}    # one cosign-signed checksum file
+#   build-env.txt                                # toolchain provenance
+# The rivet compliance report is added separately by compliance.yml (decoupled,
+# additive, on release publish).
+#
+# Verification one-liner (paste in release notes):
+#   cosign verify-blob \
+#     --certificate-identity-regexp \
+#       'https://github.com/pulseengine/gale/.github/workflows/release.yml@.*' \
+#     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+#     --bundle SHA256SUMS.txt.cosign.bundle SHA256SUMS.txt
+#   gh attestation verify gale-wasm-msgq-<tag>-cortex-m4f.o --repo pulseengine/gale
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to (re)build (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Build the wasm-cross-LTO modules (gale's release "binaries") ──────────
+  # ci-base has the Zephyr SDK (arm-zephyr-eabi-objcopy for the import renames);
+  # loom + synth are pinned to the toolchain that builds ALL THREE modules
+  # (synth v0.11.48 ships #359/#372, required for msgq).
+  build-wasm-dist:
+    name: "wasm dist (sem + mutex + msgq, cortex-m4f)"
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
+      options: --user root --volume /mnt:/mnt
+    env:
+      HOME: /root
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Install Rust + wasm32 target
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          . /root/.cargo/env
+          rustup target add wasm32-unknown-unknown
+
+      - name: Install pinned loom + synth
+        run: |
+          . /root/.cargo/env
+          # Pinned — bump deliberately; the manifest records the exact versions.
+          # synth v0.11.48 ships #372 (arm i64) + #359 (native-pointer .bss),
+          # both required to build the msgq module.
+          cargo install loom-cli --git https://github.com/pulseengine/loom --tag v1.1.14 --locked
+          cargo install synth-cli --git https://github.com/pulseengine/synth --tag v0.11.48 --locked
+
+      - name: Install arm toolchain (objcopy for the import renames)
+        run: |
+          pip3 install west
+          west sdk install -t arm-zephyr-eabi || true
+          echo "$HOME/zephyr-sdk/arm-zephyr-eabi/bin" >> "$GITHUB_PATH" || true
+
+      - name: Build distribution
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          . /root/.cargo/env
+          export TC=arm-zephyr-eabi
+          VERSION="${INPUT_TAG:-${GITHUB_REF#refs/tags/}}"
+          scripts/build-wasm-dist.sh dist "$VERSION"
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wasm-dist
+          path: dist/
+          retention-days: 7
+
+  # ── Create the GitHub Release: SBOM, checksums, provenance, signing ───────
+  create-release:
+    name: Create GitHub Release
+    needs: [build-wasm-dist]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # release-asset upload
+      id-token: write       # cosign keyless + provenance OIDC
+      attestations: write   # SLSA build provenance
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Download wasm dist
+        uses: actions/download-artifact@v8
+        with:
+          name: wasm-dist
+          path: release-assets
+
+      - name: Generate gale-ffi SBOM (CycloneDX)
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION="${INPUT_TAG:-${GITHUB_REF#refs/tags/}}"
+          BARE="${VERSION#v}"
+          cargo install --locked cargo-cyclonedx
+          # gale-ffi is the crate whose verified decision functions are
+          # dissolved into the shipped wasm modules.
+          cargo cyclonedx --manifest-path ffi/Cargo.toml --format json --spec-version 1.5
+          SBOM_SRC=$(find ffi -maxdepth 2 -name '*.cdx.json' | head -1)
+          test -n "$SBOM_SRC" && test -f "$SBOM_SRC"
+          cp "$SBOM_SRC" "release-assets/gale-${BARE}.cdx.json"
+          ls -la release-assets/
+
+      - name: Generate SHA256 checksums
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum ./* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Generate SLSA build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: "release-assets/gale-wasm-*-cortex-m4f.o"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
+
+      - name: Sign SHA256SUMS with cosign (keyless OIDC)
+        run: |
+          set -euo pipefail
+          cd release-assets
+          cosign sign-blob \
+            --yes \
+            --bundle SHA256SUMS.txt.cosign.bundle \
+            --output-signature SHA256SUMS.txt.sig \
+            --output-certificate SHA256SUMS.txt.pem \
+            SHA256SUMS.txt
+          echo "::notice::SHA256SUMS signed via Sigstore keyless flow."
+
+      - name: Capture build environment
+        run: |
+          set -euo pipefail
+          {
+            echo "rustc: $(rustc --version)"
+            echo "cargo: $(cargo --version)"
+            echo "cosign: $(cosign version 2>&1 | head -1)"
+            echo "runner: $(uname -srm)"
+          } > release-assets/build-env.txt
+          cat release-assets/build-env.txt
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION="${INPUT_TAG:-${GITHUB_REF#refs/tags/}}"
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::notice::Release $VERSION exists; uploading assets"
+            gh release upload "$VERSION" --repo "$GITHUB_REPOSITORY" --clobber release-assets/*
+          else
+            echo "::notice::Creating Release $VERSION"
+            gh release create "$VERSION" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "gale $VERSION" \
+              --generate-notes \
+              release-assets/*
+          fi
