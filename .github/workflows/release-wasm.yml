@@ -1,11 +1,15 @@
-# Build + attach the wasm-cross-LTO module artifacts to gale releases.
-# See docs/wasm-module-distribution.md. The manifest is the trust anchor;
-# sigil signing rides once the sigil release flow lands (TODO below).
-name: Release wasm modules
+# Manual wasm-module build (workflow_dispatch only).
+#
+# Release-time wasm building + attaching + signing is now owned by release.yml
+# (the standardised creator: builds the same modules via build-wasm-dist.sh,
+# then ships them under a cosign-signed SHA256SUMS + SLSA provenance + SBOM).
+# This workflow is kept for on-demand rebuilds outside a release — it uploads
+# the dist as a run artifact, it does NOT touch any GitHub Release. The
+# release: published trigger was removed so it no longer double-builds /
+# double-attaches alongside release.yml.
+name: Release wasm modules (manual)
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -17,7 +21,7 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
-      options: --user root
+      options: --user root --volume /mnt:/mnt
     env:
       HOME: /root
     steps:
@@ -33,8 +37,10 @@ jobs:
         run: |
           . /root/.cargo/env
           # Pinned versions — bump deliberately; the manifest records them.
-          cargo install loom-cli --git https://github.com/pulseengine/loom --tag v1.1.11 --locked
-          cargo install synth-cli --git https://github.com/pulseengine/synth --tag v0.11.37 --locked
+          # Keep in lockstep with release.yml (synth v0.11.48 ships #359/#372,
+          # required to build the msgq module).
+          cargo install loom-cli --git https://github.com/pulseengine/loom --tag v1.1.14 --locked
+          cargo install synth-cli --git https://github.com/pulseengine/synth --tag v0.11.48 --locked
 
       - name: Install arm toolchain (objcopy for the import renames)
         run: |
@@ -52,14 +58,7 @@ jobs:
       # release/signing flow is wired; until then the sha256 manifest is
       # attached unsigned and the release notes must say so.
 
-      - name: Attach to release
-        if: github.event_name == 'release'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
-
       - name: Upload artifact (dispatch runs)
-        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
           name: gale-wasm-dist
