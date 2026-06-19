@@ -86,7 +86,7 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi && break || sleep 5; done
+          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Setup SDK paths
         run: |
@@ -364,7 +364,7 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi && break || sleep 5; done
+          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Setup SDK paths
         run: |
