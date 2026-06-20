@@ -1,0 +1,7 @@
+SELFCHECK k_mutex_unlock rc=0 owner=0 (exp 0 / NULL)
+E,k_mutex_unlock,cyc=472 (ovh=1, wasm-cross-LTO)
+# synth 0.11.43 (#345 .bss + PC-relative link-survivability fix; module merged via gale PR#60) + loom 1.1.13, G474RE DWT@170MHz, min/200, uncontended no-waiter unlock.
+# 472/124 native = 3.81x. Down from 501 (v0.11.41, RESULT-2026-06-13) -> -29 cyc / -5.8% across 0.11.41->0.11.43 (#313 if/else-result fix + #345).
+# Dissolved z_impl_k_mutex_unlock body (v0.11.43): 167 insns, 56 (34%) [sp] spills -> spill reduction (synth#209) remains the dominant lever.
+# Reloc shape now link-survivable: MOVW/MOVT_ABS 0, R_ARM_ABS32 11, .data=4 (.bss=65536). Full mutex_api 9/9 PASS on HW (verify_mutex_module_silicon.sh).
+# Reference (gale rustc-direct native): k_mutex_unlock = 124 cyc.

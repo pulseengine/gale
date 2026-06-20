@@ -1,0 +1,9 @@
+*** Booting Zephyr OS build v4.4.0-7-g719cc4890346 ***
+SELFCHECK full s=1088 n=1088 (exp 1088)  div s=-1917 n=-1917 (exp -1917)
+E,full ,synth=37,native=19
+E,nodiv,synth=29,native=12
+E,div  ,synth=30,native=15
+SINK=436128800 ovh=1
+=== END ===
+
+# main b657521 SYNTH_RANGE_REALLOC=1: cycles identical to flag-off (37/29/30), regs packed r4-r8->r0/r1. Gate-clearing data posted to synth#209.

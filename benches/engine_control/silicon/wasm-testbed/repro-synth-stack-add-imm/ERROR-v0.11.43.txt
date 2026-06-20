@@ -1,0 +1,3 @@
+warning: skipping function 'gale_k_stack_push_decide': backend 'arm' failed: compilation failed: ARM encoding failed: Synthesis failed: ADD immediate too large for single instruction
+warning: skipping function 'z_impl_k_stack_push': backend 'arm' failed: compilation failed: branch-resolve size probe failed: Synthesis failed: ADD immediate too large for single instruction
+Error: no functions compiled successfully (2 skipped) — nothing to emit

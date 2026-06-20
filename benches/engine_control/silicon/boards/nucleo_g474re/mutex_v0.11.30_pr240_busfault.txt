@@ -1,0 +1,7 @@
+*** Booting Zephyr OS build v4.4.0-7-g719cc4890346 ***
+***** BUS FAULT *****
+  Imprecise data bus error
+r0/a1:  0x00000000  r1/a2:  0x00000001  r2/a3:  0xffffffff
+r3/a4:  0x200101a8 r12/ip:  0xfffffffc r14/lr:  0x08000233
+ xpsr:  0xa1000000
+Faulting instruction address (r15/pc): 0x080004e4
