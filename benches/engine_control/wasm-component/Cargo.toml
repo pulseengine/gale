@@ -1,0 +1,19 @@
+[package]
+name = "engine-control-component"
+version = "0.1.0"
+edition = "2021"
+description = "engine-control as a WebAssembly Component (typed sync step + async crank-sample stream), built on the forked pulseengine/wit-bindgen for amortized per-item stream allocation (embedded). gale#74/#63 component-model leg."
+
+[lib]
+crate-type = ["cdylib"]
+
+[workspace]
+
+[dependencies]
+# The PulseEngine fork: amortized per-item heap alloc in stream next/write_one
+# (the embedded async-allocation need). Branch carries that work.
+wit-bindgen = { git = "https://github.com/pulseengine/wit-bindgen", branch = "perf/async-stream-amortize-single-item-alloc" }
+
+[profile.release]
+opt-level = "z"
+lto = true
