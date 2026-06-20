@@ -1,0 +1,63 @@
+# Deploy the "gust in the browser" demo to GitHub Pages on merge to main.
+#
+# Builds the SAME kiln-async kernel as benches/gust to wasm32 and publishes
+# benches/gust/browser/web/ (index.html + the freshly-built gust.wasm). The
+# browser crate depends on pulseengine/kiln via a public git dep, so this builds
+# hermetically in CI. Served at https://<org>.github.io/gale/.
+#
+# Pages source must be "GitHub Actions" — actions/configure-pages enables it on
+# first run (needs the pages: write permission below).
+name: Deploy gust browser demo (Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'benches/gust/browser/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; never cancel an in-flight Pages publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build gust browser wasm
+        run: |
+          set -euo pipefail
+          cd benches/gust/browser
+          cargo build --release --target wasm32-unknown-unknown
+          cp target/wasm32-unknown-unknown/release/gust_browser.wasm web/gust.wasm
+          echo "built web/gust.wasm ($(wc -c < web/gust.wasm) bytes)"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: benches/gust/browser/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

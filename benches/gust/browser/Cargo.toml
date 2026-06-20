@@ -10,7 +10,8 @@ description = "gust in the browser: the SAME kiln-async scheduler wasm that diss
 crate-type = ["cdylib"]
 
 [dependencies]
-kiln-async = { path = "/Volumes/Home/git/pulseengine/kiln/kiln-async" }
+# git dep (not local path) so the browser demo builds in CI for GitHub Pages. kiln is public.
+kiln-async = { git = "https://github.com/pulseengine/kiln", rev = "6966abcdeb1c88edaa86facdccf6cba8712640e9" }
 
 [profile.release]
 opt-level = "z"
