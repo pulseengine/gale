@@ -1,0 +1,33 @@
+package gale:engine-control@0.1.0;
+
+/// Synchronous, point-in-time control decision — runs today on any component
+/// host (wasmtime). Same algorithm as ../src/control.c.
+interface control {
+    record sensors {
+        rpm: u32,
+        load-pct: u32,
+        coolant-c: s32,
+        knock-retard: u32,
+    }
+    record actuators {
+        spark-advance-deg: s32,
+        fuel-duration-us: u32,
+    }
+    step: func(input: sensors) -> actuators;
+}
+
+/// The realistic engine_control shape: a *stream* of crank samples (one per
+/// crank-angle ISR). Each sample is read with StreamReader::next, which in the
+/// forked pulseengine/wit-bindgen reuses ONE cached buffer across samples —
+/// amortized allocation (first read allocs, the rest don't), the property an
+/// embedded node needs to bound its heap. async because the stream is driven
+/// by the host as samples arrive.
+interface crank-stream {
+    use control.{sensors};
+    process: async func(samples: stream<sensors>) -> u32;
+}
+
+world engine-control {
+    export control;
+    export crank-stream;
+}
