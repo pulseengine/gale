@@ -1,2 +1,3 @@
 /target
 /web/gust.wasm
+/Cargo.lock
