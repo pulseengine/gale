@@ -1,0 +1,271 @@
+# gale "build-your-own OS" (BYO-OS) mode — the architecture behind gale#74.
+#
+# The reframe (from the gust proof + jess's Pixhawk 6X-RT / RT1176 bring-up):
+# gale is not "verified Zephyr primitives" — it is a library of composable,
+# formally-verified OS components, usable two ways:
+#   (1) DROP-IN to an existing OS (zephyr/*.c track; 36 QEMU suites + wasm-dist).
+#   (2) CONSTRUCT-YOUR-OWN OS (gale primitives + kiln-async + async-HAL +
+#       wasm driver/app bodies). gust is the first instance (bare Cortex-M3).
+#
+# This file tracks mode (2) as a first-class capability: the construction crate,
+# the async driver framework (embedded-hal-async seam), the C-free TCB, and the
+# one-OS-three-scales story (M7 falcon / M4 sensor-I/O / F100 gust).
+#
+# Status: PROPOSED — design for discussion on gale#74. gust (gale#65) is the
+# proven minimal instance; this generalizes its hand-rolled scaffold.
+
+artifacts:
+  # ── Stakeholder ───────────────────────────────────────────────────────────
+  - id: STKH-BYOOS-001
+    type: stakeholder-req
+    title: "A C-free, build-your-own RTOS for the flight stack — one verification story, three scales"
+    status: proposed
+    description: >
+      jess (Pixhawk 6X-RT flight stack) needs an RTOS that is not a C kernel
+      (no Zephyr / NuttX / PX4 / NXP-SDK-C in the flight path). The trusted base
+      shall be verified Rust (gale + kiln + HAL) + wasm (Kani-proven drivers +
+      falcon flight logic) — one language discipline and one verification story
+      end-to-end (Verus/Rocq/Lean + Kani), the smallest auditable trusted base,
+      and the SAME OS composed at three scales: M7 (falcon), M4 (sensor-I/O
+      offload), F100 (gust). The only tolerated non-Rust residue is the i.MX boot
+      ROM, which is out of the flight path (on-ground update bootloader only;
+      jess DD-016).
+    tags: [byo-os, c-free, flight, pixhawk, gale74]
+    fields:
+      priority: must
+
+  # ── The reframe finding ───────────────────────────────────────────────────
+  - id: FIND-BYOOS-001
+    type: finding
+    title: "gale is composable OS components (drop-in OR build-your-own), not just Zephyr primitives"
+    status: active
+    description: >
+      gust (gale#65) demonstrated that gale's verified primitives + kiln-async
+      compose into a complete, bootable OS on bare metal with no Zephyr — the
+      kernel as wasm dissolved to native behind a ~4-item native TCB. That makes
+      explicit what gale already is: a library of composable, formally-verified
+      OS *components*, usable two ways — (1) drop-in to an existing OS (the
+      zephyr/*.c track, proven by 36 QEMU kernel-test suites + the wasm-dist
+      modules sem/mutex/msgq), or (2) construct a bespoke OS (gust). The strategic
+      consequence: the C disappears from the flight stack, and gale's positioning
+      shifts from "verified Zephyr primitives" to "composable verified OS
+      components — drop in, or build your own." This finding generates the
+      first-class BYO-OS mode requirement.
+    tags: [byo-os, reframe, gale74, gust]
+    fields:
+      relevance: high
+      action-required: true
+      source: "gust proof (gale#65/#74) + jess RT1176 bring-up; cross-refs gale#63, jess DD-006/DD-011/DD-017"
+    links:
+      - type: generates
+        target: SYSREQ-BYOOS-001
+
+  # ── System requirement ────────────────────────────────────────────────────
+  - id: SYSREQ-BYOOS-001
+    type: system-req
+    title: "gale shall provide a first-class build-your-own-OS construction mode (no Zephyr)"
+    status: proposed
+    description: >
+      gale shall support constructing a complete, bespoke OS from its
+      formally-verified components — gale primitives + the kiln-async executor +
+      an async HAL substrate + wasm driver/app bodies — without requiring Zephyr
+      or any C kernel, as a first-class capability rather than a side effect of
+      the standalone (plain/) track. The construction mode shall scale from a
+      ~4-item-TCB minimal node (gust, F100) to a full async-DMA driver stack
+      (falcon, M7), reusing the same verified component set.
+    tags: [byo-os, gale74]
+    fields:
+      req-type: functional
+      priority: must
+    links:
+      - type: derives-from
+        target: STKH-BYOOS-001
+
+  # ── Software requirements ─────────────────────────────────────────────────
+  - id: REQ-BYOOS-CRATE-001
+    type: sw-req
+    title: "Standalone OS-construction crate: gale core + boot/scheduler-init/device_init scaffold"
+    status: proposed
+    description: >
+      Provide a standalone construction crate (no Zephyr dependency) that
+      composes the gale verified primitives (plain/ track) + the kiln-async
+      executor + a minimal scaffold of construction hooks — reset/boot entry,
+      scheduler init, and device_init ordering — into a runnable OS image. gust's
+      hand-rolled cortex-m-rt + superloop scaffold is the reference minimal
+      instance; this factors that into reusable hooks so a new target is "pick
+      components + provide the TCB shim", not "re-hand-roll the OS".
+    tags: [byo-os, crate, scaffold, gale74]
+    fields:
+      req-type: functional
+      priority: must
+      verification-criteria: >
+        A bare-metal target builds an OS image from the construction crate with
+        no Zephyr in the dependency graph; gust re-expressed on the crate boots
+        on qemu (the existing 5000-poll-round oracle) with an unchanged scheduler
+        result.
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+
+  - id: REQ-BYOOS-DRV-001
+    type: sw-req
+    title: "Async driver framework: embedded-hal-async seam + Embassy-class native HAL + wasm verifiable logic"
+    status: proposed
+    description: >
+      Provide a driver framework for targets needing real async I/O (DMA,
+      IRQ-completion, multiple isolated buses, redundancy) that gust's trivial
+      sync shim does not cover. The seam is the standard `embedded-hal-async`
+      traits; the native host substrate is an Embassy-class async HAL
+      (bus transport + DMA + IRQ-completion), driven by the kiln-async executor
+      (already Embassy-inspired). Verifiable logic — protocol decode (relay,
+      Kani-proven) and redundancy voting — sits ABOVE the async traits in wasm.
+      The split is deliberate: verify what is verifiable (decode/voting) in wasm;
+      reuse battle-tested async-HAL for the timing/DMA that is not easily proven.
+    tags: [byo-os, drivers, embedded-hal-async, embassy, kiln-async, gale74]
+    fields:
+      req-type: interface
+      priority: must
+      verification-criteria: >
+        A driver composed as {wasm decode/voting body} -> embedded-hal-async
+        trait -> native HAL impl drives a peripheral on the RT1176 (or its Renode
+        SVD model) with IRQ->waker completion through kiln-async; the wasm logic
+        body carries its Kani proof, and the native HAL impl is the declared
+        trusted substrate.
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+
+  - id: REQ-BYOOS-CFREE-001
+    type: sw-req
+    title: "C-free trusted base: verified Rust + wasm; only non-Rust residue is the boot ROM (out of flight path)"
+    status: proposed
+    description: >
+      A BYO-OS flight image shall contain no C in the flight path: the trusted
+      base is verified Rust (gale primitives + kiln-async + the async HAL
+      substrate) plus wasm (Kani-proven driver logic + falcon). The only tolerated
+      non-Rust component is the immutable i.MX boot ROM, which is touched only by
+      the on-ground update bootloader, not the flight path (jess DD-016). The
+      verification boundary maps onto the wasm/native seam: verifiable logic is
+      wasm (Verus/Rocq/Lean + Kani), the irreducible-but-thin native substrate
+      (timing/DMA/privileged ops) is the declared TCB.
+    tags: [byo-os, c-free, tcb, gale74]
+    fields:
+      req-type: constraint
+      priority: must
+      verification-criteria: >
+        `nm <flight.elf>` shows no C-runtime/SDK symbols in the flight path; the
+        only non-Rust object is the boot ROM (not linked into the flight image).
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+
+  - id: REQ-BYOOS-SCALE-001
+    type: sw-req
+    title: "One OS, three scales: M7 (falcon) / M4 (sensor-I/O) / F100 (gust) from the same components"
+    status: proposed
+    description: >
+      The same verified component set + construction crate shall target three
+      scales by varying only the TCB shim and the synth target: M7 (falcon, full
+      async-DMA driver stack), M4 (sensor-I/O offload), and F100 (gust, ~4-item
+      sync TCB). Retarget = re-synth the wasm bodies to the new ISA + swap the
+      per-SoC TCB — proven in miniature by the gust kernel re-synthing to
+      cortex-m3 AND riscv32 from one wasm.
+    tags: [byo-os, portability, three-scale, gale74]
+    fields:
+      req-type: functional
+      priority: should
+      verification-criteria: >
+        The construction crate builds a bootable image for at least two distinct
+        targets (e.g. F100/gust and an M7/M4 RT1176 profile) from the same
+        component set, differing only in the TCB shim + synth --target.
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+
+  # ── Architecture: the BYO-OS layer cake ───────────────────────────────────
+  - id: SAC-BYOOS-SCAFFOLD
+    type: sw-arch-component
+    title: "Construction scaffold + thin native TCB (boot/reset, scheduler-init, device_init hooks)"
+    status: proposed
+    description: >
+      The bottom layer: vector table + reset, scheduler init, device_init
+      ordering, and the per-SoC native TCB shim (privileged ops, MMIO, IRQ entry).
+      Pure Rust (cortex-m-rt class), no C. gust's scaffold is the reference; this
+      component factors it into reusable construction hooks.
+    tags: [byo-os, scaffold, tcb, gale74]
+    fields:
+      concurrency: "single-core superloop (gust) up to IRQ-driven (M7); privileged ops are the TCB boundary"
+    links:
+      - type: allocated-from
+        target: REQ-BYOOS-CRATE-001
+
+  - id: SAC-BYOOS-EXEC
+    type: sw-arch-component
+    title: "kiln-async executor (fuel-bounded cooperative scheduler, Embassy-inspired)"
+    status: proposed
+    description: >
+      The executor layer: kiln-async's no_std/no_alloc fuel-bounded cooperative
+      scheduler (task arena + waker-as-index, citing embassy-executor). Hosts both
+      the application tasks and the async driver tasks; the fuel bound is the WCET
+      unit (spar RTA/EDF). Deferred work is a kiln-async task — NOT a separate
+      Zephyr-style workqueue (that would duplicate the executor).
+    tags: [byo-os, kiln-async, executor, wcet, gale74]
+    fields:
+      concurrency: "cooperative, fuel-bounded; one task dispatched per poll_round (O(1))"
+    links:
+      - type: allocated-from
+        target: REQ-BYOOS-DRV-001
+
+  - id: SAC-BYOOS-HALSEAM
+    type: sw-arch-component
+    title: "embedded-hal-async trait seam + Embassy-class native HAL substrate (IRQ->waker)"
+    status: proposed
+    description: >
+      The driver seam: standard `embedded-hal-async` traits as the contract.
+      Below the traits, the native Embassy-class async HAL (bus transport, DMA,
+      IRQ-completion) — the trusted substrate for the timing/DMA that is not
+      easily proven; IRQ handlers wake kiln-async tasks via the standard Waker.
+      Above the traits, only verifiable logic (next component). This is the
+      "full-fat gust seam" (gust's sync MMIO shim, generalized to async+DMA;
+      jess DD-012/DD-015). The RT1176 PAC (svd2rust from the BSD-3 CMSIS-SVD)
+      is the register foundation; Renode ApplySVD gives the hermetic HIL.
+    tags: [byo-os, embedded-hal-async, embassy, dma, rt1176, gale74]
+    fields:
+      interfaces: {seam: "embedded-hal-async traits", below: "Embassy-class native HAL (DMA/IRQ)", pac: "svd2rust RT1176"}
+      concurrency: "async; IRQ-completion -> Waker -> kiln-async task"
+    links:
+      - type: allocated-from
+        target: REQ-BYOOS-DRV-001
+
+  - id: SAC-BYOOS-WASMLOGIC
+    type: sw-arch-component
+    title: "Verifiable wasm logic above the traits (Kani-proven protocol decode + redundancy voting)"
+    status: proposed
+    description: >
+      The verifiable layer: protocol decode (relay, Kani-proven) and redundancy
+      voting sit ABOVE the embedded-hal-async traits as wasm bodies (meld -> loom
+      -> synth dissolved, like the gust kernel). This is where the verification
+      lives; the async HAL beneath is trusted-but-not-proven. The split realises
+      "verify what is verifiable, reuse battle-tested for what you cannot prove".
+    tags: [byo-os, wasm, kani, relay, voting, gale74]
+    fields:
+      concurrency: "logic only (no timing); driven by the executor through the trait seam"
+    links:
+      - type: allocated-from
+        target: REQ-BYOOS-DRV-001
+
+  - id: SAC-BYOOS-PRIMS
+    type: sw-arch-component
+    title: "gale verified primitives (sem/mutex/msgq/event/poll/device_init) — drop-in or composed"
+    status: proposed
+    description: >
+      The component library: gale's formally-verified primitives (Verus/Rocq/Lean
+      + Kani), usable drop-in (zephyr/*.c) OR composed into the BYO-OS. For the
+      async driver framework, `device_init` (bring-up ordering) and `poll`
+      (waitable-set readiness, mirrored by kiln-async's waitable-set/stream) are
+      the reused verified hooks; `work` (Zephyr workqueue) is intentionally NOT
+      reused (kiln-async is the executor).
+    tags: [byo-os, primitives, device_init, poll, gale74]
+    links:
+      - type: allocated-from
+        target: REQ-BYOOS-CFREE-001
