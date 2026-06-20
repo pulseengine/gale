@@ -1,0 +1,12 @@
+package gale:app-demo@0.1.0;
+
+/// A tiny gale application *component*: it imports the verified kernel
+/// primitives (gale:kernel) — it does NOT implement them. Composed with
+/// gale-kiln (which provides them over gale::*), the kernel calls resolve to
+/// proven Rust with no C FFI. `run-demo` exercises a few decisions and packs
+/// the discriminants so the composed result is verifiable.
+world demo {
+    import gale:kernel/sem@0.1.0;
+    import gale:kernel/msgq@0.1.0;
+    export run-demo: func() -> u32;
+}

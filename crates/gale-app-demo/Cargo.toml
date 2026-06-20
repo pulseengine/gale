@@ -1,0 +1,17 @@
+[package]
+name = "gale-app-demo"
+version = "0.1.0"
+edition = "2021"
+description = "A gale application component that IMPORTS gale:kernel (composed with gale-kiln to resolve to verified gale::*). Slice 3 of the kiln component-host path."
+
+[lib]
+crate-type = ["cdylib"]
+
+[workspace]
+
+[dependencies]
+wit-bindgen = { git = "https://github.com/pulseengine/wit-bindgen", branch = "perf/async-stream-amortize-single-item-alloc" }
+
+[profile.release]
+opt-level = "z"
+lto = true
