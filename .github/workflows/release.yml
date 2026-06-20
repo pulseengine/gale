@@ -48,7 +48,8 @@ jobs:
   # ── Build the wasm-cross-LTO modules (gale's release "binaries") ──────────
   # ci-base has the Zephyr SDK (arm-zephyr-eabi-objcopy for the import renames);
   # loom + synth are pinned to the toolchain that builds ALL THREE modules
-  # (synth v0.11.48 ships #359/#372, required for msgq).
+  # (synth v0.11.50 ships #359/#372 + #382/#383-partial/#378/#381; all three
+  # modules verified to build clean on it — sem/mutex/msgq).
   build-wasm-dist:
     name: "wasm dist (sem + mutex + msgq, cortex-m4f)"
     runs-on: ubuntu-22.04
@@ -72,10 +73,11 @@ jobs:
         run: |
           . /root/.cargo/env
           # Pinned — bump deliberately; the manifest records the exact versions.
-          # synth v0.11.48 ships #372 (arm i64) + #359 (native-pointer .bss),
-          # both required to build the msgq module.
+          # synth v0.11.50 ships #372 (arm i64) + #359 (native-pointer .bss) +
+          # #382 (large offset materialization) + #378/#381 (fail-honestly);
+          # additive hardening over v0.11.48, all three modules build clean.
           cargo install loom-cli --git https://github.com/pulseengine/loom --tag v1.1.14 --locked
-          cargo install synth-cli --git https://github.com/pulseengine/synth --tag v0.11.48 --locked
+          cargo install synth-cli --git https://github.com/pulseengine/synth --tag v0.11.50 --locked
 
       - name: Install arm toolchain (objcopy for the import renames)
         run: |
