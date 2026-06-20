@@ -1,0 +1,4 @@
+*** Booting Zephyr OS build v4.4.0-7-g719cc4890346 ***
+SELFCHECK synth=2165333 native=2165333 exp=2165333 OK
+E,control_step,synth=157,native=67
+=== END ===

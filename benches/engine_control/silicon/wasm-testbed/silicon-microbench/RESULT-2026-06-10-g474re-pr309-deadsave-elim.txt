@@ -1,0 +1,9 @@
+*** Booting Zephyr OS build v4.4.0-7-g719cc4890346 ***
+SELFCHECK full s=1088 n=1088 (exp 1088)  div s=-1917 n=-1917 (exp -1917)
+E,full ,synth=29,native=19
+E,nodiv,synth=21,native=12
+E,div  ,synth=22,native=15
+SINK=436128800 ovh=1
+=== END ===
+
+# PR #309 (pre-merge b762ac1, v0.11.36 candidate): realloc default-ON + dead callee-saved-save elim v1. -8 cyc uniform (37/29/30 -> 29/21/22). big-3 byte-identical. Posted PR comment 4671097907.

@@ -1,0 +1,69 @@
+# wasm-cross-LTO — consolidated results
+
+The `clang → wasm-ld → loom (dissolve seam) → synth → ELF` pipeline, measured against the
+native/LLVM-LTO/rustc-direct alternatives. ARM = real NUCLEO-G474RE silicon, DWT CYCCNT @170 MHz,
+min-over-200 (or bench median where noted). RISC-V = `qemu_riscv32 -icount` (instruction-count
+**proxy**, not silicon cycles). Single source of truth; see NOTES-wasm-cross-lto-spike.md for provenance.
+
+## Kernel primitive (the headline)
+
+| primitive | wasm-cross-LTO | LLVM-LTO | native gale | notes |
+|-----------|---------------|----------|-------------|-------|
+| `k_sem_give` handoff (ARM silicon) | **860** cyc | 471 | — | 1.83×; **sound re-baseline** (faithful Zephyr v4.4.0 shim, v0.11.37, n=148, drops=0, ADC path bypassed). **Supersedes the unsound 907** (NULL `wait_q` + skewed layout — semantically wrong). Seam folded (no `bl ..._decide`). 21% of the 165-insn body is `[sp]` spills (see synth#209 / VCR-RA). |
+| `k_mutex_unlock` (ARM silicon) | **472** cyc | — | **124** (ref) | 3.81×; **re-measured 2026-06-14 on synth v0.11.43** (#345 `.bss`+PC-relative fix; module merged via gale PR #60). Down from 501 (v0.11.41) — −29 cyc / −5.8% across 0.11.41→0.11.43. SELFCHECK rc=0 owner=0 OK. Full `mutex_api` suite 9/9 PASS on G474RE (not just no-waiter). Worst ratio in suite — 34% of the 167-insn dissolved body is `[sp]` spills (see synth#209 — the lever). |
+
+## Algorithm functions (value-in/value-out — dissolve cleanly, both backends)
+
+| function | ARM silicon (synth / native) | RISC-V icount v0.11.27 (synth / native) |
+|----------|------------------------------|------------------------------------------|
+| `filter_axis`     | 46 / 19 = **2.42×** | 23 / 17 = **1.35×** |
+| `control_step` (engine algo) | 151 / 67 = **2.25×**§ (#283 −7) | 129 / 62 = **2.08×** |
+| `controller_step` (7-arg) | 150 / 61 = **2.46×**† | 100 / 49 = **2.04×** |
+| `flat_flight` (flight algo, composed) | 241 / 103 = **2.34×**‡ (#283 in-place select −14) (262→261 #250 AND, →255 #262 clamp) | 181 / 75 = **2.41×** |
+
+All functionally correct on both backends (RV32 funccheck 10/10, ARM funccheck 6/6, wasmtime oracle).
+
+‡ `flat_flight` ARM **re-measured 2026-06-13 on G474RE at the current toolchain (synth 0.11.40 + loom 1.1.13): 241/103 = 2.34×**, SELFCHECK 0x07fdf307 OK, reproducible `flat_flight-microbench/build.sh` + `RESULT-2026-06-13-g474re-v0.11.40.txt`. Stable vs v0.11.35 (241); down from 262 (v0.11.30, 2026-06-04) and 315 (v0.11.18, stale). 241 includes the fp-setup trampoline (~8 cyc); body ~233. Composed flight algo (filter_step+controller_step).
+
+§ `control_step` ARM **re-measured 2026-06-13 on G474RE at the current toolchain (synth 0.11.40 + loom 1.1.13): 151/67 = 2.25×**, SELFCHECK 2165333 OK, reproducible `control-step-microbench/build.sh` + `RESULT-2026-06-13-g474re.txt`. Down from 158/67 (v0.11.34, 2026-06-05) — ~5 cyc (~3%) from codegen improvements between 0.11.34→0.11.40. Prior 168/81 was an older synth. Buffer-harness (tables copied into a RAM linmem buffer, r11=base). This 151 is the hardware-locked "before" baseline for the synth#209 flag-fold/spill-reduction kill-criterion (target ~127).
+
+† `controller_step` has 7 args; synth’s cortex-m convention passes args in **r0–r7** (not AAPCS r0–r3+stack), so a C/Zephyr caller needs an arg-shuffle trampoline (`controller-microbench/ctl_tramp.S`). Arc 169→168 (#250 AND)→162 (#258 clamp)→**150** (#283 in-place select); the 150 includes the ~8-cyc arg-shuffle (native called directly). SELFCHECK 0x05e33e81 == native on G474RE. **Re-confirmed 2026-06-13 on synth 0.11.41: 150/61 = 2.46x** (down from 169 @ v0.11.30; 6 flag-fold round-trips / 3 spills in the 99-insn body -> flag-fold-dominated).
+flight_control bench wasm-LTO variant builds + runs the dissolved algorithm on G474RE (Phase 5).
+
+## Bigger example — flight_control macro bench (Phase 5, composed)
+
+The flight_control bench composes 5 Zephyr primitives (ring_buf, sem, mutex, msgq, condvar) on a
+100 Hz loop; `GALE_FC_WASM_LTO=ON` dissolves the ISR-side flight algo (`filter_step`+`controller_step`)
+via wasm-cross-LTO. On real G474RE silicon, full 5-step sweep, **no fault**, **re-confirmed
+2026-06-13 on the current toolchain (synth 0.11.41 + loom 1.1.13): in-bench `algo` = 157 cyc,
+perfectly stable (min=median=max, n=9 across the sweep)** — unchanged from the first measurement
+(synth 0.11.30), so the composed-context result holds on the post-#331 toolchain:
+
+| metric (in-bench `algo`) | wasm-cross-LTO | native | ratio |
+|--------------------------|----------------|--------|-------|
+| ISR filter precompute     | **157** cyc     | 141    | **1.11×** |
+
+The in-context overhead is only **~11%** — far tighter than the isolated microbenches (flat_flight 2.54×,
+controller 2.77×), because the dissolved algo is a fraction of per-sample work (handoff/lock/post/round
+are common to both builds). The bigger example is a working testbed for functionality *and* optimization.
+
+## The two open optimization/expansion levers (maintainer-side)
+
+1. **const-CSE + cross-statement local promotion (synth#209)** — the composed path's remaining gap.
+   `flat_flight` (262 cyc ARM, current) is 61% redundant constant materializations (34 const-loads / 13 distinct; clamp
+   bounds `#0x7e`/`#0x7f` ×6 each) + 17 stack spills (refreshed on loom 1.1.10 + synth 0.11.29); the v0.11.27 caller-saved-preference fix nearly halved the leaves (filter 2.18→1.35×) but
+   barely moved the composed path (2.57→2.41×). const-CSE is the next lever.
+2. **native-call ABI / `--native-pointer-abi` (synth#237, v0.11.29 in progress)** — unblocks
+   host-pointer primitive drop-ins (mutex, sem) by emitting wasm statics as base-independent
+   `.data`/`MOVW-MOVT` relocations while host-pointer args stay `base=0`. Re-measure staged
+   (`mutex-microbench/remeasure_wasm_lto.sh`) — one command when the flag lands.
+
+## Headline
+The PulseEngine pipeline dissolves the C↔Rust seam at wasm-IR level and produces correct silicon
+output at ~2–2.6× native (widening with composition), with LLVM-LTO-parity codegen shape. The gap is
+general codegen (regalloc/const-CSE = #209), confirmed cross-target on ARM **and** RISC-V — the
+single retargetable lever. Host-pointer primitive drop-ins await the native-call ABI (#237).
+
+> **Composed dissolved testbed (2026-06-14, G474RE):** flight_control bench with GALE_FC_WASM_LTO=ON + CONFIG_GALE_WASM_LTO_SEM=y runs algo+sem **both dissolved**, full 5-step sweep, no fault, functionally == native (drain_timeouts bench-inherent, confirmed by native comparison). In-bench **handoff: native 1374 → dissolved-sem 1661 cyc (+287, +21%)**; dissolved algo 157 both. The dissolved sem works in a composed real-bench context.
+
+> **Composed testbed COMPLETE (2026-06-14, G474RE):** flight_control with algo+sem+**mutex** all dissolved (GALE_FC_WASM_LTO=ON + CONFIG_GALE_WASM_LTO_SEM=y + CONFIG_GALE_WASM_LTO_MUTEX=y) — full sweep, **no fault**. In-bench: t_lock native 486 → dissolved-mutex **887 (+401, +82%)**; handoff native 1374 → dissolved-sem ~1719; algo ~146-157. The +82%/+21% in-context deltas are the synth#209 spill-reduction target.

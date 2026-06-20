@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20.0)
+find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+project(filter_bench)
+target_sources(app PRIVATE src/main.c)
+# Link the synth-generated relocatable object (exports filter_axis_decide, self-contained, 0 relocs)
+target_link_libraries(app PRIVATE /tmp/wasm-algo-poc/fv_algo.o)

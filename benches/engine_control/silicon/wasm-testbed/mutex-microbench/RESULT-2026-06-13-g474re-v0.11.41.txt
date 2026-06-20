@@ -1,0 +1,7 @@
+SELFCHECK k_mutex_unlock rc=0 owner=0 (exp 0 / NULL)
+E,k_mutex_unlock,cyc=501 (ovh=1, wasm-cross-LTO)
+# synth 0.11.41 (#331 spill-slot-collision fix, built from main commit d6caab0/681f0bf) + loom 1.1.13, G474RE.
+# 501/124 native = 4.04x. FIRST successful mutex measurement — prior synth (<=0.11.40) silently
+# miscompiled the no-waiter lock_count=0 store (spill-slot collision) -> silicon DEADLOCK.
+# SELFCHECK confirms no-waiter unlock leaves owner=NULL, round-trip completes (no hang).
+# 31% of the 269-insn dissolved body is [sp] spills -> prime spill-reduction target (synth#209).

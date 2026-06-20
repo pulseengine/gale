@@ -1,0 +1,7 @@
+*** Booting Zephyr OS build v4.4.0-7-g719cc4890346 ***
+SELFCHECK synth=2165333 native=2165333 exp=2165333 OK
+E,control_step,synth=151,native=67
+=== END ===
+# synth 0.11.40 + loom 1.1.13, G474RE DWT@170MHz. 151/67 = 2.25x.
+# vs prior 156/67 (v0.11.33/34, RESULT-2026-06-05) -> -5 cyc (~3%) from codegen improvements.
+# functionally correct (SELFCHECK 2165333). Reproducible: ./build.sh + flash + capture.

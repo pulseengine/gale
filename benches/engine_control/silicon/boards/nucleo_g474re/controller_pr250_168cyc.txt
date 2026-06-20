@@ -1,0 +1,5 @@
+*** Booting Zephyr OS build v4.4.0-7-g719cc4890346 ***
+SELFCHECK synth=0x05e33e81 native=0x05e33e81 MATCH
+E,controller_step,synth=168,native=61
+SINK=856795536 ovh=1
+=== END ===

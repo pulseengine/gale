@@ -1,0 +1,7 @@
+*** Booting Zephyr OS build v4.4.0-7-g719cc4890346 ***
+SELFCHECK synth=0x07fdf307 native=0x07fdf307 exp=0x07fdf307 OK
+E,flat_flight,synth=241,native=103 (ovh=1)
+SINK=2093726448
+=== END ===
+# synth 0.11.40 + loom 1.1.13, G474RE. 241/103 = 2.34x. Stable vs v0.11.35 (241); down from 262 (v0.11.30).
+# functionally correct (SELFCHECK 0x07fdf307). Composed flight algo (filter_step+controller_step).
