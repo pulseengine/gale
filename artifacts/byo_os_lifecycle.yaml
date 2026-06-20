@@ -81,15 +81,24 @@ artifacts:
       The sharp consequence of the verification/replay cut being the SAME seam: a
       replay that DIVERGES from the verified component's behaviour localizes the bug to
       EITHER the native TCB (the declared unverified part) OR an unmodeled hardware
-      behaviour — never the verified logic (which is proven). Record-replay (rr,
-      Pernosco) and embedded trace (Tracealyzer, SystemView) exist, but as x86
-      time-travel or trace-VIEW; deterministic *re-execution of the same verified,
-      dissolvable component* at the verification seam is the unoccupied combination.
-    tags: [byo-os, record-replay, debugging, time-travel, tcb-seam, gale74]
+      behaviour — never the verified logic (which is proven).
+
+      PRIOR ART (frontier sweep, DOC-WASM-FRONTIER — do NOT pitch the mechanism as
+      novel): import-boundary record + cross-engine replay is already published —
+      **Wasm-R3** (OOPSLA 2024) records the host-import trace, reduces it ~99.5%, and
+      replays on any engine; CMU is building Wasmtime time-travel debugging; Wasmtime
+      itself is adding record/replay WIT interfaces. So gale ADOPTS the Wasm-R3
+      recorder design rather than inventing it. gale's genuine, unclaimed delta is
+      twofold: (1) a **bare-metal/MCU record backend** (Wasm-R3/CMU record in
+      browser/host, not on a dissolved-native device), and (2) **divergence-localization**
+      — because the same artifact is formally verified, an identical-tape divergence
+      provably excludes the verified logic (theoretically backed by Iris-Wasm's
+      robust-safety boundary, PLDI 2023). LEAD WITH (2), not "record-replay".
+    tags: [byo-os, record-replay, debugging, divergence-localization, wasm-r3, tcb-seam, gale74]
     fields:
       relevance: high
       action-required: true
-      source: "gust TCB seam; the import surface is the verification boundary (DOC-BYOOS-ARCH)"
+      source: "gust TCB seam = verification boundary (DOC-BYOOS-ARCH); prior art Wasm-R3 OOPSLA'24 (DOC-WASM-FRONTIER)"
     links:
       - type: generates
         target: REQ-BYOOS-REPLAY-001
