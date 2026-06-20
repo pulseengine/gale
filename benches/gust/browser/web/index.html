@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>gust in the browser — the same verified kernel that ships on a Cortex-M3</title>
+<style>
+  :root { --fg:#e8eef2; --bg:#0c1014; --accent:#4cc9f0; --muted:#7c8a99; --ok:#43d17a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .wrap { max-width:760px; margin:0 auto; padding:28px 20px 60px; }
+  h1 { font-size:20px; margin:0 0 2px; }
+  .sub { color:var(--muted); margin:0 0 22px; font-size:13px; }
+  .card { background:#121821; border:1px solid #1e2935; border-radius:10px; padding:16px 18px; margin:14px 0; }
+  .row { display:flex; gap:24px; flex-wrap:wrap; }
+  .stat { flex:1 1 140px; }
+  .k { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  .v { font-size:26px; font-weight:600; }
+  .v.accent { color:var(--accent); }
+  .bar { height:14px; background:#0a0e12; border:1px solid #1e2935; border-radius:7px; overflow:hidden; margin-top:6px; }
+  .fill { height:100%; background:linear-gradient(90deg,#1d4e89,var(--accent)); width:50%; transition:width .08s linear; }
+  canvas { width:100%; height:90px; display:block; background:#0a0e12; border:1px solid #1e2935; border-radius:8px; margin-top:8px; }
+  button { background:#1d4e89; color:#fff; border:0; border-radius:7px; padding:8px 14px; font:inherit; cursor:pointer; }
+  button:hover { background:#2a6bb8; }
+  input[type=range] { width:100%; }
+  code { color:var(--accent); }
+  .note { color:var(--muted); font-size:12.5px; }
+  .ok { color:var(--ok); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>gust — running in your browser</h1>
+  <p class="sub">The <b>same</b> verified <code>kiln-async</code> scheduler + fixed-point failsafe mixer that boots gust on a Cortex-M3 (8&nbsp;KB SRAM) and dissolves to native via <code>wasm&nbsp;→&nbsp;loom&nbsp;→&nbsp;synth</code> — here run unmodified as wasm (3.1&nbsp;KB, zero imports). One verified component, three runtimes: browser · wasmtime/kiln · dissolved-native. <span class="note">(gale#74 · FIND-BYOOS-002)</span></p>
+
+  <div class="card">
+    <div class="row">
+      <div class="stat"><div class="k">poll rounds</div><div class="v accent" id="rounds">0</div></div>
+      <div class="stat"><div class="k">scheduler</div><div class="v" id="state">idle</div></div>
+      <div class="stat"><div class="k">RC in</div><div class="v" id="rc">1024</div></div>
+      <div class="stat"><div class="k">PWM out (µs)</div><div class="v accent" id="pwm">1500</div></div>
+    </div>
+    <div class="bar"><div class="fill" id="fill"></div></div>
+    <canvas id="spark" width="720" height="90"></canvas>
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+      <button id="toggle">pause</button>
+      <span class="note" id="status">booting…</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="k">try the failsafe mixer directly (gust_mix: RC 0–2047 → PWM 1000–2000 µs, Q8 fixed-point)</div>
+    <input type="range" id="mixslider" min="0" max="2047" value="1024" />
+    <div class="note">gust_mix(<span id="mixin">1024</span>) = <span class="ok" id="mixout">1500</span> µs</div>
+  </div>
+
+  <p class="note">Load failed? wasm needs HTTP — serve this dir: <code>python3 -m http.server</code> then open <code>http://localhost:8000/</code>.</p>
+</div>
+
+<script>
+(async () => {
+  const $ = id => document.getElementById(id);
+  let g = null;
+  try {
+    const r = await fetch('gust.wasm');
+    const { instance } = await WebAssembly.instantiate(await r.arrayBuffer(), {});
+    g = instance.exports;
+    g.gust_boot();
+    $('status').textContent = 'booted — verified kiln-async scheduler live in wasm';
+    $('status').className = 'ok';
+  } catch (e) {
+    $('status').textContent = 'load error: ' + e + '  (serve over HTTP — see note below)';
+    return;
+  }
+
+  // mixer playground
+  const ms = $('mixslider');
+  const updMix = () => { $('mixin').textContent = ms.value; $('mixout').textContent = g.gust_mix(ms.value|0); };
+  ms.addEventListener('input', updMix); updMix();
+
+  // live scheduler loop: sweep RC, poll one round per tick, render
+  const cv = $('spark'), cx = cv.getContext('2d'); const hist = [];
+  let t = 0, running = true;
+  $('toggle').addEventListener('click', () => {
+    running = !running; $('toggle').textContent = running ? 'pause' : 'resume';
+  });
+  function frame() {
+    if (running) {
+      // RC sweeps like a control input
+      const rc = (1024 + Math.round(420 * Math.sin(t / 18))) & 0x7ff;
+      const pwm = g.gust_poll(rc);
+      t++;
+      $('rounds').textContent = g.gust_rounds();
+      $('state').textContent = 'Polled';
+      $('rc').textContent = rc;
+      $('pwm').textContent = pwm;
+      $('fill').style.width = Math.max(0, Math.min(100, ((pwm - 1000) / 1000) * 100)) + '%';
+      hist.push(pwm); if (hist.length > 720) hist.shift();
+      // sparkline
+      cx.clearRect(0, 0, cv.width, cv.height);
+      cx.strokeStyle = '#4cc9f0'; cx.lineWidth = 2; cx.beginPath();
+      hist.forEach((p, i) => {
+        const y = cv.height - ((p - 1000) / 1000) * (cv.height - 8) - 4;
+        i ? cx.lineTo(i, y) : cx.moveTo(i, y);
+      });
+      cx.stroke();
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
