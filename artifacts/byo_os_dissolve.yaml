@@ -1,0 +1,50 @@
+# BYO-OS: the dissolved library-OS backing of the kiln component-host path.
+# The SAME wac-composed component that runs on wasmtime (slices 1-3) also
+# dissolves to native ELF via unbundle -> loom -> synth. gale#74 / gale#63.
+artifacts:
+  - id: SAC-BYOOS-LIBOS
+    type: sw-arch-component
+    title: "Dissolved library-OS backing: composed component to native ELF (unbundle, loom, synth)"
+    status: proposed
+    description: >
+      The native backing of the kiln component-host path. A wac-composed gale
+      component (an app importing gale:kernel + gale-kiln providing it over the
+      verified gale::* deciders) is unbundled into its per-crate core modules
+      (wasm-tools component unbundle); each core is dissolved through the
+      maximal-wasm pipeline (loom optimize --passes inline, then synth compile
+      --relocatable) to a native relocatable object. The component-model glue
+      that wires the app's gale:kernel imports to the host's exports becomes
+      native inter-module linking. This proves the same component that runs on
+      wasmtime today also dissolves to native with no wasm runtime resident on
+      the device - the library-OS image. The verification boundary stays the
+      wasm/native seam; isolation between dissolved components is the opt-in
+      MPU/PMP layer, not the dissolve (see gale#86).
+    tags: [byo-os, gale74, kiln, dissolve, library-os, synth]
+    fields:
+      pipeline: "wac compose, wasm-tools component unbundle, loom inline, synth --relocatable, native link"
+      proven: "both composed core modules dissolve, synth exit 0 (kernel 24838 bytes 24 fns, app 24162 bytes 16 fns)"
+    links:
+      - type: allocated-from
+        target: REQ-BYOOS-CRATE-001
+
+  - id: FIND-BYOOS-006
+    type: finding
+    title: "Dissolved component cores carry the component-adapter / cabi_realloc canonical-ABI machinery; elide it for the lean library-OS image"
+    status: active
+    description: >
+      Dissolving the unbundled cores as-is produces ~24 KB each, because the
+      core modules still contain the wit-bindgen component-adapter and
+      cabi_realloc canonical-ABI machinery - the dev/test runtime layer. For the
+      lean library-OS image this must be elided: our kernel interfaces are
+      scalar-in / enum-out, so the canonical ABI needs no realloc at the call
+      boundary, and the bare gale-logic core dissolves to hundreds of bytes (cf.
+      the wasm-dist sem module at 544 bytes). The path is to link the bare
+      gale-logic cores with a scalar ABI rather than dissolve the full
+      component-adapter core. Tracks the std/alloc story (the runtime layer that
+      should evaporate on dissolve, per wit/README) and feeds the future lean
+      dissolve. Also filed as tool friction against loom/synth (no pass to strip
+      unused component-adapter / cabi_realloc from a dissolved core).
+    tags: [byo-os, gale74, dissolve, synth, loom, std-alloc, lean-image]
+    links:
+      - type: refines
+        target: SAC-BYOOS-LIBOS
