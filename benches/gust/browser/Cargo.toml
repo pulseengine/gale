@@ -1,0 +1,18 @@
+[package]
+name = "gust_browser"
+version = "0.1.0"
+edition = "2021"
+description = "gust in the browser: the SAME kiln-async scheduler wasm that dissolves to native on Cortex-M3, run in a browser wasm engine (gale#74 FIND-BYOOS-002, wasm-as-universal-substrate)."
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+kiln-async = { path = "/Volumes/Home/git/pulseengine/kiln/kiln-async" }
+
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
