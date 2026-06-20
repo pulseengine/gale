@@ -133,3 +133,55 @@ carries the same gaps gust surfaced, now at async scale:
 - **The synth toolchain in the TCB** — trust/qualification story (cf. `FIND-GUST-004`).
 
 These are tracked as gust findings and apply identically to the BYO-OS driver framework.
+
+## wasm as the universal lifecycle substrate (not just a build IR)
+
+Because gale authors components as wasm and dissolves them to native *only at the end*,
+the wasm is the substrate for the **whole lifecycle** — one formally-verified artifact,
+three runtimes:
+
+```mermaid
+flowchart LR
+  SRC["verified component (Rust -> wasm)\nproven: Verus/Rocq/Lean/Kani"]
+  SRC --> BR["Browser (wasm)\ndocs/demos · visual inspector · browser-as-HIL"]
+  SRC --> HOST["Host runtime: wasmtime / kiln\nfunctional + 3-way differential test · fuzz · debug"]
+  SRC --> HW["Dissolved native (synth)\nships on M7 / M4 / M3 / RISC-V"]
+  HW -. "import tape (MMIO/IRQ/timer) recorded at the TCB seam" .-> HOST
+```
+
+- **Browser** — run a component (or a whole gust) unmodified in a browser: interactive
+  docs, a steppable scheduler/ring-buffer inspector, browser-as-HIL against a simulated
+  peripheral. (`FIND-BYOOS-002`)
+- **Host (wasmtime / kiln)** — already shipping: the wasm-testbed runs `wasmtime --invoke`
+  + the 3-way wasmtime/unicorn-arm/rv32 differential. Fast functional test, fuzzing, and
+  host debugging of the *same* component that ships. (`REQ-BYOOS-MULTIRT-001`)
+- **Dissolved native** — `synth` to bare metal, ships.
+
+The neighbours can't do this: the dissolved-native field (aWsm) *discards* the wasm; the
+on-device-runtime field (WAMR) keeps an interpreter and *never dissolves*. gale keeps both
+forms of one verified artifact (see `DOC-BYOOS-MARKET`).
+
+### The debug superpower: record on HW, replay in wasmtime (`FIND-BYOOS-003`)
+
+The wasm/TCB **import seam is narrow and is exactly where all non-determinism enters** —
+the verified logic above it is deterministic. So the seam is a natural **record-replay cut**:
+capture the tape of import values on hardware (MMIO reads, IRQ/timer events, bus bytes),
+replay it into the *same* wasm component in wasmtime/browser, and re-execute bit-identically.
+A hardware heisenbug (an M7 DMA race, or a sleepy wohl node where JTAG/printf is painful)
+becomes a steppable, time-travel-debuggable host session.
+
+**The elegant part: the record-replay cut == the verification cut.** A replay that diverges
+from the proven component's behaviour localizes the fault to the **native TCB** (the declared
+unverified part) or to **unmodeled hardware** — *never* to the verified logic. record-replay
+(rr, Pernosco) and embedded trace (Tracealyzer, SystemView) exist, but as x86 time-travel or
+trace-*view*; deterministic re-execution of the same verified, dissolvable component at the
+verification seam is the unoccupied combination. (`REQ-BYOOS-REPLAY-001`)
+
+## Second vertical: wohl (home automation) (`STKH-WOHL-001` / `FIND-BYOOS-004`)
+
+Drones and home automation share the BYO-OS value, with wohl emphasising **cost + battery**:
+the smallest dissolved footprint on the cheapest MCU, a **fuel-bounded scheduler whose bound
+makes wake/sleep timing predictable** (so the node sleeps maximally and deterministically —
+a direct battery win), and **OTA where the update unit is a signed, re-verifiable wasm
+component**. Same component library, scaled down — widening gale from safety-critical into
+cost/power-critical. (`REQ-WOHL-001`)

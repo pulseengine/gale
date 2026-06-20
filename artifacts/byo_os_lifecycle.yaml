@@ -1,0 +1,189 @@
+# gale BYO-OS — the wasm-as-universal-substrate lifecycle + a second vertical (wohl).
+#
+# Out-of-the-box extension of gale#74: because gale authors components as wasm and
+# only *then* dissolves them to native, the wasm is not merely a build IR — it is the
+# universal substrate for the WHOLE lifecycle. The same formally-verified component
+# runs in (a) the browser, (b) a host runtime (wasmtime / kiln) for test, and (c)
+# dissolved-to-native on hardware. The narrow wasm/TCB import seam — which is already
+# the *verification* cut — doubles as a *record-replay* cut: capture the import tape
+# on hardware, replay it deterministically in wasmtime/browser, and step a hardware
+# bug in a host time-travel debugger.
+#
+# Honest novelty (per the market sweep, DOC-BYOOS-MARKET): every ingredient exists —
+# wasm-in-browser, host wasm testing, record-replay (rr/Pernosco), OTA-wasm
+# (WAMR/WasmEdge). gale's differentiator is the CONJUNCTION on a single
+# formally-verified, dissolvable component: one artifact across browser/host/HW, with
+# the verification-cut = the record-replay-cut. The columns are owned; the
+# intersection is not.
+
+artifacts:
+  # ── Second vertical: home automation (wohl) ───────────────────────────────
+  - id: STKH-WOHL-001
+    type: stakeholder-req
+    title: "wohl (home automation): low cost + few battery cycles, OTA-updatable, browser-simulable"
+    status: proposed
+    description: >
+      wohl (home automation) is a second target vertical alongside drones, with the
+      same pressures that make gale attractive there: low unit cost (smallest MCU),
+      few battery cycles (sleep-heavy, intermittent, multi-year field life), and
+      wireless OTA update over the device lifetime. A home-automation node wants the
+      same composable verified components as a drone, scaled DOWN: a tiny dissolved
+      footprint, a fuel-bounded scheduler that makes sleep timing predictable (battery
+      win), an OTA path where the update unit is a signed, re-verifiable wasm
+      component, and a browser-simulable dev/demo experience.
+    tags: [wohl, home-automation, byo-os, battery, ota, gale74]
+    fields:
+      priority: should
+
+  # ── wasm as the universal lifecycle substrate ─────────────────────────────
+  - id: FIND-BYOOS-002
+    type: finding
+    title: "One verified component, three runtimes: browser + host (wasmtime/kiln) + dissolved-native"
+    status: active
+    description: >
+      Because gale authors components as wasm and dissolves them to native only at the
+      end, the SAME formally-verified component executes unmodified across the whole
+      lifecycle: in the browser (interactive docs/demos, a visual scheduler/ring-buffer
+      inspector, browser-as-HIL against a simulated peripheral model), on a host runtime
+      (wasmtime/kiln) for fast functional + differential testing and fuzzing, and
+      dissolved-to-native on the MCU for ship. gale already does the host leg (the
+      wasm-testbed runs wasmtime --invoke + a 3-way wasmtime/unicorn-arm/rv32
+      differential); the browser leg and a first-class "run gust in your browser" are
+      the obvious extension. The neighbours cannot do this: the dissolved-native field
+      (aWsm) discards the wasm; the on-device-runtime field (WAMR) keeps an interpreter
+      and never dissolves. gale uniquely keeps BOTH forms of one verified artifact.
+    tags: [byo-os, wasm-substrate, browser, wasmtime, kiln, gale74]
+    fields:
+      relevance: high
+      action-required: true
+      source: "gust + wasm-testbed (host leg shipping); DOC-BYOOS-MARKET (ingredients owned, conjunction not)"
+    links:
+      - type: generates
+        target: REQ-BYOOS-MULTIRT-001
+      - type: related-to
+        target: STKH-WOHL-001
+
+  # ── HW -> wasmtime record-replay debugging ────────────────────────────────
+  - id: FIND-BYOOS-003
+    type: finding
+    title: "Import-tape record-replay: capture on HW, replay deterministically in wasmtime/browser"
+    status: active
+    description: >
+      The wasm/TCB import seam is narrow (the ~4-function TCB: MMIO reads, IRQ events,
+      timer ticks, bus bytes) AND it is exactly where all non-determinism enters a
+      gale component — the verified logic above it is deterministic. That makes the seam
+      the natural record-replay cut: on hardware, capture the "tape" of import values
+      the component consumes; replay that tape into the SAME wasm component in
+      wasmtime/browser and get bit-identical execution. A hardware heisenbug (M7/M4 or
+      a sleepy wohl node, where JTAG/printf debugging is painful) becomes a
+      deterministic, steppable, time-travel-debuggable host session.
+
+      The sharp consequence of the verification/replay cut being the SAME seam: a
+      replay that DIVERGES from the verified component's behaviour localizes the bug to
+      EITHER the native TCB (the declared unverified part) OR an unmodeled hardware
+      behaviour — never the verified logic (which is proven). Record-replay (rr,
+      Pernosco) and embedded trace (Tracealyzer, SystemView) exist, but as x86
+      time-travel or trace-VIEW; deterministic *re-execution of the same verified,
+      dissolvable component* at the verification seam is the unoccupied combination.
+    tags: [byo-os, record-replay, debugging, time-travel, tcb-seam, gale74]
+    fields:
+      relevance: high
+      action-required: true
+      source: "gust TCB seam; the import surface is the verification boundary (DOC-BYOOS-ARCH)"
+    links:
+      - type: generates
+        target: REQ-BYOOS-REPLAY-001
+
+  # ── wohl as an application of BYO-OS ───────────────────────────────────────
+  - id: FIND-BYOOS-004
+    type: finding
+    title: "Home automation (wohl) is a second BYO-OS vertical — same components, scaled down + OTA"
+    status: active
+    description: >
+      The drone (PX4/M7) and home-automation (wohl) verticals share the BYO-OS value:
+      verified composable components, tiny dissolved footprint, fuel-bounded WCET. wohl
+      adds two emphases — battery (the fuel bound makes wake/sleep timing predictable,
+      so the node sleeps maximally and deterministically) and OTA (ship a signed,
+      re-verifiable wasm component as the update unit; re-dissolve on-device or ship
+      dissolved). This widens gale's market beyond safety-critical into cost/power-
+      critical, on the SAME component library.
+    tags: [wohl, home-automation, byo-os, battery, ota, gale74]
+    fields:
+      relevance: medium
+      action-required: false
+      source: "user direction 2026-06-20; STKH-WOHL-001"
+    links:
+      - type: generates
+        target: REQ-WOHL-001
+      - type: related-to
+        target: STKH-WOHL-001
+
+  # ── Requirements ──────────────────────────────────────────────────────────
+  - id: REQ-BYOOS-MULTIRT-001
+    type: sw-req
+    title: "The same verified wasm component shall run + be tested across browser, host (wasmtime/kiln), and dissolved-native"
+    status: proposed
+    description: >
+      A gale component (and a composed BYO-OS such as gust) shall be runnable from a
+      single wasm source in three environments — browser (wasm), host runtime
+      (wasmtime/kiln), and dissolved-to-native (synth) — with a test harness that
+      exercises the same vectors across all three and asserts functional equivalence
+      (extending the existing wasmtime/unicorn-arm/rv32 differential). A "run gust in
+      the browser" demo is the first browser-leg deliverable.
+    tags: [byo-os, multi-runtime, browser, test, gale74]
+    fields:
+      req-type: functional
+      priority: should
+      verification-criteria: >
+        A composed component produces identical results for a vector set run in
+        (a) wasmtime, (b) a browser wasm host, and (c) the synth-dissolved native
+        object (on qemu/Renode); divergence fails the harness.
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+
+  - id: REQ-BYOOS-REPLAY-001
+    type: sw-req
+    title: "Capture the wasm/TCB import tape on hardware and deterministically replay it in wasmtime/browser"
+    status: proposed
+    description: >
+      The construction scaffold shall support capturing, on hardware, the sequence of
+      values crossing the wasm/TCB import seam (MMIO reads, IRQ/timer events, bus
+      bytes), and replaying that tape into the same wasm component in wasmtime/browser
+      to reproduce execution bit-identically for debugging. Because the seam is the
+      verification cut, a replay divergence shall localize a fault to the native TCB or
+      to unmodeled hardware, never to the verified logic.
+    tags: [byo-os, record-replay, debugging, tcb-seam, gale74]
+    fields:
+      req-type: functional
+      priority: could
+      verification-criteria: >
+        A recorded HW import tape replayed in wasmtime reproduces the on-HW
+        component output exactly; an injected TCB/hardware fault shows up as a replay
+        divergence pinned to the seam, not the verified body.
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+
+  - id: REQ-WOHL-001
+    type: sw-req
+    title: "BYO-OS shall scale to a battery/cost-critical home-automation node (predictable sleep + OTA wasm)"
+    status: proposed
+    description: >
+      The component library + construction crate shall target a low-cost, battery-
+      powered home-automation node: minimal dissolved footprint, a fuel-bounded
+      scheduler whose bound makes wake/sleep timing predictable (maximize deep-sleep
+      residency), and an OTA path where the signed wasm component is the re-verifiable
+      update unit. Demonstrates gale beyond safety-critical, into cost/power-critical,
+      on the same components.
+    tags: [wohl, home-automation, battery, ota, byo-os, gale74]
+    fields:
+      req-type: functional
+      priority: could
+      verification-criteria: >
+        A wohl-class node image builds from the construction crate; the scheduler's
+        fuel bound yields a documented worst-case wake interval (sleep budget); an OTA
+        wasm component update is sigil-signed and re-verifiable.
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
