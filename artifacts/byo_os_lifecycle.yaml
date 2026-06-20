@@ -196,3 +196,38 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-BYOOS-001
+
+  # ── The uniqueness the frontier sweep underweighted: the device class ──────
+  - id: FIND-BYOOS-005
+    type: finding
+    title: "CM + an OS authored in wasm, on the sub-runtime device class WAMR cannot reach, is genuinely unoccupied"
+    status: active
+    description: >
+      The frontier sweep (DOC-WASM-FRONTIER) correctly found that individual
+      ingredients are prior art (record-replay = Wasm-R3; dissolve = wasm2c/w2c2;
+      wasm-on-MCU = WAMR). But it underweighted the DEVICE CLASS, which is where gale
+      is genuinely alone:
+        - WAMR — the de-facto "wasm on MCU" — keeps a RESIDENT runtime/loader
+          (~50-64 KB code + per-module RAM). Its floor is far above gust's 8 KB SRAM /
+          ~4-function-TCB / ZERO-runtime target. WAMR (and AkiraOS/esp-wdf) do not aim
+          at this class; they cannot, without a runtime on the device.
+        - The WebAssembly Component Model runs in cloud/edge/host runtimes. NOBODY runs
+          CM on bare-metal MCUs at all — and certainly not a CM-composed OS dissolved to
+          native on an 8 KB node.
+        - gust is an OS *authored in wasm* (kiln-async kernel + primitives), composed and
+          dissolved (meld/loom/synth) to native, booting on 8 KB with no runtime.
+      So the unoccupied intersection is not just "verified + dissolved" — it is
+      "Component-Model-composed, wasm-authored OS, on the sub-runtime (<=~16 KB, no
+      resident runtime) device class". WAMR being the universally-cited incumbent makes
+      this STRONGER, not weaker: the thing everyone points to for "wasm on MCU"
+      structurally stops above where gale lives. Do not let the prior-art on individual
+      ingredients talk down the conjunction at this device class — but do keep citing
+      the prior art honestly (the two are not in tension).
+    tags: [byo-os, device-class, wamr, component-model, no-runtime, uniqueness, gale74]
+    fields:
+      relevance: high
+      action-required: false
+      source: "frontier sweep WAMR footprint data (DOC-WASM-FRONTIER); gust = 8KB no-runtime (project_gust_mini_os)"
+    links:
+      - type: related-to
+        target: SYSREQ-BYOOS-001
