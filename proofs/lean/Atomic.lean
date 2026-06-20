@@ -1,7 +1,6 @@
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.NormNum
 import Mathlib.Tactic.Ring
-import Mathlib.Tactic.Omega
 
 /-!
 # Atomic Operation Arithmetic
@@ -124,83 +123,77 @@ theorem sub_add_roundtrip_in_range (a b : Nat) (ha : a < MOD32) :
 /-! ## Bitwise OR Laws -/
 
 /-- OR idempotence: a | a = a. -/
-theorem or_idempotent (a : Nat) : Nat.lor a a = a := by
-  simp [Nat.lor_self]
+theorem or_idempotent (a : Nat) : Nat.lor a a = a := by show a ||| a = a; simp
 
 /-- OR with zero is identity. -/
-theorem or_zero_right (a : Nat) : Nat.lor a 0 = a := by
-  simp [Nat.lor_zero]
+theorem or_zero_right (a : Nat) : Nat.lor a 0 = a := by show a ||| 0 = a; simp
 
 /-- OR with zero (left) is identity. -/
-theorem or_zero_left (a : Nat) : Nat.lor 0 a = a := by
-  simp [Nat.zero_lor]
+theorem or_zero_left (a : Nat) : Nat.lor 0 a = a := by show 0 ||| a = a; simp
 
 /-- OR absorption: (a | b) | b = a | b. -/
 theorem or_absorb_right (a b : Nat) : Nat.lor (Nat.lor a b) b = Nat.lor a b := by
-  simp [Nat.lor_assoc, Nat.lor_self]
+  show (a ||| b) ||| b = a ||| b; rw [Nat.or_assoc, Nat.or_self]
 
-/-- OR commutativity. -/
-theorem or_comm (a b : Nat) : Nat.lor a b = Nat.lor b a := Nat.lor_comm a b
+/-- OR commutativity. (Renamed from `or_comm` to avoid clash with core's `or_comm` on Prop.) -/
+theorem nat_lor_comm (a b : Nat) : Nat.lor a b = Nat.lor b a := Nat.or_comm a b
 
-/-- OR associativity. -/
-theorem or_assoc (a b c : Nat) : Nat.lor (Nat.lor a b) c = Nat.lor a (Nat.lor b c) :=
-  Nat.lor_assoc a b c
+/-- OR associativity. (Renamed from `or_assoc` to avoid clash with core's `or_assoc`.) -/
+theorem nat_lor_assoc (a b c : Nat) : Nat.lor (Nat.lor a b) c = Nat.lor a (Nat.lor b c) :=
+  Nat.or_assoc a b c
 
 /-! ## Bitwise AND Laws -/
 
 /-- AND idempotence: a & a = a. -/
-theorem and_idempotent (a : Nat) : Nat.land a a = a := by
-  simp [Nat.land_self]
+theorem and_idempotent (a : Nat) : Nat.land a a = a := by show a &&& a = a; simp
 
-/-- AND with all-ones (max Nat) is identity in the sense that for finite-width
-    values, and with the mask of all ones is identity. -/
+/-! AND with the all-ones mask of a finite bit width is identity; stated below via
+    the `allOnes` definition rather than as an unbounded Nat theorem. -/
 
 /-- AND absorption: (a & b) & b = a & b. -/
 theorem and_absorb_right (a b : Nat) : Nat.land (Nat.land a b) b = Nat.land a b := by
-  simp [Nat.land_assoc, Nat.land_self]
+  show (a &&& b) &&& b = a &&& b; rw [Nat.and_assoc, Nat.and_self]
 
-/-- AND commutativity. -/
-theorem and_comm (a b : Nat) : Nat.land a b = Nat.land b a := Nat.land_comm a b
+/-- AND commutativity. (Renamed from `and_comm` to avoid clash with core's `and_comm`.) -/
+theorem nat_land_comm (a b : Nat) : Nat.land a b = Nat.land b a := Nat.and_comm a b
 
-/-- AND associativity. -/
-theorem and_assoc (a b c : Nat) : Nat.land (Nat.land a b) c = Nat.land a (Nat.land b c) :=
-  Nat.land_assoc a b c
+/-- AND associativity. (Renamed from `and_assoc` to avoid clash with core's `and_assoc`.) -/
+theorem nat_land_assoc (a b c : Nat) : Nat.land (Nat.land a b) c = Nat.land a (Nat.land b c) :=
+  Nat.and_assoc a b c
 
 /-- AND with zero is zero. -/
-theorem and_zero_right (a : Nat) : Nat.land a 0 = 0 := by simp
+theorem and_zero_right (a : Nat) : Nat.land a 0 = 0 := by show a &&& 0 = 0; simp
 
 /-- AND with zero (left) is zero. -/
-theorem and_zero_left (a : Nat) : Nat.land 0 a = 0 := by simp
+theorem and_zero_left (a : Nat) : Nat.land 0 a = 0 := by show 0 &&& a = 0; simp
 
 /-! ## Bitwise XOR Laws -/
 
-/-- XOR self-inverse: a ^ a = 0. -/
-theorem xor_self (a : Nat) : Nat.xor a a = 0 := Nat.xor_self a
+/-- XOR self-inverse: a ^ a = 0. (Renamed from `xor_self` to avoid core clash.) -/
+theorem nat_xor_self (a : Nat) : Nat.xor a a = 0 := Nat.xor_self a
 
 /-- XOR self-inverse: (a ^ b) ^ b = a. -/
 theorem xor_self_inverse (a b : Nat) : Nat.xor (Nat.xor a b) b = a := by
-  simp [Nat.xor_assoc, Nat.xor_self]
+  show (a ^^^ b) ^^^ b = a; rw [Nat.xor_assoc, Nat.xor_self, Nat.xor_zero]
 
 /-- XOR with zero is identity. -/
 theorem xor_zero_right (a : Nat) : Nat.xor a 0 = a := Nat.xor_zero a
 
-/-- XOR commutativity. -/
-theorem xor_comm (a b : Nat) : Nat.xor a b = Nat.xor b a := Nat.xor_comm a b
+/-- XOR commutativity. (Renamed from `xor_comm` to avoid core clash.) -/
+theorem nat_xor_comm (a b : Nat) : Nat.xor a b = Nat.xor b a := Nat.xor_comm a b
 
-/-- XOR associativity. -/
-theorem xor_assoc (a b c : Nat) : Nat.xor (Nat.xor a b) c = Nat.xor a (Nat.xor b c) :=
+/-- XOR associativity. (Renamed from `xor_assoc` to avoid core clash.) -/
+theorem nat_xor_assoc (a b c : Nat) : Nat.xor (Nat.xor a b) c = Nat.xor a (Nat.xor b c) :=
   Nat.xor_assoc a b c
 
 /-- XOR double application: (a ^ b) ^ b = a. -/
 theorem xor_double (a b : Nat) : Nat.xor (Nat.xor a b) b = a := xor_self_inverse a b
 
-/-! ## NAND Definition and Properties -/
+/-! ## NAND Definition and Properties
 
-/-- NAND: ~(a & b) modeled over finite bit-width w using `(a & b) ^^^ allOnes`. -/
-
-/-- NAND idempotence: nand(a, a) = ~a. -/
--- This is a definitional property, not a Nat theorem (Nat lacks complement).
--- We state it in terms of XOR with the all-ones mask for a given bit width.
+    NAND `~(a & b)` is modeled over a finite bit-width w as `(a & b) ^^^ allOnes w`.
+    It is a definitional property (Nat lacks complement), stated below via XOR with the
+    all-ones mask for a fixed bit width. -/
 
 /-- For any bit width w, a bitmask of all 1s is 2^w - 1. -/
 def allOnes (w : Nat) : Nat := 2 ^ w - 1
@@ -211,16 +204,16 @@ def nand32 (a b : Nat) : Nat := Nat.xor (Nat.land a b) (allOnes 32)
 /-- NAND with zero gives all-ones. -/
 theorem nand_zero_right (a : Nat) : nand32 a 0 = allOnes 32 := by
   unfold nand32
-  simp [Nat.xor_zero]
+  show (a &&& 0) ^^^ allOnes 32 = allOnes 32
+  rw [Nat.and_zero]; exact Nat.zero_xor _
 
 /-- NAND with all-ones gives NOT a (complement within 32 bits). -/
 theorem nand_allones (a : Nat) (ha : a < 2 ^ 32) : nand32 a (allOnes 32) = Nat.xor a (allOnes 32) := by
   unfold nand32 allOnes
-  norm_num
-  rw [show (2 : Nat) ^ 32 - 1 = 4294967295 by norm_num]
-  -- a & 4294967295 = a when a < 2^32
-  rw [Nat.land_eq_min]
-  simp [Nat.min_eq_left (by omega : a ≤ 4294967295)]
+  congr 1
+  -- a & (2^32 - 1) = a when a < 2^32  (mask with all-ones is identity)
+  show a &&& (2 ^ 32 - 1) = a
+  rw [Nat.and_two_pow_sub_one_eq_mod]; exact Nat.mod_eq_of_lt ha
 
 /-! ## AT3/AT4: Compare-and-Swap Sequential Specification -/
 
@@ -276,12 +269,12 @@ theorem test_and_set_idempotent (current : Nat) :
 /-- AND distributes over OR. -/
 theorem and_or_distrib (a b c : Nat) :
     Nat.land a (Nat.lor b c) = Nat.lor (Nat.land a b) (Nat.land a c) := by
-  exact Nat.land_lor_distrib_left a b c
+  exact Nat.and_or_distrib_left a b c
 
 /-- OR distributes over AND. -/
 theorem or_and_distrib (a b c : Nat) :
     Nat.lor a (Nat.land b c) = Nat.land (Nat.lor a b) (Nat.lor a c) := by
-  exact Nat.lor_land_distrib_left a b c
+  exact Nat.or_and_distrib_left a b c
 
 /-! ## Wrapping Arithmetic: Commutativity and Associativity -/
 

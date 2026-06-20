@@ -1,7 +1,6 @@
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.NormNum
 import Mathlib.Tactic.Ring
-import Mathlib.Tactic.Omega
 
 /-!
 # Ring Buffer Index Arithmetic
@@ -141,30 +140,13 @@ theorem put_preserves_inv (rb : RingBuf) (hv : rb.inv) (hnotfull : rb.size < rb.
   · -- new size ≤ capacity
     omega
   · -- ring_consistent for new state
-    unfold RingBuf.ringConsistent RingBuf.put
+    unfold RingBuf.ringConsistent
     simp only
     unfold RingBuf.ringConsistent at hcons
     unfold nextIdx
-    split_ifs with h1 h2 h3
-    · -- head + (size + 1) < capacity, and tail + 1 < capacity
-      split_ifs at hcons with hc
-      · omega
-      · push_neg at hc; omega
-    · push_neg at h1
-      -- head + (size + 1) >= capacity, and tail + 1 < capacity
-      split_ifs at hcons with hc
-      · omega
-      · push_neg at hc; omega
-    · push_neg at h2
-      -- head + (size + 1) < capacity, tail + 1 >= capacity (tail = cap - 1)
-      split_ifs at hcons with hc
-      · omega
-      · push_neg at hc; omega
-    · push_neg at h1; push_neg at h3
-      -- head + (size + 1) >= capacity, tail + 1 >= capacity
-      split_ifs at hcons with hc
-      · omega
-      · push_neg at hc; omega
+    -- robust: split every if in hcons and the goal, omega each case
+    -- (omega handles the negated branch conditions directly; no push_neg needed)
+    split_ifs at hcons ⊢ <;> omega
 
 /-! ## Get Operation -/
 
@@ -199,26 +181,11 @@ theorem get_preserves_inv (rb : RingBuf) (hv : rb.inv) (hnonempty : rb.size > 0)
   · -- new size ≤ capacity
     omega
   · -- ring_consistent for new state
-    unfold RingBuf.ringConsistent RingBuf.get
+    unfold RingBuf.ringConsistent
     simp only
     unfold RingBuf.ringConsistent at hcons
     unfold nextIdx
-    split_ifs with h1 h2 h3
-    · split_ifs at hcons with hc
-      · omega
-      · push_neg at hc; omega
-    · push_neg at h1
-      split_ifs at hcons with hc
-      · omega
-      · push_neg at hc; omega
-    · push_neg at h2
-      split_ifs at hcons with hc
-      · omega
-      · push_neg at hc; omega
-    · push_neg at h1; push_neg at h3
-      split_ifs at hcons with hc
-      · omega
-      · push_neg at hc; omega
+    split_ifs at hcons ⊢ <;> omega
 
 /-! ## RB9: Capacity Conservation -/
 
@@ -245,7 +212,6 @@ theorem put_get_roundtrip (rb : RingBuf) (hv : rb.inv) (hnotfull : rb.size < rb.
     rb.put.get.size = rb.size := by
   unfold RingBuf.put RingBuf.get
   simp
-  omega
 
 /-- Put then get: head is advanced once overall (net effect). -/
 theorem put_get_head_advances (rb : RingBuf) (hv : rb.inv) (hnotfull : rb.size < rb.capacity) :
