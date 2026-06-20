@@ -3,111 +3,174 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>gust in the browser — the same verified kernel that ships on a Cortex-M3</title>
+<title>gale + gust in the browser — verified components, same wasm that dissolves to a Cortex-M3</title>
 <style>
-  :root { --fg:#e8eef2; --bg:#0c1014; --accent:#4cc9f0; --muted:#7c8a99; --ok:#43d17a; }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
-  .wrap { max-width:760px; margin:0 auto; padding:28px 20px 60px; }
-  h1 { font-size:20px; margin:0 0 2px; }
-  .sub { color:var(--muted); margin:0 0 22px; font-size:13px; }
-  .card { background:#121821; border:1px solid #1e2935; border-radius:10px; padding:16px 18px; margin:14px 0; }
-  .row { display:flex; gap:24px; flex-wrap:wrap; }
-  .stat { flex:1 1 140px; }
-  .k { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
-  .v { font-size:26px; font-weight:600; }
-  .v.accent { color:var(--accent); }
-  .bar { height:14px; background:#0a0e12; border:1px solid #1e2935; border-radius:7px; overflow:hidden; margin-top:6px; }
-  .fill { height:100%; background:linear-gradient(90deg,#1d4e89,var(--accent)); width:50%; transition:width .08s linear; }
-  canvas { width:100%; height:90px; display:block; background:#0a0e12; border:1px solid #1e2935; border-radius:8px; margin-top:8px; }
-  button { background:#1d4e89; color:#fff; border:0; border-radius:7px; padding:8px 14px; font:inherit; cursor:pointer; }
-  button:hover { background:#2a6bb8; }
-  input[type=range] { width:100%; }
-  code { color:var(--accent); }
-  .note { color:var(--muted); font-size:12.5px; }
-  .ok { color:var(--ok); }
+  :root { --fg:#e8eef2; --bg:#0c1014; --accent:#4cc9f0; --muted:#7c8a99; --ok:#43d17a; --warn:#f0a04c; --bad:#e5567b; --gale:#9d7cff; }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}
+  .wrap{max-width:820px;margin:0 auto;padding:26px 20px 70px}
+  h1{font-size:20px;margin:0 0 2px} h2{font-size:15px;margin:0 0 10px;display:flex;gap:8px;align-items:center}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 20px}
+  .card{background:#121821;border:1px solid #1e2935;border-radius:10px;padding:16px 18px;margin:14px 0}
+  .gale-card{border-color:#3a2d63}
+  .badge{font-size:11px;padding:2px 7px;border-radius:5px;background:#241a3d;color:var(--gale);border:1px solid #3a2d63}
+  .badge.kiln{background:#10202b;color:var(--accent);border-color:#1d4e89}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0}
+  button{background:#1d4e89;color:#fff;border:0;border-radius:7px;padding:7px 13px;font:inherit;cursor:pointer}
+  button:hover{background:#2a6bb8} button.g{background:#5b3fa0} button.g:hover{background:#6d4fc0}
+  label{color:var(--muted);font-size:13px;display:inline-flex;gap:5px;align-items:center}
+  .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  .v{font-size:24px;font-weight:600}
+  .slots{display:flex;gap:6px;margin:8px 0}
+  .slot{width:42px;height:34px;border:1px solid #2a3a4a;border-radius:6px;display:flex;align-items:center;justify-content:center;background:#0a0e12;font-size:13px}
+  .slot.full{background:#173a2a;border-color:#2e7d52;color:var(--ok)}
+  .slot.w{outline:2px solid var(--accent)}
+  .decide{font-weight:600}
+  .decide.ok{color:var(--ok)} .decide.wake{color:var(--accent)} .decide.warn{color:var(--warn)} .decide.bad{color:var(--bad)}
+  pre.log{background:#0a0e12;border:1px solid #1e2935;border-radius:8px;padding:10px;height:120px;overflow:auto;font-size:12.5px;margin-top:10px;color:var(--muted)}
+  canvas{width:100%;height:70px;display:block;background:#0a0e12;border:1px solid #1e2935;border-radius:8px;margin-top:8px}
+  code{color:var(--accent)} .gale-fg{color:var(--gale)} .note{color:var(--muted);font-size:12.5px}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>gust — running in your browser</h1>
-  <p class="sub">The <b>same</b> verified <code>kiln-async</code> scheduler + fixed-point failsafe mixer that boots gust on a Cortex-M3 (8&nbsp;KB SRAM) and dissolves to native via <code>wasm&nbsp;→&nbsp;loom&nbsp;→&nbsp;synth</code> — here run unmodified as wasm (3.1&nbsp;KB, zero imports). One verified component, three runtimes: browser · wasmtime/kiln · dissolved-native. <span class="note">(gale#74 · FIND-BYOOS-002)</span></p>
+  <h1>gale + gust — running in your browser</h1>
+  <p class="sub">Everything below is <b>one wasm module</b> (3.3&nbsp;KB) — the <span class="gale-fg">formally-verified gale components</span> (the <i>same</i> proven decision logic that ships in the Zephyr drop-in and the wasm-cross-LTO modules) and the <span style="color:var(--accent)">kiln-async scheduler</span> that powers gust on a Cortex-M3. Same code, three runtimes: <b>browser · wasmtime/kiln · dissolved-native</b>. <span class="note" id="status">booting…</span></p>
 
+  <!-- ============ THE VERIFIED gale COMPONENTS ============ -->
+  <div class="card gale-card">
+    <h2><span class="gale-fg">●</span> gale verified components <span class="badge">Verus · Rocq · Lean · Kani</span></h2>
+    <p class="note">These call gale's <b>proven decision functions</b> directly (<code>gale::sem::give_decide</code>, <code>gale::msgq::put_decide</code>, …). The browser is just the “apply” shell; the <b>decision</b> is the machine-checked component — exactly what runs on the MCU.</p>
+
+    <!-- semaphore -->
+    <div style="margin-top:14px">
+      <div class="k">k_sem (<code>gale::sem</code>) — count limit 3</div>
+      <div class="row">
+        <div>count <span class="v gale-fg" id="sem_count">0</span></div>
+        <div>waiters <span class="v" id="sem_wait">0</span></div>
+        <button class="g" id="sem_give">give()</button>
+        <button class="g" id="sem_take">take()</button>
+        <label><input type="checkbox" id="sem_nowait" checked> no-wait</label>
+        <span class="decide" id="sem_decide">—</span>
+      </div>
+    </div>
+
+    <!-- message queue -->
+    <div style="margin-top:16px">
+      <div class="k">k_msgq (<code>gale::msgq</code>) — ring depth 4</div>
+      <div class="slots" id="mq_slots"></div>
+      <div class="row">
+        <div>used <span class="v gale-fg" id="mq_used">0</span></div>
+        <button class="g" id="mq_put">put()</button>
+        <button class="g" id="mq_get">get()</button>
+        <label><input type="checkbox" id="mq_waiter"> reader&nbsp;waiting</label>
+        <label><input type="checkbox" id="mq_nowait" checked> no-wait</label>
+        <span class="decide" id="mq_decide">—</span>
+      </div>
+    </div>
+    <pre class="log" id="log"></pre>
+  </div>
+
+  <!-- ============ THE kiln SCHEDULER (executor, not gale) ============ -->
   <div class="card">
+    <h2><span style="color:var(--accent)">●</span> kiln-async scheduler <span class="badge kiln">executor — kiln, not gale</span></h2>
+    <p class="note">The cooperative fuel-bounded scheduler that boots gust on Cortex-M3 and dissolves to native via <code>wasm→loom→synth</code>. Driving one failsafe task (fixed-point mixer). <i>Not</i> a verified gale primitive — it's the executor leg of the OS.</p>
     <div class="row">
-      <div class="stat"><div class="k">poll rounds</div><div class="v accent" id="rounds">0</div></div>
-      <div class="stat"><div class="k">scheduler</div><div class="v" id="state">idle</div></div>
-      <div class="stat"><div class="k">RC in</div><div class="v" id="rc">1024</div></div>
-      <div class="stat"><div class="k">PWM out (µs)</div><div class="v accent" id="pwm">1500</div></div>
-    </div>
-    <div class="bar"><div class="fill" id="fill"></div></div>
-    <canvas id="spark" width="720" height="90"></canvas>
-    <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+      <div>poll rounds <span class="v" style="color:var(--accent)" id="rounds">0</span></div>
+      <div>RC <span class="v" id="rc">1024</span></div>
+      <div>PWM µs <span class="v" style="color:var(--accent)" id="pwm">1500</span></div>
       <button id="toggle">pause</button>
-      <span class="note" id="status">booting…</span>
     </div>
+    <canvas id="spark" width="780" height="70"></canvas>
   </div>
 
-  <div class="card">
-    <div class="k">try the failsafe mixer directly (gust_mix: RC 0–2047 → PWM 1000–2000 µs, Q8 fixed-point)</div>
-    <input type="range" id="mixslider" min="0" max="2047" value="1024" />
-    <div class="note">gust_mix(<span id="mixin">1024</span>) = <span class="ok" id="mixout">1500</span> µs</div>
-  </div>
-
-  <p class="note">Load failed? wasm needs HTTP — serve this dir: <code>python3 -m http.server</code> then open <code>http://localhost:8000/</code>.</p>
+  <p class="note">404 / blank? wasm needs HTTP — <code>cd web && python3 -m http.server</code>, open <code>http://localhost:8000/</code>.</p>
 </div>
 
 <script>
 (async () => {
   const $ = id => document.getElementById(id);
-  let g = null;
+  const logEl = $('log'); const log = m => { logEl.textContent = m + "\n" + logEl.textContent; };
+  let g;
   try {
     const r = await fetch('gust.wasm');
-    const { instance } = await WebAssembly.instantiate(await r.arrayBuffer(), {});
-    g = instance.exports;
+    g = (await WebAssembly.instantiate(await r.arrayBuffer(), {})).exports;
     g.gust_boot();
-    $('status').textContent = 'booted — verified kiln-async scheduler live in wasm';
-    $('status').className = 'ok';
-  } catch (e) {
-    $('status').textContent = 'load error: ' + e + '  (serve over HTTP — see note below)';
-    return;
+    $('status').textContent = 'booted — verified gale components + kiln scheduler live in wasm';
+  } catch (e) { $('status').textContent = 'load error: ' + e; return; }
+
+  // ---- gale::sem (verified) ----
+  const SEM_LIMIT = 3; let semCount = 0, semWait = 0;
+  const SEM = ['WAKE','INCREMENT','SATURATED']; const TAKE = ['ACQUIRED','WOULD_BLOCK','PEND'];
+  const setDec = (el,txt,cls)=>{el.textContent=txt; el.className='decide '+cls;};
+  function renderSem(){ $('sem_count').textContent=semCount; $('sem_wait').textContent=semWait; }
+  $('sem_give').onclick = () => {
+    const d = g.gale_sem_give(semCount, SEM_LIMIT, semWait>0?1:0);   // VERIFIED decision
+    if (d===0){ semWait--; setDec($('sem_decide'),'WAKE a waiter','wake'); }
+    else if (d===1){ semCount++; setDec($('sem_decide'),'INCREMENT','ok'); }
+    else { setDec($('sem_decide'),'SATURATED (at limit)','warn'); }
+    log(`gale::sem::give_decide(count=${semCount}, limit=${SEM_LIMIT}, waiter=${semWait>0}) → ${SEM[d]}`);
+    renderSem();
+  };
+  $('sem_take').onclick = () => {
+    const noWait = $('sem_nowait').checked?1:0;
+    const d = g.gale_sem_take(semCount, noWait);                     // VERIFIED decision
+    if (d===0){ semCount--; setDec($('sem_decide'),'ACQUIRED','ok'); }
+    else if (d===1){ setDec($('sem_decide'),'WOULD_BLOCK (-EBUSY)','bad'); }
+    else { semWait++; setDec($('sem_decide'),'PEND (blocked)','warn'); }
+    log(`gale::sem::take_decide(count=${semCount}, no_wait=${!!noWait}) → ${TAKE[d]}`);
+    renderSem();
+  };
+  renderSem();
+
+  // ---- gale::msgq (verified) ----
+  const MQ_MAX = 4; let used=0, widx=0, ridx=0;
+  const PUT=['STORE','WAKE_READER','PEND','FULL'], GET=['READ','WAKE_WRITER','PEND','EMPTY'];
+  function renderMq(){
+    $('mq_used').textContent=used;
+    const s=$('mq_slots'); s.innerHTML='';
+    for(let i=0;i<MQ_MAX;i++){ const d=document.createElement('div'); d.className='slot';
+      // slot is "full" if within [ridx, ridx+used)
+      const occ=(i-ridx+MQ_MAX)%MQ_MAX < used; if(occ){d.classList.add('full');d.textContent='■';}
+      if(i===widx) d.classList.add('w'); s.appendChild(d);
+    }
   }
+  $('mq_put').onclick = () => {
+    const w=$('mq_waiter').checked?1:0, nw=$('mq_nowait').checked?1:0;
+    const d = g.gale_msgq_put(widx, used, MQ_MAX, w, nw);            // VERIFIED decision
+    if(d===0){ widx=(widx+1)%MQ_MAX; used++; setDec($('mq_decide'),'STORE','ok'); }
+    else if(d===1){ setDec($('mq_decide'),'WAKE_READER (direct handoff)','wake'); }
+    else if(d===2){ setDec($('mq_decide'),'PEND (queue full, wait)','warn'); }
+    else { setDec($('mq_decide'),'FULL (-ENOMSG)','bad'); }
+    log(`gale::msgq::put_decide(widx=${widx}, used=${used}, max=${MQ_MAX}, waiter=${!!w}, no_wait=${!!nw}) → ${PUT[d]}`);
+    renderMq();
+  };
+  $('mq_get').onclick = () => {
+    const w=$('mq_waiter').checked?1:0, nw=$('mq_nowait').checked?1:0;
+    const d = g.gale_msgq_get(ridx, used, MQ_MAX, w, nw);            // VERIFIED decision
+    if(d===0){ ridx=(ridx+1)%MQ_MAX; used--; setDec($('mq_decide'),'READ','ok'); }
+    else if(d===1){ ridx=(ridx+1)%MQ_MAX; used--; setDec($('mq_decide'),'WAKE_WRITER','wake'); }
+    else if(d===2){ setDec($('mq_decide'),'PEND (empty, wait)','warn'); }
+    else { setDec($('mq_decide'),'EMPTY (-ENOMSG)','bad'); }
+    log(`gale::msgq::get_decide(ridx=${ridx}, used=${used}, max=${MQ_MAX}, waiter=${!!w}, no_wait=${!!nw}) → ${GET[d]}`);
+    renderMq();
+  };
+  renderMq();
 
-  // mixer playground
-  const ms = $('mixslider');
-  const updMix = () => { $('mixin').textContent = ms.value; $('mixout').textContent = g.gust_mix(ms.value|0); };
-  ms.addEventListener('input', updMix); updMix();
-
-  // live scheduler loop: sweep RC, poll one round per tick, render
-  const cv = $('spark'), cx = cv.getContext('2d'); const hist = [];
-  let t = 0, running = true;
-  $('toggle').addEventListener('click', () => {
-    running = !running; $('toggle').textContent = running ? 'pause' : 'resume';
-  });
-  function frame() {
-    if (running) {
-      // RC sweeps like a control input
-      const rc = (1024 + Math.round(420 * Math.sin(t / 18))) & 0x7ff;
-      const pwm = g.gust_poll(rc);
-      t++;
-      $('rounds').textContent = g.gust_rounds();
-      $('state').textContent = 'Polled';
-      $('rc').textContent = rc;
-      $('pwm').textContent = pwm;
-      $('fill').style.width = Math.max(0, Math.min(100, ((pwm - 1000) / 1000) * 100)) + '%';
-      hist.push(pwm); if (hist.length > 720) hist.shift();
-      // sparkline
-      cx.clearRect(0, 0, cv.width, cv.height);
-      cx.strokeStyle = '#4cc9f0'; cx.lineWidth = 2; cx.beginPath();
-      hist.forEach((p, i) => {
-        const y = cv.height - ((p - 1000) / 1000) * (cv.height - 8) - 4;
-        i ? cx.lineTo(i, y) : cx.moveTo(i, y);
-      });
+  // ---- kiln-async scheduler (executor) ----
+  const cv=$('spark'), cx=cv.getContext('2d'), hist=[]; let t=0, running=true;
+  $('toggle').onclick=()=>{running=!running;$('toggle').textContent=running?'pause':'resume';};
+  (function frame(){
+    if(running){
+      const rc=(1024+Math.round(420*Math.sin(t/18)))&0x7ff;
+      const pwm=g.gust_poll(rc); t++;
+      $('rounds').textContent=g.gust_rounds(); $('rc').textContent=rc; $('pwm').textContent=pwm;
+      hist.push(pwm); if(hist.length>780)hist.shift();
+      cx.clearRect(0,0,cv.width,cv.height); cx.strokeStyle='#4cc9f0'; cx.lineWidth=2; cx.beginPath();
+      hist.forEach((p,i)=>{const y=cv.height-((p-1000)/1000)*(cv.height-8)-4; i?cx.lineTo(i,y):cx.moveTo(i,y);});
       cx.stroke();
     }
     requestAnimationFrame(frame);
-  }
-  requestAnimationFrame(frame);
+  })();
 })();
 </script>
 </body>
