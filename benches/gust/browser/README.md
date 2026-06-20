@@ -4,8 +4,7 @@
 that targets the Cortex-M3:
 
 1. **gale verified components** — the actual formally-verified decision functions
-   (`gale::sem::give_decide`/`take_decide`, `gale::msgq::put_decide`/`get_decide`),
-   proven with **Verus + Rocq + Lean + Kani**. Interactive semaphore + message-queue
+   (`gale::sem`, `gale::msgq`, `gale::mutex`, `gale::event` deciders), proven with **Verus + Rocq + Lean + Kani**. Interactive semaphore, message-queue, mutex and event
    panels: you drive `give/take` and `put/get`, the **verified decision**
    (INCREMENT/WAKE/SATURATED, STORE/WAKE_READER/PEND/FULL/EMPTY) is computed by the
    proven gale code, and the page applies it. This is the *same* logic that ships in
@@ -25,8 +24,8 @@ cd web && python3 -m http.server # open http://localhost:8000/
 ```
 
 ## What's gale vs what's not (the honest map)
-- **gale (verified):** `gale_sem_give/take`, `gale_msgq_put/get` → call the proven
-  `gale::sem` / `gale::msgq` deciders.
+- **gale (verified):** `gale_sem_give/take`, `gale_msgq_put/get`, `gale_mutex_lock/unlock`,
+  `gale_event_post/wait` → call the proven `gale::{sem,msgq,mutex,event}` deciders.
 - **kiln (executor):** `gust_boot/gust_poll` → kiln-async `Scheduler`.
 - **gust app (not verified):** `gust_mix` → the ~10-line fixed-point failsafe mixer.
 

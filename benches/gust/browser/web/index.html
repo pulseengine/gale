@@ -67,6 +67,40 @@
         <span class="decide" id="mq_decide">—</span>
       </div>
     </div>
+    <!-- mutex -->
+    <div style="margin-top:16px">
+      <div class="k">k_mutex (<code>gale::mutex</code>) — ownership + reentrancy</div>
+      <div class="row">
+        <div>owner <span class="v gale-fg" id="mx_owner">—</span></div>
+        <div>lock_count <span class="v" id="mx_lc">0</span></div>
+        <button class="g" id="mx_a_lock">A lock()</button>
+        <button class="g" id="mx_b_lock">B lock()</button>
+        <button class="g" id="mx_a_unlock">A unlock()</button>
+        <button class="g" id="mx_b_unlock">B unlock()</button>
+        <label><input type="checkbox" id="mx_nowait" checked> no-wait</label>
+        <span class="decide" id="mx_decide">—</span>
+      </div>
+    </div>
+
+    <!-- event -->
+    <div style="margin-top:16px">
+      <div class="k">k_event (<code>gale::event</code>) — bitmask post / wait</div>
+      <div class="slots" id="ev_bits"></div>
+      <div class="row">
+        <button class="g" id="ev_p0">post b0</button>
+        <button class="g" id="ev_p1">post b1</button>
+        <button class="g" id="ev_p2">post b2</button>
+        <button class="g" id="ev_p3">post b3</button>
+        <button class="g" id="ev_clear">clear</button>
+      </div>
+      <div class="row">
+        <label>wait for <input type="text" id="ev_des" value="0101" size="5" style="width:54px;background:#0a0e12;color:var(--fg);border:1px solid #2a3a4a;border-radius:5px"></label>
+        <label><input type="checkbox" id="ev_all" checked> ALL (vs ANY)</label>
+        <button class="g" id="ev_wait">wait()</button>
+        <span class="decide" id="ev_decide">—</span>
+      </div>
+    </div>
+
     <pre class="log" id="log"></pre>
   </div>
 
@@ -155,6 +189,49 @@
     renderMq();
   };
   renderMq();
+
+  // ---- gale::mutex (verified) ----
+  let mxOwner=null, mxLc=0; const LOCK=['ACQUIRE','REENTRANT','PEND','BUSY','OVERFLOW'], UNLOCK=['NOT_LOCKED','NOT_OWNER','RELEASED','FULLY_UNLOCKED'];
+  function renderMx(){ $('mx_owner').textContent = mxOwner||'—'; $('mx_lc').textContent = mxLc; }
+  function mxLock(th){
+    const nw=$('mx_nowait').checked?1:0;
+    const d=g.gale_mutex_lock(mxLc, mxOwner===null?1:0, mxOwner===th?1:0, nw);   // VERIFIED
+    if(d===0){ mxOwner=th; mxLc=1; setDec($('mx_decide'),th+': ACQUIRE','ok'); }
+    else if(d===1){ mxLc++; setDec($('mx_decide'),th+': REENTRANT','ok'); }
+    else if(d===2){ setDec($('mx_decide'),th+': PEND (owned by '+mxOwner+')','warn'); }
+    else if(d===3){ setDec($('mx_decide'),th+': BUSY (-EBUSY)','bad'); }
+    else { setDec($('mx_decide'),'OVERFLOW','bad'); }
+    log(`gale::mutex::lock_decide(lc=${mxLc}, null=${mxOwner===null}, cur=${mxOwner===th}, no_wait=${!!nw}) → ${LOCK[d]}`);
+    renderMx();
+  }
+  function mxUnlock(th){
+    const d=g.gale_mutex_unlock(mxLc, mxOwner===null?1:0, mxOwner===th?1:0);      // VERIFIED
+    if(d===0){ setDec($('mx_decide'),th+': NOT_LOCKED (-EINVAL)','bad'); }
+    else if(d===1){ setDec($('mx_decide'),th+': NOT_OWNER (-EPERM)','bad'); }
+    else if(d===2){ mxLc--; setDec($('mx_decide'),th+': RELEASED','ok'); }
+    else { mxOwner=null; mxLc=0; setDec($('mx_decide'),th+': FULLY_UNLOCKED','wake'); }
+    log(`gale::mutex::unlock_decide(lc=${mxLc}, null=${mxOwner===null}, cur=${mxOwner===th}) → ${UNLOCK[d]}`);
+    renderMx();
+  }
+  $('mx_a_lock').onclick=()=>mxLock('A'); $('mx_b_lock').onclick=()=>mxLock('B');
+  $('mx_a_unlock').onclick=()=>mxUnlock('A'); $('mx_b_unlock').onclick=()=>mxUnlock('B');
+  renderMx();
+
+  // ---- gale::event (verified) ----
+  let ev=0; const WAIT=['MATCHED','PEND','TIMEOUT'];
+  function renderEv(){ const s=$('ev_bits'); s.innerHTML='';
+    for(let i=3;i>=0;i--){ const d=document.createElement('div'); d.className='slot'+((ev>>i&1)?' full':''); d.textContent=(ev>>i&1)?'1':'0'; s.appendChild(d);} }
+  function evPost(bit){ ev = g.gale_event_post(ev, 1<<bit, 1<<bit);                // VERIFIED bitmask
+    log(`gale::event::post_decide → events=0b${ev.toString(2).padStart(4,'0')}`); renderEv(); }
+  [0,1,2,3].forEach(b=>$('ev_p'+b).onclick=()=>evPost(b));
+  $('ev_clear').onclick=()=>{ ev=0; renderEv(); log('events cleared'); };
+  $('ev_wait').onclick=()=>{
+    const des=parseInt($('ev_des').value||'0',2)||0, all=$('ev_all').checked?1:0;
+    const d=g.gale_event_wait(ev, des, all, 1);                                     // VERIFIED (no-wait)
+    setDec($('ev_decide'), WAIT[d], d===0?'ok':(d===2?'bad':'warn'));
+    log(`gale::event::wait_decide(events=0b${ev.toString(2).padStart(4,'0')}, want=0b${des.toString(2).padStart(4,'0')}, ${all?'ALL':'ANY'}) → ${WAIT[d]}`);
+  };
+  renderEv();
 
   // ---- kiln-async scheduler (executor) ----
   const cv=$('spark'), cx=cv.getContext('2d'), hist=[]; let t=0, running=true;

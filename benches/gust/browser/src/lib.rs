@@ -105,3 +105,36 @@ pub extern "C" fn gale_msgq_get(
 ) -> i32 {
     gale::msgq::get_decide(read_idx, used, max, has_waiter != 0, is_no_wait != 0).decision as i32
 }
+
+/// gale::mutex::lock_decide — ACQUIRE=0 / REENTRANT=1 / PEND=2 / BUSY=3 / OVERFLOW=4
+/// (Verus-proven: ownership M3–M5, reentrant count M4, no overflow M10).
+#[no_mangle]
+pub extern "C" fn gale_mutex_lock(
+    lock_count: u32, owner_is_null: u32, owner_is_current: u32, is_no_wait: u32,
+) -> i32 {
+    gale::mutex::lock_decide(lock_count, owner_is_null != 0, owner_is_current != 0, is_no_wait != 0) as i32
+}
+
+/// gale::mutex::unlock_decide — NOT_LOCKED=0 / NOT_OWNER=1 / RELEASED=2 / FULLY_UNLOCKED=3
+/// (Verus-proven: -EINVAL M6a, -EPERM M6b, reentrant M7, no underflow M10).
+#[no_mangle]
+pub extern "C" fn gale_mutex_unlock(
+    lock_count: u32, owner_is_null: u32, owner_is_current: u32,
+) -> i32 {
+    gale::mutex::unlock_decide(lock_count, owner_is_null != 0, owner_is_current != 0) as i32
+}
+
+/// gale::event::post_decide — returns the new event bitmask `(current & !mask) | (new & mask)`
+/// (Verus-proven bitmask algebra).
+#[no_mangle]
+pub extern "C" fn gale_event_post(current_events: u32, new_events: u32, mask: u32) -> u32 {
+    gale::event::post_decide(current_events, new_events, mask)
+}
+
+/// gale::event::wait_decide — MATCHED=0 / PEND=1 / TIMEOUT=2 (wait_type: 0=ANY, 1=ALL).
+#[no_mangle]
+pub extern "C" fn gale_event_wait(
+    current_events: u32, desired: u32, wait_type: u32, is_no_wait: u32,
+) -> i32 {
+    gale::event::wait_decide(current_events, desired, wait_type as u8, is_no_wait != 0).decision as i32
+}
