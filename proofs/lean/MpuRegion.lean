@@ -1,7 +1,6 @@
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.NormNum
 import Mathlib.Tactic.Ring
-import Mathlib.Tactic.Omega
 
 /-!
 # ARM MPU v7 Region Validation
@@ -47,11 +46,9 @@ theorem power_of_two_bit_property (n : Nat) (hn : n > 0) (hpow : isPowerOfTwo n)
     Nat.land n (n - 1) = 0 := by
   obtain ⟨k, hk⟩ := hpow
   subst hk
-  induction k with
-  | zero => simp [Nat.land]
-  | succ k' _ =>
-    simp [Nat.pow_succ]
-    omega
+  -- 2^k & (2^k - 1) = 2^k % 2^k = 0 (the all-ones-mask identity), no induction needed
+  show (2 ^ k) &&& (2 ^ k - 1) = 0
+  rw [Nat.and_two_pow_sub_one_eq_mod, Nat.mod_self]
 
 /-! ## Region Validity -/
 
@@ -157,37 +154,20 @@ theorem aligned_equal_size_disjoint (r1 r2 : MpuRegion)
   intro ⟨h1, h2⟩
   -- Both bases are multiples of size, so |b1 - b2| >= size
   -- But overlap requires |b1 - b2| < size, contradiction.
-  have hs : r1.size > 0 := by omega
   rw [heq] at halign1 h2
-  -- r1.base and r2.base are both divisible by r2.size
-  -- If they differ, they differ by at least r2.size
-  have := Nat.div_add_mod r1.base r2.size
-  have := Nat.div_add_mod r2.base r2.size
-  have hd1 : r1.base = r2.size * (r1.base / r2.size) := by omega
-  have hd2 : r2.base = r2.size * (r2.base / r2.size) := by omega
-  have hne_div : r1.base / r2.size ≠ r2.base / r2.size := by
-    intro heq_div
-    have : r1.base = r2.base := by omega
-    exact hne this
-  -- WLOG r1.base < r2.base or r2.base < r1.base
-  by_cases hlt : r1.base < r2.base
-  · -- r1.base < r2.base, so r2.base >= r1.base + r2.size
-    have : r1.base / r2.size < r2.base / r2.size := by
-      exact Nat.div_lt_div_right (by omega : 0 < r2.size) hlt
-    have : r1.base / r2.size + 1 ≤ r2.base / r2.size := by omega
-    have : r2.size * (r1.base / r2.size + 1) ≤ r2.size * (r2.base / r2.size) := by
-      exact Nat.mul_le_mul_left r2.size this
-    have : r1.base + r2.size ≤ r2.base := by omega
+  -- Both bases are multiples of r2.size; obtain the quotients explicitly
+  -- (omega cannot reason about `r2.size * (b / r2.size)` — variable-divisor nonlinear).
+  obtain ⟨q1, hq1⟩ := Nat.dvd_of_mod_eq_zero halign1   -- r1.base = r2.size * q1
+  obtain ⟨q2, hq2⟩ := Nat.dvd_of_mod_eq_zero halign2   -- r2.base = r2.size * q2
+  have hqne : q1 ≠ q2 := by rintro rfl; exact hne (by rw [hq1, hq2])
+  -- distinct quotients ⇒ the bases differ by at least r2.size ⇒ no overlap
+  rcases Nat.lt_or_ge q1 q2 with hlt | hge
+  · have h := Nat.mul_le_mul_left r2.size hlt          -- r2.size*(q1+1) ≤ r2.size*q2
+    rw [Nat.mul_succ] at h; rw [← hq1, ← hq2] at h      -- r1.base + r2.size ≤ r2.base
     omega
-  · -- r2.base < r1.base
-    have hlt2 : r2.base < r1.base := by omega
-    have : r2.base / r2.size < r1.base / r2.size := by
-      exact Nat.div_lt_div_right (by omega : 0 < r2.size) hlt2
-    have : r2.base / r2.size + 1 ≤ r1.base / r2.size := by omega
-    have : r2.size * (r2.base / r2.size + 1) ≤ r2.size * (r1.base / r2.size) := by
-      exact Nat.mul_le_mul_left r2.size this
-    have : r2.base + r2.size ≤ r1.base := by omega
-    rw [← heq] at h2
+  · have hgt : q2 < q1 := by omega
+    have h := Nat.mul_le_mul_left r2.size hgt           -- r2.size*(q2+1) ≤ r2.size*q1
+    rw [Nat.mul_succ] at h; rw [← hq1, ← hq2] at h      -- r2.base + r2.size ≤ r1.base
     omega
 
 /-! ## Region Set Validation -/

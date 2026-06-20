@@ -1,7 +1,6 @@
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.NormNum
 import Mathlib.Tactic.Ring
-import Mathlib.Tactic.Omega
 
 /-!
 # ARM Cortex-M SysTick Timer Arithmetic
@@ -193,7 +192,6 @@ theorem roundtrip_option (ticks cpt : Nat) (hcpt : cpt > 0) :
     cyclesToTicks (ticksToCycles ticks cpt) cpt = some ticks := by
   unfold cyclesToTicks ticksToCycles
   simp [Nat.pos_iff_ne_zero.mp hcpt]
-  exact Nat.mul_div_cancel ticks hcpt
 
 /-! ## ST6: Monotonicity -/
 
@@ -235,6 +233,8 @@ theorem conversion_truncation (cycles cpt : Nat) (hcpt : cpt > 0) :
   · exact Nat.div_mul_le_self cycles cpt
   · have := Nat.mod_lt cycles hcpt
     have heq := Nat.div_add_mod cycles cpt
+    show cycles - cycles / cpt * cpt < cpt
+    rw [Nat.mul_comm]
     omega
 
 /-- Reload value constraints: load must be in [1, SYSTICK_MAX_LOAD]
