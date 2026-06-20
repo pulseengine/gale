@@ -1,0 +1,20 @@
+[package]
+name = "gale-kiln"
+version = "0.1.0"
+edition = "2021"
+description = "gale kernel primitives as a WebAssembly Component implementing gale:kernel/{sem,msgq,mutex,event} (world `host`) directly over the verified gale::* decision functions — the no-C-FFI kiln host side (SWREQ-KILN-002, gale#63)."
+
+[lib]
+crate-type = ["cdylib"]
+
+[workspace]
+
+[dependencies]
+# The verified, no_std gale primitives (Verus/Rocq/Lean + Kani).
+gale = { path = "../.." }
+# Forked wit-bindgen (embedded async / amortized stream alloc).
+wit-bindgen = { git = "https://github.com/pulseengine/wit-bindgen", branch = "perf/async-stream-amortize-single-item-alloc" }
+
+[profile.release]
+opt-level = "z"
+lto = true
