@@ -127,7 +127,7 @@
   let g;
   try {
     const r = await fetch('gust.wasm');
-    g = (await WebAssembly.instantiate(await r.arrayBuffer(), {})).exports;
+    g = (await WebAssembly.instantiate(await r.arrayBuffer(), {})).instance.exports;
     g.gust_boot();
     $('status').textContent = 'booted — verified gale components + kiln scheduler live in wasm';
   } catch (e) { $('status').textContent = 'load error: ' + e; return; }
