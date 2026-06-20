@@ -71,3 +71,37 @@ pub extern "C" fn gust_poll(rc: u16) -> u32 {
 pub extern "C" fn gust_rounds() -> u32 {
     ROUNDS.load(Ordering::Relaxed)
 }
+
+// ── The ACTUAL formally-verified gale components (Verus/Rocq/Lean + Kani) ──────
+// These call gale's proven decision functions directly — the same logic that
+// ships in the wasm-dist modules and the Zephyr drop-in. The browser is the
+// "apply" shell; the *decision* is the verified component. Each returns the
+// decision enum as i32 (the kernel's Extract→Decide→Apply, with Decide proven).
+
+/// gale::sem::give_decide — WAKE=0 / INCREMENT=1 / SATURATED=2 (Verus-proven: no overflow).
+#[no_mangle]
+pub extern "C" fn gale_sem_give(count: u32, limit: u32, has_waiter: u32) -> i32 {
+    gale::sem::give_decide(count, limit, has_waiter != 0) as i32
+}
+
+/// gale::sem::take_decide — ACQUIRED=0 / WOULD_BLOCK=1 / PEND=2 (Verus-proven: no underflow).
+#[no_mangle]
+pub extern "C" fn gale_sem_take(count: u32, is_no_wait: u32) -> i32 {
+    gale::sem::take_decide(count, is_no_wait != 0) as i32
+}
+
+/// gale::msgq::put_decide — STORE=0 / WAKE_READER=1 / PEND=2 / FULL=3 (Verus+Kani-proven ring arithmetic).
+#[no_mangle]
+pub extern "C" fn gale_msgq_put(
+    write_idx: u32, used: u32, max: u32, has_waiter: u32, is_no_wait: u32,
+) -> i32 {
+    gale::msgq::put_decide(write_idx, used, max, has_waiter != 0, is_no_wait != 0).decision as i32
+}
+
+/// gale::msgq::get_decide — READ=0 / WAKE_WRITER=1 / PEND=2 / EMPTY=3 (Verus+Kani-proven).
+#[no_mangle]
+pub extern "C" fn gale_msgq_get(
+    read_idx: u32, used: u32, max: u32, has_waiter: u32, is_no_wait: u32,
+) -> i32 {
+    gale::msgq::get_decide(read_idx, used, max, has_waiter != 0, is_no_wait != 0).decision as i32
+}
