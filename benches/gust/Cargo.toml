@@ -1,0 +1,19 @@
+[package]
+name = "gust"
+version = "0.1.0"
+edition = "2021"
+description = "gust: a maximal-wasm mini-RTOS for tiny bare-metal nodes (Cortex-M3 / STM32F100). kiln-async scheduler + a ~4-item native TCB shim. See gale#65 / REQ-PIX-009."
+
+[workspace]
+
+[dependencies]
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+cortex-m-semihosting = "0.5"
+panic-halt = "0.2"
+kiln-async = { git = "https://github.com/pulseengine/kiln", rev = "6966abcdeb1c88edaa86facdccf6cba8712640e9" }
+
+[profile.release]
+panic = "abort"
+opt-level = "z"
+lto = true
