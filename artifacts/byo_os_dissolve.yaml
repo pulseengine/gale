@@ -1,0 +1,65 @@
+# BYO-OS: the dissolved library-OS backing of the kiln component-host path.
+# Canonical pipeline meld fuse -> loom -> synth. gale#74 / gale#63 / gale#89.
+artifacts:
+  - id: SAC-BYOOS-LIBOS
+    type: sw-arch-component
+    title: "Dissolved library-OS backing: composed component to native ELF via meld fuse, loom, synth"
+    status: proposed
+    description: >
+      The native backing of the kiln component-host path. A gale application
+      component (importing gale:kernel) and gale-kiln (providing it over the
+      verified gale::* deciders) are statically fused by meld into a single core
+      module (import resolution + index-space merge + canonical-ABI at build
+      time), then whole-program-optimized by loom and transpiled to a native
+      relocatable object by synth. This is the same component that runs on
+      wasmtime today; the canonical maximal-wasm pipeline is meld fuse -> loom
+      -> synth (meld is the fusion stage - an earlier revision wrongly used wac
+      compose + wasm-tools unbundle, which preserves per-component adapters).
+      The verification boundary stays the wasm/native seam; isolation between
+      dissolved components is the opt-in MPU/PMP layer (gale#86), not the
+      dissolve.
+    tags: [byo-os, gale74, kiln, dissolve, library-os, meld, synth]
+    fields:
+      pipeline: "grow-free core (wasm32-unknown-unknown + cabi-realloc-extern) -> loom inline -> synth --relocatable -> native link against TCB arena"
+      status-note: "LEAN dissolve WORKING: gale-kiln 972B / gale-app-demo 316B native .text, 0 memory.grow (was ~24848B), via wit-bindgen no-grow branch + TCB __cabi_arena_realloc. See FIND-BYOOS-006."
+    links:
+      - type: allocated-from
+        target: REQ-BYOOS-CRATE-001
+
+  - id: FIND-BYOOS-006
+    type: finding
+    title: "Lean MCU dissolve UNBLOCKED via wit-bindgen cabi-realloc-extern (no-grow): 972B/316B grow-free cores"
+    status: active
+    description: >
+      RESOLVED (path validated): building the components for wasm32-unknown-unknown
+      against pulseengine/wit-bindgen@integration/embedded-rt-no-grow with the
+      cabi-realloc-extern feature routes cabi_realloc to an embedder symbol
+      __cabi_arena_realloc (TCB arena, trap-on-exhaustion), so the cores carry
+      ZERO memory.grow and dissolve to 972B (gale-kiln) / 316B (gale-app-demo)
+      native .text - ~25x leaner than the ~24848B adapter-laden wasip2 build. The
+      wasip2 hosted build is unaffected (feature gated not(target_env=p2)). See
+      crates/gale-app-demo/dissolve.sh + tcb/cabi_arena.c. Caveats forwarded:
+      wit-bindgen#4 (p2 gate) + component new rejects the env arena import (so the
+      meld --memory shared path still needs wit-bindgen#6; the core-dissolve path
+      here does not). ORIGINAL ANALYSIS (the blocker that this resolves): the
+      memory.grow came from
+      cabi_realloc (exported, wit-bindgen canonical ABI) -> __rust_alloc ->
+      dlmalloc -> sbrk -> memory.grow. After meld fuse the app<->kernel boundary
+      is internalized (0 remaining gale:kernel imports), yet the fused core
+      STILL exports cabi_realloc (x2) and keeps memory.grow (x2): meld leaves the
+      now-vestigial canonical-ABI adapter in place, and being exported loom
+      cannot DCE it. That dead allocator is what makes
+      meld fuse --memory shared --address-rebase fail
+      ("memory.grow not supported with address rebasing"); the multi-memory
+      fallback is not MCU-lowerable (synth correctly loud-skips the cross-memory
+      copies per synth#369 - right, not a miscompile). Primary fix is meld#298:
+      on fusion with a scalar external surface, drop/de-export the internalized
+      cabi_realloc + adapter so the allocator+grow DCE and --memory shared works,
+      yielding one lean core (wasm-dist 544-byte class, not tens of KB) for
+      loom+synth. Building the components #![no_std] no-grow is a secondary
+      belt-and-suspenders, not the root cause. Supersedes the earlier mis-routes
+      (synth#401 closed). Gale-side tracker: gale#89.
+    tags: [byo-os, gale74, dissolve, meld, cabi-realloc, lean-image]
+    links:
+      - type: refines
+        target: SAC-BYOOS-LIBOS

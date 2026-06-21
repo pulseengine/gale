@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 # The verified, no_std gale primitives (Verus/Rocq/Lean + Kani).
 gale = { path = "../.." }
 # Forked wit-bindgen (embedded async / amortized stream alloc).
-wit-bindgen = { git = "https://github.com/pulseengine/wit-bindgen", branch = "perf/async-stream-amortize-single-item-alloc" }
+wit-bindgen = { git = "https://github.com/pulseengine/wit-bindgen", branch = "integration/embedded-rt-no-grow", features = ["cabi-realloc-extern"] }
 
 [profile.release]
 opt-level = "z"

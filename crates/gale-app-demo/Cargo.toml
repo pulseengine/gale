@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 [workspace]
 
 [dependencies]
-wit-bindgen = { git = "https://github.com/pulseengine/wit-bindgen", branch = "perf/async-stream-amortize-single-item-alloc" }
+wit-bindgen = { git = "https://github.com/pulseengine/wit-bindgen", branch = "integration/embedded-rt-no-grow", features = ["cabi-realloc-extern"] }
 
 [profile.release]
 opt-level = "z"
