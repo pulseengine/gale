@@ -20,19 +20,29 @@ artifacts:
       dissolve.
     tags: [byo-os, gale74, kiln, dissolve, library-os, meld, synth]
     fields:
-      pipeline: "meld fuse, loom inline, synth --relocatable, native link"
-      status-note: "meld fuse resolves gale:kernel imports to 0 in the fused core; lean single-address-space MCU image blocked - see FIND-BYOOS-006"
+      pipeline: "grow-free core (wasm32-unknown-unknown + cabi-realloc-extern) -> loom inline -> synth --relocatable -> native link against TCB arena"
+      status-note: "LEAN dissolve WORKING: gale-kiln 972B / gale-app-demo 316B native .text, 0 memory.grow (was ~24848B), via wit-bindgen no-grow branch + TCB __cabi_arena_realloc. See FIND-BYOOS-006."
     links:
       - type: allocated-from
         target: REQ-BYOOS-CRATE-001
 
   - id: FIND-BYOOS-006
     type: finding
-    title: "Lean MCU dissolve gated on meld dropping the vestigial cabi_realloc adapter after fusion (meld#298)"
+    title: "Lean MCU dissolve UNBLOCKED via wit-bindgen cabi-realloc-extern (no-grow): 972B/316B grow-free cores"
     status: active
     description: >
-      The lean single-address-space MCU library-OS image is blocked at the
-      fusion step - and the cause is NOT gale code. The memory.grow comes from
+      RESOLVED (path validated): building the components for wasm32-unknown-unknown
+      against pulseengine/wit-bindgen@integration/embedded-rt-no-grow with the
+      cabi-realloc-extern feature routes cabi_realloc to an embedder symbol
+      __cabi_arena_realloc (TCB arena, trap-on-exhaustion), so the cores carry
+      ZERO memory.grow and dissolve to 972B (gale-kiln) / 316B (gale-app-demo)
+      native .text - ~25x leaner than the ~24848B adapter-laden wasip2 build. The
+      wasip2 hosted build is unaffected (feature gated not(target_env=p2)). See
+      crates/gale-app-demo/dissolve.sh + tcb/cabi_arena.c. Caveats forwarded:
+      wit-bindgen#4 (p2 gate) + component new rejects the env arena import (so the
+      meld --memory shared path still needs wit-bindgen#6; the core-dissolve path
+      here does not). ORIGINAL ANALYSIS (the blocker that this resolves): the
+      memory.grow came from
       cabi_realloc (exported, wit-bindgen canonical ABI) -> __rust_alloc ->
       dlmalloc -> sbrk -> memory.grow. After meld fuse the app<->kernel boundary
       is internalized (0 remaining gale:kernel imports), yet the fused core

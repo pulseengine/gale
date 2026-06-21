@@ -1,48 +1,47 @@
 #!/usr/bin/env bash
-# Dissolve the composed gale component toward a native library-OS image, via the
-# CANONICAL pipeline: meld fuse -> loom -> synth. (meld "fuses", loom "weaves",
-# synth "transpiles".) meld statically fuses the app + gale-kiln components into
-# ONE core module — import resolution + index-space merge + canonical-ABI at
-# build time — which is what loom/synth want. (An earlier revision wrongly used
-# wac compose + wasm-tools unbundle, which PRESERVES per-component adapters; meld
-# is the correct fusion stage.)
+# Dissolve the gale components to a LEAN native library-OS image — grow-free.
 #
-# HONEST STATUS: the lean single-address-space MCU image is BLOCKED — both
-# components carry `memory.grow` (default Rust/wit-bindgen alloc), so
-# `meld fuse --memory shared --address-rebase` (the MCU mode) fails. The fix is
-# meld dropping the vestigial cabi_realloc on fusion (meld#298); no_std components are secondary — the same no_std/no_alloc discipline the
-# payload already follows. This script demonstrates the pipeline + the block.
+# Built on pulseengine/wit-bindgen@integration/embedded-rt-no-grow with the
+# `cabi-realloc-extern` feature: the canonical-ABI cabi_realloc is routed to an
+# embedder symbol `__cabi_arena_realloc` (the reference TCB arena in tcb/), so
+# the component links NO growing allocator and emits NO `memory.grow`. Built for
+# wasm32-unknown-unknown (the feature is gated `not(target_env=p2)`), then
+# loom -> synth -> native .o, linked against the TCB arena.
 #
-# Tools: cargo+wasm32-wasip2, meld, loom, synth, LLVM, wasm-tools.
+# Result vs the old wasip2/default build: ~24.8 KB (adapter+dlmalloc+grow) -> <1 KB.
+#
+# Tools: cargo + wasm32-unknown-unknown, loom, synth, clang(thumbv7m), LLVM.
+# NOTE: pins an unmerged wit-bindgen branch (#4/#5/#6); re-pin to a tag on merge.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-APP="$HERE/target/wasm32-wasip2/release/gale_app_demo.wasm"
-KILN="$HERE/../gale-kiln/target/wasm32-wasip2/release/gale_kiln.wasm"
 W="$HERE/target/dissolve"; rm -rf "$W"; mkdir -p "$W"
 TGT="${SYNTH_TARGET:-cortex-m4f}"
+fail=0
+note(){ printf '  %s\n' "$*"; }
 
-echo "== build the two components =="
-cargo build --release --target wasm32-wasip2
-( cd "$HERE/../gale-kiln" && cargo build --release --target wasm32-wasip2 )
+echo "== build grow-free cores (wasm32-unknown-unknown + cabi-realloc-extern) =="
+( cd "$HERE/../gale-kiln" && cargo build --release --target wasm32-unknown-unknown >/dev/null 2>&1 )
+( cd "$HERE"             && cargo build --release --target wasm32-unknown-unknown >/dev/null 2>&1 )
+KILNC="$HERE/../gale-kiln/target/wasm32-unknown-unknown/release/gale_kiln.wasm"
+APPC="$HERE/target/wasm32-unknown-unknown/release/gale_app_demo.wasm"
 
-echo "== meld fuse (canonical fusion: app + gale-kiln -> single core) =="
-meld fuse "$APP" "$KILN" -o "$W/fused.wasm" 2>&1 | grep -iE 'memory strategy|output|size|complete' | sed 's/^/  /'
-echo "  gale:kernel imports remaining in fused core: $(wasm-tools print "$W/fused.wasm" 2>/dev/null | grep -c 'import.*gale:kernel')"
+echo "== TCB arena provides __cabi_arena_realloc (no memory.grow) =="
+clang --target=thumbv7m-none-eabi -mthumb -O2 -ffreestanding -nostdlib -c "$HERE/tcb/cabi_arena.c" -o "$W/cabi_arena.o"
+llvm-nm --defined-only "$W/cabi_arena.o" | grep -q __cabi_arena_realloc && note "[OK ] TCB defines __cabi_arena_realloc" || { note "[BAD] arena symbol missing"; fail=1; }
 
-echo "== MCU mode: meld fuse --memory shared --address-rebase (the lean target) =="
-if meld fuse --memory shared --address-rebase "$APP" "$KILN" -o "$W/fused-shared.wasm" 2>"$W/shared.err"; then
-  echo "  shared-memory fuse OK -> loom -> synth"
-  loom optimize "$W/fused-shared.wasm" --passes inline --attestation false -o "$W/fs.loom.wasm" >/dev/null 2>&1
-  synth compile "$W/fs.loom.wasm" --target "$TGT" --all-exports --relocatable -o "$W/fs.o" && \
-    llvm-size "$W/fs.o" | awk 'NR==2{print "  LEAN MCU .text: "$1"B"}'
-else
-  echo "  [BLOCKED] $(grep -iE 'memory.grow|unsupported' "$W/shared.err" | head -1 | sed 's/^ *//')"
-  echo "  -> lean single-address-space MCU image gated on meld#298 (meld must drop vestigial cabi_realloc; gale#89 tracks)"
-fi
+echo "== dissolve each grow-free core: loom -> synth ($TGT) =="
+for pair in "kiln:$KILNC" "app:$APPC"; do
+  name=${pair%%:*}; core=${pair##*:}
+  g=$(wasm-tools print "$core" 2>/dev/null | grep -c 'memory.grow')
+  loom optimize "$core" --passes inline --attestation false -o "$W/$name.loom.wasm" >/dev/null 2>&1
+  if synth compile "$W/$name.loom.wasm" --target "$TGT" --all-exports --relocatable -o "$W/$name.o" >"$W/$name.synth.log" 2>&1; then
+    sz=$(llvm-size "$W/$name.o" 2>/dev/null | awk 'NR==2{print $1}')
+    imp=$(llvm-nm --undefined-only "$W/$name.o" 2>/dev/null | grep -c __cabi_arena_realloc)
+    if [ "$g" -eq 0 ] && [ "$sz" -lt 4000 ]; then
+      note "[OK ] $name: memory.grow=0, synth .text=${sz}B (was ~24848B), imports __cabi_arena_realloc x$imp (-> TCB arena)"
+    else note "[BAD] $name: grow=$g size=${sz}B"; fail=1; fi
+  else note "[BAD] $name: synth failed"; tail -2 "$W/$name.synth.log" | sed 's/^/      /'; fail=1; fi
+done
 
-echo "== diagnostic: multi-memory fused -> synth (NOT MCU-lowerable; shows the block) =="
-loom optimize "$W/fused.wasm" --passes inline --attestation false -o "$W/mm.loom.wasm" >/dev/null 2>&1
-synth compile "$W/mm.loom.wasm" --target "$TGT" --all-exports --relocatable -o "$W/mm.o" >"$W/mm.synth.log" 2>&1
-mems=$(grep -c 'memory\[' "$W/mm.synth.log"); skips=$(grep -c 'skipping function' "$W/mm.synth.log")
-echo "  fused multi-memory: $mems memories, synth loud-skipped $skips cross-memory copies (#369 = correct, not a miscompile)"
-echo "== pipeline is meld->loom->synth; lean MCU image blocked on gale#89 =="
+[ $fail -eq 0 ] && echo "== LEAN grow-free library-OS dissolve OK (gale#89 unblocked via wit-bindgen no-grow branch) ==" || echo "== FAILED =="
+exit $fail
