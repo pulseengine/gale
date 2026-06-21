@@ -1,0 +1,67 @@
+package gale:kernel@0.1.0;
+
+// The verified gale kernel primitives as WebAssembly Component Model
+// interfaces (Phase 2 / SWREQ-KILN-001). These are the SAME proven decision
+// functions that ship in the Zephyr drop-in, the wasm-cross-LTO modules, and
+// the browser demo (gale::sem::give_decide, gale::msgq::put_decide, …) —
+// machine-checked by Verus/Rocq/Lean + Kani. A gale application *component*
+// IMPORTS these; the kiln host PROVIDES them as direct Rust calls into gale::*
+// (no C FFI). Enum discriminants match the crate's Decision enums.
+
+interface sem {
+    /// gale::sem::give_decide — Verus-proven: no overflow.
+    enum give-decision { wake, increment, saturated }
+    give: func(count: u32, limit: u32, has-waiter: bool) -> give-decision;
+
+    /// gale::sem::take_decide — Verus-proven: no underflow.
+    enum take-decision { acquired, would-block, pend }
+    take: func(count: u32, is-no-wait: bool) -> take-decision;
+}
+
+interface msgq {
+    /// gale::msgq::put_decide — Verus + Kani-proven ring arithmetic.
+    enum put-decision { store, wake-reader, pend, full }
+    put: func(write-idx: u32, used: u32, max: u32, has-waiter: bool, is-no-wait: bool) -> put-decision;
+
+    /// gale::msgq::get_decide — Verus + Kani-proven.
+    enum get-decision { read, wake-writer, pend, empty }
+    get: func(read-idx: u32, used: u32, max: u32, has-waiter: bool, is-no-wait: bool) -> get-decision;
+}
+
+interface mutex {
+    /// gale::mutex::lock_decide — Verus-proven: ownership, reentrancy, no overflow.
+    enum lock-decision { acquire, reentrant, pend, busy, overflow }
+    lock: func(lock-count: u32, owner-is-null: bool, owner-is-current: bool, is-no-wait: bool) -> lock-decision;
+
+    /// gale::mutex::unlock_decide — Verus-proven: -EINVAL/-EPERM, reentrant, no underflow.
+    enum unlock-decision { not-locked, not-owner, released, fully-unlocked }
+    unlock: func(lock-count: u32, owner-is-null: bool, owner-is-current: bool) -> unlock-decision;
+}
+
+interface event {
+    /// gale::event::post_decide — Verus-proven bitmask algebra; returns new event mask.
+    post: func(current-events: u32, new-events: u32, mask: u32) -> u32;
+
+    /// gale::event::wait_decide — wait-type: any=false / all=true.
+    enum wait-decision { matched, pend, timeout }
+    wait: func(current-events: u32, desired: u32, wait-all: bool, is-no-wait: bool) -> wait-decision;
+}
+
+/// What a gale application component imports: the verified kernel primitives,
+/// provided by the kiln host. The component's own logic (control, decode,
+/// voting) is the wasm body; the kernel decisions are proven gale::* calls.
+world app {
+    import sem;
+    import msgq;
+    import mutex;
+    import event;
+}
+
+/// What the kiln host (or the Zephyr drop-in) provides — the same interfaces,
+/// exported. `gale-kiln` registers gale::* behind these.
+world host {
+    export sem;
+    export msgq;
+    export mutex;
+    export event;
+}
