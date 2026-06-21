@@ -1,61 +1,68 @@
 # The library-OS backing — dissolving the composed component to native ELF
 
 `run.sh` proves the composed component runs on **wasmtime** (the hosted backing).
-`dissolve.sh` proves the **same composed component dissolves to native ELF** —
-the library-OS backing of the kiln component-host path (SAC-BYOOS-LIBOS,
-gale#74/#63).
+`dissolve.sh` exercises the **native** backing via the canonical maximal-wasm
+pipeline and is honest about where it's currently blocked.
 
-## Pipeline
+## The canonical pipeline: `meld → loom → synth`
+
+> *Meld fuses. Loom weaves. Synth transpiles. Kiln fires.*
 
 ```
 gale-app-demo (imports gale:kernel)  +  gale-kiln (provides gale:kernel over gale::*)
-        │  wac plug
+        │  meld fuse   ← static component fusion: import resolution + index-space
+        │              merge + canonical-ABI at BUILD time → ONE core module
         ▼
-   composed component  ──wasm-tools component unbundle──▶  per-crate core modules
-        │                                                    module0 = kernel exports
-        │                                                    module1 = app (imports kernel) + run-demo
-        ▼  per core:  loom optimize --passes inline  →  synth compile --relocatable
-   native .o  (the component glue's import/export wiring becomes native linking)
+   fused core (gale:kernel imports resolved to 0)
+        │  loom optimize --passes inline   (whole-program weave / DCE)
+        ▼
+   synth compile --relocatable             (native transpile)
+        ▼
+   native .o
 ```
 
-## Proven (`./dissolve.sh`)
+**meld is the fusion stage** — it replaces runtime linking with a single
+monolithic module. (An earlier revision wrongly used `wac` compose +
+`wasm-tools unbundle`, which *preserves* per-component adapters and yields two
+adapter-laden cores. That was a mis-step; meld is the correct stage.)
 
-Both core modules dissolve, **synth exit 0** on each:
+## Honest status — the lean MCU image is BLOCKED (gale#89)
 
-| core | synth | .text |
-|---|---|---|
-| module0 (kernel exports) | exit 0 | ~24.8 KB / 24 fns |
-| module1 (app + run-demo) | exit 0 | ~24.2 KB / 16 fns |
+| step | result |
+|---|---|
+| `meld fuse` (multi-memory, auto) | ✅ single fused core, `gale:kernel` imports resolved to 0 |
+| `meld fuse --memory shared --address-rebase` (the MCU mode) | ⛔ **`memory.grow not supported with address rebasing`** |
+| multi-memory fused → synth | partial: 2 memories, synth **loud-skips** the cross-memory copies (`#369` — correct, *not* a miscompile); not an MCU image |
 
-So the *same* component running on wasmtime today also lowers to native with no
-wasm runtime resident — the library-OS image.
+The `memory.grow` is **not gale code**: it's `cabi_realloc` (exported,
+wit-bindgen canonical ABI) → `__rust_alloc` → `dlmalloc` → `sbrk` →
+`memory.grow`. After fusion the app↔kernel boundary is internal (0 imports
+left), yet the fused core **still exports `cabi_realloc` ×2 / keeps
+`memory.grow` ×2** — meld leaves the vestigial canonical-ABI adapter in place,
+and being *exported* loom can't DCE it. That dead allocator is what blocks
+`--memory shared`.
 
-## Honest caveat (FIND-BYOOS-006 · synth#401)
-
-Those ~24 KB **include the component-adapter / `cabi_realloc` canonical-ABI
-machinery** carried in the unbundled core — the dev/test runtime layer, not the
-logic. Our kernel interfaces are scalar-in / enum-out, so the canonical ABI
-needs no `realloc` at the call boundary; the bare gale-logic core dissolves to
-hundreds of bytes (cf. the wasm-dist `sem` module at **544 B**). The **lean**
-image links the bare gale-logic cores; stripping the unused adapter from a
-dissolved core is filed as synth#401. This is the std/alloc "runtime layer
-evaporates on dissolve" story made measurable (see `../../wit/README.md`).
+**Primary fix — meld#298:** on fusion with a scalar external surface, drop the
+now-internal `cabi_realloc`/adapter so the allocator+grow DCE → `--memory shared`
+→ one lean core (wasm-dist **544 B** class, not tens of KB) for loom+synth.
+Building the components `#![no_std]` no-grow is a secondary belt-and-suspenders,
+not the root cause. Gale-side tracker: **gale#89**.
 
 ## The three backings, one component
 
 | backing | status |
 |---|---|
 | wasmtime (hosted, dev/test) | ✅ `run.sh` → `run-demo()=53` |
-| dissolved-native (library OS) | ✅ `dissolve.sh` → both cores synth exit 0 (lean strip pending synth#401) |
+| dissolved-native (library OS) | 🔶 pipeline wired (`meld → loom → synth`); lean MCU image blocked on **gale#89** (no-grow components) |
 | kiln-runtime (hosted, target) | ⛔ kiln#344 (kilnd component-model disabled) |
 
-Isolation between dissolved components is the **opt-in** MPU/PMP layer
-(gale#86), not the dissolve — verification is the primary line.
+Isolation between dissolved components is the **opt-in** MPU/PMP layer (gale#86),
+not the dissolve — verification is the primary line.
 
 ## Reproduce
 
 ```sh
 export PATH="/opt/homebrew/opt/llvm/bin:/Users/r/.cargo/bin:$PATH"
-./run.sh        # hosted backing on wasmtime
-./dissolve.sh   # native library-OS backing (SYNTH_TARGET=cortex-m3 ./dissolve.sh)
+./run.sh        # hosted backing on wasmtime (run-demo()=53)
+./dissolve.sh   # canonical meld→loom→synth; shows the gale#89 MCU block honestly
 ```
