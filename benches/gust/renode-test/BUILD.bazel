@@ -1,0 +1,14 @@
+load("@rules_renode//renode:defs.bzl", "renode_test")
+
+# Boots the DISSOLVED gust kernel on a hermetic Renode Cortex-M3 + 8 KB SRAM.
+# bazel test //:gust-renode  (Linux). Artifacts (Renode log, robot report) land
+# in bazel-testlogs/.../test.outputs/outputs.zip.
+renode_test(
+    name = "gust-renode",
+    timeout = "short",
+    robot_test = "gust_renode.robot",
+    variables_with_label = {
+        "ELF": ":gust_wasm.elf",
+        "REPL": ":gust_m3_8k.repl",
+    },
+)
