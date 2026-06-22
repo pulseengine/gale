@@ -21,7 +21,7 @@ artifacts:
     tags: [byo-os, gale74, kiln, dissolve, library-os, meld, synth]
     fields:
       pipeline: "grow-free core (wasm32-unknown-unknown + cabi-realloc-extern) -> loom inline -> synth --relocatable -> native link against TCB arena"
-      status-note: "LEAN dissolve WORKING: gale-kiln 972B / gale-app-demo 316B native .text, 0 memory.grow (was ~24848B), via wit-bindgen no-grow branch + TCB __cabi_arena_realloc. See FIND-BYOOS-006."
+      status-note: "LEAN dissolve WORKING: gale-kiln 972B / gale-app-demo 316B native .text, 0 memory.grow (was ~24848B), via wit-bindgen no-grow branch + TCB __cabi_arena_realloc. See FIND-BYOOS-006. The meld --memory shared FUSED path is now ALSO proven end-to-end on bare metal (FIND-BYOOS-007): one merged-memory core, no TCB arena, boots run-demo()=53 == wasmtime."
     links:
       - type: allocated-from
         target: REQ-BYOOS-CRATE-001
@@ -63,3 +63,38 @@ artifacts:
     links:
       - type: refines
         target: SAC-BYOOS-LIBOS
+
+  - id: FIND-BYOOS-007
+    type: finding
+    title: "meld --memory shared FUSED dissolve proven end-to-end on bare metal (run-demo()=53 == wasmtime)"
+    status: active
+    description: >
+      The single-merged-memory FUSED path that FIND-BYOOS-006 said "still needs
+      wit-bindgen#6" is now UNBLOCKED and demonstrated end-to-end, without
+      wit-bindgen#6, via Route B: build the components grow-free
+      (wasm32-unknown-unknown + cabi-realloc-extern), then
+      `wasm-tools component new --import-passthrough env::__cabi_arena_realloc`
+      (pulseengine/wasm-tools@feat/import-passthrough, wasm-tools#2) so the arena
+      stays an unresolved import rather than dragging in a growing allocator;
+      `meld fuse --memory shared --address-rebase` then merges the two components
+      into ONE memory (memory.grow=0); strip the fused module's exports down to
+      {memory, run-demo} so loom/synth DCE the now-vestigial cabi_realloc adapter
+      (the dead-allocator export FIND-BYOOS-006 identified); `synth compile
+      --target cortex-m3 --all-exports --relocatable` yields a self-contained
+      ET_REL object (.text ~668B, 0 undefined symbols, exports run-demo) with NO
+      TCB arena needed. Linked into the gust_fused TCB bin it boots on a
+      bare-metal Cortex-M3 (qemu lm3s6965evb, also verified at an 8KB-SRAM link)
+      and returns run-demo()=53 - identical to the SAME composed component on
+      wasmtime (crates/gale-app-demo/run.sh). This is the "components on top,
+      meld-fused into one module, run on the gust stack" vision made executable.
+      Reproduce: benches/gust/build-fused.sh; oracle: benches/gust/run-fused.sh.
+      Note this complements the per-component TCB-arena dissolve (FIND-BYOOS-006,
+      dissolve.sh): that produces one .o per component linked against an arena;
+      this produces one fused .o with no cross-component surface. meld#298 (drop
+      the vestigial adapter at fusion) would remove the manual export-strip step.
+    tags: [byo-os, gale74, dissolve, meld, fused, shared-memory, demonstrator]
+    links:
+      - type: refines
+        target: SAC-BYOOS-LIBOS
+      - type: verifies
+        target: REQ-BYOOS-MULTIRT-001
