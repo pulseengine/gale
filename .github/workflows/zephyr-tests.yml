@@ -434,7 +434,13 @@ jobs:
 
       - name: Setup SDK paths
         run: |
-          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          # The SDK now extracts to /mnt (--install-base /mnt, see the install step);
+          # search there first, then the legacy $HOME (/root) and /opt locations.
+          # The build itself finds the SDK via the CMake package registry regardless,
+          # but this job also invokes arm-zephyr-eabi-size by bare name, so its bin
+          # must be on PATH from wherever the SDK actually landed.
+          SDK_DIR=$(find /mnt -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
           [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
           # SDK 1.0+ added a 'gnu' subdirectory under the SDK root for the GNU toolchain;
           # older layouts had the arm-zephyr-eabi directly under the SDK root.
