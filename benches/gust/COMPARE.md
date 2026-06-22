@@ -17,6 +17,25 @@ compiled two ways: **native** = rustc/LLVM → thumbv7m; **dissolved** = the ide
 | `gust_mix` (Q8 failsafe mixer) | 12 B | 44 B | 3.7× | — |
 | whole dissolved kernel `.o` `.text` | — | **1402 B** | — | the *entire* kernel, **no runtime** |
 
+### Cycle cost (not just size) — `gust_codegen_bench`
+
+`cargo run --release --bin gust_codegen_bench` times the SAME `gust_mix` lowered
+both ways under one SysTick harness (qemu `-icount`, deterministic; instr ≈
+cycles on M3), with a correctness gate (native ≡ dissolved, bit-identical over
+[0,2047]) before timing:
+
+| lowering | fn-only ticks/call | instructions | callee-saves | stack frame |
+|---|---|---|---|---|
+| native (LLVM) | **0.40** | 15 | `{r7,lr}` | none |
+| dissolved (synth) | **1.125** | 45 | `{r4–r8,lr}` ×2 | 24 B |
+| **ratio** | **2.81×** | 3.0× | — | — |
+
+The 2.81× cycle gap is attributed (from disassembly) to four mechanical synth/loom
+codegen issues — unconditional 6-register saves, an un-inlined export wrapper that
+spills+reloads its argument, constants materialized into registers instead of
+immediates, and compare→select lowered as materialized-boolean-then-test instead
+of fused predication. Full write-up + the asks: `optimization/RECO-synth-cycles.md`.
+
 Functional equivalence: `gust_mix` verified identical in wasmtime (the browser/host engine)
 and in the synth-dissolved object — `1024→1500` centre, `0/512→1000`, `1536/2047→2000`.
 
