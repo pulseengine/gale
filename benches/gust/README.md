@@ -28,6 +28,15 @@ computing base (TCB). The TCB boundary contract (gale#65):
 - **Renode (STM32F100, cycle-accurate):** `ELF=target/thumbv7m-none-eabi/release/gust renode-test renode/gust_f100.robot`
   — boots on the real F100 model and reads `ExecutedInstructions` = the **fuel→cycles WCET calibration**.
 
+## Full-pipeline demonstrator (gust_fused)
+The `gust_fused` bin proves the BYO-OS vision end-to-end: the *same*
+Component-Model composition that runs on wasmtime today (gale-app-demo + gale-kiln)
+is **meld-fused** into one merged-memory core, **synth-dissolved** to native, and
+booted bare-metal here — `run-demo() = 53` on both, no wasm runtime on the metal.
+See **[DEMONSTRATOR.md](DEMONSTRATOR.md)**. Build/boot: `./run-fused.sh`;
+regenerate the fused object: `./build-fused.sh`. (rivet FIND-BYOOS-007.)
+
 ## Roadmap
 1. SysTick/time source on the F100 (Renode). 2. Renode cycle calibration in CI.
-3. Dissolve the scheduler `wasm→loom→synth` (maximal-wasm). 4. Real MMIO (PWM/SBUS/IPC) + wake-from-ISR.
+3. ✅ Dissolve the composition `meld→loom→synth` (fused, bare-metal — see DEMONSTRATOR.md);
+   maximal-wasm scheduler dissolve next. 4. Real MMIO (PWM/SBUS/IPC) + wake-from-ISR.
