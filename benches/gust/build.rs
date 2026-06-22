@@ -18,5 +18,16 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_fused={}", obj.display());
         println!("cargo:rerun-if-changed={}", obj.display());
     }
+    // The dissolved `gust_mix` (wasm→loom→synth→cortex-m3), as a clean relocatable
+    // object (no linmem .bss — gust_mix is pure scalar). Linked into the codegen
+    // micro-bench only, so it can time the native (LLVM) vs dissolved (synth)
+    // lowering of the SAME source. Scoped via -bin= so other bins are unaffected.
+    // Reproduce: strip gust_kernel.wasm exports to {memory, gust_mix}, then
+    //   synth compile <stripped>.wasm --target cortex-m3 --all-exports --relocatable
+    let kobj = Path::new(&manifest).join("wasm-kernel/gust_mix-cm3.o");
+    if kobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_codegen_bench={}", kobj.display());
+        println!("cargo:rerun-if-changed={}", kobj.display());
+    }
     println!("cargo:rerun-if-changed=build.rs");
 }
