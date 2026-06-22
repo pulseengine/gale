@@ -42,7 +42,7 @@ jobs:
     name: "LLVM LTO build + size comparison"
     runs-on: ubuntu-22.04
     container:
-      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB). These jobs
       # run multiple west builds on the full `ci` image — more disk than a
       # single-build job — so the west workspace + build dirs go on /mnt to avoid
@@ -304,7 +304,7 @@ jobs:
     name: "llvm-lto-test"
     runs-on: ubuntu-22.04
     container:
-      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
+      image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB). These jobs
       # run multiple west builds on the full `ci` image — more disk than a
       # single-build job — so the west workspace + build dirs go on /mnt to avoid

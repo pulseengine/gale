@@ -58,11 +58,12 @@ jobs:
     name: Zephyr C Coverage
     runs-on: ubuntu-22.04
     container:
-      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
-      options: --user root
+      image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
+      options: --user root --volume /mnt:/mnt
     env:
       HOME: /root
       DOCKER_CONFIG: /tmp/.docker
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout Gale
         uses: actions/checkout@v6
@@ -82,7 +83,7 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi && break || sleep 5; done
+          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Run twister with coverage
         run: |

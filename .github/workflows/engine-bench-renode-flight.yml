@@ -49,8 +49,8 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 180
     container:
-      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
-      options: --user root
+      image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
+      options: --user root --volume /mnt:/mnt
     env:
       HOME: /root
       DOCKER_CONFIG: /tmp/.docker
@@ -186,7 +186,7 @@ jobs:
             echo "run_attempt:           ${{ github.run_attempt }}"
             echo "gale_sha:              ${{ github.sha }}"
             echo "gale_ref:              ${{ github.ref }}"
-            echo "container:             ghcr.io/zephyrproject-rtos/ci:v0.29.0"
+            echo "container:             ghcr.io/zephyrproject-rtos/ci-base:v0.29.0"
             echo "runner:                $(uname -srm)"
             echo "---"
             echo "# Toolchain"

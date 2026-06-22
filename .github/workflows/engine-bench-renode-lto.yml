@@ -44,8 +44,8 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     container:
-      image: ghcr.io/zephyrproject-rtos/ci:v0.29.0
-      options: --user root
+      image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
+      options: --user root --volume /mnt:/mnt
     env:
       HOME: /root
       DOCKER_CONFIG: /tmp/.docker
