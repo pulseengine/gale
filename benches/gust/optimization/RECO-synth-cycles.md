@@ -58,6 +58,10 @@ Native, for the same source (15 insns, no frame):
   addw r0,r2,#1500; cmn.w r1,#500; it lt; movlt r0,#1000; pop {r7,pc}
 ```
 
+**Filed:** synth#428 (asks 1,3,4 + #188), loom#228 (the un-inlined wrapper),
+meld#304 (fused-path trampolines). Cross-layer attribution + beat-LLVM synthesis:
+`ANALYSIS-where-to-optimize.md`.
+
 ### The asks (ranked by measured impact)
 
 1. **Liveness-aware prologue / leaf-function register save.** synth saves
