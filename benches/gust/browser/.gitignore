@@ -1,3 +1,4 @@
 /target
 /web/gust.wasm
+/web/fused.wasm
 /Cargo.lock

@@ -33,8 +33,43 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>gale + gust — running in your browser</h1>
-  <p class="sub">Everything below is <b>one wasm module</b> (3.3&nbsp;KB) — the <span class="gale-fg">formally-verified gale components</span> (the <i>same</i> proven decision logic that ships in the Zephyr drop-in and the wasm-cross-LTO modules) and the <span style="color:var(--accent)">kiln-async scheduler</span> that powers gust on a Cortex-M3. Same code, three runtimes: <b>browser · wasmtime/kiln · dissolved-native</b>. <span class="note" id="status">booting…</span></p>
+  <h1>gale — the complete bench, running in your browser</h1>
+  <p class="sub">The <i>same</i> code that runs on <b>wasmtime</b> and <b>dissolves to a Cortex-M3</b> (no runtime), here live in a browser wasm engine. <span class="gale-fg">Formally-verified gale components</span> (Verus/Rocq/Lean/Kani) + the <span style="color:var(--accent)">kiln-async scheduler</span> that boots gust, the <b>engine_control</b> algorithm, and the <b>meld-fused Component-Model composition</b> that dissolves to a 668&nbsp;B native object. Same code, three runtimes: <b>browser · wasmtime/kiln · dissolved-native</b>. <span class="note" id="status">booting…</span></p>
+
+  <!-- ============ THE DEMONSTRATOR: fused CM composition ============ -->
+  <div class="card" style="border-color:#1d4e89">
+    <h2><span style="color:var(--accent)">●</span> demonstrator — Component-Model composition, fused &amp; dissolved <span class="badge kiln">meld · loom · synth</span></h2>
+    <p class="note">The composed component (<code>gale-app-demo</code> imports <code>gale:kernel</code>; <code>gale-kiln</code> provides it over the verified <code>gale::*</code> deciders) <b>meld-fused</b> into one merged-memory core. This <i>exact</i> module runs here in the browser, runs on wasmtime, and <b>synth-dissolves to a 668&nbsp;B Cortex-M3 object</b> (<code>fused.o</code>) that boots bare-metal — all returning the identical packed result.</p>
+    <div class="row">
+      <button id="demo_run">run-demo()</button>
+      <div>browser <span class="v" id="demo_browser">—</span></div>
+      <div class="note">wasmtime <b style="color:var(--ok)">53</b> · Cortex-M3 <b style="color:var(--ok)">53</b></div>
+      <span class="decide" id="demo_decide">—</span>
+    </div>
+    <p class="note" id="demo_detail" style="margin-top:6px"></p>
+  </div>
+
+  <!-- ============ THE BIGGER EXAMPLE: engine_control ============ -->
+  <div class="card">
+    <h2><span style="color:var(--accent)">●</span> engine_control — the algorithm <span class="badge kiln">2.1× dissolved · 378 B</span></h2>
+    <p class="note">The realistic control step from <code>benches/engine_control</code> (ignition/fuel table lookups + integer coolant enrichment + knock retard) — the <i>same</i> maps as the C bench and the WIT component. Verified byte-identical here to <code>control.step</code> on wasmtime. Dissolves to a <b>378&nbsp;B</b> Cortex-M3 <code>.text</code>.</p>
+    <div class="row">
+      <label>rpm <input type="range" id="ec_rpm" min="0" max="9500" value="3000" step="100"></label>
+      <span class="v gale-fg" id="ec_rpm_v" style="font-size:16px">3000</span>
+    </div>
+    <div class="row">
+      <label>load% <input type="range" id="ec_load" min="0" max="100" value="50" step="1"></label>
+      <span id="ec_load_v" style="color:var(--accent)">50</span>
+      <label>coolant°C <input type="range" id="ec_cool" min="-10" max="120" value="80" step="1"></label>
+      <span id="ec_cool_v" style="color:var(--accent)">80</span>
+      <label>knock <input type="range" id="ec_knock" min="0" max="15" value="0" step="1"></label>
+      <span id="ec_knock_v" style="color:var(--accent)">0</span>
+    </div>
+    <div class="row">
+      <div>spark advance <span class="v" style="color:var(--accent)" id="ec_spark">—</span>°</div>
+      <div>fuel <span class="v" style="color:var(--accent)" id="ec_fuel">—</span>&nbsp;µs</div>
+    </div>
+  </div>
 
   <!-- ============ THE VERIFIED gale COMPONENTS ============ -->
   <div class="card gale-card">
@@ -117,6 +152,24 @@
     <canvas id="spark" width="780" height="70"></canvas>
   </div>
 
+  <!-- ============ DISSOLVED-NATIVE CODEGEN (static) ============ -->
+  <div class="card">
+    <h2><span style="color:var(--accent)">●</span> dissolved → native codegen <span class="badge kiln">wasm → loom → synth → Cortex-M</span></h2>
+    <p class="note">The leg you can't run natively in a browser: the same wasm above, lowered straight to a Cortex-M <code>.text</code> by <b>synth</b> — no interpreter, no runtime. Sizes vs the LLVM-native build of the same source. The synth codegen gap (vs LLVM) is the optimization surface being driven down (synth#390 / loom#226).</p>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px">
+      <thead><tr style="color:var(--muted);text-align:left">
+        <th style="padding:4px 6px">function</th><th style="padding:4px 6px">native (LLVM)</th><th style="padding:4px 6px">dissolved (synth)</th><th style="padding:4px 6px">ratio</th></tr></thead>
+      <tbody>
+        <tr style="border-top:1px solid #1e2935"><td style="padding:4px 6px"><code>gust_poll</code> (scheduler hot path)</td><td style="padding:4px 6px">208 B</td><td style="padding:4px 6px">816 B</td><td style="padding:4px 6px">3.9×</td></tr>
+        <tr style="border-top:1px solid #1e2935"><td style="padding:4px 6px"><code>gust_mix</code> (Q8 failsafe mixer)</td><td style="padding:4px 6px">12 B</td><td style="padding:4px 6px">44 B</td><td style="padding:4px 6px">3.7×</td></tr>
+        <tr style="border-top:1px solid #1e2935"><td style="padding:4px 6px"><code>control_step</code> (engine_control)</td><td style="padding:4px 6px">180 B</td><td style="padding:4px 6px">378 B</td><td style="padding:4px 6px">2.1×</td></tr>
+        <tr style="border-top:1px solid #1e2935"><td style="padding:4px 6px"><code>run-demo</code> (fused CM composition)</td><td style="padding:4px 6px;color:var(--muted)">—</td><td style="padding:4px 6px">668 B</td><td style="padding:4px 6px;color:var(--muted)">one image, no runtime</td></tr>
+        <tr style="border-top:1px solid #1e2935"><td style="padding:4px 6px">whole dissolved gust kernel <code>.text</code></td><td style="padding:4px 6px;color:var(--muted)">—</td><td style="padding:4px 6px"><b>1402 B</b></td><td style="padding:4px 6px;color:var(--muted)">the entire kernel</td></tr>
+      </tbody>
+    </table>
+    <p class="note" style="margin-top:8px">vs a wasm interpreter on the MCU (WAMR): <b>~50–64 KB</b> of engine + per-module RAM + 10–50× interpreter energy. Dissolving removes all of it.</p>
+  </div>
+
   <p class="note">404 / blank? wasm needs HTTP — <code>cd web && python3 -m http.server</code>, open <code>http://localhost:8000/</code>.</p>
 </div>
 
@@ -131,6 +184,40 @@
     g.gust_boot();
     $('status').textContent = 'booted — verified gale components + kiln scheduler live in wasm';
   } catch (e) { $('status').textContent = 'load error: ' + e; return; }
+
+  // ---- demonstrator: the meld-fused CM composition (run-demo) ----
+  // The SAME core module that synth dissolves to fused.o (Cortex-M3). run-demo
+  // never calls the embedder arena, so a no-op stub satisfies instantiation.
+  let demo;
+  try {
+    const fr = await fetch('fused.wasm');
+    demo = (await WebAssembly.instantiate(await fr.arrayBuffer(),
+            { 'cabi-arena-realloc': { '': () => 0 } })).instance.exports;
+  } catch (e) { $('demo_detail').textContent = 'fused.wasm load error: ' + e; }
+  $('demo_run').onclick = () => {
+    if (!demo) return;
+    const r = demo['run-demo']() >>> 0;
+    $('demo_browser').textContent = r;
+    const ok = r === 53;
+    setDec($('demo_decide'), ok ? 'MATCHES wasmtime & Cortex-M3 (53)' : 'mismatch!', ok ? 'ok' : 'bad');
+    // 53 = take(0,true)=would-block(1) | give(0,3,false)=increment(1)<<2 | put(0,4,4,_,true)=full(3)<<4
+    $('demo_detail').textContent =
+      `packed 0b${r.toString(2).padStart(6,'0')} = would-block(1) | increment(1)<<2 | full(3)<<4 — identical across browser, wasmtime, and the dissolved Cortex-M3 image.`;
+    log(`run-demo() [fused CM composition] → ${r} (browser; wasmtime=53; Cortex-M3=53)`);
+  };
+
+  // ---- engine_control: the algorithm (ec_step), same as wasmtime/C ----
+  const ecFields = ['rpm','load','cool','knock'];
+  function ecRun(){
+    const rpm=+$('ec_rpm').value, load=+$('ec_load').value, cool=+$('ec_cool').value, knock=+$('ec_knock').value;
+    $('ec_rpm_v').textContent=rpm; $('ec_load_v').textContent=load; $('ec_cool_v').textContent=cool; $('ec_knock_v').textContent=knock;
+    const r = g.ec_step(rpm, load, cool, knock) >>> 0;     // same algorithm dissolved to 378 B
+    const spark = (r & 0xFFFF) << 16 >> 16;                // sign-extend i16
+    const fuel  = r >>> 16;
+    $('ec_spark').textContent = spark; $('ec_fuel').textContent = fuel;
+  }
+  ecFields.forEach(f => $('ec_'+f).oninput = ecRun);
+  ecRun();
 
   // ---- gale::sem (verified) ----
   const SEM_LIMIT = 3; let semCount = 0, semWait = 0;

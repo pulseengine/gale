@@ -62,6 +62,11 @@ echo "== 5. strip exports to {memory, run-demo} (DCE the cabi_realloc path) =="
 "$WASM_TOOLS" print "$W/fused.loom.wasm" 2>/dev/null \
   | grep -vE '\(export "(gale:kernel|cabi_realloc|__data_end|__heap_base)' > "$W/fused.stripped.wat"
 "$WASM_TOOLS" parse "$W/fused.stripped.wat" -o "$W/fused.stripped.wasm" || fail=1
+# Keep the stripped core wasm as the browser-runnable artifact (run-demo works in
+# any wasm engine with a stub `cabi-arena-realloc` import; run-demo never calls it).
+# Shipped to GitHub Pages by .github/workflows/pages.yml. The SAME module dissolves
+# to fused.o below — "same wasm, browser + dissolved-native".
+cp "$W/fused.stripped.wasm" "$HERE/wasm-kernel/fused.wasm"
 
 echo "== 6. synth dissolve -> relocatable Cortex-M ($TGT) =="
 if "$SYNTH" compile "$W/fused.stripped.wasm" --target "$TGT" --all-exports --relocatable -o "$HERE/wasm-kernel/fused.o" >"$W/synth.log" 2>&1; then
