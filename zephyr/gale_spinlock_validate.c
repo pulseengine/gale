@@ -47,6 +47,23 @@ bool z_spin_lock_valid(struct k_spinlock *l)
 {
 	uintptr_t thread_cpu = l->thread_cpu;
 
+	/* Early-boot arm, symmetric with z_spin_unlock_valid's zero-tag arm
+	 * (#58, gale#98). Before a CPU's dummy thread exists, _current == NULL,
+	 * so set_owner encoded the tag as (cpu_id | NULL) == cpu_id — a non-zero
+	 * tag on an AP (CPU id != 0). A re-acquire on that same still-NULL CPU
+	 * would then match (thread_cpu & CPU_MASK) == _current_cpu->id and be
+	 * reported as a same-CPU deadlock, which recurses assert->printk->
+	 * spinlock pre-console and hangs boot silently (the AP-bringup race that
+	 * #58 left unpatched on this arm; see gale#98). Real deadlock detection
+	 * needs a real owning thread, so skip the check while _current == NULL —
+	 * stock spinlock_validate.c tolerates the boot tag the same way. Inert
+	 * post-boot: once threads exist _current != NULL and the full Verus-backed
+	 * check below runs, protected by its thread_ptr_valid precondition.
+	 */
+	if (_current == NULL) {
+		return true;
+	}
+
 	return gale_spin_lock_valid(thread_cpu,
 				    _current_cpu->id) != 0;
 }
@@ -59,6 +76,20 @@ bool z_spin_unlock_valid(struct k_spinlock *l)
 	 * matching the original C semantics.
 	 */
 	l->thread_cpu = 0;
+
+	/* Early-boot arm, symmetric with z_spin_lock_valid and the zero-tag arm
+	 * below (#58, gale#98). On an AP before its dummy thread exists,
+	 * _current == NULL and the tag is (cpu_id | NULL) == cpu_id != 0, so the
+	 * zero-tag arm below does NOT catch it and we would call the FFI with a
+	 * NULL thread — violating gale_spin_unlock_valid's thread_ptr_valid
+	 * (non-NULL) precondition (erased at the C boundary). Validation needs a
+	 * real owning thread, so skip it while _current == NULL (the owner is
+	 * already cleared above). Must precede the _current deref below. Inert
+	 * post-boot: _current != NULL, so the full check runs.
+	 */
+	if (_current == NULL) {
+		return true;
+	}
 
 	/* Edge case: an ISR aborted _current, leaving it as a dummy
 	 * thread.  The spinlock was locked by the pre-abort thread,
