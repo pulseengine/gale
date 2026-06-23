@@ -24,17 +24,24 @@ both ways under one SysTick harness (qemu `-icount`, deterministic; instr ≈
 cycles on M3), with a correctness gate (native ≡ dissolved, bit-identical over
 [0,2047]) before timing:
 
-| lowering | fn-only ticks/call | instructions | callee-saves | stack frame |
+| lowering | fn-only ticks/call | callee-saves | stack frame | toolchain |
 |---|---|---|---|---|
-| native (LLVM) | **0.40** | 15 | `{r7,lr}` | none |
-| dissolved (synth) | **1.125** | 45 | `{r4–r8,lr}` ×2 | 24 B |
-| **ratio** | **2.81×** | 3.0× | — | — |
+| native (LLVM) | **0.40** | `{r7,lr}` | none | rustc/LLVM |
+| dissolved, initial | 1.125 | `{r4–r8,lr}` ×2 | 24 B | synth 0.11, no loom inline |
+| dissolved, **current** | **1.05** | `{r4–r8,lr}` | 8 B | **loom 1.1.16 + synth 0.12.0** |
+| **ratio vs LLVM** | **2.81× → 2.63×** | — | — | — |
 
-The 2.81× cycle gap is attributed (from disassembly) to four mechanical synth/loom
-codegen issues — unconditional 6-register saves, an un-inlined export wrapper that
-spills+reloads its argument, constants materialized into registers instead of
-immediates, and compare→select lowered as materialized-boolean-then-test instead
-of fused predication. Full write-up + the asks: `optimization/RECO-synth-cycles.md`.
+**Progress (measured):** loom v1.1.16 landed the inline + whole-function DCE +
+arg-forwarding (loom#228) — the export wrapper is now merged into the body (no
+`bl`, no second prologue), shrinking the frame 24 B → 8 B and the gap 2.81× →
+**2.63×**. The residual is now **entirely synth's arithmetic lowering**
+(synth#428, still open): the merged `gust_mix` under synth 0.12.0 still emits a
+6-register leaf prologue, stack spill/reloads of locals, a register shift
+(`movw #8; lsl r,r,r` instead of `lsl #8`), and the compare→select clamp as a
+materialized-boolean-then-test (`cmp;ite;mov#1/#0;cmp#0;it;movne`) — twice.
+synth 0.12.0 shipped DWARF + the spill-pressure CI-gate (#441), not the lowering
+fixes. Full write-up + the ranked asks: `optimization/RECO-synth-cycles.md`;
+cross-layer attribution: `optimization/ANALYSIS-where-to-optimize.md`.
 
 Functional equivalence: `gust_mix` verified identical in wasmtime (the browser/host engine)
 and in the synth-dissolved object — `1024→1500` centre, `0/512→1000`, `1536/2047→2000`.
