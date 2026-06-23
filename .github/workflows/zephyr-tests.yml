@@ -24,6 +24,14 @@ concurrency:
 env:
   HOME: /root
   DOCKER_CONFIG: /tmp/.docker
+  # Store rustup toolchains (incl. the large rust-std component) on the big
+  # ephemeral disk, not /root. Symptom that motivated this: jobs intermittently
+  # died mid `rustup` at "downloading component rust-std" with no error and an
+  # empty step list — the disk-full signature (the runner can't even write the
+  # error), same /root-exhaustion class as the SDK extract (gale#73). rustup
+  # reads RUSTUP_HOME for toolchain storage; CARGO_HOME stays default (/root/.cargo)
+  # so the proxies + `. /root/.cargo/env` sourcing in the build steps are unchanged.
+  RUSTUP_HOME: /mnt/.rustup
   # Token value for `west sdk install --personal-access-token` (see the install
   # steps). `west sdk install`'s "Fetching Zephyr SDK list" hits the GitHub API;
   # anonymous = 60 req/hr per runner IP, and with ~59 concurrent jobs that limit
