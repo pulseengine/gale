@@ -24,6 +24,14 @@ concurrency:
 env:
   HOME: /root
   DOCKER_CONFIG: /tmp/.docker
+  # Store rustup toolchains (incl. the large rust-std component) on the big
+  # ephemeral disk, not /root. Symptom that motivated this: jobs intermittently
+  # died mid `rustup` at "downloading component rust-std" with no error and an
+  # empty step list — the disk-full signature (the runner can't even write the
+  # error), same /root-exhaustion class as the SDK extract (gale#73). rustup
+  # reads RUSTUP_HOME for toolchain storage; CARGO_HOME stays default (/root/.cargo)
+  # so the proxies + `. /root/.cargo/env` sourcing in the build steps are unchanged.
+  RUSTUP_HOME: /mnt/.rustup
   # Token value for `west sdk install --personal-access-token` (see the install
   # steps). `west sdk install`'s "Fetching Zephyr SDK list" hits the GitHub API;
   # anonymous = 60 req/hr per runner IP, and with ~59 concurrent jobs that limit
@@ -170,7 +178,13 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
+          # --install-base /mnt: extract the SDK onto the big ephemeral disk, not
+          # $HOME (=/root) on the small host fs. The default home-dir extract
+          # tips the runner into ENOSPC (writing its own diag log) during the
+          # zephyr-sdk download — the residual gale#73 vector left after the
+          # workspace was moved to /mnt. The CMake package registry still finds
+          # the SDK regardless of install location.
+          for attempt in 1 2 3; do west sdk install --install-base /mnt -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Build and run test
         env:
@@ -250,7 +264,13 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
+          # --install-base /mnt: extract the SDK onto the big ephemeral disk, not
+          # $HOME (=/root) on the small host fs. The default home-dir extract
+          # tips the runner into ENOSPC (writing its own diag log) during the
+          # zephyr-sdk download — the residual gale#73 vector left after the
+          # workspace was moved to /mnt. The CMake package registry still finds
+          # the SDK regardless of install location.
+          for attempt in 1 2 3; do west sdk install --install-base /mnt -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Build and run test
         env:
@@ -350,7 +370,8 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t x86_64-zephyr-elf --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
+          # --install-base /mnt: SDK onto the big disk, not /root (gale#73 ENOSPC). See arm jobs above.
+          for attempt in 1 2 3; do west sdk install --install-base /mnt -t x86_64-zephyr-elf --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Build and run test
         env:
@@ -411,11 +432,23 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
+          # --install-base /mnt: extract the SDK onto the big ephemeral disk, not
+          # $HOME (=/root) on the small host fs. The default home-dir extract
+          # tips the runner into ENOSPC (writing its own diag log) during the
+          # zephyr-sdk download — the residual gale#73 vector left after the
+          # workspace was moved to /mnt. The CMake package registry still finds
+          # the SDK regardless of install location.
+          for attempt in 1 2 3; do west sdk install --install-base /mnt -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Setup SDK paths
         run: |
-          SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          # The SDK now extracts to /mnt (--install-base /mnt, see the install step);
+          # search there first, then the legacy $HOME (/root) and /opt locations.
+          # The build itself finds the SDK via the CMake package registry regardless,
+          # but this job also invokes arm-zephyr-eabi-size by bare name, so its bin
+          # must be on PATH from wherever the SDK actually landed.
+          SDK_DIR=$(find /mnt -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /root -maxdepth 1 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
           [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /opt -maxdepth 2 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
           # SDK 1.0+ added a 'gnu' subdirectory under the SDK root for the GNU toolchain;
           # older layouts had the arm-zephyr-eabi directly under the SDK root.
