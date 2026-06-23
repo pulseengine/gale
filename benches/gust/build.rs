@@ -22,8 +22,11 @@ fn main() {
     // object (no linmem .bss — gust_mix is pure scalar). Linked into the codegen
     // micro-bench only, so it can time the native (LLVM) vs dissolved (synth)
     // lowering of the SAME source. Scoped via -bin= so other bins are unaffected.
-    // Reproduce: strip gust_kernel.wasm exports to {memory, gust_mix}, then
-    //   synth compile <stripped>.wasm --target cortex-m3 --all-exports --relocatable
+    // Reproduce (loom 1.1.16 + synth 0.12.0): loom optimize gust_kernel.wasm
+    //   --passes inline (merges the gust_mix wrapper into its body, loom#228),
+    //   strip exports to {memory, gust_mix}, then synth compile <stripped>.wasm
+    //   --target cortex-m3 --all-exports --relocatable. COMPARE.md tracks the
+    //   measured 2.81x -> 2.63x progression and the residual synth#428 gap.
     let kobj = Path::new(&manifest).join("wasm-kernel/gust_mix-cm3.o");
     if kobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_codegen_bench={}", kobj.display());
