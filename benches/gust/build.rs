@@ -32,5 +32,17 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_codegen_bench={}", kobj.display());
         println!("cargo:rerun-if-changed={}", kobj.display());
     }
+    // The dissolved gale deciders (sem/msgq/mutex/event) for the regression
+    // differential — all 8 verified primitives as the "shim as wasm". Reproduce:
+    //   (cd browser && cargo build --release --target wasm32-unknown-unknown)
+    //   loom optimize gust_browser.wasm --passes inline | synth compile --target
+    //   cortex-m3 --all-exports --relocatable  (flag-off = dec_diff.o, the default;
+    //   set SYNTH_CMP_SELECT_FUSE=1 for the flag-on variant). gale_decider_diff
+    //   folds every decision into a checksum so off/on/native are byte-comparable.
+    let dobj = Path::new(&manifest).join("wasm-kernel/dec_diff.o");
+    if dobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gale_decider_diff={}", dobj.display());
+        println!("cargo:rerun-if-changed={}", dobj.display());
+    }
     println!("cargo:rerun-if-changed=build.rs");
 }
