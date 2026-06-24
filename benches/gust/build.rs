@@ -64,5 +64,18 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gale_decider_diff={}", dobj.display());
         println!("cargo:rerun-if-changed={}", dobj.display());
     }
+    // The dissolved engine_control control_step — driven on the kiln stack by the
+    // gust_control demonstrator (north-star rung 1: a realistic sensors→actuators
+    // loop). Reproduce: clang wasm32 control.c+tables.c+shim.c → wasm-ld
+    //   --export=control_step_packed → loom inline → synth --target cortex-m3
+    //   --all-exports --relocatable. NOTE built with SYNTH_NO_LOCAL_PROMOTE=1:
+    //   v0.14.0's default-on local promotion register-exhausts on this denser
+    //   function (filed to synth — the promotion cost-gate needs reg-pressure
+    //   awareness); the non-promoted lowering compiles + is correct.
+    let cobj = Path::new(&manifest).join("wasm-kernel/control_step-cm3.o");
+    if cobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_control={}", cobj.display());
+        println!("cargo:rerun-if-changed={}", cobj.display());
+    }
     println!("cargo:rerun-if-changed=build.rs");
 }

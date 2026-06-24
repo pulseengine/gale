@@ -92,5 +92,9 @@ cargo run --release --bin gust_stack   # qemu lm3s6965evb / Cortex-M3
 
 So the whole north-star path executes bare-metal, no runtime:
 **components on top (CM) → meld fuse → one module → synth dissolve → driven by the
-kiln-async scheduler on gust.** Next rung: a richer driven example (engine_control
-control-loop as the kiln task body) and the same on real silicon.
+kiln-async scheduler on gust.** Rung 1 (DONE): a richer driven example — gust_control runs the dissolved
+**engine_control** control loop (sensors -> control_step -> actuators) as the kiln
+task body, one tick per round; gate matches C/wasmtime (spark 33deg/fuel 2300us),
+5000 ticks bare-metal. Needs the r11=0 TCB trampoline (control_step is
+--native-pointer-abi: it reads its tables off the linmem base the scheduler
+clobbers). Next: the same on real silicon (G474RE/F100).
