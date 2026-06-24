@@ -1,0 +1,17 @@
+[package]
+name = "gust-esp32c3"
+version = "0.1.0"
+edition = "2021"
+description = "gust on RISC-V: dissolved gust_mix (synth -b riscv --target esp32c3) on a real ESP32-C3 via an esp-hal TCB, mcycle-measured. Third architecture after Cortex-M3/M4. Flash + monitor via espflash 3.x."
+
+[workspace]
+
+[dependencies]
+esp-hal = { version = "0.23.1", features = ["esp32c3"] }
+esp-backtrace = { version = "0.15.0", features = ["esp32c3", "panic-handler", "println"] }
+esp-println = { version = "0.13.0", features = ["esp32c3"] }
+riscv = "0.12"
+
+[profile.release]
+opt-level = "z"
+lto = true
