@@ -2,7 +2,9 @@
 target = "riscv32imc-unknown-none-elf"
 
 [target.riscv32imc-unknown-none-elf]
-# espflash 3.x — flashes the esp-hal app + monitors the USB-Serial-JTAG. (espflash
-# 4.x / probe-rs 0.31 require an ESP-IDF app descriptor that esp-hal 0.23 predates.)
-runner = "/tmp/espflash3/bin/espflash flash --monitor"
+# espflash from PATH — flashes the esp-hal app + monitors the USB-Serial-JTAG.
+# Use espflash 3.x: espflash 4.x / probe-rs 0.31 require an ESP-IDF app descriptor
+# that esp-hal 0.23 predates (`cargo install espflash@^3`). Never point this at a
+# world-writable path like /tmp — an attacker could plant a binary cargo would run.
+runner = "espflash flash --monitor"
 rustflags = ["-C", "link-arg=-Tlinkall.x"]
