@@ -1,12 +1,14 @@
-# rules_renode (pinned commit 5fc76ad) predates Bazel 8's removal of the
-# autoloaded Python globals: its renode/defs.bzl references PyInfo / py_* as
-# builtins, which Bazel 9.1 no longer provides, so the module fails to LOAD
-# ("name 'PyInfo' is not defined"). Re-inject the legacy globals from rules_python
-# via the migration flag so the pinned rule loads unmodified. Upstream fix
-# (load PyInfo from @rules_python//python:defs.bzl) reported to renode-bazel-rules.
-common --incompatible_autoload_externally=PyInfo,PyRuntimeInfo,py_binary,py_test,py_library,py_runtime
+# This self-contained module pins Bazel 8 (.bazelversion) rather than inheriting
+# gale's root 9.1.0. rules_renode (pinned 5fc76ad, == upstream HEAD) is authored
+# against Bazel 8: its renode/defs.bzl uses the PyInfo / py_* / sh_* globals and
+# the old rules_shell runfiles_impl single-file behavior. Bazel 8 still provides
+# these via the default --incompatible_autoload_externally migration set; Bazel 9
+# emptied that set (migration window closed), so on 9.1 the module fails to LOAD
+# ("PyInfo not defined") and then ANALYZE ("runfiles_impl must produce a single
+# file"). Upstream's own CI uses bazelisk-latest with no .bazelversion, i.e.
+# Bazel 8 — so 8.x is the known-good configuration. Reported to renode-bazel-rules.
 
 # rules_renode transitively pulls rules_python 1.7.0; the module declares 0.36.0
-# as a direct dep. The resolved 1.7.0 is fine for the autoload shim — silence the
-# direct-dependency version-skew error rather than pin a stale rules_python.
+# as a direct dep. The resolved 1.7.0 is fine — silence the direct-dependency
+# version-skew error rather than pin a stale rules_python.
 common --check_direct_dependencies=off
