@@ -76,3 +76,21 @@ merged-memory core *before* dissolving, so the result is a single self-contained
 object with no cross-component imports — the form that drops straight onto the
 gust TCB. Both are valid lowerings of gale#89; this one is the "one fused module"
 the BYO-OS vision asks for.
+
+## gust_stack — the composition driven ON the stack (the north-star, completed)
+
+`gust_fused` proves the *dissolve* (CM → fuse → synth → `run-demo()=53`, called
+once). `gust_stack` proves the other half — **running on our stack**: the same
+dissolved composition is the body of a **kiln-async task**, re-polled every
+scheduler round. The kiln-async executor (gust's scheduler) drives the verified
+gale components as scheduled work — not a one-shot call.
+
+```
+cargo run --release --bin gust_stack   # qemu lm3s6965evb / Cortex-M3
+→ gust-stack: 5000 poll rounds; dissolved run-demo() = 53 each round; mismatches = 0
+```
+
+So the whole north-star path executes bare-metal, no runtime:
+**components on top (CM) → meld fuse → one module → synth dissolve → driven by the
+kiln-async scheduler on gust.** Next rung: a richer driven example (engine_control
+control-loop as the kiln task body) and the same on real silicon.

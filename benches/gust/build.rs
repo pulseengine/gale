@@ -16,6 +16,8 @@ fn main() {
     let obj = Path::new(&manifest).join("wasm-kernel/fused.o");
     if obj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_fused={}", obj.display());
+        // gust_stack drives the same dissolved composition (run-demo) as a kiln task.
+        println!("cargo:rustc-link-arg-bin=gust_stack={}", obj.display());
         println!("cargo:rerun-if-changed={}", obj.display());
     }
     // The dissolved `gust_mix` (wasm→loom→synth→cortex-m3), as a clean relocatable
