@@ -1,0 +1,16 @@
+// Cortex-M3 + 64 KB SRAM / 512 KB flash — STM32F103RE-class (a real, common M3
+// device). The gust_control workload (dissolved engine_control + the kiln
+// scheduler) has a 9408 B .bss, which exceeds the 8 KB gust kernel class
+// (gust_m3_8k.repl); this is the realistic-control device class. The
+// SemihostingUart bridges the kernel's hprintln/semihosting heartbeat to the
+// robot terminal tester.
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m3"
+    nvic: nvic
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    -> cpu@0
+flash: Memory.MappedMemory @ sysbus 0x0
+    size: 0x80000
+sram: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x10000
+uartSemihosting: UART.SemihostingUart @ cpu

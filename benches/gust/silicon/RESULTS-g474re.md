@@ -16,3 +16,17 @@ over [0,2047]. probe-rs 0.31.0.
 - Real-M4 ratio (2.21× off) is lower than the qemu `-icount` ratio (2.63×) — qemu
   counts instructions; the M4 pipeline/timing differs.
 - STM32F100 (Cortex-M3) results: pending the board (run `silicon/run.sh f100`).
+
+## gust_control on real M4 — north-star rung 2 (the stack, on silicon)
+
+`gust_control` (kiln-async scheduler driving the dissolved engine_control loop)
+flashed on the physical NUCLEO-G474RE via probe-rs:
+- `control_step(3000,50,80,0)` = spark 33° / fuel 2300µs — **matches C/wasmtime**
+- 5000 control ticks on the kiln/gust stack; last `(4700,75,80,0)` = spark 38° / fuel 2440µs (== wasmtime)
+
+So the whole north-star runs on real hardware: components (CM) → meld fuse / synth
+dissolve → driven by the kiln-async scheduler on gust, Cortex-M4, no runtime.
+control_step needs `--native-pointer-abi` + `--shadow-stack-size 8192` + the r11=0
+TCB trampoline (it reads its tables off the linmem base the scheduler clobbers), and
+the cortex-m4 `.o` (the cortex-m3 one won't link into a thumbv7em image). F100/M3
+pending the board.

@@ -16,6 +16,8 @@ fn main() {
     let obj = Path::new(&manifest).join("wasm-kernel/fused.o");
     if obj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_fused={}", obj.display());
+        // gust_stack drives the same dissolved composition (run-demo) as a kiln task.
+        println!("cargo:rustc-link-arg-bin=gust_stack={}", obj.display());
         println!("cargo:rerun-if-changed={}", obj.display());
     }
     // The dissolved `gust_mix` (wasm→loom→synth→cortex-m3), as a clean relocatable
@@ -61,6 +63,27 @@ fn main() {
     if dobj.exists() {
         println!("cargo:rustc-link-arg-bin=gale_decider_diff={}", dobj.display());
         println!("cargo:rerun-if-changed={}", dobj.display());
+    }
+    // The dissolved engine_control control_step — driven on the kiln stack by the
+    // gust_control demonstrator (north-star rung 1: a realistic sensors→actuators
+    // loop). Reproduce: clang wasm32 control.c+tables.c+shim.c → wasm-ld
+    //   --export=control_step_packed → loom inline → synth --target cortex-m3
+    //   --all-exports --relocatable. NOTE built with SYNTH_NO_LOCAL_PROMOTE=1:
+    //   v0.14.0's default-on local promotion register-exhausts on this denser
+    //   function (filed to synth — the promotion cost-gate needs reg-pressure
+    //   awareness); the non-promoted lowering compiles + is correct.
+    // arch-matched, like silicon_bench: cortex-m4 .o for thumbv7em (G474RE), else
+    // cortex-m3 (qemu/F100). Both are --native-pointer-abi (table data) and driven
+    // via the r11=0 trampoline in gust_control.rs.
+    let cs_o = if target.contains("thumbv7em") {
+        "wasm-kernel/control_step-cm4.o"
+    } else {
+        "wasm-kernel/control_step-cm3.o"
+    };
+    let cobj = Path::new(&manifest).join(cs_o);
+    if cobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_control={}", cobj.display());
+        println!("cargo:rerun-if-changed={}", cobj.display());
     }
     println!("cargo:rerun-if-changed=build.rs");
 }

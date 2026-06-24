@@ -1,0 +1,24 @@
+# This self-contained module pins Bazel 8 (.bazelversion) rather than inheriting
+# gale's root 9.1.0. rules_renode (pinned 5fc76ad, == upstream HEAD) is authored
+# against Bazel 8: its renode/defs.bzl uses the PyInfo / py_* / sh_* globals and
+# the old rules_shell runfiles_impl single-file behavior. Bazel 8 still provides
+# these via the default --incompatible_autoload_externally migration set; Bazel 9
+# emptied that set (migration window closed), so on 9.1 the module fails to LOAD
+# ("PyInfo not defined") and then ANALYZE ("runfiles_impl must produce a single
+# file"). Upstream's own CI uses bazelisk-latest with no .bazelversion, i.e.
+# Bazel 8 — so 8.x is the known-good configuration. Reported to renode-bazel-rules.
+
+# rules_renode transitively pulls rules_python 1.7.0; the module declares 0.36.0
+# as a direct dep. The resolved 1.7.0 is fine — silence the direct-dependency
+# version-skew error rather than pin a stale rules_python.
+common --check_direct_dependencies=off
+
+# rules_renode's renode_test wrapper (defs.bzl:104) invokes the toolchain via its
+# EXECROOT-relative path "external/rules_renode++renode+renode_toolchain/.../renode-test".
+# That path only resolves inside the test's runfiles tree if Bazel materialises the
+# legacy "_main/external/<repo>" symlinks — i.e. --legacy_external_runfiles, whose
+# default flipped to false in recent Bazel. With it false the wrapper dies at runtime
+# ("renode-test: No such file or directory"); restoring it true is what the rule was
+# authored against. (Part of the same upstream-friction item: the rule should rlocation
+# the toolchain binary rather than rely on the execroot path + legacy symlinks.)
+common --legacy_external_runfiles=true

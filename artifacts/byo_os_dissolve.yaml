@@ -98,3 +98,30 @@ artifacts:
         target: SAC-BYOOS-LIBOS
       - type: verifies
         target: REQ-BYOOS-MULTIRT-001
+
+  - id: FIND-BYOOS-008
+    type: finding
+    title: "North-star end-to-end: the dissolved CM composition runs ON the kiln/gust stack (kiln-async drives it as a scheduled task, bare metal)"
+    status: active
+    description: >
+      Closes the "running on our stack" half of the BYO-OS north-star (the other
+      half, the dissolve, is FIND-BYOOS-007). gust_stack (benches/gust/src/bin/
+      gust_stack.rs) constructs the kiln-async Scheduler — gust's executor — and
+      drives the MELD-fused, synth-dissolved Component-Model composition
+      (gale-app-demo importing gale:kernel; gale-kiln providing it over the
+      verified gale::* deciders) as the body of a kiln task, re-polled every
+      scheduler round. Boots bare-metal on qemu Cortex-M3 (lm3s6965evb): 5000
+      poll rounds, dissolved run-demo() = 53 every round, 0 mismatches, no wasm
+      runtime. So the full path executes end-to-end: components on top (CM) ->
+      meld fuse (one merged-memory module) -> synth dissolve (native) -> driven
+      by the kiln-async scheduler on the gust stack. gust_fused proved the
+      dissolve (one-shot run-demo); this proves the components execute as
+      scheduled work on the executor. Next rungs: a richer driven example
+      (engine_control control-loop as the task body) and the same on real
+      silicon (G474RE/F100).
+    tags: [byo-os, gale74, kiln, gust, on-stack, north-star, demonstrator]
+    links:
+      - type: verifies
+        target: REQ-BYOOS-MULTIRT-001
+      - type: related-to
+        target: SAC-BYOOS-EXEC

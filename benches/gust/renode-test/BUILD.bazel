@@ -1,8 +1,13 @@
 load("@rules_renode//renode:defs.bzl", "renode_test")
 
-# Boots the DISSOLVED gust kernel on a hermetic Renode Cortex-M3 + 8 KB SRAM.
-# bazel test //:gust-renode  (Linux). Artifacts (Renode log, robot report) land
-# in bazel-testlogs/.../test.outputs/outputs.zip.
+# Three M3 device-class Renode targets, each hermetic (own checked-in .repl, no
+# dependency on the pinned Renode's bundled platform set). Run on Linux:
+#   bazel test //:gust-renode //:gust-control-renode //:gust-f100-renode
+# Artifacts (Renode log, robot report) land in
+# bazel-testlogs/.../test.outputs/outputs.zip.
+
+# 1. Generic Cortex-M3 + 8 KB SRAM — the DISSOLVED gust kernel; on-target
+# confirmation of the synth#383 .bss shrink, beyond qemu's lm3s stand-in.
 renode_test(
     name = "gust-renode",
     timeout = "short",
@@ -10,5 +15,33 @@ renode_test(
     variables_with_label = {
         "ELF": ":gust_wasm.elf",
         "REPL": ":gust_m3_8k.repl",
+    },
+)
+
+# 2. Cortex-M3 + 64 KB SRAM (STM32F103RE-class) — north-star rung 1: the kiln
+# scheduler driving the DISSOLVED engine_control control_step. Asserts the
+# spark/fuel CORRECTNESS line (== C/wasmtime) over the SemihostingUart and logs
+# the deterministic executed-instruction count (the CI-reproducible cycle seed).
+# Its 9408 B .bss needs the 64 KB class — it does not fit the 8 KB F100.
+renode_test(
+    name = "gust-control-renode",
+    timeout = "short",
+    robot_test = "gust_control.robot",
+    variables_with_label = {
+        "ELF": ":gust_control.elf",
+        "REPL": ":m3_64k.repl",
+    },
+)
+
+# 3. REAL STM32F100RB (STM32VLDISCOVERY: Cortex-M3, 128 KB / 8 KB) — the actual
+# silicon board in the gust plan; the dissolved gust kernel pinned to the F100's
+# exact memory class (closes the README follow-up #3).
+renode_test(
+    name = "gust-f100-renode",
+    timeout = "short",
+    robot_test = "gust_f100.robot",
+    variables_with_label = {
+        "ELF": ":gust_wasm.elf",
+        "REPL": ":stm32f100.repl",
     },
 )

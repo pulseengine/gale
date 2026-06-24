@@ -8,3 +8,7 @@ upstream-reqif/_cache/
 # Bazel
 bazel-*
 *.rlib
+
+# Agent working state (per-package; not source — see issue-hunt skill)
+.claude/pulseengine/
+**/.claude/pulseengine/
