@@ -32,6 +32,24 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_codegen_bench={}", kobj.display());
         println!("cargo:rerun-if-changed={}", kobj.display());
     }
+    // silicon_bench runs on two MCUs and needs an arch-matched dissolved object:
+    // a synth --target cortex-m3 .o links into a thumbv7m (F100) image; a
+    // thumbv7em (G474RE/M4) image needs the synth --target cortex-m4 .o (the M3
+    // object's ARMv7-M attributes make rust-lld silently emit an empty ELF when
+    // linked into a v7E-M binary). Pick by the cargo TARGET. The cortex-m4 .o is
+    // also the correct artifact for the M4 vs LLVM-thumbv7em comparison (synth#428).
+    let target = std::env::var("TARGET").unwrap_or_default();
+    let silicon_o = if target.contains("thumbv7em") {
+        "wasm-kernel/gust_mix-cm4.o"
+    } else {
+        "wasm-kernel/gust_mix-cm3.o"
+    };
+    let sobj = Path::new(&manifest).join(silicon_o);
+    if sobj.exists() {
+        println!("cargo:rustc-link-arg-bin=silicon_bench={}", sobj.display());
+        println!("cargo:rerun-if-changed={}", sobj.display());
+    }
+    println!("cargo:rustc-rerun-if-env-changed=TARGET");
     // The dissolved gale deciders (sem/msgq/mutex/event) for the regression
     // differential — all 8 verified primitives as the "shim as wasm". Reproduce:
     //   (cd browser && cargo build --release --target wasm32-unknown-unknown)
