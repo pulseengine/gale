@@ -5,3 +5,9 @@ target = "thumbv7m-none-eabi"
 [target.thumbv7m-none-eabi]
 runner = "qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic -icount shift=1 -semihosting-config enable=on,target=native -kernel"
 rustflags = ["-C", "link-arg=-Tlink.x"]
+
+# On-silicon target for the NUCLEO-G474RE (Cortex-M4) — silicon_bench. Needs the
+# same cortex-m-rt linker script; without it the link produces an empty ELF. No
+# qemu runner (flash via silicon/run.sh g474re → probe-rs).
+[target.thumbv7em-none-eabi]
+rustflags = ["-C", "link-arg=-Tlink.x"]
