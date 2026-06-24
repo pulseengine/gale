@@ -1,0 +1,62 @@
+# gust on Renode — the dissolved-artifact cycle-class gate (hermetic, Bazel).
+#
+# Runs the self-contained benches/gust/renode-test module (own MODULE.bazel +
+# git_override on pulseengine/renode-bazel-rules) across three Cortex-M3 device
+# classes. rules_renode downloads its own hermetic Renode portable (linux) and
+# .NET — no system deps. This is the CI runner that makes the gust Renode
+# targets' "first green is in CI" real (no workflow ran them before).
+#
+# Complements renode-tests.yml (Zephyr+Gale sem robots on M4F/M33/R5) and
+# zephyr-tests.yml (qemu M3 functional) with the DISSOLVED-artifact, real-M3-
+# model, deterministic-instruction-count dimension.
+
+name: gust Renode (dissolved)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  gust-renode:
+    name: "gust dissolved on Renode (M3: kernel 8K / control 64K / F100)"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: benches/gust/renode-test
+    steps:
+      - uses: actions/checkout@v6
+
+      # Cache the Bazel repo cache (the hermetic Renode portable + .NET, ~hundreds
+      # of MB, and the rules_renode/rules_python fetches) keyed on the module deps.
+      - uses: actions/cache@v5
+        with:
+          path: ~/.cache/bazel
+          key: gust-renode-bazel-${{ hashFiles('benches/gust/renode-test/MODULE.bazel') }}
+          restore-keys: gust-renode-bazel-
+
+      # ubuntu-22.04 ships bazelisk as `bazel`; it reads the root .bazelversion (9.1.0).
+      - name: Run the three M3 device-class Renode tests
+        run: |
+          bazel test \
+            //:gust-renode \
+            //:gust-control-renode \
+            //:gust-f100-renode \
+            --test_output=all
+
+      - name: Upload Renode test logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gust-renode-testlogs
+          path: benches/gust/renode-test/bazel-testlogs/
+          retention-days: 7
