@@ -1,0 +1,16 @@
+// STM32F100RB — the real STM32VLDISCOVERY part (Cortex-M3, 128 KB flash, 8 KB
+// SRAM). This is the actual board in the gust silicon plan; the dissolved gust
+// kernel (gust_wasm.elf, 4256 B .bss) fits the 8 KB SRAM. gust_control does NOT
+// (9408 B .bss) — that workload runs on the 64 KB F103RE-class (m3_64k.repl).
+// Flash mapped at 0x0 (the boot alias the dissolved ELF is linked against), size
+// matching the F100RB's 128 KB. SemihostingUart bridges the hprintln heartbeat.
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m3"
+    nvic: nvic
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    -> cpu@0
+flash: Memory.MappedMemory @ sysbus 0x0
+    size: 0x20000
+sram: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x2000
+uartSemihosting: UART.SemihostingUart @ cpu
