@@ -72,7 +72,15 @@ fn main() {
     //   v0.14.0's default-on local promotion register-exhausts on this denser
     //   function (filed to synth — the promotion cost-gate needs reg-pressure
     //   awareness); the non-promoted lowering compiles + is correct.
-    let cobj = Path::new(&manifest).join("wasm-kernel/control_step-cm3.o");
+    // arch-matched, like silicon_bench: cortex-m4 .o for thumbv7em (G474RE), else
+    // cortex-m3 (qemu/F100). Both are --native-pointer-abi (table data) and driven
+    // via the r11=0 trampoline in gust_control.rs.
+    let cs_o = if target.contains("thumbv7em") {
+        "wasm-kernel/control_step-cm4.o"
+    } else {
+        "wasm-kernel/control_step-cm3.o"
+    };
+    let cobj = Path::new(&manifest).join(cs_o);
     if cobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_control={}", cobj.display());
         println!("cargo:rerun-if-changed={}", cobj.display());
