@@ -14,3 +14,9 @@ flash: Memory.MappedMemory @ sysbus 0x0
 sram: Memory.MappedMemory @ sysbus 0x20000000
     size: 0x2000
 uartSemihosting: UART.SemihostingUart @ cpu
+// USART1 — the real STM32 USART register model (F100 value line is compatible
+// with the F103 USART Renode models). The dissolved thin-seam UART driver drives
+// this directly via gust:hal mmio writes (DR @ 0x40013804, etc.). IRQ 37 = the
+// F1 USART1 NVIC line, for the split-phase RX path.
+usart1: UART.STM32_UART @ sysbus <0x40013800, +0x100>
+    -> nvic@37
