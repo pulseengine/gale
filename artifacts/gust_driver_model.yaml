@@ -88,6 +88,25 @@ artifacts:
       - type: derives-from
         target: SYSREQ-BYOOS-001
 
+  - id: REQ-DRV-VERIFY-001
+    type: sw-req
+    title: "Driver logic is formally verified (Verus + Rocq + Kani), like the gale kernel primitives"
+    status: proposed
+    description: >
+      A driver's nontrivial logic SHALL carry the same formal verification as the
+      gale kernel primitives — Verus (SMT) + Rocq (theorem proving) + Kani (BMC),
+      to the intersection (no trait objects / closures / async in verified code).
+      "Verified wasm" is EARNED by proofs, not asserted by being in wasm. Concretely:
+      the driver's pure decisions are gale `_decide`-style functions promoted into
+      the gale verified crate (src/ Verus -> verus-strip -> plain/ -> wasm; proofs/
+      Rocq; tests/ Kani); buffering reuses the already-proven gale::msgq ring; only
+      the irreducible MMIO poke is unverified I/O. The error-priority RX decision
+      (never read DR on overrun/framing error) is the first proven property.
+    tags: [gust, driver, verus, rocq, kani, verified, asil]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+
   # ----------------------------------------------------------- design decisions
   - id: DD-DRV-EMBASSY-001
     type: sw-detail-design
@@ -206,6 +225,24 @@ artifacts:
       - type: verifies
         target: REQ-DRV-SRAM-001
 
+  - id: VER-DRV-KANI
+    type: sw-verification
+    title: "Kani BMC: USART RX decision is total + error-priority (proven green)"
+    status: proposed
+    description: >
+      cargo kani harness rx_decide_error_priority over ALL 2^32 status-register
+      values: usart_rx_decide is total (no panic), never returns Ready while an
+      error bit (ORE/FE) is set, and Ready implies RXNE with no errors — so the
+      driver provably never reads DR mid-error. VERIFICATION SUCCESSFUL (0/14
+      checks failed) on drivers/uart-thin. The Verus + Rocq tracks attach on
+      promotion of the decision into the gale verified crate (REQ-DRV-VERIFY-001).
+    tags: [gust, driver, kani, verified, oracle]
+    links:
+      - type: verifies
+        target: REQ-DRV-VERIFY-001
+      - type: verifies
+        target: REQ-DRV-WASM-001
+
   # ------------------------------------------------------------- findings
   - id: FIND-DRV-MEASURE-001
     type: finding
@@ -218,10 +255,12 @@ artifacts:
       verified wasm on a tiny node." Also feeds the gust perf bench so the UART
       driver's meld/loom/synth size+cycle numbers drive those tools.
       RESULTS (synth 0.15.0 + loom 1.1.16): THIN seam = the entire STM32 USART
-      protocol dissolves to 326 B flash .text, 0 B .data, 0 B .bss (ZERO SRAM in
-      the poll-drain form), TCB = 3 import relocations (mmio.read32/write32,
-      irq.poll). A buffered CCSDS-stream RX would add SRAM for the ring buffer;
-      the protocol logic itself is SRAM-free. mid/fat seam numbers pending.
+      protocol (incl. the Kani-proven RX decision, VER-DRV-KANI) dissolves to
+      382 B flash .text, 0 B .data, 0 B .bss (ZERO SRAM in the poll-drain form),
+      TCB = 3 import relocations (mmio.read32/write32, irq.poll). A buffered
+      CCSDS-stream RX would add SRAM for the ring buffer (reusing proven
+      gale::msgq); the protocol logic itself is SRAM-free. mid/fat seam numbers
+      pending.
     tags: [gust, driver, measurement, sram, tcb, perf-bench]
     links:
       - type: related-to

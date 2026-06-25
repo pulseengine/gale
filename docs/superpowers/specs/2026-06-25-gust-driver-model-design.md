@@ -109,6 +109,29 @@ Same observable behavior at all three seams: TX a known byte sequence, RX it bac
   for the dissolved object; bridge `.o` linked via `build.rs`; driven from a
   `gust_uart` demonstrator's `poll_round` loop.
 
+## Verification — Verus + Rocq + Kani (earned, not claimed)
+
+"Verified wasm" is earned by proofs, not by being in wasm — the same bar as the
+gale kernel primitives (CLAUDE.md: Verus + Rocq + Kani simultaneously, written to
+the intersection). For a driver:
+
+- **The pure decisions are verified** like gale `_decide` functions. The first is
+  the **USART RX decision** (`usart_rx_decide`): errors take priority over
+  data-ready, so the driver provably never reads `DR` on an overrun/framing error
+  (which would desync the byte stream). **Kani-proven now** (`cargo kani --harness
+  rx_decide_error_priority`, over all 2³² SR values — VERIFICATION SUCCESSFUL).
+  Its Verus + Rocq tracks attach on promotion of the decision into the gale
+  verified crate (src/ Verus → verus-strip → plain/ → wasm; `proofs/*.v` Rocq).
+- **Buffering reuses already-proven logic.** A UART RX buffer is a ring; the
+  gale `msgq` ring is already Verus + Rocq + Kani proven (`src/msgq.rs`,
+  `proofs/msgq_proofs.v`). The buffered driver composes that rather than carry an
+  unverified buffer — maximal-wasm *and* maximal-verified, reusing existing proofs.
+- **Only the MMIO poke is unverified** — the irreducible volatile I/O shell, which
+  no formal track covers (and which is the entire TCB).
+
+This is REQ-DRV-VERIFY-001 / VER-DRV-KANI in rivet. It is what makes the driver
+fit gale#65's ASIL/DAL-A px4io path, not just "small."
+
 ## Target & measurement — STM32VLDISCOVERY / STM32F100 in Renode
 
 The spike is pinned to the **STM32VLDISCOVERY (STM32F100RB, Cortex-M3, 8 KB SRAM /

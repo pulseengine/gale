@@ -9,8 +9,11 @@
 //! Build:  cargo build --release --target wasm32-unknown-unknown
 //! Dissolve: loom optimize --passes inline | synth compile --target cortex-m3
 //!           --native-pointer-abi --shadow-stack-size <n> --all-exports --relocatable
-#![no_std]
+// no_std for the wasm32 dissolve target; under `cargo kani` we build for the host
+// (std) so the model checker can exercise the pure decision logic.
+#![cfg_attr(not(kani), no_std)]
 
+#[cfg(not(kani))]
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
@@ -35,9 +38,38 @@ const CR1: u32 = USART1 + 0x0C; // control 1
 
 const TXE: u32 = 1 << 7; // transmit data register empty
 const RXNE: u32 = 1 << 5; // read data register not empty
+const ORE: u32 = 1 << 3; // overrun error
+const FE: u32 = 1 << 1; // framing error
 const UE: u32 = 1 << 13; // USART enable
 const TE: u32 = 1 << 3; // transmitter enable
 const RE: u32 = 1 << 2; // receiver enable
+
+/// USART RX status decision — the driver's pure, verifiable core (gale `_decide`
+/// style). Total over all SR values; **errors take priority over data-ready** so
+/// the driver never reads DR on an overrun/framing error (which would desync the
+/// byte stream — the safety property). Proven by Kani here; the Verus + Rocq
+/// tracks attach when this is promoted into a gale verified module / its buffering
+/// reuses the already-proven gale::msgq ring (see REQ-DRV-VERIFY-001).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum RxStatus {
+    Idle,
+    Ready,
+    Overrun,
+    FramingError,
+}
+
+#[inline]
+pub fn usart_rx_decide(sr: u32) -> RxStatus {
+    if sr & ORE != 0 {
+        RxStatus::Overrun
+    } else if sr & FE != 0 {
+        RxStatus::FramingError
+    } else if sr & RXNE != 0 {
+        RxStatus::Ready
+    } else {
+        RxStatus::Idle
+    }
+}
 
 const RX_IRQ_LINE: u32 = 0;
 
@@ -62,10 +94,32 @@ fn tx(b: u8) {
 
 #[inline]
 fn rx_poll() -> Option<u8> {
-    if rd(SR) & RXNE != 0 {
-        Some((rd(DR) & 0xFF) as u8)
-    } else {
-        None
+    // Gate the DR read on the *verified* decision: only read on Ready, never on
+    // an error (reading DR mid-error would desync the stream).
+    match usart_rx_decide(rd(SR)) {
+        RxStatus::Ready => Some((rd(DR) & 0xFF) as u8),
+        _ => None,
+    }
+}
+
+/// Kani proofs for the verifiable core (`cargo kani`). Totality + the
+/// error-priority safety property.
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Over ALL status-register values: decide is total (no panic), never says
+    /// Ready while an error bit is set, and Ready implies RXNE with no errors.
+    #[kani::proof]
+    fn rx_decide_error_priority() {
+        let sr: u32 = kani::any();
+        let d = usart_rx_decide(sr);
+        if (sr & ORE != 0) || (sr & FE != 0) {
+            assert!(d != RxStatus::Ready); // never read DR on error
+        }
+        if d == RxStatus::Ready {
+            assert!(sr & RXNE != 0 && sr & ORE == 0 && sr & FE == 0);
+        }
     }
 }
 
