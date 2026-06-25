@@ -64,6 +64,10 @@ jobs:
       HOME: /root
       DOCKER_CONFIG: /tmp/.docker
       GITHUB_TOKEN: ${{ github.token }}
+      # ENOSPC durable fix (gale#73): rustup toolchains + the SDK download temp on
+      # the big /mnt disk (workspace + SDK extract already moved to /mnt below).
+      RUSTUP_HOME: /mnt/.rustup
+      TMPDIR: /mnt/tmp
     steps:
       - name: Checkout Gale
         uses: actions/checkout@v6
@@ -80,17 +84,18 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west gcovr
-          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
-          cd zephyr-workspace
+          mkdir -p /mnt/tmp   # TMPDIR for SDK download temp (gale#73)
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
+          cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
+          for attempt in 1 2 3; do west sdk install --install-base /mnt -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Run twister with coverage
         run: |
           . /root/.cargo/env
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export ZEPHYR_BASE="/mnt/zephyr-workspace/zephyr"
           export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
-          cd zephyr-workspace
+          cd /mnt/zephyr-workspace
           # Run kernel tests on qemu_cortex_m3 with coverage enabled
           "${ZEPHYR_BASE}/scripts/twister" \
             --platform qemu_cortex_m3 \
