@@ -24,32 +24,44 @@ both ways under one SysTick harness (qemu `-icount`, deterministic; instr ≈
 cycles on M3), with a correctness gate (native ≡ dissolved, bit-identical over
 [0,2047]) before timing:
 
-| lowering | fn-only ticks/call | callee-saves | stack frame | toolchain |
+| lowering | fn-only ticks/call | `.text` (gust_mix) | stack frame | toolchain |
 |---|---|---|---|---|
-| native (LLVM) | **0.40** | `{r7,lr}` | none | rustc/LLVM |
-| dissolved, initial | 1.125 | `{r4–r8,lr}` ×2 | 24 B | synth 0.11, no loom inline |
-| dissolved, **current** | **1.05** | `{r4–r8,lr}` | 8 B | **loom 1.1.16 + synth 0.12.0** |
-| **ratio vs LLVM** | **2.81× → 2.63×** | — | — | — |
+| native (LLVM) | **0.40** | — | none | rustc/LLVM |
+| dissolved, initial | 1.125 | — | 24 B | synth 0.11, no loom inline |
+| dissolved, loom-inlined | 1.05 | 132 B | 8 B | loom 1.1.16 + synth 0.12.0 |
+| dissolved, **4 levers** | **0.725** | **90 B** | 8 B | **loom 1.1.16 + synth 0.15.0** |
+| **ratio vs LLVM** | **2.81× → 2.63× → 1.81×** | −32 % | — | — |
 
-**Progress (measured):** loom v1.1.16 landed the inline + whole-function DCE +
-arg-forwarding (loom#228) — the export wrapper is now merged into the body (no
-`bl`, no second prologue), shrinking the frame 24 B → 8 B and the gap 2.81× →
-**2.63×**. The residual is now **entirely synth's arithmetic lowering**
-(synth#428, still open): the merged `gust_mix` under synth 0.12.0 still emits a
-6-register leaf prologue, stack spill/reloads of locals, a register shift
-(`movw #8; lsl r,r,r` instead of `lsl #8`), and the compare→select clamp as a
-materialized-boolean-then-test (`cmp;ite;mov#1/#0;cmp#0;it;movne`) — twice.
-synth 0.12.0 shipped DWARF + the spill-pressure CI-gate (#441), not the lowering
-fixes. Full write-up + the ranked asks: `optimization/RECO-synth-cycles.md`;
+**Progress (measured, 2026-06-25): the ranked synth#428 asks shipped and
+delivered.** synth landed all four ARM perf levers default-on across three
+same-day releases — v0.13.0 cmp→select → IT-block predication fusion (the #1
+ask), v0.14.0 redundant stack-reload elimination + i32 local promotion, v0.15.0
+immediate-shift folding — each mapping 1:1 to a residual issue this file had
+pinned on 0.12.0 (the materialized-boolean clamp, stack spill/reloads, the
+6-register leaf prologue, `movw #8; lsl` instead of `lsl #8`). Re-measured on
+`gust_codegen_bench`: dissolved `gust_mix` **1.05 → 0.725 ticks/call (−31 %)**
+and **132 → 90 B (−32 %)**, taking the gap to native LLVM from **2.63× → 1.81×**,
+correctness **bit-identical over [0,2047]**. loom v1.1.16's inline + whole-function
+DCE (loom#228) had already merged the export wrapper (frame 24 → 8 B; 2.81× →
+2.63×); synth's lowering closed most of the rest.
+**Still open:** (1) the RISC-V backend has none of these levers — esp32c3
+`gust_mix` is byte-identical 0.12.0↔0.15.0 (synth#472 tracks the port);
+(2) the dense `control_step` still register-exhausts under default-on local
+promotion (synth#474, confirmed on 0.15.0), so it builds with
+`SYNTH_NO_LOCAL_PROMOTE=1` and gets only three of the four levers (580 → 568 B).
+Full write-up + the ranked asks: `optimization/RECO-synth-cycles.md`;
 cross-layer attribution: `optimization/ANALYSIS-where-to-optimize.md`.
 
 Functional equivalence: `gust_mix` verified identical in wasmtime (the browser/host engine)
 and in the synth-dissolved object — `1024→1500` centre, `0/512→1000`, `1536/2047→2000`.
 
 ### Honest verdict
-- **vs native (LLVM):** synth's per-function codegen is ~**3.9×** larger on the hot path —
-  well above the project's 10–20%-overhead thesis. This is the gap to drive down: synth
-  backend optimization + loom#219 full seam-inlining. **This number is the goal-post.**
+- **vs native (LLVM):** synth's per-function *cycle* cost on the hot path is now
+  **1.81×** (was 2.63×) after the four levers — closing on the project's
+  10–20%-overhead thesis, with a clear remaining tunnel (RISC-V lever port
+  synth#472; the local-promotion register-allocator fix synth#474). The
+  larger-`.text` ratio narrowed in step (−32 %). **This is the gap still being
+  driven down, and it is moving.**
 - **vs WAMR-class runtime:** dissolve wins decisively on *total* footprint — the whole
   kernel is **1.4 KB with zero resident runtime**, versus a WAMR interpreter/AOT-loader of
   **~50–64 KB** plus per-module RAM (and 10–50× interpreter energy). WAMR structurally

@@ -12,6 +12,14 @@ is the codegen-quality figure and is on a common time base.
 |---|---|---|---|---|
 | ESP32-C3 (synth 0.12.0, flag-off) | 0.259 tick/call | 0.549 tick/call | **2.12×** | identical |
 
+> **synth 0.15.0 note (ARM-only levers):** the four perf levers that took the
+> Cortex-M `gust_mix` from 2.63× → 1.81× (cmp→select fusion, stack-reload
+> elimination, local promotion, immediate-shift folding) live in synth's **ARM
+> backend**. The RISC-V backend has none of them — the dissolved esp32c3
+> `gust_mix` is **byte-identical** under 0.12.0 and 0.15.0, so the 2.12× ratio is
+> unchanged. Porting the levers to RV32 is tracked in **synth#472**; until then
+> RISC-V is the lagging architecture.
+
 ## Same wasm, three architectures, all measured on silicon/sim
 
 | arch | board | native vs dissolved | source |
