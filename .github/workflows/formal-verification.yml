@@ -44,7 +44,7 @@ jobs:
     name: Verus SMT (39 modules)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: cachix/install-nix-action@v31
 
@@ -60,7 +60,7 @@ jobs:
     name: Kani BMC (185 harnesses)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@nightly
 
@@ -82,7 +82,7 @@ jobs:
     name: Rocq Proofs (13 files)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: cachix/install-nix-action@v31
 

@@ -22,7 +22,7 @@ jobs:
     name: Rust Coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
 
@@ -66,7 +66,7 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout Gale
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: gale
 

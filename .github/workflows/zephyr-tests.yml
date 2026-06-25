@@ -161,7 +161,7 @@ jobs:
 
     steps:
       - name: Checkout Gale
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: gale
 
@@ -247,7 +247,7 @@ jobs:
 
     steps:
       - name: Checkout Gale
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: gale
 
@@ -348,7 +348,7 @@ jobs:
 
     steps:
       - name: Checkout Gale
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: gale
 
@@ -415,7 +415,7 @@ jobs:
 
     steps:
       - name: Checkout Gale
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: gale
 
