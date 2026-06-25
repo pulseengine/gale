@@ -67,7 +67,6 @@ jobs:
       # ENOSPC durable fix (gale#73): rustup toolchains + the SDK download temp on
       # the big /mnt disk (workspace + SDK extract already moved to /mnt below).
       RUSTUP_HOME: /mnt/.rustup
-      TMPDIR: /mnt/tmp
     steps:
       - name: Checkout Gale
         uses: actions/checkout@v6
@@ -85,6 +84,7 @@ jobs:
         run: |
           pip3 install west gcovr
           mkdir -p /mnt/tmp   # TMPDIR for SDK download temp (gale#73)
+          export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1

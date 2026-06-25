@@ -34,7 +34,6 @@ env:
   # ENOSPC durable fix (gale#73): rustup toolchains + the SDK download temp on the
   # big /mnt disk (workspace + SDK extract already on /mnt). Workflow-level -> all jobs.
   RUSTUP_HOME: /mnt/.rustup
-  TMPDIR: /mnt/tmp
   # Authenticate `west sdk install`'s GitHub API release-list fetch (anonymous
   # 60 req/hr -> 5000/hr) so concurrent jobs don't 403 and fail to install the
   # SDK. Same root cause fixed in zephyr-tests.yml. Workflow-level -> all jobs.
@@ -88,6 +87,7 @@ jobs:
         run: |
           pip3 install west
           mkdir -p /mnt/tmp   # TMPDIR for SDK download temp (gale#73)
+          export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
@@ -367,6 +367,7 @@ jobs:
         run: |
           pip3 install west
           mkdir -p /mnt/tmp   # TMPDIR for SDK download temp (gale#73)
+          export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1

@@ -27,7 +27,6 @@ env:
   # SDK download temp must all land on the big ephemeral /mnt disk (mounted via
   # the container --volume below), not /root or the container's / overlay.
   RUSTUP_HOME: /mnt/.rustup
-  TMPDIR: /mnt/tmp
 
 jobs:
   renode-test:
@@ -83,6 +82,7 @@ jobs:
         run: |
           pip3 install west
           mkdir -p /mnt/tmp   # TMPDIR (SDK download temp) on the big disk
+          export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1

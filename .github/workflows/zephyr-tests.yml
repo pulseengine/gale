@@ -32,12 +32,6 @@ env:
   # reads RUSTUP_HOME for toolchain storage; CARGO_HOME stays default (/root/.cargo)
   # so the proxies + `. /root/.cargo/env` sourcing in the build steps are unchanged.
   RUSTUP_HOME: /mnt/.rustup
-  # The Zephyr SDK tarball (~hundreds of MB) downloads to a TMPDIR temp BEFORE it
-  # is extracted to --install-base; the default /tmp is the container's / (= host
-  # root), so the *download* still exhausted the host fs even with the workspace
-  # and SDK extract already on /mnt (gale#73 residual — the SDK-download vector).
-  # Point TMPDIR at the big ephemeral disk too. Created in the west step.
-  TMPDIR: /mnt/tmp
   # Token value for `west sdk install --personal-access-token` (see the install
   # steps). `west sdk install`'s "Fetching Zephyr SDK list" hits the GitHub API;
   # anonymous = 60 req/hr per runner IP, and with ~59 concurrent jobs that limit
@@ -182,6 +176,7 @@ jobs:
         run: |
           pip3 install west
           mkdir -p /mnt/tmp   # TMPDIR for the SDK download temp (gale#73 residual)
+          export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
@@ -269,6 +264,7 @@ jobs:
         run: |
           pip3 install west
           mkdir -p /mnt/tmp   # TMPDIR for the SDK download temp (gale#73 residual)
+          export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
@@ -376,6 +372,7 @@ jobs:
         run: |
           pip3 install west
           mkdir -p /mnt/tmp   # TMPDIR for the SDK download temp (gale#73 residual)
+          export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
@@ -439,6 +436,7 @@ jobs:
         run: |
           pip3 install west
           mkdir -p /mnt/tmp   # TMPDIR for the SDK download temp (gale#73 residual)
+          export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
