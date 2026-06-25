@@ -38,7 +38,7 @@ jobs:
 
       # Cache the Bazel repo cache (the hermetic Renode portable + .NET, ~hundreds
       # of MB, and the rules_renode/rules_python fetches) keyed on the module deps.
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/bazel
           key: gust-renode-bazel-${{ hashFiles('benches/gust/renode-test/MODULE.bazel') }}
