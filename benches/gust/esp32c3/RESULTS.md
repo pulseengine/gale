@@ -24,7 +24,7 @@ is the codegen-quality figure and is on a common time base.
 
 | arch | board | native vs dissolved | source |
 |---|---|---|---|
-| Cortex-M3 | STM32F100 (8 KB) | pending board | silicon/RESULTS-g474re.md |
+| Cortex-M3 | STM32F100 (8 KB) | **1.73× (DWT, real)** | silicon/RESULTS-f100.md |
 | Cortex-M4 | NUCLEO-G474RE | 2.21× (DWT, real) | silicon/RESULTS-g474re.md |
 | **RISC-V RV32IMC** | **ESP32-C3** | **2.12× (systimer, real)** | this file |
 
