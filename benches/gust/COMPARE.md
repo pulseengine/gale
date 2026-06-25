@@ -87,3 +87,28 @@ image boots (task #20).
 ```sh
 ./compare-codegen.sh   # builds native thumbv7m + dissolved cortex-m3, prints the size table
 ```
+
+## Driver-class module — thin-seam UART (gust:hal, gale#65)
+
+A new dissolved module on the bench: the whole STM32 USART protocol in verified
+wasm (`drivers/uart-thin`), importing only `gust:hal` mmio + irq. Adds **driver-
+class** code (tiny I/O-bound primitives) to the meld/loom/synth optimization
+surface — complementing the arithmetic kernels (gust_mix) and the control loop
+(control_step).
+
+| | dissolved (synth 0.15.0) |
+|---|---|
+| `.text` (flash) | **254 B** (primitives) |
+| SRAM (`.bss`+`.data`) | **0 B** |
+| TCB | 3 import relocations (mmio_read32/write32, irq_poll) |
+| verified | `usart_rx_decide` Kani-proven (error-priority, all 2³² SR) |
+| e2e | drives a real STM32 USART in Renode → emits `gust-uart-thin` (CI gated) |
+
+**Perf signal (synth 0.15.0 levers ON vs OFF): 0%** — the arithmetic levers that
+gave gust_mix −31% don't reach driver-class code. The disasm shows the cost is the
+**synth#428 prologue/spill residuals** (6-register leaf prologue + 24-byte frame +
+redundant stack round-trips, paid per hot-loop call), not arithmetic and not
+import dispatch. Reported to synth#428 with the disasm as evidence. The leaf-
+prologue shrink + spill elimination (VCR-RA-002) is the lever this class needs.
+
+Reproduce: `drivers/uart-thin/RESULTS.md`.

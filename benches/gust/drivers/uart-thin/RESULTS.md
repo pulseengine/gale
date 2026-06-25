@@ -44,13 +44,30 @@ Dissolved the driver with synth 0.15.0's four ARM levers **on vs off**:
 | levers ON (0.15.0 default) | 382 B |
 | **delta** | **0 B (0%)** |
 
-cm3 == cm4 == 382 B. **The levers give nothing here** — the UART driver is
-I/O-bound (memory-mapped register loads/stores + a poll loop via meld-dispatched
-imports), not the arithmetic-dense clamp/select the levers target (which gave
-gust_mix **−31%**). Honest perf-loop finding: *the arithmetic levers optimise
-compute; the optimisation opportunity for driver code is the **meld-dispatch
-import-call overhead** (synth logs "Meld dispatch enabled" for the 3 mmio/irq
-imports), not the ARM peephole levers.* → a recommendation for meld/synth.
+cm3 == cm4 == 382 B (string-driver) / 254 B (primitives-driver). **The levers
+give nothing here** — but the disassembly (below) shows *why*, and it is not the
+import dispatch (an earlier guess — corrected): it is the **synth#428 prologue +
+regalloc residuals**, which dominate tiny driver primitives.
+
+### Grounded finding (from the dissolved disasm — synth#428, still in v0.15.0)
+
+Every primitive (even `uart_rx_fired`, which just calls `irq_poll`) emits:
+1. a **6-register leaf prologue** `stmdb sp!, {r4,r5,r6,r7,r8,lr}` + `sub sp,#24`
+   — pure overhead for functions that touch 1–2 regs (synth#428 "shrink leaf
+   prologue" / VCR-RA-002);
+2. **redundant stack spill/reload round-trips** — e.g. `str.w r0,[sp,#20]`
+   immediately followed by `ldr.w r2,[sp,#20]`;
+3. a **materialised-boolean-then-test** — `ite ne; mov #1/#0; cmp #0; bne` instead
+   of a direct conditional branch.
+
+These are the *same* synth#428 items, but they hit **driver primitives harder
+than gust_mix**: a tiny hot function (TX one byte) pays a 6-register push/pop +
+24-byte frame per call. The v0.13–0.15 arithmetic levers (cmp→select fusion,
+local promotion, immediate-shift) don't touch them. → the real perf-loop
+recommendation for driver-class code: **the leaf-prologue shrink + spill
+elimination (synth#428 VCR-RA-002)**, reported with this disasm as evidence.
+(The decision logic itself lowered *well*: `usart_rx_decide` became a single
+`(sr & 0x2a) == 0x20` mask-compare — error-priority fused, as Kani proves.)
 
 ## Renode end-to-end — WORKING
 
