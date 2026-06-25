@@ -8,6 +8,10 @@ upstream-reqif/_cache/
 # Bazel
 bazel-*
 *.rlib
+# Host-resolved module lock from local bazel runs (CI resolves its own; the
+# renode-test module is intentionally lock-free so Linux CI isn't pinned to a
+# macOS-generated graph).
+MODULE.bazel.lock
 
 # Agent working state (per-package; not source — see issue-hunt skill)
 .claude/pulseengine/
