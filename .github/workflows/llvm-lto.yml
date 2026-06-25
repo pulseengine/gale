@@ -31,9 +31,6 @@ defaults:
 env:
   HOME: /root
   DOCKER_CONFIG: /tmp/.docker
-  # ENOSPC durable fix (gale#73): rustup toolchains + the SDK download temp on the
-  # big /mnt disk (workspace + SDK extract already on /mnt). Workflow-level -> all jobs.
-  RUSTUP_HOME: /mnt/.rustup
   # Authenticate `west sdk install`'s GitHub API release-list fetch (anonymous
   # 60 req/hr -> 5000/hr) so concurrent jobs don't 403 and fail to install the
   # SDK. Same root cause fixed in zephyr-tests.yml. Workflow-level -> all jobs.
@@ -86,12 +83,10 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
-          mkdir -p /mnt/tmp   # TMPDIR for SDK download temp (gale#73)
-          export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install --install-base /mnt -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
+          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Setup SDK paths
         run: |
@@ -366,12 +361,10 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
-          mkdir -p /mnt/tmp   # TMPDIR for SDK download temp (gale#73)
-          export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install --install-base /mnt -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
+          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Setup SDK paths
         run: |
