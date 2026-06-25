@@ -30,30 +30,25 @@ pub extern "C" fn irq_poll(_line: u32) -> u32 {
     0
 }
 
-// The dissolved driver (synth --native-pointer-abi) addresses its string data
-// relative to the wasm linmem base, which the ABI pins to r11 == 0. main() does
-// not zero r11, so calls must go through this trampoline (same pattern as
-// gust_control). driver_step_body is the objcopy-renamed synth export.
-core::arch::global_asm!(
-    ".section .text.driver_step",
-    ".global driver_step",
-    ".thumb_func",
-    "driver_step:",
-    "    push  {{r11, lr}}",
-    "    mov.w r11, #0",
-    "    bl    driver_step_body",
-    "    pop   {{r11, pc}}",
-);
-
 extern "C" {
-    // the dissolved thin-seam UART driver via the r11=0 trampoline above.
-    fn driver_step() -> u32;
+    // dissolved thin-seam UART driver primitives (drivers/uart-thin → synth).
+    // No linmem data in the driver → no r11 trampoline needed; call directly.
+    fn uart_init(brr: u32);
+    fn uart_tx_byte(b: u32);
 }
 
 #[entry]
 fn main() -> ! {
-    // One driver step: it inits USART1 and TXes the known line over MMIO.
-    let _ = unsafe { driver_step() };
+    // The driver provides the protocol; the APP owns the payload. The test line
+    // lives here (normal cortex-m flash), not in the driver — so the driver
+    // carries no data segment (0 linmem / 0 SRAM, no placement dependency).
+    let msg = b"gust-uart-thin\n";
+    unsafe {
+        uart_init(0x0EA6); // baud divisor; Renode's USART model TXes on DR write
+        for &b in msg {
+            uart_tx_byte(b as u32);
+        }
+    }
     debug::exit(debug::EXIT_SUCCESS);
     loop {}
 }

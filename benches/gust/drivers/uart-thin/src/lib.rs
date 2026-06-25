@@ -82,23 +82,35 @@ fn wr(a: u32, v: u32) {
     unsafe { mmio_write32(a, v) }
 }
 
-fn init(brr: u32) {
+/// Sentinel returned by `uart_rx` when no byte is available (or an error gated
+/// the read) — keeps the export a plain scalar, no linmem/option in the ABI.
+pub const RX_NONE: u32 = 0xFFFF_FFFF;
+
+// ---- exported protocol primitives (the driver's gust:hal-facing surface) ----
+// A driver provides primitives; the app owns the payload. This keeps the driver
+// free of any data segment (no embedded strings) → 0 linmem, 0 SRAM, and no
+// native-pointer-abi data-placement dependency.
+
+#[no_mangle]
+pub extern "C" fn uart_init(brr: u32) {
     wr(BRR, brr);
     wr(CR1, UE | TE | RE);
 }
 
-fn tx(b: u8) {
+#[no_mangle]
+pub extern "C" fn uart_tx_byte(b: u32) {
     while rd(SR) & TXE == 0 {}
-    wr(DR, b as u32);
+    wr(DR, b & 0xFF);
 }
 
-#[inline]
-fn rx_poll() -> Option<u8> {
-    // Gate the DR read on the *verified* decision: only read on Ready, never on
-    // an error (reading DR mid-error would desync the stream).
+/// Read one byte if available — gated on the *verified* decision: only read DR on
+/// Ready, never on an error (reading mid-error would desync the stream). Returns
+/// RX_NONE when Idle/error.
+#[no_mangle]
+pub extern "C" fn uart_rx() -> u32 {
     match usart_rx_decide(rd(SR)) {
-        RxStatus::Ready => Some((rd(DR) & 0xFF) as u8),
-        _ => None,
+        RxStatus::Ready => rd(DR) & 0xFF,
+        _ => RX_NONE,
     }
 }
 
@@ -123,26 +135,10 @@ mod kani_proofs {
     }
 }
 
-/// One driver step: init the USART, TX a known line (the content-based Renode
-/// gate matches it), then split-phase drain any RX into a rolling checksum.
-/// Returns the checksum so the demonstrator/bench can gate on it.
+/// Split-phase RX availability check — does the bridge ISR report the RX line
+/// fired? Lets the driver yield to kiln between bytes rather than spin. Exposed
+/// so the app can drive the split-phase loop (start → yield → poll).
 #[no_mangle]
-pub extern "C" fn driver_step() -> u32 {
-    init(0x0EA6); // example divisor; bridge/clock model determines actual baud
-    let msg = b"gust-uart-thin\n";
-    let mut sum: u32 = 0;
-    let mut i = 0;
-    while i < msg.len() {
-        let b = msg[i];
-        tx(b);
-        sum = sum.wrapping_add(b as u32);
-        i += 1;
-    }
-    // split-phase RX: only drain when the bridge ISR signals the line fired.
-    if unsafe { irq_poll(RX_IRQ_LINE) } != 0 {
-        while let Some(b) = rx_poll() {
-            sum = sum.wrapping_mul(31).wrapping_add(b as u32);
-        }
-    }
-    sum
+pub extern "C" fn uart_rx_fired() -> u32 {
+    unsafe { irq_poll(RX_IRQ_LINE) }
 }

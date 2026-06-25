@@ -52,15 +52,29 @@ compute; the optimisation opportunity for driver code is the **meld-dispatch
 import-call overhead** (synth logs "Meld dispatch enabled" for the 3 mmio/irq
 imports), not the ARM peephole levers.* → a recommendation for meld/synth.
 
-## Renode end-to-end status (honest)
+## Renode end-to-end — WORKING
 
-`gust_uart` (demonstrator + ~10-line thin bridge + r11=0 trampoline) **runs on
-the M3** (762 instr, no boot fault; USART1 SR reads 0xC0 so TXE is set — the TX
-poll won't spin). The content-based TX gate is **pending a data-placement detail**:
-the wasm declares 17 pages (1 MB) linmem and the TX string sits at ~0x10000D
-inside it; native-pointer-abi places it at a VMA the gust linker doesn't map
-(reads hit "non existing peripheral"). control_step avoided this because its table
-data lived in the reserved linmem `.bss`; this 0-bss driver's string does not.
-Resolution = the synth#383 / native-pointer-abi linmem-placement work (map the
-data section into SRAM, or avoid the string constant). The driver LOGIC is proven
-(Kani) and dissolves clean; only the demonstrator's string placement is pending.
+`gust_uart` (demonstrator + ~10-line thin bridge) drives the dissolved driver on
+a hermetic Renode Cortex-M3 with a **real STM32 USART model** (usart1 =
+UART.STM32_UART @ 0x40013800). The driver TXes via `uart_tx_byte` over MMIO and
+the USART emits — captured output: **`gust-uart-thin`** (614 instr, no fault).
+
+**Design that made it work (and fixed the earlier placement issue):** a driver
+provides *protocol primitives* (`uart_init` / `uart_tx_byte` / `uart_rx` /
+`uart_rx_fired`); the **app owns the payload**. So the driver carries **no data
+segment** — the earlier failure was an embedded TX string landing in the wasm
+1 MB linmem at a VMA the linker didn't map (native-pointer-abi). With the string
+moved to the demonstrator (normal flash), the driver is 0-data/0-bss, needs no
+r11 trampoline, and places cleanly.
+
+Bonus: a **real USART** file-backend *is* capturable headless on the macOS Renode
+portable (unlike the SemihostingUart) — so the content-based `Wait For Line`
+correctness gate works locally *and* in CI.
+
+| metric (primitive driver) | value |
+|---|---|
+| dissolved `.text` (flash) | **254 B** |
+| SRAM (`.data` + `.bss`) | **0 B** |
+| exports | uart_init, uart_tx_byte, uart_rx, uart_rx_fired |
+| TCB (import relocations) | mmio_read32, mmio_write32, irq_poll |
+| verified | usart_rx_decide — Kani SUCCESSFUL (error-priority, all 2³² SR) |
