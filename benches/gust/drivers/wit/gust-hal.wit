@@ -1,0 +1,57 @@
+package gust:hal@0.1.0;
+
+/// gust:hal — the driver capability seam. A dissolved driver component IMPORTS
+/// these; the trusted host bridge IMPLEMENTS them. The verified-wasm / trusted-TCB
+/// boundary is this typed contract. Three granularities (thin → fat) trade TCB
+/// size against how much of the driver is verified wasm; see
+/// docs/superpowers/specs/2026-06-25-gust-driver-model-design.md.
+
+/// THIN seam — the irreducible TCB primitive. The driver reads/writes device
+/// registers by physical address; the bridge performs the actual volatile access
+/// (sandboxed wasm cannot touch MMIO). One ~10-line generic bridge serves every
+/// driver; the entire peripheral protocol lives in wasm.
+interface mmio {
+    read32: func(addr: u32) -> u32;
+    write32: func(addr: u32, val: u32);
+    read8: func(addr: u32) -> u8;
+    write8: func(addr: u32, val: u8);
+}
+
+/// THIN seam, split-phase companion. `poll` is non-blocking: true (and clears)
+/// if the line fired since last poll, so the driver yields to kiln between events
+/// rather than blocking the scheduler. The bridge ISR sets the flag + wakes.
+interface irq {
+    poll: func(line: u32) -> bool;
+}
+
+/// MID seam — byte-level UART. The bridge owns byte register access + the RX IRQ
+/// buffer; the driver owns framing/protocol above the byte.
+interface uart-byte {
+    put-byte: func(b: u8);
+    rx-poll: func() -> option<u8>;
+}
+
+/// FAT seam — whole-transfer UART. The bridge (e.g. embassy-stm32) owns the
+/// driver; the wasm side only calls. Largest TCB; expected to exceed the 8 KiB
+/// F100 SRAM budget (the overflow check).
+interface uart-block {
+    write: func(buf: list<u8>);
+    read: func(max: u32) -> list<u8>;
+}
+
+/// Thin-seam driver world — imports only generic MMIO + IRQ; exports one step.
+world driver-thin {
+    import mmio;
+    import irq;
+    export driver-step: func() -> u32;
+}
+
+world driver-mid {
+    import uart-byte;
+    export driver-step: func() -> u32;
+}
+
+world driver-fat {
+    import uart-block;
+    export driver-step: func() -> u32;
+}

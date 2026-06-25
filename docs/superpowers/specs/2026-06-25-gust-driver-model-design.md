@@ -18,6 +18,19 @@ Jess will bring an arbitrary driver ask. Before that lands we want (a) the
 wasm," because that decides both the architecture and how much we depend on a
 host HAL at all.
 
+**Requirements source — gale#65 (gale-nano / gust origin).** This is not
+speculative: gale#65 specifies exactly this model — *"only the bare-minimum
+hardware (registers/MMIO) is native; everything above that is wasm"* — on the
+**STM32F100 (Cortex-M3, 24 MHz, 8 KB SRAM)** px4io-class failsafe. The real first
+driver is the **USART @ 1.5 Mbaud carrying CCSDS Space Packets wrapped by
+relay-sec** (counter + anti-replay + Ascon-AEAD) from the FMU, on the ASIL/DAL-A
+path. Jess co-designs the `gust:hal` WIT and brings the stm32f103-based Renode HIL.
+So: the thin-seam UART here *is* that IPC carrier's foundation, and relay-sec /
+relay-ccsds (both `no_std`, M3-capable) can themselves dissolve into the wasm —
+maximal-wasm all the way up the stack, with only the register poke native. (Note:
+the F100 value line has no LPUART; gale#65's "LPUART" maps to **USART1** here,
+which reaches 1.5 Mbaud at fCK/16 on a 24 MHz clock and is what Renode models.)
+
 ## Goal & non-goals
 
 **Goal (this spec):** define the `gust:hal` capability seam and prove it with

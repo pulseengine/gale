@@ -1,0 +1,17 @@
+# Standalone (not part of the gust workspace) — built ad-hoc for wasm32 + dissolve.
+[workspace]
+
+[package]
+name = "gust-uart-thin"
+version = "0.1.0"
+edition = "2021"
+description = "gust:hal thin-seam UART driver — the entire STM32 USART protocol in verified wasm, importing only the generic mmio/irq capabilities"
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1

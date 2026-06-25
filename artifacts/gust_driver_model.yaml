@@ -216,8 +216,12 @@ artifacts:
       per seam, SRAM (.bss/.data vs 8 KiB), TCB .text bytes, and dissolved-driver
       .text. Decides DD-DRV-GRAN-001 with a number and validates "how much fits in
       verified wasm on a tiny node." Also feeds the gust perf bench so the UART
-      driver's meld/loom/synth size+cycle numbers drive those tools. RESULTS: TBD
-      (filled when the spike runs).
+      driver's meld/loom/synth size+cycle numbers drive those tools.
+      RESULTS (synth 0.15.0 + loom 1.1.16): THIN seam = the entire STM32 USART
+      protocol dissolves to 326 B flash .text, 0 B .data, 0 B .bss (ZERO SRAM in
+      the poll-drain form), TCB = 3 import relocations (mmio.read32/write32,
+      irq.poll). A buffered CCSDS-stream RX would add SRAM for the ring buffer;
+      the protocol logic itself is SRAM-free. mid/fat seam numbers pending.
     tags: [gust, driver, measurement, sram, tcb, perf-bench]
     links:
       - type: related-to
