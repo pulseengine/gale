@@ -70,10 +70,11 @@ fn main() {
     // gust_control demonstrator (north-star rung 1: a realistic sensors→actuators
     // loop). Reproduce: clang wasm32 control.c+tables.c+shim.c → wasm-ld
     //   --export=control_step_packed → loom inline → synth --target cortex-m3
-    //   --all-exports --relocatable. NOTE built with SYNTH_NO_LOCAL_PROMOTE=1:
-    //   v0.14.0's default-on local promotion register-exhausts on this denser
-    //   function (filed to synth — the promotion cost-gate needs reg-pressure
-    //   awareness); the non-promoted lowering compiles + is correct.
+    //   --all-exports --relocatable. HISTORY: built with SYNTH_NO_LOCAL_PROMOTE=1
+    //   on synth 0.14.0–0.15.0 because default-on local promotion register-
+    //   exhausted on this denser function (synth#474). synth 0.15.1 (#475) FIXED
+    //   that (recovery ladder) — verified: compiles clean WITHOUT the flag,
+    //   byte-identical output (568 B). The flag is no longer needed on 0.15.1+.
     // arch-matched, like silicon_bench: cortex-m4 .o for thumbv7em (G474RE), else
     // cortex-m3 (qemu/F100). Both are --native-pointer-abi (table data) and driven
     // via the r11=0 trampoline in gust_control.rs.
