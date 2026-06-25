@@ -44,7 +44,19 @@ fn main() -> ! {
     // carries no data segment (0 linmem / 0 SRAM, no placement dependency).
     let msg = b"gust-uart-thin\n";
     unsafe {
-        uart_init(0x0EA6); // baud divisor; Renode's USART model TXes on DR write
+        // --- F1 board bring-up (TCB side: SoC clock tree + pin mux, not driver
+        // logic) — needed on real STM32F100 silicon; harmless no-ops in Renode's
+        // USART model (which doesn't gate on RCC/GPIO). ---
+        const RCC_APB2ENR: u32 = 0x4002_1018; // AFIOEN=0, IOPAEN=2, USART1EN=14
+        const GPIOA_CRH: u32 = 0x4001_0804; // PA9 config = bits 4..7
+        let e = read_volatile(RCC_APB2ENR as *const u32);
+        write_volatile(RCC_APB2ENR as *mut u32, e | (1 << 0) | (1 << 2) | (1 << 14));
+        let c = read_volatile(GPIOA_CRH as *const u32);
+        // PA9 → alternate-function push-pull, 50 MHz (CNF=0b10, MODE=0b11 = 0xB)
+        write_volatile(GPIOA_CRH as *mut u32, (c & !(0xF << 4)) | (0xB << 4));
+
+        // 0x45 = 8 MHz HSI (F100 reset clock) / 115200 baud, the driver's USART setup.
+        uart_init(0x45);
         for &b in msg {
             uart_tx_byte(b as u32);
         }
