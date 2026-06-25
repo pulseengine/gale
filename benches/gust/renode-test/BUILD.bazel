@@ -45,3 +45,16 @@ renode_test(
         "REPL": ":stm32f100.repl",
     },
 )
+
+# 4. Thin-seam UART driver content gate — the dissolved driver (verified-wasm
+# USART protocol, Kani-proven RX decision) TXing over a REAL STM32 USART model;
+# asserts the emitted bytes via Wait For Line On Uart (content, not just no-fault).
+renode_test(
+    name = "gust-uart-renode",
+    timeout = "short",
+    robot_test = "gust_uart.robot",
+    variables_with_label = {
+        "ELF": ":gust_uart.elf",
+        "REPL": ":m3_64k.repl",
+    },
+)
