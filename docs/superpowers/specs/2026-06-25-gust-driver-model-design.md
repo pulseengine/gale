@@ -21,17 +21,20 @@ host HAL at all.
 ## Goal & non-goals
 
 **Goal (this spec):** define the `gust:hal` capability seam and prove it with
-**one UART driver end-to-end**, with the UART *protocol implemented in verified
-wasm*, built at **three seam granularities** so we can **measure the trusted-code
-(TCB) bytes** each costs. The measurement is the primary deliverable.
+**one UART driver end-to-end on the STM32F100 (Jess's device class)**, with the
+UART *protocol implemented in verified wasm*, built at **three seam granularities**
+so we can **measure the SRAM and TCB footprint** each costs against the 8 KB
+budget. The measurement — *how much verified wasm fits the tiny node* — is the
+primary deliverable.
 
 **Non-goals (deferred — YAGNI until there is real duplication to factor out):**
 - The manifest + generator that auto-emits bridge stubs / build wiring /
   trampoline. Extract it *after* Jess's ask makes driver #2.
 - The full peripheral set (gpio / spi / i2c / adc / timer). Only UART here.
-- embassy on roomy parts as a product path. embassy appears here only as the
-  *fat-seam backend*, and primarily to measure that it does **not** fit the
-  constrained target.
+- A larger-device / embassy-fits arm. The target is the F100 throughout; embassy
+  appears only as the *fat-seam overflow check* on F100, to quantify why it
+  doesn't fit. **XIP** (external-flash execute-in-place) is a documented
+  follow-on lever, not in scope (see "Staying small").
 
 ## Key prior decisions (from brainstorming)
 
@@ -41,7 +44,10 @@ wasm*, built at **three seam granularities** so we can **measure the trusted-cod
    (start + poll/yield, kiln-wakeable) caps for interrupt-driven streaming. No
    embassy `Future` crosses the wasm boundary.
 3. **Eventual wiring mechanism = manifest + generator**, but deferred.
-4. **First bite = one UART driver, measure TCB at thin/mid/fat seams.**
+4. **First bite = one UART driver on the F100 (Jess's device class); measure
+   *both* SRAM (.bss/.data) and TCB bytes at thin/mid/fat seams.** SRAM is the
+   binding constraint on an 8 KB part — the real question is how much
+   verified-wasm logic fits while staying small.
 
 ## Architecture — the `gust:hal` seam
 
@@ -107,23 +113,55 @@ physical board is in the silicon plan; the F100 Renode platform already exists i
   USART** *is* capturable — proven by the existing stm32f4 sem robots. So the
   UART spike gets a genuine content assertion, not just no-fault. Becomes a 4th
   `renode_test` target in the CI module (Bazel 8 pin etc. already in place).
-- **TCB metric:** `llvm-size`/`nm` on the bridge `.o` (+ any linked embassy code)
-  at thin / mid / fat, plus the dissolved-driver `.text` each — a table like the
-  synth 0.15.0 one.
-- **Fat/embassy on F100 is build-only and expected to NOT fit 8 KB SRAM** (a full
-  embassy-stm32 HAL is well over the budget; F100 value-line support is also
-  thin). That negative result *is* a finding: it shows the tiny node requires the
-  thin seam. The embassy contrast number, if wanted, is taken separately on the
-  roomy G474 (where embassy fits) — out of scope for this spike's pass/fail.
+- **Metrics (two — SRAM is the one that binds):** per seam — (a) **SRAM** =
+  the linked image's `.bss + .data` (the dissolved wasm's linear memory / buffers
+  / shadow stack + the bridge's state) against the 8 KB budget; (b) **TCB bytes**
+  = `.text` of the trusted bridge (+ any linked embassy code); plus the
+  dissolved-driver `.text` (flash, cheap). A table like the synth 0.15.0 one,
+  with **SRAM as the headline column**.
+- **Fat/embassy on F100 is the overflow check** — build-only, expected to blow
+  the 8 KB SRAM budget (a full embassy-stm32 HAL is well over it). That negative
+  result *is* a finding: it quantifies how far over the tiny node a fat seam goes,
+  i.e. why the F100 *requires* the thin/mid seam. There is no larger-device arm —
+  the point is staying on Jess's F100 class and maximising verified wasm within
+  its SRAM.
+
+## Staying small: maximal-wasm vs SRAM, per-node composition, and XIP
+
+The driving constraint is **SRAM on an 8 KB part**, and the goal is to move as
+much driver logic as possible into *verified wasm* without blowing it. Three
+points shape the model:
+
+- **Flash is cheap, SRAM binds.** Dissolved `.text` already executes from flash
+  (128 KB on F100 — ample); it is the wasm **linear memory** (buffers, state) +
+  shadow stack that consume **SRAM**. So "more logic in wasm" is nearly free in
+  flash and costs SRAM *only where it needs data* (e.g. a UART RX ring buffer).
+  Minimising the linear-memory footprint — static-sized to actual need, no heap,
+  the synth#383 shadow-stack shrink — is what makes maximal-wasm fit.
+- **Per-node bespoke composition (the core extension model).** Each node's image
+  is one wasm composed with *exactly the specific drivers that node needs* (each
+  driver = a component importing only the `gust:hal` capabilities it uses) plus
+  the kernel pieces it uses — then meld-fused and dissolved. Nothing unused is
+  linked, so the SRAM cost is precisely what that node's driver set requires. This
+  is how "compose a new wasm from components for each" stays small *and* maximises
+  verified surface: the composition, not a fixed firmware, is the product.
+- **XIP — follow-on lever, addresses flash not SRAM.** Execute-in-place from
+  **external** flash lets a library of composed per-node images live and run
+  without consuming internal flash — useful once there are many nodes/drivers. It
+  does **not** relieve the SRAM/buffer pressure that binds the 8 KB part, so it is
+  orthogonal to the maximal-wasm/SRAM question this spike answers. Scoped out;
+  revisit when image count or size makes internal flash the constraint.
 
 ## Success criteria
 
 1. The UART driver passes the content-based correctness gate (TX/RX echo) on the
    F100 Renode target at the **thin** and **mid** seams.
-2. A TCB-bytes table (thin vs mid vs fat) + dissolved `.text` per seam, committed
-   alongside the spike — the empirical answer to "how much into wasm."
-3. A documented verdict: the recommended default seam granularity, and a yes/no
-   on "the thin seam fits the 8 KB F100 where the embassy fat seam does not."
+2. A per-seam table — **SRAM (.bss/.data) vs the 8 KB budget** (headline), TCB
+   bytes, and dissolved `.text` — committed alongside the spike. The empirical
+   answer to *how much verified wasm fits the tiny node*.
+3. A documented verdict: the seam granularity that maximises verified-wasm logic
+   while staying within F100 SRAM, and by how much the fat/embassy seam overflows
+   it.
 
 ## Risks & open questions
 
@@ -138,6 +176,10 @@ physical board is in the silicon plan; the F100 Renode platform already exists i
   measurement), revisit for the generator.
 - **F100 value-line specifics** vs the F103 USART model — register offsets used
   must be the common subset (DR @ +0x04, SR @ +0x00, BRR @ +0x08, CR1 @ +0x0C).
+- **embassy-stm32 may not support the F100 value line.** If it won't build for
+  F100, the fat-seam overflow measurement is taken on the nearest supported F1
+  (e.g. F103) as the embassy-footprint proxy — still a valid "this is how big the
+  fat seam is vs 8 KB" finding; the thin/mid arms remain the real F100 targets.
 
 ## What this unblocks
 
