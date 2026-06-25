@@ -1,0 +1,239 @@
+# gust generic driver model — the gust:hal capability seam + the verified-wasm /
+# trusted-TCB split for extending gust with arbitrary drivers (UART first).
+# Design spec: docs/superpowers/specs/2026-06-25-gust-driver-model-design.md.
+# Extends BYO-OS (gale#74): a per-node bespoke composition of exactly the driver
+# components a node needs, dissolved to native (meld fuse -> loom -> synth).
+artifacts:
+  # ---------------------------------------------------------------- requirements
+  - id: REQ-DRV-SEAM-001
+    type: sw-req
+    title: "gust drivers extend via the typed gust:hal capability seam"
+    status: proposed
+    description: >
+      gust SHALL expose hardware capabilities to driver logic through a typed WIT
+      package (gust:hal). A driver component IMPORTS capability interfaces; the
+      trusted host bridge IMPLEMENTS them. Both sides compile against the same
+      WIT, so the verified/TCB boundary is a typed contract, not a convention.
+    tags: [gust, driver, hal, seam, byo-os]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-BYOOS-MULTIRT-001
+
+  - id: REQ-DRV-WASM-001
+    type: sw-req
+    title: "Driver protocol logic is verified wasm; the TCB is the irreducible MMIO+IRQ sliver"
+    status: proposed
+    description: >
+      A driver's protocol / state machine / framing / buffering / arithmetic
+      SHALL be implemented in verified wasm and dissolved to native. The trusted
+      computing base for a driver SHALL be limited to the irreducible primitives:
+      the raw MMIO read/write (sandboxed wasm cannot touch MMIO), the interrupt
+      vector entry, and the "buffer the byte + wake the task" step. Maximising the
+      verified-wasm fraction (minimising the TCB) is the design objective.
+    tags: [gust, driver, wasm, tcb, maximal-wasm]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: SAC-BYOOS-EXEC
+
+  - id: REQ-DRV-SRAM-001
+    type: sw-req
+    title: "A composed per-node image fits the target SRAM budget (F100 = 8 KiB)"
+    status: proposed
+    description: >
+      A composed, dissolved per-node image SHALL fit the target device SRAM. On
+      the STM32F100 (Jess's device class) that budget is 8 KiB. SRAM is the
+      binding resource: dissolved .text executes from flash (128 KiB, ample),
+      while the wasm linear memory (buffers, state) and shadow stack consume SRAM.
+      The driver design SHALL minimise linear-memory footprint (static-sized to
+      need, no heap, synth#383 shadow-stack shrink).
+    tags: [gust, driver, sram, f100, footprint]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+
+  - id: REQ-DRV-COMPOSE-001
+    type: sw-req
+    title: "Per-node bespoke composition — only the drivers a node needs"
+    status: proposed
+    description: >
+      Each node's image SHALL be composed from exactly the specific driver
+      components that node requires (each driver importing only the gust:hal
+      capabilities it uses), meld-fused and dissolved. Nothing unused is linked,
+      so the SRAM cost equals the node's actual driver set. The composition — not
+      a fixed firmware — is the product.
+    tags: [gust, driver, composition, byo-os, sram]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-BYOOS-MULTIRT-001
+
+  - id: REQ-DRV-ASYNC-001
+    type: sw-req
+    title: "Seam supports sync and split-phase capabilities; no host Future crosses the wasm boundary"
+    status: proposed
+    description: >
+      The gust:hal seam SHALL support two capability shapes: SYNC capabilities
+      (brief blocking register touches, e.g. mmio.write8 / uart.put-byte) for
+      control-loop I/O, and SPLIT-PHASE capabilities (start + poll/yield,
+      kiln-wakeable, e.g. irq.wait / uart.rx-poll) for interrupt-driven streaming.
+      No host async Future SHALL cross the wasm boundary — only plain synchronous
+      start/poll calls do; host async (embassy) stays entirely in the bridge.
+    tags: [gust, driver, async, kiln, split-phase]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+
+  # ----------------------------------------------------------- design decisions
+  - id: DD-DRV-EMBASSY-001
+    type: sw-detail-design
+    title: "embassy-hal is an optional host backend only; kiln stays the sole executor"
+    status: proposed
+    description: >
+      embassy-hal MAY back the fat/mid seam's host bridge (peripheral register
+      access) but its executor is NOT adopted. kiln-async remains the single
+      executor. embassy futures, if used, are driven to completion or polled
+      inside the trusted bridge and never surface to wasm. On the 8 KiB F100 the
+      fat/embassy seam is expected to exceed SRAM — see FIND-DRV-MEASURE-001.
+    tags: [gust, driver, embassy, kiln, tcb]
+    links:
+      - type: refines
+        target: SAC-DRV-UART
+      - type: satisfies
+        target: REQ-DRV-ASYNC-001
+
+  - id: DD-DRV-GRAN-001
+    type: sw-detail-design
+    title: "Seam granularity (thin/mid/fat) is chosen by measurement"
+    status: proposed
+    description: >
+      The capability granularity trades TCB size against verified-wasm fraction:
+      thin (mmio.read8/write8 + irq.wait — wasm owns everything, ~10-line generic
+      TCB), mid (uart.put-byte/rx-poll — TCB owns byte-level access + RX IRQ), fat
+      (uart.write/read — embassy owns the driver). The default granularity SHALL
+      be chosen from the per-seam SRAM/TCB measurement, not asserted a priori.
+    tags: [gust, driver, seam, granularity, measurement]
+    links:
+      - type: refines
+        target: SAC-DRV-HAL
+      - type: satisfies
+        target: REQ-DRV-WASM-001
+      - type: satisfies
+        target: REQ-DRV-SRAM-001
+
+  - id: DD-DRV-XIP-001
+    type: sw-detail-design
+    title: "XIP is a follow-on flash/code lever, not the SRAM answer"
+    status: proposed
+    description: >
+      Execute-in-place from external flash addresses flash/code (a library of
+      composed per-node images), NOT the SRAM/buffer pressure that binds the
+      8 KiB part. XIP is therefore out of scope for the first spike; revisit when
+      image count or size makes internal flash the constraint.
+    tags: [gust, driver, xip, flash, deferred]
+    links:
+      - type: refines
+        target: SAC-DRV-HAL
+      - type: related-to
+        target: REQ-DRV-SRAM-001
+
+  # ------------------------------------------------------------- architecture
+  - id: SAC-DRV-HAL
+    type: sw-arch-component
+    title: "gust:hal — the WIT capability seam (driver imports, TCB bridge implements)"
+    status: proposed
+    description: >
+      A new WIT package gust:hal@0.1.0 defining capability interfaces (mmio, irq,
+      uart) that dissolved driver components import and the trusted host bridge
+      implements. The stable contract both sides compile against; the verified/TCB
+      boundary. Hand-authored (consistent with gale.wit — the wasm-component layer
+      is not spar-generated in this repo; see FIND-DRV-SPAR-001).
+    tags: [gust, driver, hal, wit, seam]
+    links:
+      - type: allocated-from
+        target: REQ-DRV-SEAM-001
+
+  - id: SAC-DRV-UART
+    type: sw-arch-component
+    title: "UART driver — verified-wasm protocol over gust:hal, three-seam bridges"
+    status: proposed
+    description: >
+      The first driver: the UART protocol (init, baud, TXE/RXNE polling, RX ring
+      buffer) implemented in verified wasm, built at thin/mid/fat seams over a
+      host bridge, driven on the kiln stack by the gust_uart demonstrator (sync TX
+      + split-phase RX via the r11=0 trampoline pattern). Proves the seam and
+      yields the per-seam SRAM/TCB measurement.
+    tags: [gust, driver, uart, wasm, kiln]
+    links:
+      - type: allocated-from
+        target: REQ-DRV-WASM-001
+      - type: allocated-from
+        target: REQ-DRV-ASYNC-001
+
+  # ------------------------------------------------------------- verification
+  - id: VER-DRV-UART-RENODE
+    type: sw-verification
+    title: "Renode STM32F100 USART content-based TX/RX echo gate"
+    status: proposed
+    description: >
+      A renode_test target on the STM32F100 platform (usart1 = UART.STM32_UART @
+      0x40013800): the dissolved UART driver TXes a known sequence and RXes it
+      back (loopback); a Renode terminal tester on sysbus.usart1 asserts the
+      echoed content via Wait For Line On Uart. Content-based (not just no-fault)
+      because a real USART is capturable headless (unlike the SemihostingUart).
+    tags: [gust, driver, uart, renode, f100, oracle]
+    links:
+      - type: verifies
+        target: REQ-DRV-WASM-001
+      - type: verifies
+        target: REQ-DRV-SEAM-001
+
+  - id: VER-DRV-SRAM
+    type: sw-verification
+    title: "Per-seam SRAM-budget oracle (.bss/.data <= 8 KiB on F100)"
+    status: proposed
+    description: >
+      An oracle that links the composed image per seam and checks .bss + .data
+      against the F100 8 KiB budget (llvm-size). Confirms the thin/mid seams fit
+      and quantifies the fat/embassy seam's overflow. Produces the headline
+      SRAM-vs-budget column of the measurement table.
+    tags: [gust, driver, sram, oracle, measurement]
+    links:
+      - type: verifies
+        target: REQ-DRV-SRAM-001
+
+  # ------------------------------------------------------------- findings
+  - id: FIND-DRV-MEASURE-001
+    type: finding
+    title: "Per-seam SRAM/TCB measurement spike (UART on F100) — results pending"
+    status: active
+    description: >
+      The empirical core: build the UART driver thin/mid/fat on F100 and record,
+      per seam, SRAM (.bss/.data vs 8 KiB), TCB .text bytes, and dissolved-driver
+      .text. Decides DD-DRV-GRAN-001 with a number and validates "how much fits in
+      verified wasm on a tiny node." Also feeds the gust perf bench so the UART
+      driver's meld/loom/synth size+cycle numbers drive those tools. RESULTS: TBD
+      (filled when the spike runs).
+    tags: [gust, driver, measurement, sram, tcb, perf-bench]
+    links:
+      - type: related-to
+        target: DD-DRV-GRAN-001
+
+  - id: FIND-DRV-SPAR-001
+    type: finding
+    title: "gust:hal WIT is hand-authored — spar->WIT not wired for the wasm-component layer"
+    status: active
+    description: >
+      The feature-loop ideal is spar (AADL) -> generated WIT. In this repo spar
+      models the kernel primitives (safety/aadl/*.aadl) but the wasm-component
+      layer's WIT (gale.wit, gale-app-demo) is hand-derived. gust:hal follows that
+      established pattern (hand-authored). Logged as friction toward eventually
+      generating the capability WIT from a spar model of the driver/host seam.
+    tags: [gust, driver, spar, wit, friction]
+    links:
+      - type: related-to
+        target: SAC-DRV-HAL
