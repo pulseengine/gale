@@ -22,6 +22,11 @@ concurrency:
 env:
   HOME: /root
   DOCKER_CONFIG: /tmp/.docker
+  # ENOSPC durable fix (gale#73): the ci-base image fills most of the host root,
+  # so the west workspace, the Zephyr SDK extract, the rustup toolchains, and the
+  # SDK download temp must all land on the big ephemeral /mnt disk (mounted via
+  # the container --volume below), not /root or the container's / overlay.
+  RUSTUP_HOME: /mnt/.rustup
 
 jobs:
   renode-test:
@@ -76,10 +81,12 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
-          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
-          cd zephyr-workspace
+          mkdir -p /mnt/tmp   # TMPDIR (SDK download temp) on the big disk
+          export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
+          cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t arm-zephyr-eabi && break || sleep 5; done
+          for attempt in 1 2 3; do west sdk install --install-base /mnt -t arm-zephyr-eabi && break || sleep 5; done
 
       - name: Build Zephyr+Gale ELF
         env:
@@ -87,9 +94,9 @@ jobs:
           TEST_PATH: ${{ matrix.test_path }}
         run: |
           . /root/.cargo/env
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export ZEPHYR_BASE="/mnt/zephyr-workspace/zephyr"
           export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
-          cd zephyr-workspace
+          cd /mnt/zephyr-workspace
           west build -b "${BOARD}" \
             -s "zephyr/${TEST_PATH}" \
             -- \
@@ -105,7 +112,7 @@ jobs:
       - name: Run Renode test
         env:
           ROBOT_FILE: ${{ matrix.robot_file }}
-          ELF: ${{ github.workspace }}/zephyr-workspace/build/zephyr/zephyr.elf
+          ELF: /mnt/zephyr-workspace/build/zephyr/zephyr.elf
         run: |
           GALE_ROOT="${GITHUB_WORKSPACE}/gale"
           mkdir -p "${GITHUB_WORKSPACE}/renode-results"
@@ -125,5 +132,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: "elf-${{ matrix.arch }}"
-          path: zephyr-workspace/build/zephyr/zephyr.elf
+          path: /mnt/zephyr-workspace/build/zephyr/zephyr.elf
           retention-days: 7
