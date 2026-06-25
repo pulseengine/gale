@@ -85,5 +85,15 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_control={}", cobj.display());
         println!("cargo:rerun-if-changed={}", cobj.display());
     }
+    // The dissolved thin-seam UART driver (drivers/uart-thin → loom → synth
+    // --native-pointer-abi): the ENTIRE STM32 USART protocol in verified wasm
+    // (Kani-proven RX decision), importing only gust:hal mmio + irq. Driven by the
+    // gust_uart demonstrator, whose ~10-line bridge supplies mmio_read32/write32 +
+    // irq_poll. Reproduce: see drivers/uart-thin/RESULTS.md.
+    let uobj = Path::new(&manifest).join("drivers/uart-thin/uart-thin-cm3.o");
+    if uobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_uart={}", uobj.display());
+        println!("cargo:rerun-if-changed={}", uobj.display());
+    }
     println!("cargo:rerun-if-changed=build.rs");
 }
