@@ -34,6 +34,9 @@ fn main() {
     let kobj = Path::new(&manifest).join("wasm-kernel/gust_mix-cm3.o");
     if kobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_codegen_bench={}", kobj.display());
+        // gust_floor_bench links the SAME dissolved gust_mix to show today's
+        // dissolved-vs-native gap alongside the proof-carrying floor (synth#494a).
+        println!("cargo:rustc-link-arg-bin=gust_floor_bench={}", kobj.display());
         println!("cargo:rerun-if-changed={}", kobj.display());
     }
     // silicon_bench runs on two MCUs and needs an arch-matched dissolved object:
