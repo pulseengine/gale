@@ -83,6 +83,9 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
+          echo "host-root before reclaim:"; df -h / | tail -1
+          rm -rf /opt/toolchains/zephyr-sdk-* 2>/dev/null || true   # reclaim ~14GB image SDK
+          echo "host-root after reclaim:"; df -h / | tail -1
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
@@ -361,6 +364,9 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
+          echo "host-root before reclaim:"; df -h / | tail -1
+          rm -rf /opt/toolchains/zephyr-sdk-* 2>/dev/null || true   # reclaim ~14GB image SDK
+          echo "host-root after reclaim:"; df -h / | tail -1
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
