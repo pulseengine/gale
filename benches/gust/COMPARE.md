@@ -49,6 +49,18 @@ dissolved surface (`gust_kernel.wasm` 1282 B, `fused.wasm` 640 B — `cmp`-ident
 to 0.15.1, deterministic). 0.16 is a completeness release (the >8-param AAPCS
 stack-arg path for the falcon component); it correctly does not touch gale's
 ≤8-param kernels, so the numbers above are unchanged and the baseline is frozen.
+**synth 0.17.0 (2026-06-26): adopted — first optimized-path levers to REACH the
+shipped `--relocatable` flow.** #516 flipped VCR-RA stack-reload-forwarding +
+frame-slot dead-store-elimination default-on (#242). Measured on the body: the
+loom-inlined **`gust_poll` (scheduler hot path) 834 → 810 B (−2.9%)**, **`fused.o`
+640 → 622 B (−2.8%)** (`run-demo`=53, correctness preserved), kernel `.text`
+1342 → 1318 B. **But the standalone `gust_mix` micro-bench target is byte-identical
+0.16↔0.17** (a 90 B function already at minimal frame — the prologue/spill levers
+have nothing to remove), so `gust_codegen_bench` stays **1.81×** and 0.17 does *not*
+move toward 0.7×. The flag-off `SYNTH_CONST_CSE` (#514) *regresses* gust_mix +2 B
+(90→92) — reported as a negative datum. Net: 0.17 is real incremental parity
+progress on larger functions; below-1.0× still requires the proof-carrying clamp
+elision (the 0.45× floor above), which 0.17 does not implement.
 **Still open:** (1) the RISC-V backend has none of these levers — esp32c3
 `gust_mix` is byte-identical 0.12.0↔0.15.0 (synth#472 tracks the port);
 (2) the dense `control_step` still register-exhausts under default-on local
