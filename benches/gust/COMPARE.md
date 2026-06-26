@@ -44,6 +44,11 @@ and **132 → 90 B (−32 %)**, taking the gap to native LLVM from **2.63× → 
 correctness **bit-identical over [0,2047]**. loom v1.1.16's inline + whole-function
 DCE (loom#228) had already merged the export wrapper (frame 24 → 8 B; 2.81× →
 2.63×); synth's lowering closed most of the rest.
+**synth 0.16.0 (2026-06-26): adopted, verified byte-identical** on gale's whole
+dissolved surface (`gust_kernel.wasm` 1282 B, `fused.wasm` 640 B — `cmp`-identical
+to 0.15.1, deterministic). 0.16 is a completeness release (the >8-param AAPCS
+stack-arg path for the falcon component); it correctly does not touch gale's
+≤8-param kernels, so the numbers above are unchanged and the baseline is frozen.
 **Still open:** (1) the RISC-V backend has none of these levers — esp32c3
 `gust_mix` is byte-identical 0.12.0↔0.15.0 (synth#472 tracks the port);
 (2) the dense `control_step` still register-exhausts under default-on local
@@ -54,6 +59,32 @@ cross-layer attribution: `optimization/ANALYSIS-where-to-optimize.md`.
 
 Functional equivalence: `gust_mix` verified identical in wasmtime (the browser/host engine)
 and in the synth-dissolved object — `1024→1500` centre, `0/512→1000`, `1536/2047→2000`.
+
+### The 0.7× floor — proof-carrying specialization (measured)
+
+The 4 levers close the *codegen* gap toward parity (~1.0×). Going **below** native
+needs information LLVM structurally lacks: the **proof**. `gust_floor_bench`
+(`cargo run --release --bin gust_floor_bench`, same `-icount` harness) measures it.
+
+`gust_mix` is `clamp(1500 + (ch-1024), 1000, 2000)`. When a composition proves
+`ch ∈ [524,1524]` — a range gale primitives carry as a Verus/Rocq/Kani invariant —
+`v = ch + 476` is provably in `[1000,2000]`, **both clamp branches are dead**, and
+the function collapses to `add r0,#476; bx lr`. LLVM never emits that: it never had
+the bound. All three lowerings, timed over the SAME proven-range inputs:
+
+| lowering | fn-only ticks/call | ratio vs native | note |
+|---|---|---|---|
+| native (LLVM, full clamp) | **0.50** | 1.00× | what LLVM ships |
+| dissolved today (synth 0.15.1 / **0.16.0**) | 0.825 | 1.65× | in-range subset (full-domain = 1.81×) |
+| **proof-carrying floor** (`ch+476`) | **0.225** | **0.45×** | what synth *could* ship (synth#494a) |
+
+**Measured floor = 0.45× native** — past the 0.7× goal, and unreachable by LLVM.
+Soundness gate (in the bench, exit-coded): `mix_proven ≡ mix_native ≡ gust_mix`
+over `[524,1524]` — the elision is correct *only* under the carried bound, which is
+exactly the side-condition. The prize is the **3.7× span** between today's dissolved
+(0.825) and the floor (0.225): synth#494(a) proof-carrying specialization + loom#240
+(carry the fact through the pipeline). This is the "verified code is *faster* because
+it's verified" lever, quantified.
 
 ### Honest verdict
 - **vs native (LLVM):** synth's per-function *cycle* cost on the hot path is now
