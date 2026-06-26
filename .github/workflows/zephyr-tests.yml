@@ -175,6 +175,9 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
+          echo "host-root before reclaim:"; df -h / | tail -1
+          rm -rf /opt/toolchains/zephyr-sdk-* 2>/dev/null || true   # reclaim ~14GB: image SDK 1.0.0 is unused (build uses our 1.0.1 on /mnt)
+          echo "host-root after reclaim:"; df -h / | tail -1
           mkdir -p /mnt/tmp   # TMPDIR for the SDK download temp (gale#73 residual)
           export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
@@ -263,6 +266,9 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
+          echo "host-root before reclaim:"; df -h / | tail -1
+          rm -rf /opt/toolchains/zephyr-sdk-* 2>/dev/null || true   # reclaim ~14GB: image SDK 1.0.0 is unused (build uses our 1.0.1 on /mnt)
+          echo "host-root after reclaim:"; df -h / | tail -1
           mkdir -p /mnt/tmp   # TMPDIR for the SDK download temp (gale#73 residual)
           export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
@@ -371,6 +377,9 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
+          echo "host-root before reclaim:"; df -h / | tail -1
+          rm -rf /opt/toolchains/zephyr-sdk-* 2>/dev/null || true   # reclaim ~14GB: image SDK 1.0.0 is unused (build uses our 1.0.1 on /mnt)
+          echo "host-root after reclaim:"; df -h / | tail -1
           mkdir -p /mnt/tmp   # TMPDIR for the SDK download temp (gale#73 residual)
           export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
@@ -435,6 +444,9 @@ jobs:
       - name: Initialize west workspace
         run: |
           pip3 install west
+          echo "host-root before reclaim:"; df -h / | tail -1
+          rm -rf /opt/toolchains/zephyr-sdk-* 2>/dev/null || true   # reclaim ~14GB: image SDK 1.0.0 is unused (build uses our 1.0.1 on /mnt)
+          echo "host-root after reclaim:"; df -h / | tail -1
           mkdir -p /mnt/tmp   # TMPDIR for the SDK download temp (gale#73 residual)
           export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
