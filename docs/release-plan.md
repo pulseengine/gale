@@ -3,26 +3,33 @@ title: gale release plan
 ---
 # gale release plan (rivet-driven)
 
-Releases are scoped **in rivet** via a `release-vX.Y.Z` **tag** on the requirement
-artifacts in scope (rivet 0.15.0's `sw-req`/`system-req` schemas have no native
-`release:` field — see pulseengine/rivet issue on this; tags are the working
-mechanism and are queryable via `(has-tag …)`).
+Releases are scoped **in rivet** via the first-class **`release:` field** on the
+artifacts in scope (rivet ≥ 0.21; the feature that resolved pulseengine/rivet#512 —
+gale's earlier `release-vX.Y.Z` tag was the workaround and has been migrated to the
+field).
 
 **Readiness is a query, not an opinion.** A release is cuttable when every
-requirement in its scope is `verified`/`accepted` and its V is closed
-(`rivet validate` green for the scope).
+requirement in its scope is verified and its V is closed (`rivet validate` green for
+the scope).
 
 ## Readiness burn-down (run anytime)
 ```sh
-REL=release-v0.1.0
-total=$(rivet list --filter "(has-tag \"$REL\")" --format json | python3 -c 'import json,sys;print(json.load(sys.stdin)["count"])')
-done=$(rivet list  --filter "(and (has-tag \"$REL\") (or (= status \"verified\") (= status \"accepted\")))" --format json | python3 -c 'import json,sys;print(json.load(sys.stdin)["count"])')
-echo "$REL: $done / $total verified"
+rivet release status v0.1.0          # per-status burn-down + the not-yet-verified set
+rivet list --release v0.1.0          # the full scoped set
 ```
+`rivet release status` exits non-zero when not cuttable, so CI can gate on it.
+
+> **Caveat (pulseengine/rivet#612):** `release status` currently judges cuttability
+> by `status ∈ {verified, accepted}` only. gale is an ASPICE V-model project — it
+> marks an artifact verified via `verified-by`/`verified-on` **links** (checked by
+> `rivet validate` coverage), not a status value, and its terminal req status is
+> `approved`. So the burn-down **verdict** reads "not cuttable" until #612 makes it
+> link/schema-aware; the **counts** are accurate, and the real V-gate is
+> `rivet validate`. CI runs the burn-down as an advisory step (compliance.yml).
 
 ## v0.1.0 — semaphore (depth-first)
-Scope = the semaphore primitive, taken end-to-end to `verified` before the next
-primitive starts. Tagged `release-v0.1.0`:
+Scope = the semaphore primitive, taken end-to-end to verified before the next
+primitive starts. Scoped via `release: v0.1.0`:
 
 - **Requirements (11):** `SWREQ-SEM-P01..P10` (the P1–P10 invariants/behaviours) + `SYSREQ-SEM-001`.
 - **Evidence already authored (not yet linked):** 5 detail-designs (`SWDD-SEM-*`),
