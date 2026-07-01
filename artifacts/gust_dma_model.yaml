@@ -265,3 +265,40 @@ artifacts:
     links:
       - type: related-to
         target: DD-DMA-REGION-001
+
+  - id: FIND-DMA-SHM-CANONICAL-001
+    type: finding
+    title: "NEXT STEP: generalize own<buffer> handoff → the Bytecode Alliance shared-memory canonical option"
+    status: proposed
+    description: >
+      gale#124's own<dma-buffer> handoff is the specific, embedded, VERIFIED instance
+      of a general Component-Model direction: shared-memory objects as a canonical ABI
+      option (host-managed shared memory → resource handle, with attach/detach
+      exclusive-write / shared-read semantics that communicate valid/consumed byte
+      counts = defined ownership transfers via shared memory). Reference design:
+      cpetig/wasm-shm-test DESIGN.md
+      (https://github.com/cpetig/wasm-shm-test/blob/main/DESIGN.md). cpetig is aware;
+      this is recorded as the forward direction, not committed scope.
+
+      Alignment: his "host may answer ZERO to the allocation request and use a FIXED
+      valid address … MPU not MMU" is exactly gale's embedded reality (meld
+      merged-memory + synth --native-pointer-abi fixed base, F100/M3 MPU, BYO-OS);
+      his "guest components act as device drivers, directing DMA into these buffers"
+      is the gust driver thesis; his borrow<T>=non-transferring matches our
+      abort(borrow<dma-buffer>).
+
+      NEXT STEPS (to work WITH the Bytecode Alliance, not unilaterally):
+      (1) generalize gust:hal dma → the canonical shared-memory handle (attach/detach
+      with valid/consumed byte counts, borrow<T>, the host-answers-zero fixed-address
+      path) so the same handoff moves images/tensors (WASI-NN)/IPC/DMA uniformly;
+      (2) cross-component subregion handoff = a verified allocator component over
+      meld-fused memory (the BYO-OS composition story at strength);
+      (3) gale's differentiated contribution = the VERIFIED ownership-transfer
+      discipline (Kani-proven attach/detach FSM + barrier-pairing) + the MPU/no-MMU
+      embedded profile as a working reference implementation.
+    tags: [gust, dma, shared-memory, component-model, bytecode-alliance, canonical-abi, next-step]
+    links:
+      - type: related-to
+        target: SAC-DMA-SEAM
+      - type: related-to
+        target: REQ-DMA-OWN-001
