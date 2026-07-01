@@ -1,0 +1,267 @@
+# gust DMA-ownership model (gale#124) — DMA as Component-Model own<buffer> handoff
+# over meld-fused memory. Extends the gust driver model (gust:hal seam): DMA is
+# the one path that violates wasm's linear-memory assumption (an external agent
+# mutates "private" memory), so we model a transfer as an ownership round-trip —
+# own<dma-buffer> moves to the engine and back — keeping the buffer in the verified
+# wasm world and shrinking the trusted-native surface to the irreducible atoms.
+# Design spec: docs/superpowers/specs/2026-07-01-dma-own-handoff-design.md.
+artifacts:
+  # ---------------------------------------------------------------- requirements
+  - id: REQ-DMA-OWN-001
+    type: sw-req
+    title: "DMA transfers are modeled as own<buffer> ownership handoff"
+    status: proposed
+    release: v0.2.0
+    description: >
+      A DMA transfer SHALL be expressed as a Component-Model ownership round-trip:
+      the DMA-capable buffer is a resource, and a transfer consumes own<dma-buffer>
+      (moving it to the DMA agent) and returns it on completion via a
+      future<own<dma-buffer>>. The type system SHALL prove the previous holder can
+      no longer access the buffer for the duration of the transfer.
+    tags: [gust, dma, ownership, component-model, byo-os]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+
+  - id: REQ-DMA-VERIFY-001
+    type: sw-req
+    title: "The ownership state machine is verified wasm (Verus/Rocq/Kani), not trusted code"
+    status: proposed
+    release: v0.2.0
+    description: >
+      The logic deciding who may touch a DMA buffer SHALL be verified wasm dissolved
+      to native, like the gale kernel primitives — NOT trusted native code. The
+      verification SHALL establish, over all states: (a) wasm may access the buffer
+      iff it is wasm-owned (hands-off during the transfer window), and (b) no
+      reachable state leaves the buffer ownerless.
+    tags: [gust, dma, verified, kani, maximal-wasm]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-VERIFY-001
+
+  - id: REQ-DMA-BARRIER-001
+    type: sw-req
+    title: "Cache/barrier ops are paired with the ownership handoff by construction"
+    status: proposed
+    release: v0.2.0
+    description: >
+      Every ownership handoff SHALL emit the correct coherency op — clean+DSB before
+      a DMA write, invalidate+DMB after — as part of the transfer primitive itself,
+      such that it is structurally impossible to transfer ownership without the
+      paired barrier. On targets without cache (Cortex-M3) the op is a no-op, but the
+      abstraction SHALL hold so it is correct on M7/A-class.
+    tags: [gust, dma, coherency, barrier, safety]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DMA-OWN-001
+
+  - id: REQ-DMA-TCB-001
+    type: sw-req
+    title: "The DMA trusted surface is the irreducible atoms: descriptor poke, barrier, IRQ"
+    status: proposed
+    release: v0.2.0
+    description: >
+      The trusted native surface for DMA SHALL be limited to the irreducible
+      primitives that sandboxed wasm cannot perform: programming the DMA descriptor
+      register (a poke), emitting the cache/barrier op, and the completion-IRQ shim.
+      Nothing above the gust:hal line SHALL be added to the TCB. The CM type system
+      protects the buffer from our code; the shim + silicon protect the rest.
+    tags: [gust, dma, tcb, seam]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-WASM-001
+
+  - id: REQ-DMA-STREAM-001
+    type: sw-req
+    title: "Circular/double-buffered DMA is per-chunk ownership handoff"
+    status: proposed
+    release: v0.2.0
+    description: >
+      Circular / double-buffered DMA SHALL be modeled as a ring of chunks with
+      per-chunk own handoff (a stream<own<chunk>>): the producer arms the next
+      wasm-owned chunk, completion returns the oldest DMA-owned chunk, and each chunk
+      SHALL be owned by exactly one side at any time (never both, never neither).
+    tags: [gust, dma, streaming, circular, ownership]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DMA-OWN-001
+
+  - id: REQ-DMA-ASYNC-001
+    type: sw-req
+    title: "DMA completion is a kiln waitable; no host Future crosses the wasm boundary"
+    status: proposed
+    release: v0.2.0
+    description: >
+      A transfer SHALL resolve via the existing split-phase pattern: the completion
+      IRQ wakes a kiln waitable that resolves the future<own<dma-buffer>>, keeping DMA
+      inside the fuel-bounded cooperative poll model with no reintroduced preemption
+      and no host async Future crossing the wasm boundary.
+    tags: [gust, dma, async, kiln, split-phase]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-ASYNC-001
+
+  # ------------------------------------------------------------------ decisions
+  - id: DD-DMA-ENFORCE-001
+    type: sw-detail-design
+    title: "Ownership enforced BOTH at composition (own<T>) and at runtime (Kani-proven FSM)"
+    status: proposed
+    release: v0.2.0
+    description: >
+      CM own<T> move-checks live at the wac/meld composition layer, but synth
+      dissolves core wasm — so the guarantee is encoded twice, deliberately: the WIT
+      resource/own<dma-buffer> gives compile-time move semantics at compose time, and
+      a total, Kani-proven ownership state machine (drivers/dma-own) gives the runtime
+      guarantee that survives dissolution to native. Belt-and-suspenders per the
+      ASIL-D bar.
+    tags: [gust, dma, decision, enforcement]
+    links:
+      - type: refines
+        target: SAC-DMA-SEAM
+      - type: satisfies
+        target: REQ-DMA-OWN-001
+      - type: satisfies
+        target: REQ-DMA-VERIFY-001
+
+  - id: DD-DMA-REGION-001
+    type: sw-detail-design
+    title: "synth identifies the DMA-owned window via a dedicated shared segment in meld-fused memory"
+    status: proposed
+    release: v0.2.0
+    description: >
+      The DMA region is a dedicated, marked segment in the meld-fused merged memory
+      that synth treats as externally-mutable (no caching loads across the transfer
+      window) while the buffer is DMA-owned, and may optimize as private while
+      wasm-owned. This is verifier-visible (a concrete segment, not a per-site
+      attribute) and becomes the synth#390 / loom#226 codegen interface. Ownership is
+      thus not only safety but the signal that lets codegen stay aggressive everywhere
+      except the transfer window.
+    tags: [gust, dma, decision, synth, region-marking]
+    links:
+      - type: refines
+        target: SAC-DMA-SEAM
+      - type: satisfies
+        target: REQ-DMA-OWN-001
+
+  # --------------------------------------------------------------- architecture
+  - id: SAC-DMA-SEAM
+    type: sw-arch-component
+    title: "gust:hal dma interface — the DmaBuffer resource + own/borrow/future/stream handoff"
+    status: proposed
+    release: v0.2.0
+    description: >
+      The gust:hal `dma` interface: a `dma-buffer` resource, `read`/`write` consuming
+      own<dma-buffer> and returning future<dma-buffer>, `read-stream` returning
+      stream<dma-buffer> for the circular case, and `abort` taking borrow<dma-buffer>.
+      The first resource/handle type in gust:hal. The dissolved dma-own FSM is its
+      runtime twin; the TCB bridge implements the descriptor/barrier/IRQ atoms.
+    tags: [gust, dma, hal, seam, wit]
+    links:
+      - type: allocated-from
+        target: REQ-DMA-OWN-001
+      - type: allocated-from
+        target: REQ-DMA-TCB-001
+      - type: related-to
+        target: SAC-DRV-HAL
+
+  - id: SAC-DMA-FSM
+    type: sw-arch-component
+    title: "dma-own — the Kani-proven ownership state machine, dissolved to native"
+    status: proposed
+    release: v0.2.0
+    description: >
+      benches/gust/drivers/dma-own: the verified-wasm ownership FSM (single
+      round-trip + streaming ring), exporting dma_start / dma_poll_complete /
+      dma_abort. 218 B .text dissolved (synth 0.17 cortex-m3), 0 SRAM, TCB = 3 import
+      relocations (dma_program, dma_barrier, dma_irq_poll). Barrier emitted by
+      construction at each handoff.
+    tags: [gust, dma, fsm, verified, dissolve]
+    links:
+      - type: allocated-from
+        target: REQ-DMA-VERIFY-001
+      - type: allocated-from
+        target: REQ-DMA-BARRIER-001
+      - type: allocated-from
+        target: REQ-DMA-STREAM-001
+      - type: allocated-from
+        target: REQ-DMA-ASYNC-001
+
+  # ---------------------------------------------------------------- verification
+  - id: VER-DMA-KANI
+    type: sw-verification
+    title: "Kani BMC: DMA ownership FSM — access-iff-owned, barrier-pairing, no-ownerless, per-chunk exclusivity"
+    status: proposed
+    release: v0.2.0
+    description: >
+      cargo kani over drivers/dma-own: 6 harnesses, 0 failures (73 obligations).
+      p1 access-iff-wasm-owned, p2 barrier pairing by construction on every path,
+      p3 abort never ownerless, p4 round-trip integrity, p5 streaming per-chunk
+      exclusivity, p6 ring reap + abort_all. This is the machine-checked safety core.
+    tags: [gust, dma, kani, verification]
+    links:
+      - type: verifies
+        target: REQ-DMA-VERIFY-001
+      - type: verifies
+        target: REQ-DMA-BARRIER-001
+      - type: verifies
+        target: REQ-DMA-STREAM-001
+
+  - id: VER-DMA-TCB
+    type: sw-verification
+    title: "nm symbol + size oracle: dissolved dma-own is 218 B, TCB = 3 import relocations, 0 SRAM"
+    status: proposed
+    release: v0.2.0
+    description: >
+      Dissolve gust_dma_own.wasm (synth 0.17 cortex-m3 --all-exports --relocatable):
+      exactly 3 exported primitives (dma_start/dma_poll_complete/dma_abort), 5 import
+      relocations against the 3 trusted seam atoms, 0 .bss/.data. Confirms nothing
+      above the HAL line entered the TCB (REQ-DMA-TCB-001).
+    tags: [gust, dma, tcb, size, oracle]
+    links:
+      - type: verifies
+        target: REQ-DMA-TCB-001
+
+  - id: VER-DMA-WORKED
+    type: sw-verification
+    title: "Worked example: SPI/ADC DMA round-trip on silicon, byte-identical non-DMA portions"
+    status: proposed
+    release: v0.2.0
+    description: >
+      PLANNED (follow-on): a real DMA round-trip (SPI or ADC) on a board/Renode DMA
+      model showing the own handoff with barriers and the browser/wasmtime/dissolved
+      result preserved for the non-DMA portions. Gated on a Renode DMA-controller
+      model or board+probe. Not yet satisfied — tracked, not claimed.
+    tags: [gust, dma, silicon, worked-example, pending]
+    links:
+      - type: verifies
+        target: REQ-DMA-OWN-001
+
+  # ------------------------------------------------------------------- findings
+  - id: FIND-DMA-SYNTH-001
+    type: finding
+    title: "synth must treat the DMA-owned shared segment as externally-mutable (synth#543)"
+    status: active
+    description: >
+      The ownership handle is the codegen signal: while wasm-owned the region is
+      provably private (synth may optimize freely); during the DMA-owned window it is
+      externally mutable (synth must not cache loads across the handoff, or it will
+      miss the DMA write). Requires synth to honor the dedicated shared segment as
+      volatile for the transfer window — filed as synth#543 (+ related synth#390/loom#226). Until it
+      lands, correctness holds only if the DMA region is not optimized as private;
+      the dissolved FSM itself is unaffected (it holds no buffer bytes).
+    tags: [gust, dma, synth, region-marking, cross-repo]
+    links:
+      - type: related-to
+        target: DD-DMA-REGION-001

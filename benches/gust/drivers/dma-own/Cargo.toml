@@ -1,0 +1,19 @@
+# Standalone (not part of the gust workspace) — built ad-hoc for wasm32 + dissolve.
+[workspace]
+
+[package]
+name = "gust-dma-own"
+version = "0.1.0"
+edition = "2021"
+description = "gust:hal DMA driver — DMA modeled as Component-Model own<buffer> ownership handoff over meld-fused memory, ownership FSM verified in wasm (gale#124)"
+
+[lib]
+# cdylib for the wasm32 dissolve target; rlib so Kani can model-check the pure
+# ownership state machine (cargo kani) — the driver's verifiable core, gale-style.
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1

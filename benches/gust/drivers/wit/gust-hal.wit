@@ -39,10 +39,59 @@ interface uart-block {
     read: func(max: u32) -> list<u8>;
 }
 
+/// DMA seam (gale#124) — a transfer modeled as Component-Model OWNERSHIP HANDOFF.
+/// The buffer is a `resource`; passing it by value moves `own<dma-buffer>`, so the
+/// type system proves the previous holder can no longer touch it. A transfer is an
+/// ownership round-trip: wasm hands `own<dma-buffer>` to the engine and regains it
+/// only when the returned `future` resolves on the completion IRQ. Because meld
+/// fuses component memories into one shared segment, the handle carries only the
+/// PERMISSION, not the bytes — zero-copy DMA with statically-checked exclusive
+/// ownership. This is the FIRST resource/handle type in gust:hal; the verified
+/// ownership state machine (drivers/dma-own, Kani-proven) is its runtime twin, and
+/// the `barrier` op is emitted by construction at each handoff (clean+DSB before a
+/// DMA write, invalidate+DMB after) so coherency cannot be forgotten.
+interface dma {
+    /// A DMA-capable buffer in the meld-fused shared segment. Held as
+    /// `own<dma-buffer>` by whoever may currently access it; the DMA engine (a
+    /// non-wasm trusted agent) is the counterparty during a transfer.
+    resource dma-buffer {
+        /// Length in bytes of the region this handle governs.
+        len: func() -> u32;
+    }
+
+    /// The cache/barrier op at a handoff. No-op on M3 (no cache); real clean/
+    /// invalidate + DSB/DMB on M7/A-class. The abstraction holds on all targets.
+    enum barrier { clean-dsb, invalidate-dmb }
+
+    /// Single transfer. Consumes `own<dma-buffer>` — the buffer is statically
+    /// inaccessible to wasm until the returned future resolves with the re-owned
+    /// handle. The impl emits clean+DSB and programs the descriptor at the handoff.
+    read: func(channel: u32, buf: dma-buffer) -> future<dma-buffer>;
+    write: func(channel: u32, buf: dma-buffer) -> future<dma-buffer>;
+
+    /// Circular / double-buffered transfer (v1 streaming scope): per-chunk `own`
+    /// handoff. Each yielded item is a re-owned chunk; the stream models the ring,
+    /// each chunk owned by exactly one side at a time (proven in dma-own).
+    read-stream: func(channel: u32, buf: dma-buffer, chunk-bytes: u32) -> stream<dma-buffer>;
+
+    /// Abort / channel teardown: return the buffer to wasm from any state — never
+    /// ownerless (the faulted-transfer safety path).
+    abort: func(channel: u32, buf: borrow<dma-buffer>);
+}
+
 /// Thin-seam driver world — imports only generic MMIO + IRQ; exports one step.
 world driver-thin {
     import mmio;
     import irq;
+    export driver-step: func() -> u32;
+}
+
+/// DMA driver world — imports the ownership-handoff DMA seam (+ mmio/irq for the
+/// descriptor/IRQ atoms). The dissolved dma-own FSM drives it under kiln.
+world driver-dma {
+    import mmio;
+    import irq;
+    import dma;
     export driver-step: func() -> u32;
 }
 
