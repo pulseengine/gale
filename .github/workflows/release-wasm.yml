@@ -25,7 +25,7 @@ jobs:
     env:
       HOME: /root
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Rust + wasm32 target
         run: |
