@@ -155,3 +155,28 @@ import dispatch. Reported to synth#428 with the disasm as evidence. The leaf-
 prologue shrink + spill elimination (VCR-RA-002) is the lever this class needs.
 
 Reproduce: `drivers/uart-thin/RESULTS.md`.
+
+## Driver-class module — DMA ownership FSM (gust:hal, gale#124)
+
+A second dissolved driver-class module (`drivers/dma-own`): DMA modeled as a
+Component-Model `own<buffer>` ownership handoff, with the state machine that
+decides *who may touch the buffer* as verified wasm. Adds more driver-class
+surface (a pure state machine + a barrier-paired handoff) to the meld/loom/synth
+optimization set — distinct from the I/O-poll shape of uart-thin.
+
+| | dissolved (synth 0.20.0, cortex-m3) |
+|---|---|
+| `.text` (flash) | **218 B** (`dma_start` 96 / `dma_poll_complete` 92 / `dma_abort` 30) |
+| SRAM (`.bss`+`.data`) | **0 B** (state lives in the caller; scalar ABI, no r11 trampoline) |
+| TCB | 3 import relocations (`dma_program`, `dma_barrier`, `dma_irq_poll`) |
+| verified | ownership FSM Kani-proven 6/6 (access-iff-owned, barrier-pairing, no-ownerless, round-trip, per-chunk exclusivity) |
+| region marking | `synth --volatile-segment` Phase-1 landed (byte no-op; synth#543 Phase-2 = codegen back-off) |
+
+**Perf signal (synth 0.17→0.20 byte-identical):** the dissolved FSM is unchanged
+across the recent synth releases — same driver-class prologue/spill residual as
+uart-thin (the levers that help arithmetic don't reach it). No cycle-level bench
+yet (needs a TCB bridge + demonstrator to run the barrier/program/irq seam under
+qemu — tracked follow-on); the size/TCB numbers above are the current tracked
+surface. See `optimization/BEAT-LLVM-0.7x.md` for the perf thesis.
+
+Reproduce: `drivers/dma-own/RESULTS.md`.
