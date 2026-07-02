@@ -19,31 +19,34 @@ rivet list --release v0.1.0          # the full scoped set
 ```
 `rivet release status` exits non-zero when not cuttable, so CI can gate on it.
 
-> **Caveat (pulseengine/rivet#612):** `release status` currently judges cuttability
-> by `status ∈ {verified, accepted}` only. gale is an ASPICE V-model project — it
-> marks an artifact verified via `verified-by`/`verified-on` **links** (checked by
-> `rivet validate` coverage), not a status value, and its terminal req status is
-> `approved`. So the burn-down **verdict** reads "not cuttable" until #612 makes it
-> link/schema-aware; the **counts** are accurate, and the real V-gate is
-> `rivet validate`. CI runs the burn-down as an advisory step (compliance.yml).
+> **Resolved (pulseengine/rivet#612, shipped rivet 0.23):** `release status`
+> readiness is now configurable. gale sets `release: { require: coverage }` in
+> `rivet.yaml` — an artifact is release-ready when its `validate` coverage rules
+> pass (the V is closed), not when a status string flips. This is the correct mode
+> for an ASPICE V-model project (verification is expressed via links, terminal req
+> status stays `approved`), so `rivet release status` now gives a **meaningful**
+> cuttability verdict for gale.
 
 ## v0.1.0 — semaphore (depth-first)
 Scope = the semaphore primitive, taken end-to-end to verified before the next
 primitive starts. Scoped via `release: v0.1.0`:
 
 - **Requirements (11):** `SWREQ-SEM-P01..P10` (the P1–P10 invariants/behaviours) + `SYSREQ-SEM-001`.
-- **Evidence already authored (not yet linked):** 5 detail-designs (`SWDD-SEM-*`),
-  1 arch (`SWARCH-SEM-001`), and **16 verifications** — `UV-SEM-001..005` (unit),
-  `IV-SEM-001/002` (integration), `SV-SEM-001` (system), `FV-SEM-001..003` +
-  `FV-WQ/PRI/THR/ERR-001` (formal), plus the silicon result (`k_sem_give` 907 cyc,
+- **Verification (V closed, per ASPICE):** the reqs P01–P10 are **formally
+  verified** by `FV-SEM-001` (the schema-legal req-level verifier); the design
+  (`SWDD-SEM-*`) is unit-verified (`UV-SEM-001..005`); the arch (`SWARCH-SEM-001`,
+  `SWARCH-WQ-001`) is integration-verified (`IV-SEM-001/002`); `SYSREQ-SEM-001` is
+  system-verified (`SV-SEM-001`). Plus the silicon result (`k_sem_give` 907 cyc,
   wasm-cross-LTO vs 471 LLVM-LTO).
 
-**Status: NOT cuttable yet.** All 11 reqs are `approved`, none `verified`. The
-gap is *linkage, not work*: the 16 sem verifications exist but aren't wired to the
-reqs via `verifies` links, so `rivet validate` reports the reqs unverified (part
-of the 311 lifecycle-coverage gaps). **v0.1 burn-down = wire the sem
-verifications → reqs, then drive status `approved → verified`** (a
-`traceability-audit` pass), after which v0.1 is cuttable.
+**Status: CUTTABLE.** `rivet release status v0.1.0` (rivet 0.23,
+`require: coverage`) = ✓ Cuttable, `rivet validate` = PASS. Note (2026-07-02): the
+earlier "not cuttable / links missing" reading was a mis-modeled coverage rule —
+unit/integration verifications attach to design/arch (ASPICE forbids them verifying
+a req directly), so a req is verified directly only by `sw-verification` (formal).
+`swe1-has-verification` was corrected to `from-types: [sw-verification]`
+accordingly; the V was already closed transitively. Cutting the tag is a release
+decision, not a traceability blocker.
 
 ## Cadence
 Per-primitive depth-first: v0.1 sem → v0.2 mutex → … Each release ships when its
