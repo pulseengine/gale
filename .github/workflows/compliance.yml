@@ -8,9 +8,10 @@ name: Compliance report
 # additive, and cannot affect the release flow if it fails.
 #
 # NOTE: rivet-version pins the rivet binary used to validate/export gale's
-# artifacts. Bumped to v0.22.0 (release-handling: the `release:` field + `rivet
-# release status` burn-down, rivet #516). `rivet validate` is PASS on gale's
-# artifacts under 0.22.0; bump in lockstep if a future schema needs a newer rivet.
+# artifacts. v0.23.0: adds configurable release-status readiness (`release.require:
+# coverage`, rivet #612) so the V-model gate greens on link-based (not status-flip)
+# verification. `rivet validate` is PASS on gale's artifacts under 0.23.0; bump in
+# lockstep if a future schema needs a newer rivet.
 
 on:
   release:
@@ -46,19 +47,20 @@ jobs:
           ref: ${{ steps.tag.outputs.tag }}
 
       - name: Release readiness burn-down (rivet release status)
-        # rivet 0.22 release-handling (#516): per-status burn-down of the artifacts
-        # scoped to `release: <tag>`. Non-blocking: gale's V-model marks artifacts
-        # verified via `verified-by` LINKS (validated below), not a `verified`
-        # STATUS, so rivet's status-only cuttability verdict always reads
-        # "not cuttable" for gale — tracked in pulseengine/rivet#612. The
-        # blocking V-gate is `rivet validate` inside the compliance action.
+        # rivet 0.23 release-handling (#516 + #612): burn-down of the artifacts
+        # scoped to `release: <tag>`. With `release.require: coverage` in rivet.yaml
+        # the cuttability verdict is now MEANINGFUL for gale's V-model (an artifact
+        # is ready when its validate coverage rules pass — the V is closed — not when
+        # a status flips). Still reported (not `exit 1`-gated) here because this
+        # workflow runs POST-publish; the pre-cut gate is `rivet release status`
+        # + `rivet validate` run before tagging.
         env:
           TAG: ${{ steps.tag.outputs.tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -uo pipefail
           d=$(mktemp -d)
-          gh release download v0.22.0 --repo pulseengine/rivet \
+          gh release download v0.23.0 --repo pulseengine/rivet \
             -p '*x86_64-unknown-linux-gnu*' -D "$d" 2>/dev/null || true
           tar xzf "$d"/*x86_64-unknown-linux-gnu*.tar.gz -C "$d" 2>/dev/null || true
           RV=$(find "$d" -name rivet -type f | head -1); chmod +x "$RV" 2>/dev/null || true
@@ -70,10 +72,10 @@ jobs:
 
       - name: Generate compliance report
         id: report
-        uses: pulseengine/rivet/.github/actions/compliance@v0.22.0
+        uses: pulseengine/rivet/.github/actions/compliance@v0.23.0
         with:
           theme: dark
-          rivet-version: v0.22.0
+          rivet-version: v0.23.0
           include-data-formats: true
           report-label: ${{ steps.tag.outputs.tag }}
           archive: 'true'

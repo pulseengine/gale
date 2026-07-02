@@ -479,10 +479,16 @@ traceability-rules:
 
   # Coverage rules (every requirement should be verified)
   - name: swe1-has-verification
-    description: Every SW requirement should be verified by at least one verification measure
+    description: Every SW requirement should be verified by at least one requirement-level verification measure (sw-verification — formal/analysis/test-against-the-requirement)
     source-type: sw-req
     required-backlink: verifies
-    from-types: [sw-verification, unit-verification, sw-integration-verification]
+    # A sw-req is verified DIRECTLY only by sw-verification. unit-verification and
+    # sw-integration-verification target design/arch (the link-type schema forbids
+    # them from targeting a sw-req), so they cover a requirement TRANSITIVELY down
+    # the V (req -> design -> unit-verification; req -> arch -> integration), not by
+    # a direct backlink. Listing them here produced a permanently-unactionable
+    # "missing unit/integration" warning on every req. See gale#124 session finding.
+    from-types: [sw-verification]
     severity: warning
 
   - name: sys2-has-verification
