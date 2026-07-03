@@ -181,7 +181,7 @@ optimization set — distinct from the I/O-poll shape of uart-thin.
 | SRAM (`.bss`+`.data`) | **0 B** (state lives in the caller; scalar ABI, no r11 trampoline) |
 | TCB | 3 import relocations (`dma_program`, `dma_barrier`, `dma_irq_poll`) |
 | verified | ownership FSM Kani-proven 6/6 (access-iff-owned, barrier-pairing, no-ownerless, round-trip, per-chunk exclusivity) |
-| region marking | `synth --volatile-segment` Phase-1 landed (byte no-op; synth#543 Phase-2 = codegen back-off) |
+| region marking | `synth --volatile-segment` **Phase-2 shipped (synth 0.25, #543)** — now suppresses linmem-access optimization in marked ranges; no-op on gale's current modules (no DMA-payload-read demonstrator yet, VER-DMA-WORKED) |
 
 **Perf signal (synth 0.17→0.20 byte-identical):** the dissolved FSM is unchanged
 across the recent synth releases — same driver-class prologue/spill residual as

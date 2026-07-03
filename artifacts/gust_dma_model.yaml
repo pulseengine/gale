@@ -251,16 +251,21 @@ artifacts:
   # ------------------------------------------------------------------- findings
   - id: FIND-DMA-SYNTH-001
     type: finding
-    title: "synth must treat the DMA-owned shared segment as externally-mutable (synth#543)"
+    title: "synth --volatile-segment marks the DMA-owned range externally-mutable — synth#543 Phase 2 SHIPPED (0.25)"
     status: active
     description: >
       The ownership handle is the codegen signal: while wasm-owned the region is
       provably private (synth may optimize freely); during the DMA-owned window it is
       externally mutable (synth must not cache loads across the handoff, or it will
-      miss the DMA write). Requires synth to honor the dedicated shared segment as
-      volatile for the transfer window — filed as synth#543 (+ related synth#390/loom#226). Until it
-      lands, correctness holds only if the DMA region is not optimized as private;
-      the dissolved FSM itself is unaffected (it holds no buffer bytes).
+      miss the DMA write). Filed as synth#543. Phase 1 (`--volatile-segment BASE:LEN`
+      plumbing, byte no-op) shipped in synth 0.20; **Phase 2 (the codegen back-off —
+      const-CSE + #468 base-CSE decline inside marked ranges) shipped in synth 0.25
+      (#588)**. So the mechanism now exists. It is a NO-OP on gale's CURRENT dissolved
+      modules (verified: `gust_kernel` byte-identical with/without the flag) because
+      none of them exercise the DMA-payload-read pattern Phase 2 suppresses — the
+      dissolved ownership FSM holds no buffer bytes. Exercising it end-to-end needs a
+      demonstrator that reads DMA'd bytes back through the marked segment (VER-DMA-WORKED,
+      the worked-example follow-on). Related: synth#390/loom#226.
     tags: [gust, dma, synth, region-marking, cross-repo]
     links:
       - type: related-to
