@@ -12,30 +12,34 @@ is the codegen-quality figure and is on a common time base.
 |---|---|---|---|---|
 | ESP32-C3 (synth 0.12.0, flag-off) | 0.259 tick/call | 0.549 tick/call | **2.12×** | identical |
 
-> **synth#472 UPDATE (closed 2026-07-02): the RV32 levers are now ported —
-> flag-off by default.** The perf levers that took the Cortex-M `gust_mix` from
-> 2.63× → 1.81× have been ported to synth's **RISC-V backend** and are all gated
-> **off by default**, so the committed `gust_mix-esp32c3.o` and the flag-off
-> **2.12×** silicon number above are **unchanged** — the levers do not fire
-> unless their env var is set. The RV32 port is **4 levers** (synth#484 scoping):
+> **synth#472 UPDATE — the RV32 flip-wave began (synth 0.28).** The perf levers
+> that took the Cortex-M `gust_mix` from 2.63× → 1.81× were ported to synth's
+> **RISC-V backend** (issue closed 2026-07-02), first flag-off, and are now flipping
+> default-on one at a time. As of **synth 0.28.0, `SYNTH_RV_CMP_SELECT` is
+> DEFAULT-ON** (the #472 flip-wave, synth#601); i32 local-promotion's flip is HELD on
+> a no-grow blocker. The RV32 port is **4 levers** (synth#484 scoping):
 >
-> | lever | env flag | fires on gust_mix? |
-> |---|---|---|
-> | cmp→select fusion (RV32 branch-comparator, synth#568) | `SYNTH_RV_CMP_SELECT` | **yes, −8 B** |
-> | immediate-shift-fold (`slli/srli/srai`, synth#487) | `SYNTH_RV_SHIFT_FOLD` | **yes, −8 B** |
-> | i32 local-promotion (s-register homing, synth#560) | `SYNTH_RV_LOCAL_PROMO` | no (byte-identical) |
-> | const-address-fold (RISC-V-specific, synth#491) | `SYNTH_RV_ADDR_FOLD` | no (byte-identical) |
+> | lever | env flag | default? (0.28) | fires on gust_mix? |
+> |---|---|---|---|
+> | cmp→select fusion (RV32 branch-comparator, synth#568) | `SYNTH_RV_CMP_SELECT` | **ON** | **yes, −8 B** |
+> | immediate-shift-fold (`slli/srli/srai`, synth#487) | `SYNTH_RV_SHIFT_FOLD` | off | yes, −8 B |
+> | i32 local-promotion (s-register homing, synth#560) | `SYNTH_RV_LOCAL_PROMO` | off (flip HELD) | no (byte-identical) |
+> | const-address-fold (RISC-V-specific, synth#491) | `SYNTH_RV_ADDR_FOLD` | off | no (byte-identical) |
 >
-> **Measured this run** (synth 0.26.0, `gust_kernel.wasm -b riscv --target
-> esp32c3 --all-exports --relocatable`; the gust_mix compute kernel is `func_1`,
-> the arithmetic callee): flag-on with all four levers shrinks the kernel
-> **132 → 116 B (−16 B, −12.1%)** and the object's `.text` **144 → 128 B**. The
-> shrink is entirely cmp→select + immediate-shift-fold (−8 B each, additive);
-> local-promotion and const-address-fold leave gust_mix byte-identical (no
-> promotable non-param i32 local, no foldable constant-address access in this
-> kernel). This is a **codegen-size** delta on the current toolchain — the levers
-> are **not adopted** here (no default-on flip, no silicon re-run), so the 2.12×
-> ratio on real hardware still stands as the shipped figure.
+> **Measured (synth 0.28.0 default vs 0.26.0, `gust_kernel.wasm -b riscv --target
+> esp32c3 --all-exports --relocatable`):** with cmp→select now default-on, the
+> esp32c3 dissolved kernel `.text` drops **144 → 136 B (−8 B)** by DEFAULT — no flag.
+> The full four-lever flag-on floor is 128 B (−16 B); the remaining −8 B is
+> immediate-shift-fold, still flag-off. So the RISC-V lane is now improving in the
+> shipped default, not just under flags.
+>
+> **Caveat — the 2.12× row above is a *silicon cycle* number, not codegen size, and
+> it predates all of this** (measured flag-off on synth 0.12 on the real ESP32-C3
+> systimer). The −8 B is a byte delta on the current toolchain; whether it moves the
+> on-hardware ratio needs a re-run on the board, which is pending. The committed
+> `gust_mix-esp32c3.o` (a 0.12-era single-function reference object) is left as-is —
+> re-pinning it to 0.28 changes its shape beyond the lever delta (version drift) and
+> the shipped figure that matters is the silicon cycle count, not the reference .o.
 
 ## Same wasm, three architectures, all measured on silicon/sim
 
