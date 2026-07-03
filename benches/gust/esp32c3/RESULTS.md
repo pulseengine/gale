@@ -12,13 +12,30 @@ is the codegen-quality figure and is on a common time base.
 |---|---|---|---|---|
 | ESP32-C3 (synth 0.12.0, flag-off) | 0.259 tick/call | 0.549 tick/call | **2.12×** | identical |
 
-> **synth 0.15.0 note (ARM-only levers):** the four perf levers that took the
-> Cortex-M `gust_mix` from 2.63× → 1.81× (cmp→select fusion, stack-reload
-> elimination, local promotion, immediate-shift folding) live in synth's **ARM
-> backend**. The RISC-V backend has none of them — the dissolved esp32c3
-> `gust_mix` is **byte-identical** under 0.12.0 and 0.15.0, so the 2.12× ratio is
-> unchanged. Porting the levers to RV32 is tracked in **synth#472**; until then
-> RISC-V is the lagging architecture.
+> **synth#472 UPDATE (closed 2026-07-02): the RV32 levers are now ported —
+> flag-off by default.** The perf levers that took the Cortex-M `gust_mix` from
+> 2.63× → 1.81× have been ported to synth's **RISC-V backend** and are all gated
+> **off by default**, so the committed `gust_mix-esp32c3.o` and the flag-off
+> **2.12×** silicon number above are **unchanged** — the levers do not fire
+> unless their env var is set. The RV32 port is **4 levers** (synth#484 scoping):
+>
+> | lever | env flag | fires on gust_mix? |
+> |---|---|---|
+> | cmp→select fusion (RV32 branch-comparator, synth#568) | `SYNTH_RV_CMP_SELECT` | **yes, −8 B** |
+> | immediate-shift-fold (`slli/srli/srai`, synth#487) | `SYNTH_RV_SHIFT_FOLD` | **yes, −8 B** |
+> | i32 local-promotion (s-register homing, synth#560) | `SYNTH_RV_LOCAL_PROMO` | no (byte-identical) |
+> | const-address-fold (RISC-V-specific, synth#491) | `SYNTH_RV_ADDR_FOLD` | no (byte-identical) |
+>
+> **Measured this run** (synth 0.26.0, `gust_kernel.wasm -b riscv --target
+> esp32c3 --all-exports --relocatable`; the gust_mix compute kernel is `func_1`,
+> the arithmetic callee): flag-on with all four levers shrinks the kernel
+> **132 → 116 B (−16 B, −12.1%)** and the object's `.text` **144 → 128 B**. The
+> shrink is entirely cmp→select + immediate-shift-fold (−8 B each, additive);
+> local-promotion and const-address-fold leave gust_mix byte-identical (no
+> promotable non-param i32 local, no foldable constant-address access in this
+> kernel). This is a **codegen-size** delta on the current toolchain — the levers
+> are **not adopted** here (no default-on flip, no silicon re-run), so the 2.12×
+> ratio on real hardware still stands as the shipped figure.
 
 ## Same wasm, three architectures, all measured on silicon/sim
 
