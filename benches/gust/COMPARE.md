@@ -61,6 +61,17 @@ move toward 0.7×. The flag-off `SYNTH_CONST_CSE` (#514) *regresses* gust_mix +2
 (90→92) — reported as a negative datum. Net: 0.17 is real incremental parity
 progress on larger functions; below-1.0× still requires the proof-carrying clamp
 elision (the 0.45× floor above), which 0.17 does not implement.
+**synth 0.24.0 (2026-07-03): adopted — "the allocator release", Belady spilling
+DEFAULT-ON (#583, VCR-RA-001).** The `SYNTH_SPILL_REALLOC` lever gale measured +
+drove to synth#242 (flag-on: gust_poll −20B on 0.22 → −24B on 0.23 as Belady
+matured) shipped default-on in 0.24, plus whole-function dead-frame-store
+elimination (#579) + register-exhaustion spill (#580). Measured on the body:
+loom-inlined **`gust_poll` 810 → 784 B (−26 B, −3.2%)**, kernel `.text` 1318 →
+1292 B (direct-compile gust_poll 740 → 716 B). Re-pinned `gust_kernel-cortex-m3.o`
+→ 0.24 (1872 → 1844 B ELF). `gust_mix` micro-target still byte-identical (already
+minimal) → `gust_codegen_bench` stays **1.81×**, correctness IDENTICAL. So the
+spill lever closes more of the driver-class/dense-code residual (the synth#428 win
+now default), but the below-1.0× path is still the proof-carrying floor (0.45×).
 **Still open:** (1) the RISC-V backend has none of these levers — esp32c3
 `gust_mix` is byte-identical 0.12.0↔0.15.0 (synth#472 tracks the port);
 (2) the dense `control_step` still register-exhausts under default-on local
