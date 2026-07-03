@@ -72,6 +72,16 @@ loom-inlined **`gust_poll` 810 → 784 B (−26 B, −3.2%)**, kernel `.text` 13
 minimal) → `gust_codegen_bench` stays **1.81×**, correctness IDENTICAL. So the
 spill lever closes more of the driver-class/dense-code residual (the synth#428 win
 now default), but the below-1.0× path is still the proof-carrying floor (0.45×).
+**synth 0.27→0.29 (2026-07-03): the flip-wave, adopted.** ARM `SYNTH_BASE_CSE`
+default-on (0.27) = byte-neutral on gale (nothing redundant to CSE). RV32
+`SYNTH_RV_CMP_SELECT` default-on (0.28) = −8 B on the esp32c3 lane by default (see
+esp32c3/RESULTS.md). ARM `SYNTH_CONST_CSE` default-on (0.29, #604 "retire inline
+const aliasing") = **−8 B on the loom-inlined kernel** (gust_poll 784→780, gust_mix
+90→86 — dedupes the repeated constant); re-pinned `gust_kernel-cortex-m3.o` → 0.29
+(1844 → 1836 B ELF). Notably this **resolves the +2 B gust_mix regression** gale
+reported when const-CSE was flag-on (0.17): the rework makes it a net win, no
+regression. `gust_codegen_bench` stays **1.81×**, correctness IDENTICAL. gale not
+exposed to 0.28/0.29 encoder + i64-completeness fixes (byte-identical, 0 i64 params).
 **Still open:** (1) the RISC-V backend has none of these levers — esp32c3
 `gust_mix` is byte-identical 0.12.0↔0.15.0 (synth#472 tracks the port);
 (2) the dense `control_step` still register-exhausts under default-on local
