@@ -22,15 +22,21 @@ is the codegen-quality figure and is on a common time base.
 > | lever | env flag | default? (0.28) | fires on gust_mix? |
 > |---|---|---|---|
 > | cmp→select fusion (RV32 branch-comparator, synth#568) | `SYNTH_RV_CMP_SELECT` | **ON** | **yes, −8 B** |
-> | immediate-shift-fold (`slli/srli/srai`, synth#487) | `SYNTH_RV_SHIFT_FOLD` | off | yes, −8 B |
+> | immediate-shift-fold (`slli/srli/srai`, synth#487) | `SYNTH_RV_SHIFT_FOLD` | **ON (0.30.0, #611)** | **yes, −8 B** |
 > | i32 local-promotion (s-register homing, synth#560) | `SYNTH_RV_LOCAL_PROMO` | off (flip HELD) | no (byte-identical) |
 > | const-address-fold (RISC-V-specific, synth#491) | `SYNTH_RV_ADDR_FOLD` | off | no (byte-identical) |
 >
 > **Measured (synth 0.28.0 default vs 0.26.0, `gust_kernel.wasm -b riscv --target
 > esp32c3 --all-exports --relocatable`):** with cmp→select now default-on, the
 > esp32c3 dissolved kernel `.text` drops **144 → 136 B (−8 B)** by DEFAULT — no flag.
-> The full four-lever flag-on floor is 128 B (−16 B); the remaining −8 B is
-> immediate-shift-fold, still flag-off. So the RISC-V lane is now improving in the
+>
+> **UPDATE (synth 0.30.0, #611): `SYNTH_RV_SHIFT_FOLD` also flipped default-on.**
+> Re-measured on 0.30.1 (`gust_kernel.wasm -b riscv --target esp32c3 --relocatable`),
+> shift-fold default vs `SYNTH_RV_SHIFT_FOLD=0`: kernel object **512 → 520 B**, i.e.
+> **−8 B by DEFAULT** — exactly the residual the table above predicted. Two of the
+> four RV32 levers are now default-on (cmp→select + shift-fold = −16 B vs the
+> pre-flip baseline); the remaining two (i32 local-promote, const-addr-fold) stay
+> flag-off (byte-identical on gust_mix). So the RISC-V lane is now improving in the
 > shipped default, not just under flags.
 >
 > **Caveat — the 2.12× row above is a *silicon cycle* number, not codegen size, and

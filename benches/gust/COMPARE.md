@@ -82,8 +82,28 @@ const aliasing") = **−8 B on the loom-inlined kernel** (gust_poll 784→780, g
 reported when const-CSE was flag-on (0.17): the rework makes it a net win, no
 regression. `gust_codegen_bench` stays **1.81×**, correctness IDENTICAL. gale not
 exposed to 0.28/0.29 encoder + i64-completeness fixes (byte-identical, 0 i64 params).
-**Still open:** (1) the RISC-V backend has none of these levers — esp32c3
-`gust_mix` is byte-identical 0.12.0↔0.15.0 (synth#472 tracks the port);
+**synth 0.30.1 (2026-07-03): adopted — the flip-wave trilogy (#611), and it finally
+moves `gust_mix`.** Three flag audits flipped default-on: ARM `SYNTH_UXTH_FOLD`
+(my synth#428 finding — `uxth` replacing `movw #imm; and` halfword-masks), ARM
+`SYNTH_DEAD_FRAME_ELIM` (VCR-RA-002, #390), and RV32 `SYNTH_RV_SHIFT_FOLD` (the
+−8 B I'd flagged still-flag-off on the esp32c3 lane). Measured on the body:
+loom-inlined **`gust_mix` 86 → 68 B (−18 B, −21%)** — the first move on this
+micro-target since the 0.13–0.15 levers took it to 90/86; **`gust_poll` 780 → 774 B**;
+kernel `.text` object 1836 → 1808 B ELF (−28 B). Re-pinned `gust_kernel-cortex-m3.o`
+→ 0.30.1. **Cycle honesty:** `gust_codegen_bench` **stays 1.81×** (fn-only 725
+milliticks, unchanged) — the −21% is *code size*; the removed `uxth`/frame
+instructions land **below this harness's SysTick timing resolution** at
+`-icount shift=1`, so the win shows in flash/TCB bytes, not in the quantized
+ticks/call (it would resolve on the F100 DWT cycle counter, a tracked re-measure).
+Correctness **IDENTICAL over [0,2047]**; `fused.o` byte-identical (uxth-inert,
+already minimal); floor bench soundness gate green, **0.45× floor intact**. gale
+not exposed to 0.30.1's i64 rotl/rotr/div_u/rem_u silent-zero fix (#610 — 0 i64
+params, byte-identical).
+**Still open:** (1) the RISC-V backend is now catching up — esp32c3
+`SYNTH_RV_CMP_SELECT` (0.28) + `SYNTH_RV_SHIFT_FOLD` (0.30.0) are default-on
+(−16 B combined vs the 0.12 baseline; synth#472 port closed), but the arithmetic
+levers still trail ARM and the on-silicon 2.12× ratio predates them (needs a board
+re-run);
 (2) the dense `control_step` still register-exhausts under default-on local
 promotion (synth#474, confirmed on 0.15.0), so it builds with
 `SYNTH_NO_LOCAL_PROMOTE=1` and gets only three of the four levers (580 → 568 B).
