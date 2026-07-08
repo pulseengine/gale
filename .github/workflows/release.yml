@@ -58,6 +58,12 @@ jobs:
       options: --user root --volume /mnt:/mnt
     env:
       HOME: /root
+    # Inside a container, GitHub Actions defaults `run:` to `sh` (dash), which
+    # rejects `set -euo pipefail` ("Illegal option -o pipefail"). The ci-base
+    # image ships bash; make it the default so the pipefail guards work.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v6
         with:
