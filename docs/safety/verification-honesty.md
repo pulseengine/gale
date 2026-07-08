@@ -179,7 +179,30 @@ architecture doc's "one formally-verified artifact" read as stronger than the ho
 internal picture in this file. They should be brought into line (a positioning decision):
 lead with what is *actually strong* — comprehensive functional + differential testing,
 real Verus SMT on the source (with the 133 `external_body` trust units named), 9 real Rocq
-model proofs — and state the two limits up front: **(a)** formal tools do not run in CI
-(local only), and **(b)** the shipped dissolved artifact is tested against a reference
-semantics, not proven equivalent to the verified source. Nothing here weakens the
-engineering; it makes each claim one a skeptic cannot dismantle.
+model proofs — and state the limits up front: **(a)** the shipped dissolved artifact is
+tested against a reference semantics, not proven equivalent to the verified source
+(source-vs-shipped); and **(b)** a *green formal-verification CI badge is not "all
+proven"* — see the CI-cadence correction below. Nothing here weakens the engineering; it
+makes each claim one a skeptic cannot dismantle.
+
+### CORRECTION to the 2026-03-22 "does NOT run in CI" text above
+
+The **"The Gap" / "does NOT run in CI (local only)"** statements earlier in this file
+(dated 2026-03-22) are **superseded**: `.github/workflows/formal-verification.yml` now
+runs all three tracks on **push + pull_request + weekly cron** — Verus (`bazel test
+//:verus_test`), Kani (185 harnesses: `cargo kani --tests` + `--all-features`), and Rocq
+(13 files via `coq-of-rust` + Bazel). So formal verification **is** CI-enforced today.
+Two honest caveats remain, and they are sharper than "not in CI":
+
+- **A green Rocq job does not mean the theorems are proven.** Coq *accepts* `Admitted.`
+  (it is an axiom-like escape hatch that type-checks), so the Rocq CI job passes green
+  even though `poll`/`sched`/`thread_lifecycle` are 74 admitted stubs. "Rocq CI green" ⇒
+  "the files elaborate," NOT "the properties hold." (The 9 real modules are genuinely
+  `Qed`.)
+- **The Verus job is not `--no-cheating`.** It passes with the 133 `external_body` trust
+  units accepted; a maximalist `--no-cheating` run would (correctly) fail. So "Verus CI
+  green" ⇒ "the checked bodies verify," NOT "every line is SMT-proven."
+
+Net: formal tools run in CI (good — better than the old doc said), but a green badge
+certifies *elaboration + the checked subset*, not total proof. That distinction is the
+honest one to make.
