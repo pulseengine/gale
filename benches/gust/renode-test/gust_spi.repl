@@ -1,0 +1,20 @@
+// Cortex-M3 + 64 KB SRAM / 512 KB flash, plus a RAM-mapped SPI1 register window for
+// the thin-seam SPI driver content-gate. The gate asserts the CR1 mode/baud value the
+// DRIVER writes, the full-duplex byte shift over a pre-seeded SR/DR, and its
+// Kani-proven transfer FSM — on a plain memory region, deterministic, no dependence
+// on Renode's SPI peripheral model.
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m3"
+    nvic: nvic
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    -> cpu@0
+flash: Memory.MappedMemory @ sysbus 0x0
+    size: 0x80000
+sram: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x10000
+// SPI1 register window (0x40013000, +0x400) as plain memory — driver CR1/SR/DR
+// writes read back. Ends at 0x40013400, below USART1 at 0x40013800 (no overlap).
+spi1: Memory.MappedMemory @ sysbus 0x40013000
+    size: 0x400
+usart1: UART.STM32_UART @ sysbus <0x40013800, +0x100>
+    -> nvic@37

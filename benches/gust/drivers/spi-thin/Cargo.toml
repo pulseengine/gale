@@ -1,0 +1,18 @@
+# Standalone (not part of the gust workspace) — built ad-hoc for wasm32 + dissolve.
+# gust-OS v0.3.0 driver breadth: SPI as a verified thin-seam RTIO iodev.
+[workspace]
+
+[package]
+name = "gust-spi-thin"
+version = "0.1.0"
+edition = "2021"
+description = "gust:hal thin-seam SPI driver — STM32 SPI mode/baud config + a Kani-proven transfer FSM (SQE→CQE) in verified wasm, importing only the generic mmio capability"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1

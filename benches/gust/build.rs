@@ -116,5 +116,19 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_timer={}", tobj.display());
         println!("cargo:rerun-if-changed={}", tobj.display());
     }
+    // The dissolved thin-seam SPI driver (drivers/spi-thin → loom → synth): the
+    // STM32F1 SPI protocol (CR1 mode/baud config + full-duplex byte shift) and a
+    // Kani-proven transfer FSM (SQE→CQE, exclusive-bus + no-lost-byte) in verified
+    // wasm (Kani 6/6, 0 new TCB atoms — mmio only). The gust_spi demonstrator
+    // asserts the CR1 write + byte shift + FSM over USART1 for the content-gate
+    // (renode-test/gust_spi.robot).
+    let spobj = Path::new(&manifest).join("drivers/spi-thin/spi-thin-cm3.o");
+    if spobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_spi={}", spobj.display());
+        // gust_spi_probe: the LOCAL qemu-semihosting probe of the SAME dissolved .o
+        // (RAM-window register effects + FSM), run before the Renode gate.
+        println!("cargo:rustc-link-arg-bin=gust_spi_probe={}", spobj.display());
+        println!("cargo:rerun-if-changed={}", spobj.display());
+    }
     println!("cargo:rerun-if-changed=build.rs");
 }
