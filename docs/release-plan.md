@@ -75,6 +75,26 @@ F100+G474RE silicon. The ladder from there:
 | **v0.5.0** | **isolation / multi-tenancy** | `REQ-OS-{MPU,MULTITENANT}-001` | two mutually-distrusting components, MPU-per-region (unblocks **synth#404** multi-memory); a faulting tenant cannot corrupt a sibling or the TCB |
 | **v1.0.0** | **the OS, cut** | `REQ-OS-RELEASE-001` | whole composition — scheduler + IPC + `gust:os` + GPIO/timer/SPI/UART/DMA + MPU multi-tenancy — sigil-signed, booting the SAME components on M3 **and** M4 silicon, published as a Pages showcase |
 
+**Readiness is the `rivet release status` burn-down, not this table.** The table is
+the *scope map*; whether a milestone is cuttable is a query. Live snapshot
+(2026-07-08, `rivet release status`, `require: coverage`):
+
+```
+v0.1.0  ✓ Cuttable            (11 artifacts, V closed)         — semaphore, done
+v0.2.0  ✗ NOT cuttable (3)    DD-DMA-ENFORCE/REGION, REQ-DMA-ASYNC — DMA, in progress
+v0.3.0  ✗ NOT cuttable (4)    REQ-DRV-{GPIO,TIMER,SPI,BREADTH}     — driver breadth, not started
+v0.4.0  ✗ NOT cuttable (1)    REQ-OS-SYSCALL                       — syscall seam
+v0.5.0  ✗ NOT cuttable (2)    REQ-OS-{MPU,MULTITENANT}             — isolation
+v1.0.0  ✗ NOT cuttable (1)    REQ-OS-RELEASE                       — the OS cut
+```
+
+A planned milestone deliberately carries **no verification artifacts** — under
+`require: coverage` a req reads "ready" the instant a `verifies` link exists, so
+pre-declaring the Kani verifiers would make v0.3.0 falsely report near-cuttable
+while nothing is built. Each `VER-DRV-*` is added by the feature loop **when its
+proof passes**; that incoming link is what drops the req off the not-ready list.
+Re-target scope with `rivet release move <artifact> <version>` (a logged decision).
+
 **Verification bar (every driver/component, unchanged from the driver model):**
 protocol/decision logic is verified wasm (Kani on the pure decision; Verus/Rocq when
 promoted into `gale/src`), dissolved to native; the TCB stays the irreducible

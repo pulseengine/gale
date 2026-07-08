@@ -109,53 +109,19 @@ artifacts:
       - type: related-to
         target: REQ-DRV-SRAM-001
 
-  - id: VER-DRV-GPIO-001
-    type: sw-verification
-    title: "Kani: GPIO pin-config decode is total and injective over its input domain"
-    status: proposed
-    release: v0.3.0
-    description: >
-      A Kani harness SHALL prove the GPIO config encoder produces a well-formed
-      register value for every (mode, pull, speed) input and never aliases two
-      distinct configs to the same pin state. Plus a Renode F100 content-gate:
-      drive a pin, read it back, byte-exact. Kill-criterion: any input yields an
-      out-of-spec MODER/PUPDR field, or the Renode read-back mismatches.
-    tags: [gust, gpio, kani, verification]
-    links:
-      - type: verifies
-        target: REQ-DRV-GPIO-001
-
-  - id: VER-DRV-TIMER-001
-    type: sw-verification
-    title: "Kani: timer deadline math has no wraparound-induced missed/early fire"
-    status: proposed
-    release: v0.3.0
-    description: >
-      A Kani harness SHALL prove the elapsed/deadline comparison is correct across
-      the full 32-bit tick domain including the wrap boundary (a deadline set near
-      u32::MAX fires exactly once, neither missed nor early). Plus a Renode timer
-      content-gate. Kill-criterion: any (now, deadline) pair mis-decides has-elapsed.
-    tags: [gust, timer, kani, verification]
-    links:
-      - type: verifies
-        target: REQ-DRV-TIMER-001
-
-  - id: VER-DRV-SPI-001
-    type: sw-verification
-    title: "Kani: SPI transfer FSM keeps exclusive bus access and loses no byte"
-    status: proposed
-    release: v0.3.0
-    description: >
-      A Kani harness SHALL prove the SPI transfer state machine never overlaps two
-      transfers on the bus and that every queued byte is either sent-and-acknowledged
-      or surfaced as an explicit abort (no silent drop), including under the DMA
-      own<buffer> handoff. Plus a Renode SPI-loopback content-gate. Kill-criterion:
-      a reachable state transmits with CS de-asserted, or a byte is dropped without
-      an abort.
-    tags: [gust, spi, dma, kani, verification]
-    links:
-      - type: verifies
-        target: REQ-DRV-SPI-001
+  # NOTE — verification artifacts are NOT pre-declared here. Under
+  # `release: { require: coverage }`, a req reads "release-ready" as soon as a
+  # `verifies` link EXISTS, regardless of whether the proof passes. Pre-adding
+  # planned VER-DRV-* verifiers would therefore make `rivet release status v0.3.0`
+  # falsely report the milestone nearly-cuttable while nothing is built. So each
+  # VER-DRV-{GPIO,TIMER,SPI}-001 (Kani proof + Renode content-gate) is added by the
+  # feature loop WHEN the proof actually exists — that incoming `verifies` link is
+  # what drops its req off the `rivet release status` not-ready list. The burn-down
+  # is the plan; it must tell the truth. Planned verification bar per driver:
+  #   GPIO  — Kani: pin-config decode total + injective; Renode F100 read-back gate.
+  #   TIMER — Kani: deadline math no wrap-induced missed/early fire; Renode gate.
+  #   SPI   — Kani: transfer FSM exclusive bus + no lost byte (under dma-own); Renode
+  #           loopback gate.
 
   # ============================================================================
   # v0.4.0 — THE CAPABILITY / SYSCALL SEAM  (gust:os)
