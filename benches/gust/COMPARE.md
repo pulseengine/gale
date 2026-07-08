@@ -99,6 +99,18 @@ Correctness **IDENTICAL over [0,2047]**; `fused.o` byte-identical (uxth-inert,
 already minimal); floor bench soundness gate green, **0.45× floor intact**. gale
 not exposed to 0.30.1's i64 rotl/rotr/div_u/rem_u silent-zero fix (#610 — 0 i64
 params, byte-identical).
+**synth 0.31.0 + loom 1.1.18 (2026-07-08): adopted, verified byte-identical on the
+ARM body — but the 0.7× lever's INGESTION PATH now ships (see below).** Re-dissolved
+`gust_kernel.wasm` (loom 1.1.18 inline → synth 0.31.0 `--target cortex-m3
+--all-exports --relocatable`) and `fused.wasm`: **both `cmp`-identical** to the
+0.30.1 pins. loom 1.1.18's "dissolve the inlined seam" (windowed SROA +
+carrier-forwarding + narrow-local, loom#252) finds nothing to fold on the
+already-minimal loom-inlined `gust_poll`; synth 0.31.0's A32 i64 silent-NOP fix
+(#615/0.30.2) is not exposed (0 i64 params); VCR-SEL-001 increment 1 (#623) is
+flag-off; RV32 `SYNTH_RV_LOCAL_PROMO` default-on (#627) is **byte-neutral on the
+esp32c3 kernel** (512 B default == promo-off — nothing to promote, same as the ARM
+local-promo). So the shipped bytes don't move — the release's substance for gale is
+`wsc.facts` phase-1 (below).
 **Still open:** (1) the RISC-V backend is now catching up — esp32c3
 `SYNTH_RV_CMP_SELECT` (0.28) + `SYNTH_RV_SHIFT_FOLD` (0.30.0) are default-on
 (−16 B combined vs the 0.12 baseline; synth#472 port closed), but the arithmetic
@@ -138,6 +150,30 @@ exactly the side-condition. The prize is the **3.7× span** between today's diss
 (0.825) and the floor (0.225): synth#494(a) proof-carrying specialization + loom#240
 (carry the fact through the pipeline). This is the "verified code is *faster* because
 it's verified" lever, quantified.
+
+#### The ingestion path is live (synth 0.31.0, measured on gale's gust_mix)
+
+synth **0.31.0 shipped `wsc.facts` phase-1** (#624/#494): a schema-v1 parser for a
+`wsc.facts` custom section — the proof premises loom will forward (value-range,
+shift-bound, divisor-nonzero, in-bounds, select-totality, disjointness), keyed by
+(function index, operator index). Phase 1 has **no consumer**: facts are parsed and
+stored, output is byte-identical. gale exercises this end-to-end on its **own**
+`gust_mix` via `optimization/wsc-facts-phase1.sh`:
+
+- the exact clamp premise — **value-range `[524,1524]` on `gust_mix` (func 2),
+  value 0 (the `ch` param `local.get 0`)** — encoded per `wsc-facts-encoding.md`
+  (`01 01 01 02 00 04 8c04 f40b`), injected as a `wsc.facts` section → synth 0.31.0
+  compiles it **`.text`-byte-identical** to the stripped module (phase-1 gate) and
+  **keeps the fact silently** (no skew warning ⇒ parsed, not ignored);
+- the normative fail-safe skew rule is confirmed on gale's body: unknown-version,
+  truncated-framing, and unknown-kind sections each **warn on stderr and stay
+  byte-identical** — no facts path can change a compile.
+
+This script is the **gale-side tripwire for the lever going live**: the day a synth
+build *consumes* the facts (phase-2, behind `SYNTH_FACT_SPEC`), the facts-carrying
+`gust_mix` will compile *differently* from the stripped one — the oracle flips, and
+that is the signal to run `gust_floor_bench` and measure the specialized `gust_mix`
+against the **0.45× floor** above. Reported to synth#242/#494.
 
 ### Honest verdict
 - **vs native (LLVM):** synth's per-function *cycle* cost on the hot path is now
@@ -218,6 +254,7 @@ across the recent synth releases — same driver-class prologue/spill residual a
 uart-thin (the levers that help arithmetic don't reach it). No cycle-level bench
 yet (needs a TCB bridge + demonstrator to run the barrier/program/irq seam under
 qemu — tracked follow-on); the size/TCB numbers above are the current tracked
-surface. See `optimization/BEAT-LLVM-0.7x.md` for the perf thesis.
+surface. See "The 0.7× floor — proof-carrying specialization" above (and
+`optimization/wsc-facts-phase1.sh`, the ingestion tripwire) for the perf thesis.
 
 Reproduce: `drivers/dma-own/RESULTS.md`.
