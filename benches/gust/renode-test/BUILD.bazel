@@ -88,3 +88,14 @@ renode_test(
         "REPL": ":gust_spi.repl",
     },
 )
+
+renode_test(
+    name = "gust-breadth-renode",
+    timeout = "short",
+    robot_test = "gust_breadth.robot",
+    variables_with_label = {
+        "ELF": ":gust_breadth.elf",
+        "REPL": ":gust_breadth.repl",
+    },
+)
+

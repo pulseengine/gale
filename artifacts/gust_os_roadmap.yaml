@@ -96,7 +96,7 @@ artifacts:
   - id: REQ-DRV-BREADTH-001
     type: sw-req
     title: "The seam generalizes: a multi-driver node composes within the SRAM/TCB budget"
-    status: proposed
+    status: implemented
     release: v0.3.0
     description: >
       A single per-node image composing GPIO + timer + SPI + UART drivers SHALL fit
@@ -195,6 +195,40 @@ artifacts:
     links:
       - type: verifies
         target: REQ-DRV-SPI-001
+
+  - id: VER-DRV-BREADTH-001
+    type: sw-verification
+    title: "Breadth node — 4 driver components (GPIO+timer+SPI+UART) wac/meld-fused to ONE dissolved .o: 0 SRAM, no func_N collision, TCB=3 atoms + Renode gate"
+    status: verified
+    release: v0.3.0
+    description: >
+      The generalization claim, made concrete via the Component-Model dissolve path.
+      Each driver is an independent verified-wasm gust:hal component (wit-bindgen,
+      #![no_std]); `wasm-tools component new` ×4 → `meld fuse --memory shared` → loom
+      inline → synth (cortex-m3, --all-exports --relocatable) produces ONE relocatable
+      object (drivers/breadth/breadth-cm3.o, build-breadth.sh) exporting all 20
+      protocol functions across gust:hal/{gpio,timer,spi,uart}. MEASURED: .text 2442 B,
+      .data 0, .bss 0 — 0 SRAM (fits the F100 8 KiB budget with the whole 8 KiB free);
+      internal func_N are a SINGLE unique index space (22/22, no duplicate) so the
+      independently-built drivers co-link with NO func_N collision — the CM fuse
+      dissolves the borders that block raw multi-object linking (cf. synth#656). The
+      TCB is exactly the 3-atom bridge the fused .o imports: read32 / write32 / poll
+      (nm-confirmed) — NO new trusted-native atoms beyond the existing mmio+irq. A
+      LOCAL qemu-semihosting probe (gust_breadth_probe, RAM-backed bridge) confirmed
+      all four drivers functionally live from the one object (gpio/timer/spi/uart OK)
+      before CI. End-to-end the `gust-breadth-renode` gate drives all four from the
+      single fused .o on a real STM32 model — GPIO CRH nibble, timer PSC/ARR/CR1 +
+      wrap-safe deadline, SPI CR1 + transfer FSM — and the dissolved uart driver TXes
+      the final proof line on the real USART1, emitting breadth-*-ok. Source-level Kani
+      proofs on each driver's core + native register-effect check; the wasm→native
+      dissolve is differentially trusted, not proven equivalent (see
+      docs/safety/verification-honesty.md). Kill-criterion: the fused .o shows nonzero
+      .data/.bss, a duplicate func_N, a 4th bridge atom, or the Renode gate observes a
+      breadth-*-bad line.
+    tags: [gust, breadth, component-model, meld, wac, sram, tcb, renode, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-BREADTH-001
 
   - id: FIND-DRV-RTIO-001
     type: finding

@@ -1,0 +1,14 @@
+[workspace]
+[package]
+name = "gust-timer-comp"
+version = "0.1.0"
+edition = "2021"
+[lib]
+crate-type = ["cdylib"]
+[dependencies]
+wit-bindgen = { version = "0.52", default-features = false, features = ["macros"] }
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1
