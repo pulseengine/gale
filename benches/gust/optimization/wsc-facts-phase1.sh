@@ -21,6 +21,15 @@
 # wsc-facts-encoding.md): malformed / unknown-version / unknown-kind sections are
 # ignored with a stderr warning, never an error, always byte-identical.
 #
+# STATUS (synth 0.32.0, phase-2 #629): the default path this oracle tests stays
+# byte-identical, and it will keep passing until BOTH blockers clear —
+#   (1) the prebuilt release binary lacks `--features verify` (z3 dropped in #553),
+#       so SYNTH_FACT_SPEC=1 declines every elision on the shipped toolchain; and
+#   (2) gale's gust_mix clamp is `select`-shaped (2x `i32.lt_s; select`, 0 `if`),
+#       while #629 elides only no-`else` `if…end` — so phase-2 declines on gale's
+#       real body even with a verify build. Next-increment ask (synth#242):
+#       value-range => select-arm elision. See COMPARE.md "Phase-2 shipped".
+#
 # Requires: synth (>=0.31.0) + wasm-tools + python3 on PATH, or SYNTH=/path/to/synth.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"

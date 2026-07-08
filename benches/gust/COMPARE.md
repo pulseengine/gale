@@ -175,6 +175,34 @@ build *consumes* the facts (phase-2, behind `SYNTH_FACT_SPEC`), the facts-carryi
 that is the signal to run `gust_floor_bench` and measure the specialized `gust_mix`
 against the **0.45× floor** above. Reported to synth#242/#494.
 
+#### Phase-2 shipped (synth 0.32.0) — and first contact found a shape gap
+
+synth **0.32.0** (#629) shipped phase-2: value-range ⇒ dead-branch elision behind
+`SYNTH_FACT_SPEC` (default off), each elision carrying an ordeal `UNSAT(P ∧ cond≠0)`
+LRAT-checked obligation. Ran it on gale's real `gust_mix`; two grounded blockers to
+the 0.45× measurement through the shipped path:
+
+1. **The prebuilt release binary declines-all.** `SYNTH_FACT_SPEC=1` on the
+   `aarch64-apple-darwin` release warns *"built without the 'verify' feature — the
+   per-elision proof obligation cannot be discharged, every elision is DECLINED"*
+   (the #553 z3-free-default landing). DECLINE == general lowering, byte-identical
+   (safety held). Measurement needs a `--features verify` binary/artifact.
+2. **gale's clamp is `select`-shaped; #629 elides only no-`else` `if…end`.**
+   `gust_mix`'s clamp lowers to **2× `i32.lt_s; select` (0 `if`)** at *every* stage —
+   raw `gust_kernel.wasm` inner mix (func 1), before any loom pass, already emits
+   `select` (it's the Rust `.clamp()` lowering, not a loom artifact). #629 walks
+   no-`else` `if…end` and declines `if/else`; it has no `select` path. So even a
+   verify build **declines on gale's gust_mix** — the prototype's if…end fixture and
+   its own motivating target diverge in shape.
+
+Reported both to synth#242 with the op stream, and the concrete next-increment ask:
+**value-range ⇒ select-arm elision** (when `P` proves a `select` condition constant,
+rewrite to the proven arm + drop the dead comparator — same obligation, `select`
+instead of `if…end`; pairs with the design doc's select-totality fact kind 0x05).
+gale is wired to measure same-day once (1) a verify binary exists and (2) select-arm
+elision lands. Until then the 0.45× floor stays a `gust_floor_bench` datum, not yet
+reachable through the shipped synth path.
+
 ### Honest verdict
 - **vs native (LLVM):** synth's per-function *cycle* cost on the hot path is now
   **1.81×** (was 2.63×) after the four levers — closing on the project's
