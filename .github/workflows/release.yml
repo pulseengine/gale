@@ -103,11 +103,20 @@ jobs:
           cargo install loom-cli --git https://github.com/pulseengine/loom --tag v1.1.14 --locked
           cargo install synth-cli --git https://github.com/pulseengine/synth --tag v0.11.50 --locked
 
-      - name: Install arm toolchain (objcopy for the import renames)
+      - name: Locate arm-zephyr-eabi toolchain (objcopy for the import renames)
         run: |
-          pip3 install west
-          west sdk install -t arm-zephyr-eabi || true
-          echo "$HOME/zephyr-sdk/arm-zephyr-eabi/bin" >> "$GITHUB_PATH" || true
+          # The Zephyr SDK is pre-installed in the ci-base image; `west sdk install`
+          # needs a west workspace (fails standalone), so just find the SDK and put
+          # its arm-zephyr-eabi/bin on PATH — the pattern the engine-bench-renode-*
+          # workflows use. objcopy is build-wasm-dist.sh's import-rename tool.
+          SDK_DIR=$(find /opt -maxdepth 3 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /root /usr -maxdepth 3 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
+          echo "SDK_DIR=${SDK_DIR}"
+          if [ -d "${SDK_DIR}/arm-zephyr-eabi/bin" ]; then ARM_BIN="${SDK_DIR}/arm-zephyr-eabi/bin";
+          elif [ -d "${SDK_DIR}/gnu/arm-zephyr-eabi/bin" ]; then ARM_BIN="${SDK_DIR}/gnu/arm-zephyr-eabi/bin";
+          else echo "::error::arm-zephyr-eabi toolchain not found under ${SDK_DIR:-<none>}"; exit 1; fi
+          echo "${ARM_BIN}" >> "$GITHUB_PATH"
+          "${ARM_BIN}/arm-zephyr-eabi-objcopy" --version | head -1
 
       - name: Build distribution
         env:
