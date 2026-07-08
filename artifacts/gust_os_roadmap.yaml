@@ -1,0 +1,255 @@
+# gust-OS roadmap — the composed operating system, driven on the UNIFIED release
+# line (v0.1 sem … → v1.0 multi-tenant OS). gust is not a separate product line:
+# the gale verified primitives (sem/mutex/msgq/event) are the supply chain, and
+# gust is what they compose INTO — CM components (wac plug → meld fuse → loom
+# inline → synth dissolve → native .o) driven by kiln over a 4-item Rust TCB shim.
+#
+# North-star (2026-07-08, confirmed): a general MULTI-TENANT verified OS — hosting
+# mutually-distrusting components, isolated by MPU, over the same thin TCB — not
+# only the single-node px4io failsafe. First forward move: DRIVER BREADTH (prove
+# the gust:hal seam generalizes past UART/DMA), then the capability/syscall seam,
+# then MPU isolation, then the multi-tenant 1.0. Each milestone is rivet-scoped,
+# its V closed (Kani/Verus/Rocq), oracle-gated (Renode+silicon boot, byte-identical,
+# SRAM/TCB budget), sigil-signed.
+#
+# Status legend: what BOOTS today (on main @ fea4d21) = the v0.2 composition
+# (app+kiln+gale-prims dissolved, uart-thin 254 B, dma-own 218 B, 4-item TCB).
+# Everything below v0.3 is PLANNED scope — cuttability is a rivet query that
+# returns "not yet" until each V closes.
+
+artifacts:
+
+  # ============================================================================
+  # v0.3.0 — DRIVER BREADTH  (the first gust-OS-forward milestone, detailed)
+  # Prove the gust:hal thin-seam driver model generalizes beyond UART+DMA:
+  # GPIO, hardware-timer, and SPI as verified-wasm protocol over the same seam,
+  # each Kani-proven, each adding ZERO new TCB atoms (all ride mmio+irq).
+  # ============================================================================
+
+  - id: REQ-DRV-GPIO-001
+    type: sw-req
+    title: "GPIO is a verified thin-seam driver — pin logic in wasm, TCB = mmio only"
+    status: proposed
+    release: v0.3.0
+    description: >
+      Digital I/O (pin mode, read, write, toggle, and the port-bank bit math) SHALL
+      be a Component-Model driver whose logic is verified wasm dissolved to native,
+      importing ONLY the gust:hal mmio capability. No new TCB atom: the driver
+      computes register values and offsets; the TCB only executes the volatile
+      read/write it is handed. The pin-config decision (mode/pull/speed encoding)
+      SHALL be Kani-proven total over its input domain.
+    tags: [gust, driver, gpio, thin-seam, maximal-wasm]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+      - type: related-to
+        target: REQ-DRV-WASM-001
+
+  - id: REQ-DRV-TIMER-001
+    type: sw-req
+    title: "Hardware timer is a verified thin-seam driver; the tick source becomes a capability"
+    status: proposed
+    release: v0.3.0
+    description: >
+      A general-purpose hardware timer (compare/period/prescaler programming and the
+      elapsed/deadline math) SHALL be a verified-wasm driver over gust:hal mmio+irq,
+      replacing the hardwired SysTick glue with a composable time capability that
+      kiln waitables can target. The deadline/overflow arithmetic SHALL be Kani-proven
+      free of wraparound-induced missed or early fires across the 32-bit tick domain.
+    tags: [gust, driver, timer, time, thin-seam, kiln]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+      - type: related-to
+        target: REQ-DRV-ASYNC-001
+
+  - id: REQ-DRV-SPI-001
+    type: sw-req
+    title: "SPI is a verified thin-seam driver, DMA-capable via the own<buffer> handoff"
+    status: proposed
+    release: v0.3.0
+    description: >
+      SPI master (mode/clock config, the transfer state machine, and CS framing)
+      SHALL be a verified-wasm driver over gust:hal, and its block path SHALL reuse
+      the dma-own own<buffer> handoff (REQ-DMA-OWN-001) rather than a bespoke bridge —
+      demonstrating that the DMA ownership model composes UNDER a second driver, not
+      only standalone. The transfer FSM (idle→active→complete/abort) SHALL be
+      Kani-proven for exclusive bus access and no-lost-byte framing.
+    tags: [gust, driver, spi, dma, thin-seam, component-model]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+      - type: related-to
+        target: REQ-DMA-OWN-001
+
+  - id: REQ-DRV-BREADTH-001
+    type: sw-req
+    title: "The seam generalizes: a multi-driver node composes within the SRAM/TCB budget"
+    status: proposed
+    release: v0.3.0
+    description: >
+      A single per-node image composing GPIO + timer + SPI + UART drivers SHALL fit
+      the F100 8 KiB SRAM budget and add NO trusted-native atoms beyond the existing
+      four (mmio_read/write, irq_poll, and the dma barrier/program pair). This is the
+      falsifiable generalization claim: the thin-seam model scales in driver COUNT
+      without growing the TCB — the property that makes gust an OS and not a
+      one-driver demo. Measured, per REQ-DRV-SRAM-001, and reported in COMPARE.md.
+    tags: [gust, driver, breadth, sram, tcb, byo-os]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-COMPOSE-001
+      - type: related-to
+        target: REQ-DRV-SRAM-001
+
+  - id: VER-DRV-GPIO-001
+    type: sw-verification
+    title: "Kani: GPIO pin-config decode is total and injective over its input domain"
+    status: proposed
+    release: v0.3.0
+    description: >
+      A Kani harness SHALL prove the GPIO config encoder produces a well-formed
+      register value for every (mode, pull, speed) input and never aliases two
+      distinct configs to the same pin state. Plus a Renode F100 content-gate:
+      drive a pin, read it back, byte-exact. Kill-criterion: any input yields an
+      out-of-spec MODER/PUPDR field, or the Renode read-back mismatches.
+    tags: [gust, gpio, kani, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-GPIO-001
+
+  - id: VER-DRV-TIMER-001
+    type: sw-verification
+    title: "Kani: timer deadline math has no wraparound-induced missed/early fire"
+    status: proposed
+    release: v0.3.0
+    description: >
+      A Kani harness SHALL prove the elapsed/deadline comparison is correct across
+      the full 32-bit tick domain including the wrap boundary (a deadline set near
+      u32::MAX fires exactly once, neither missed nor early). Plus a Renode timer
+      content-gate. Kill-criterion: any (now, deadline) pair mis-decides has-elapsed.
+    tags: [gust, timer, kani, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-TIMER-001
+
+  - id: VER-DRV-SPI-001
+    type: sw-verification
+    title: "Kani: SPI transfer FSM keeps exclusive bus access and loses no byte"
+    status: proposed
+    release: v0.3.0
+    description: >
+      A Kani harness SHALL prove the SPI transfer state machine never overlaps two
+      transfers on the bus and that every queued byte is either sent-and-acknowledged
+      or surfaced as an explicit abort (no silent drop), including under the DMA
+      own<buffer> handoff. Plus a Renode SPI-loopback content-gate. Kill-criterion:
+      a reachable state transmits with CS de-asserted, or a byte is dropped without
+      an abort.
+    tags: [gust, spi, dma, kani, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-SPI-001
+
+  # ============================================================================
+  # v0.4.0 — THE CAPABILITY / SYSCALL SEAM  (gust:os)
+  # Today the wasm imports ARE the ABI, ad-hoc per demo. v0.4 makes the OS surface
+  # a typed capability world: apps import time/log/spawn/channel; the TCB provides
+  # them. This is the mediation point multi-tenancy needs.
+  # ============================================================================
+
+  - id: REQ-OS-SYSCALL-001
+    type: sw-req
+    title: "gust:os — a typed capability world is the OS ABI (not ad-hoc imports)"
+    status: proposed
+    release: v0.4.0
+    description: >
+      The OS surface an app sees SHALL be a single WIT world `gust:os` exposing
+      capabilities as typed interfaces — time (from REQ-DRV-TIMER-001), log,
+      task-spawn (kiln), and channel (gale::msgq) — replacing the per-demo ad-hoc
+      import list. An app component SHALL be portable across nodes by importing only
+      `gust:os`, with the node's TCB + composed drivers satisfying it. The seam SHALL
+      carry no host Future across the boundary (REQ-DRV-ASYNC-001 holds).
+    tags: [gust, os, syscall, capability, wit, abi]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+
+  # ============================================================================
+  # v0.5.0 — ISOLATION / MULTI-TENANCY  (the general-OS jump)
+  # Two mutually-distrusting components in one image, isolated by MPU region.
+  # Unblocks on synth#404 (multi-memory → per-MPU-region); gale#74 task.
+  # ============================================================================
+
+  - id: REQ-OS-MPU-001
+    type: sw-req
+    title: "MPU-per-component isolation: a fault in one tenant cannot corrupt another"
+    status: proposed
+    release: v0.5.0
+    description: >
+      A composed image hosting two or more components SHALL place each component's
+      linear memory in a distinct MPU-protected region, such that an out-of-bounds
+      access by one tenant faults rather than silently corrupting a sibling or the
+      TCB. This requires the meld multi-memory path lowered to per-region layout
+      (blocked on synth#404). The isolation boundary SHALL be the wasm memory model
+      enforced by hardware, not a trusted check. Kill-criterion: a crafted tenant
+      writes outside its region without a fault.
+    tags: [gust, isolation, mpu, multi-tenant, byo-os, blocked-synth-404]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-SYSCALL-001
+
+  - id: REQ-OS-MULTITENANT-001
+    type: sw-req
+    title: "gust hosts mutually-distrusting components over one TCB — a general OS"
+    status: proposed
+    release: v0.5.0
+    description: >
+      gust SHALL run two independently-authored, mutually-distrusting components
+      concurrently over the single 4-item TCB: each gets only the gust:os
+      capabilities it imports (least authority), its own MPU region (REQ-OS-MPU-001),
+      and fair kiln scheduling. A misbehaving or crashing tenant SHALL NOT deny the
+      other its scheduled progress beyond its fuel budget. This is the property that
+      distinguishes an OS from a single fused firmware image.
+    tags: [gust, os, multi-tenant, isolation, capability, scheduler]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-MPU-001
+
+  # ============================================================================
+  # v1.0.0 — THE OS, CUT
+  # ============================================================================
+
+  - id: REQ-OS-RELEASE-001
+    type: sw-req
+    title: "gust 1.0: the multi-tenant verified OS, signed, on silicon, with a showcase"
+    status: proposed
+    release: v1.0.0
+    description: >
+      gust 1.0 SHALL be a cut, sigil-signed release of the whole composition —
+      kiln scheduler + gale IPC primitives + the gust:os capability seam + the
+      GPIO/timer/SPI/UART/DMA driver set + MPU multi-tenancy — booting on real
+      STM32F100 (M3) and NUCLEO-G474RE (M4) silicon from the SAME components
+      (REQ-BYOOS-SCALE-001), with the dissolved artifacts + TCB + rivet V + LRAT/
+      Kani evidence published as a GitHub Pages showcase. Cuttable only when the V
+      of every scoped requirement above is closed.
+    tags: [gust, os, release, silicon, signed, showcase, one-point-oh]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: STKH-BYOOS-001
+      - type: related-to
+        target: REQ-OS-MULTITENANT-001
