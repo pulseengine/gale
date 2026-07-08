@@ -53,6 +53,7 @@ jobs:
             //:gust-f100-renode \
             //:gust-uart-renode \
             //:gust-gpio-renode \
+            //:gust-timer-renode \
             --test_output=all
 
       - name: Upload Renode test logs

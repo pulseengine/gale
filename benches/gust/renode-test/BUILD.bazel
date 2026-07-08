@@ -68,3 +68,13 @@ renode_test(
         "REPL": ":gust_gpio.repl",
     },
 )
+
+renode_test(
+    name = "gust-timer-renode",
+    timeout = "short",
+    robot_test = "gust_timer.robot",
+    variables_with_label = {
+        "ELF": ":gust_timer.elf",
+        "REPL": ":gust_timer.repl",
+    },
+)
