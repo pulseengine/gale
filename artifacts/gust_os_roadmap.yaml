@@ -78,8 +78,11 @@ artifacts:
       the dma-own own<buffer> handoff (REQ-DMA-OWN-001) rather than a bespoke bridge —
       demonstrating that the DMA ownership model composes UNDER a second driver, not
       only standalone. The transfer FSM (idle→active→complete/abort) SHALL be
-      Kani-proven for exclusive bus access and no-lost-byte framing.
-    tags: [gust, driver, spi, dma, thin-seam, component-model]
+      Kani-proven for exclusive bus access and no-lost-byte framing. SPI is the first
+      driver to present the RTIO iodev shape (SQE→CQE; FIND-DRV-RTIO-001) — the
+      streaming/DMA class where the submission/completion-queue model earns its keep
+      (matching Zephyr RTIO's own I2C/SPI/sensor scope).
+    tags: [gust, driver, spi, dma, thin-seam, component-model, rtio]
     links:
       - type: derives-from
         target: SYSREQ-BYOOS-001
@@ -87,6 +90,8 @@ artifacts:
         target: REQ-DRV-SEAM-001
       - type: related-to
         target: REQ-DMA-OWN-001
+      - type: related-to
+        target: FIND-DRV-RTIO-001
 
   - id: REQ-DRV-BREADTH-001
     type: sw-req
@@ -123,11 +128,41 @@ artifacts:
   #   SPI   — Kani: transfer FSM exclusive bus + no lost byte (under dma-own); Renode
   #           loopback gate.
 
+  - id: FIND-DRV-RTIO-001
+    type: finding
+    title: "The driver framework adopts the RTIO/io_uring SQ/CQ model — built from gale's verified primitives, not bespoke"
+    status: active
+    description: >
+      State-of-the-art async I/O has converged on the submission/completion-queue
+      (SQ/CQ) model: Linux io_uring (lock-free SQE/CQE rings + registered/fixed
+      buffers for zero-copy, with an ownership lifecycle — a buffer stays valid until
+      its op completes) and Zephyr RTIO (io_uring for embedded: SQE→CQE via the
+      `iodev` API, chained for hardware sequencing, batched into DMA transfer lists;
+      the Zephyr norm for new async I/O since 3.4.0 — I2C/SPI/sensors). gust does NOT
+      invent a driver API; it adopts this shape. The reason it is cheap: gust already
+      built every piece, and each is verified — `gale::msgq` (Verus/Rocq/Kani ring) =
+      the SQ/CQ rings; kiln-async (Kani) = the executor; the `gust:hal` thin-seam
+      driver = the iodev (SQE→CQE); `dma-own`'s `own<buffer>` handoff (Kani 6/6) =
+      the registered buffer, whose "valid until complete" rule is io_uring's exact
+      ownership lifecycle — but expressed in the Component-Model ownership type system
+      so a violation is a type error, not a runtime convention. Net: the same SQ/CQ
+      model everyone uses, proof-carrying. Research + full mapping + citations:
+      docs/research/driver-framework-rtio-iouring.md.
+    tags: [gust, driver, rtio, io-uring, sq-cq, state-of-the-art, non-bespoke]
+    links:
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+      - type: related-to
+        target: REQ-DMA-OWN-001
+      - type: related-to
+        target: REQ-OS-SYSCALL-001
+
   # ============================================================================
   # v0.4.0 — THE CAPABILITY / SYSCALL SEAM  (gust:os)
   # Today the wasm imports ARE the ABI, ad-hoc per demo. v0.4 makes the OS surface
   # a typed capability world: apps import time/log/spawn/channel; the TCB provides
-  # them. This is the mediation point multi-tenancy needs.
+  # them. This is the mediation point multi-tenancy needs. The I/O capability takes
+  # the RTIO/io_uring SQ/CQ shape (FIND-DRV-RTIO-001), not ad-hoc per-driver imports.
   # ============================================================================
 
   - id: REQ-OS-SYSCALL-001
@@ -139,15 +174,21 @@ artifacts:
       The OS surface an app sees SHALL be a single WIT world `gust:os` exposing
       capabilities as typed interfaces — time (from REQ-DRV-TIMER-001), log,
       task-spawn (kiln), and channel (gale::msgq) — replacing the per-demo ad-hoc
-      import list. An app component SHALL be portable across nodes by importing only
-      `gust:os`, with the node's TCB + composed drivers satisfying it. The seam SHALL
-      carry no host Future across the boundary (REQ-DRV-ASYNC-001 holds).
-    tags: [gust, os, syscall, capability, wit, abi]
+      import list. The I/O capability SHALL take the RTIO/io_uring submission/
+      completion-queue shape (`submit(sqe)` / `poll-completion() → cqe` over
+      `own<buffer>`; FIND-DRV-RTIO-001) so it is Zephyr-RTIO-native and io_uring-
+      shape-compatible, not a bespoke API. An app component SHALL be portable across
+      nodes by importing only `gust:os`, with the node's TCB + composed iodevs
+      satisfying it. The seam SHALL carry no host Future across the boundary
+      (REQ-DRV-ASYNC-001 holds).
+    tags: [gust, os, syscall, capability, wit, abi, rtio, io-uring]
     links:
       - type: derives-from
         target: SYSREQ-BYOOS-001
       - type: related-to
         target: REQ-DRV-SEAM-001
+      - type: related-to
+        target: FIND-DRV-RTIO-001
 
   # ============================================================================
   # v0.5.0 — ISOLATION / MULTI-TENANCY  (the general-OS jump)

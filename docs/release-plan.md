@@ -71,9 +71,21 @@ F100+G474RE silicon. The ladder from there:
 | release | milestone | scope (rivet) | gate to cut |
 |---|---|---|---|
 | **v0.3.0** | **driver breadth** (next) | `REQ-DRV-{GPIO,TIMER,SPI,BREADTH}-001` + `VER-DRV-*` | GPIO+timer+SPI as verified thin-seam drivers, each Kani-proven + Renode content-gated; **zero new TCB atoms**; the 4-driver node fits F100 8 KiB |
-| **v0.4.0** | **capability/syscall seam** | `REQ-OS-SYSCALL-001` (`gust:os` world) | apps import one typed `gust:os` world (time/log/spawn/channel) instead of ad-hoc imports; app portable across nodes |
+| **v0.4.0** | **capability/syscall seam** | `REQ-OS-SYSCALL-001` (`gust:os` world) | apps import one typed `gust:os` world (time/log/spawn/channel) instead of ad-hoc imports; the I/O capability takes the **RTIO/io_uring SQ/CQ shape** (`FIND-DRV-RTIO-001`), app portable across nodes |
 | **v0.5.0** | **isolation / multi-tenancy** | `REQ-OS-{MPU,MULTITENANT}-001` | two mutually-distrusting components, MPU-per-region (unblocks **synth#404** multi-memory); a faulting tenant cannot corrupt a sibling or the TCB |
 | **v1.0.0** | **the OS, cut** | `REQ-OS-RELEASE-001` | whole composition — scheduler + IPC + `gust:os` + GPIO/timer/SPI/UART/DMA + MPU multi-tenancy — sigil-signed, booting the SAME components on M3 **and** M4 silicon, published as a Pages showcase |
+
+**Driver framework — RTIO / io_uring, not bespoke (`FIND-DRV-RTIO-001`).** The
+async-I/O shape is the **submission/completion-queue** model — Zephyr **RTIO**
+(embedded) and Linux **io_uring** (host), the converged state of the art. gust does
+not invent a driver API; it adopts SQ/CQ, and cheaply, because it already built every
+piece *verified*: `gale::msgq` = the rings, kiln = the executor, the `gust:hal`
+thin-seam driver = the iodev (SQE→CQE), and `dma-own`'s `own<buffer>` = io_uring's
+registered buffer with its exact "valid-until-complete" ownership lifecycle — in the
+Component-Model type system, so it's a type error to violate. SPI (v0.3.0) is the
+first iodev; the `gust:os` I/O capability (v0.4.0) is the RTIO-shaped
+`submit`/`poll-completion` WIT interface. Research + citations:
+`docs/research/driver-framework-rtio-iouring.md`.
 
 **Readiness is the `rivet release status` burn-down, not this table.** The table is
 the *scope map*; whether a milestone is cuttable is a query. Live snapshot
