@@ -88,10 +88,14 @@ jobs:
           echo "Rustc LLVM major: ${RUST_LLVM}"
           apt-get install -y -qq wget lsb-release software-properties-common gnupg > /dev/null 2>&1
           wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- "${RUST_LLVM}" all
-          update-alternatives --install /usr/bin/clang   clang   /usr/bin/clang-${RUST_LLVM}   200
-          update-alternatives --install /usr/bin/wasm-ld wasm-ld /usr/bin/wasm-ld-${RUST_LLVM} 200
-          echo "Clang:   $(clang --version | head -1)"
-          echo "wasm-ld: $(wasm-ld --version | head -1)"
+          update-alternatives --install /usr/bin/clang        clang        /usr/bin/clang-${RUST_LLVM}        200
+          update-alternatives --install /usr/bin/wasm-ld      wasm-ld      /usr/bin/wasm-ld-${RUST_LLVM}      200
+          # llvm-objcopy does build-wasm-dist.sh's symbol renames (--redefine-sym /
+          # --keep-global-symbol) — it's ELF-arch-agnostic, so no Zephyr SDK needed.
+          update-alternatives --install /usr/bin/llvm-objcopy llvm-objcopy /usr/bin/llvm-objcopy-${RUST_LLVM} 200
+          echo "Clang:        $(clang --version | head -1)"
+          echo "wasm-ld:      $(wasm-ld --version | head -1)"
+          echo "llvm-objcopy: $(llvm-objcopy --version | head -1)"
 
       - name: Install pinned loom + synth
         run: |
@@ -103,28 +107,18 @@ jobs:
           cargo install loom-cli --git https://github.com/pulseengine/loom --tag v1.1.14 --locked
           cargo install synth-cli --git https://github.com/pulseengine/synth --tag v0.11.50 --locked
 
-      - name: Locate arm-zephyr-eabi toolchain (objcopy for the import renames)
-        run: |
-          # The Zephyr SDK is pre-installed in the ci-base image; `west sdk install`
-          # needs a west workspace (fails standalone), so just find the SDK and put
-          # its arm-zephyr-eabi/bin on PATH — the pattern the engine-bench-renode-*
-          # workflows use. objcopy is build-wasm-dist.sh's import-rename tool.
-          SDK_DIR=$(find /opt -maxdepth 3 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
-          [ -z "${SDK_DIR}" ] && SDK_DIR=$(find /root /usr -maxdepth 3 -name 'zephyr-sdk-*' -type d 2>/dev/null | head -1)
-          echo "SDK_DIR=${SDK_DIR}"
-          if [ -d "${SDK_DIR}/arm-zephyr-eabi/bin" ]; then ARM_BIN="${SDK_DIR}/arm-zephyr-eabi/bin";
-          elif [ -d "${SDK_DIR}/gnu/arm-zephyr-eabi/bin" ]; then ARM_BIN="${SDK_DIR}/gnu/arm-zephyr-eabi/bin";
-          else echo "::error::arm-zephyr-eabi toolchain not found under ${SDK_DIR:-<none>}"; exit 1; fi
-          echo "${ARM_BIN}" >> "$GITHUB_PATH"
-          "${ARM_BIN}/arm-zephyr-eabi-objcopy" --version | head -1
-
       - name: Build distribution
         env:
           INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           . /root/.cargo/env
-          export TC=arm-zephyr-eabi
+          # build-wasm-dist.sh resolves objcopy as ${TC}-objcopy; TC=llvm → llvm-objcopy
+          # (installed above). The renames are pure symbol-table ops (--redefine-sym /
+          # --keep-global-symbol), ELF-arch-agnostic, so no arm-zephyr-eabi SDK needed —
+          # `west sdk install` requires a west workspace and the SDK is NOT pre-baked in
+          # ci-base:v0.29.0 (the working engine-bench workflows west-init a workspace first).
+          export TC=llvm
           VERSION="${INPUT_TAG:-${GITHUB_REF#refs/tags/}}"
           scripts/build-wasm-dist.sh dist "$VERSION"
           ls -la dist/
