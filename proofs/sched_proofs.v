@@ -1,6 +1,12 @@
-(** * Formal Verification Proofs for Zephyr Scheduler
+(** * Zephyr Scheduler — invariant model (WIP STUB)
 
-    Proves properties about the priority run queue and scheduling decisions.
+    STATUS: WIP STUB — every theorem below is `Admitted` (0 Qed): statements
+    without proofs. Proof scaffolding, NOT proven results; do not cite as formal
+    verification. See docs/safety/verification-honesty.md (claims ledger,
+    2026-07-08). Fully-proven Rocq modules: sem/mutex/msgq/pipe/stack/condvar/
+    event/mem_slab/timer.
+
+    (Intended) properties about the priority run queue and scheduling decisions.
     Complements Verus SMT proofs in plain/src/sched.rs.
 
     Key abstractions:
