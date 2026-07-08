@@ -246,7 +246,7 @@ uart-thin needs (no irq), so **0 new TCB atoms**.
 
 | | dissolved (loom 1.1.18 + synth 0.31.0, cortex-m3) |
 |---|---|
-| `.text` (flash) | **504 B** — configure 232 / toggle 110 / clear 56 / read 54 / set 52 |
+| `.text` (flash) | **490 B** — configure 216 / toggle 110 / clear 56 / read 54 / set 52 |
 | SRAM (`.bss`+`.data`) | **0 B** |
 | TCB | **2 relocations — `mmio_read32`, `mmio_write32`** — subset of the existing 4-item TCB → **0 new atoms** |
 | verified | Kani **4/4** (config total+injective+mode-consistent, slot in-range, unknown-mode-safe) + the `gust-gpio-renode` content-gate (dissolved driver drives PC8; asserts the exact CRH/BSRR values it writes on a real STM32 model over USART1) |

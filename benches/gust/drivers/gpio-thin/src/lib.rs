@@ -40,51 +40,31 @@ const BSRR: u32 = 0x10; // bit set (0..15) / reset (16..31), atomic
 ///   MODE  00=input · 10=output 2MHz · 11=output 50MHz
 ///   CNF   (in) 00=analog 01=floating 10=pull · (out) 00=push-pull 01=open-drain 10=alt-pp
 /// The encoding is proven total, injective, and — with `pin_slot` — always in range.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum PinMode {
-    InputAnalog,   // 0x0
-    InputFloating, // 0x4
-    InputPull,     // 0x8
-    OutPushPull2,  // 0x2
-    OutPushPull50, // 0x3
-    OutOpenDrain2, // 0x6
-    AltPushPull50, // 0xB
-}
+/// CRITICAL — TABLE-FREE by construction. A `match`/array from mode-index to nibble
+/// compiles to a **linear-memory lookup table** (`.rodata` → wasm data segment); a
+/// thin-seam driver dissolved `--relocatable` (no `--native-pointer-abi`, no data
+/// segment, 0 SRAM, 0 TCB atoms) has no linmem base, so that load silently returns 0
+/// and the config no-ops (caught by the Renode content-gate). So the mode→nibble map
+/// is a **packed-constant shift/mask** — pure arithmetic, no table, no linmem.
+/// The 7 nibbles for idx 0..=6 are [0x0,0x4,0x8,0x2,0x3,0x6,0xB], packed 4 bits each:
+const NIBBLE_LUT: u32 = 0x0B63_2840; // idx i → (NIBBLE_LUT >> (i*4)) & 0xF
 
-/// The 4-bit CRL/CRH nibble for a mode. Total; result is always ≤ 0xF.
+/// The 4-bit CRL/CRH nibble for a mode index. Total; result always ≤ 0xF. Unknown
+/// indices (>6) map to 0x0 (high-impedance analog input) — an out-of-range request
+/// can never leave a pin as an unintended output. Table-free (shift+mask only).
 #[inline]
-pub fn pin_nibble(m: PinMode) -> u32 {
-    match m {
-        PinMode::InputAnalog => 0x0,
-        PinMode::InputFloating => 0x4,
-        PinMode::InputPull => 0x8,
-        PinMode::OutPushPull2 => 0x2,
-        PinMode::OutPushPull50 => 0x3,
-        PinMode::OutOpenDrain2 => 0x6,
-        PinMode::AltPushPull50 => 0xB,
+pub fn nibble_for_idx(i: u32) -> u32 {
+    if i > 6 {
+        0
+    } else {
+        (NIBBLE_LUT >> (i * 4)) & 0xF
     }
 }
 
-/// A mode drives the pin (MODE bits nonzero) iff it is an output/alt mode.
+/// A nibble drives the pin (MODE bits nonzero) iff it is an output/alt mode.
 #[inline]
-pub fn is_output(m: PinMode) -> bool {
-    pin_nibble(m) & 0x3 != 0
-}
-
-/// Map the export-ABI mode index to a PinMode. Unknown indices map to the safest
-/// state (high-impedance analog input) rather than mis-driving a pin — so an
-/// out-of-range request can never leave a pin as an unintended output.
-#[inline]
-pub fn mode_from_idx(i: u32) -> PinMode {
-    match i {
-        1 => PinMode::InputFloating,
-        2 => PinMode::InputPull,
-        3 => PinMode::OutPushPull2,
-        4 => PinMode::OutPushPull50,
-        5 => PinMode::OutOpenDrain2,
-        6 => PinMode::AltPushPull50,
-        _ => PinMode::InputAnalog, // 0 and all out-of-range
-    }
+pub fn is_output(nibble: u32) -> bool {
+    nibble & 0x3 != 0
 }
 
 /// Which config register and bit-shift hold a pin's 4-bit field. `pin` is masked to
@@ -113,12 +93,12 @@ fn wr(a: u32, v: u32) {
 // Scalar ABI, no linmem/data segment → 0 SRAM, no native-pointer-abi dependency.
 
 /// Configure `pin` (0..=15) on the port at `port_base` to `mode_idx` (see
-/// `mode_from_idx`). Read-modify-write of the 4-bit CRL/CRH field — leaves the
+/// `nibble_for_idx`). Read-modify-write of the 4-bit CRL/CRH field — leaves the
 /// other 15 pins untouched.
 #[no_mangle]
 pub extern "C" fn gpio_configure(port_base: u32, pin: u32, mode_idx: u32) {
     let (reg, shift) = pin_slot(pin);
-    let nib = pin_nibble(mode_from_idx(mode_idx));
+    let nib = nibble_for_idx(mode_idx);
     let cur = rd(port_base + reg);
     let cleared = cur & !(0xF << shift);
     wr(port_base + reg, cleared | (nib << shift));
@@ -160,40 +140,37 @@ pub extern "C" fn gpio_toggle(port_base: u32, pin: u32) {
 mod kani_proofs {
     use super::*;
 
-    fn mode_of(i: u8) -> PinMode {
-        match i {
-            0 => PinMode::InputAnalog,
-            1 => PinMode::InputFloating,
-            2 => PinMode::InputPull,
-            3 => PinMode::OutPushPull2,
-            4 => PinMode::OutPushPull50,
-            5 => PinMode::OutOpenDrain2,
-            _ => PinMode::AltPushPull50, // 6
-        }
-    }
-    const N: u8 = 7;
+    const N: u32 = 7; // valid mode indices 0..=6
 
-    /// Every mode encodes to a valid 4-bit nibble, and MODE-bits-nonzero (the pin is
-    /// driven) exactly matches `is_output` — so an input mode never drives the pin
-    /// and an output mode is never left floating.
+    /// Every valid mode index encodes to a bounded 4-bit nibble, and the packed LUT
+    /// reproduces the intended table exactly (regression guard on the bit-packing).
     #[kani::proof]
-    fn nibble_bounded_and_mode_consistent() {
-        let i: u8 = kani::any();
+    fn nibble_bounded_and_correct() {
+        let i: u32 = kani::any();
         kani::assume(i < N);
-        let m = mode_of(i);
-        let nib = pin_nibble(m);
+        let nib = nibble_for_idx(i);
         assert!(nib <= 0xF);
-        assert_eq!(is_output(m), nib & 0x3 != 0);
+        // the intended nibbles for idx 0..=6
+        let want = match i {
+            0 => 0x0,
+            1 => 0x4,
+            2 => 0x8,
+            3 => 0x2,
+            4 => 0x3,
+            5 => 0x6,
+            _ => 0xB,
+        };
+        assert_eq!(nib, want);
     }
 
-    /// The encoding is injective: distinct modes never collide to the same nibble
-    /// (no two configs are silently aliased).
+    /// The encoding is injective: distinct valid indices never collide to the same
+    /// nibble (no two configs are silently aliased).
     #[kani::proof]
     fn nibble_injective() {
-        let i: u8 = kani::any();
-        let j: u8 = kani::any();
+        let i: u32 = kani::any();
+        let j: u32 = kani::any();
         kani::assume(i < N && j < N);
-        if pin_nibble(mode_of(i)) == pin_nibble(mode_of(j)) {
+        if nibble_for_idx(i) == nibble_for_idx(j) {
             assert_eq!(i, j);
         }
     }
@@ -216,6 +193,6 @@ mod kani_proofs {
     fn unknown_mode_is_safe_input() {
         let i: u32 = kani::any();
         kani::assume(i > 6);
-        assert!(!is_output(mode_from_idx(i)));
+        assert!(!is_output(nibble_for_idx(i)));
     }
 }
