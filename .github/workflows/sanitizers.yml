@@ -61,7 +61,7 @@ jobs:
           - sanitizer: leak
             runner: '["self-hosted", "linux", "x64", "rust-cpu"]'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install nightly Rust + rust-src
         uses: dtolnay/rust-toolchain@nightly
