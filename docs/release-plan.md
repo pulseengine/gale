@@ -1,4 +1,5 @@
 ---
+id: gale-release-plan
 title: gale release plan
 ---
 # gale release plan (rivet-driven)
@@ -51,6 +52,77 @@ decision, not a traceability blocker.
 ## Cadence
 Per-primitive depth-first: v0.1 sem → v0.2 mutex → … Each release ships when its
 scope's V is closed; unassigned primitives are backlog, not commitments.
+
+## The gust-OS track — one unified line (2026-07-08)
+
+The versioned line carries **two kinds of scope on a single track** (decided
+2026-07-08): the **gale verified primitives** (sem/mutex/msgq/… — the *supply
+chain*) and the **gust operating system** they compose into (the *product*). gust
+is not a separate version series; its milestones interleave into the same `vX.Y.Z`
+line, scoped in `artifacts/gust_os_roadmap.yaml`.
+
+**North-star:** a general **multi-tenant** verified OS — hosting mutually-distrusting
+components, isolated by MPU, over the same 4-item Rust TCB shim — reached by
+*breadth first*. What boots today (on `main`) is the v0.2 composition: app + kiln +
+gale primitives dissolved to one native `.o`, `uart-thin` (254 B) + `dma-own`
+(218 B) drivers, a ~77-line + 5-instruction + 10-line TCB, on qemu M3 / Renode F100 /
+F100+G474RE silicon. The ladder from there:
+
+| release | milestone | scope (rivet) | gate to cut |
+|---|---|---|---|
+| **v0.3.0** | **driver breadth** (next) | `REQ-DRV-{GPIO,TIMER,SPI,BREADTH}-001` + `VER-DRV-*` | GPIO+timer+SPI as verified thin-seam drivers, each Kani-proven + Renode content-gated; **zero new TCB atoms**; the 4-driver node fits F100 8 KiB |
+| **v0.4.0** | **capability/syscall seam** | `REQ-OS-SYSCALL-001` (`gust:os` world) | apps import one typed `gust:os` world (time/log/spawn/channel) instead of ad-hoc imports; the I/O capability takes the **RTIO/io_uring SQ/CQ shape** (`FIND-DRV-RTIO-001`), app portable across nodes |
+| **v0.5.0** | **isolation / multi-tenancy** | `REQ-OS-{MPU,MULTITENANT}-001` | two mutually-distrusting components, MPU-per-region (unblocks **synth#404** multi-memory); a faulting tenant cannot corrupt a sibling or the TCB |
+| **v1.0.0** | **the OS, cut** | `REQ-OS-RELEASE-001` | whole composition — scheduler + IPC + `gust:os` + GPIO/timer/SPI/UART/DMA + MPU multi-tenancy — sigil-signed, booting the SAME components on M3 **and** M4 silicon, published as a Pages showcase |
+
+**Driver framework — RTIO / io_uring, not bespoke (`FIND-DRV-RTIO-001`).** The
+async-I/O shape is the **submission/completion-queue** model — Zephyr **RTIO**
+(embedded) and Linux **io_uring** (host), the converged state of the art. gust does
+not invent a driver API; it adopts SQ/CQ, and cheaply, because it already built every
+piece *verified*: `gale::msgq` = the rings, kiln = the executor, the `gust:hal`
+thin-seam driver = the iodev (SQE→CQE), and `dma-own`'s `own<buffer>` = io_uring's
+registered buffer with its exact "valid-until-complete" ownership lifecycle — in the
+Component-Model type system, so it's a type error to violate. SPI (v0.3.0) is the
+first iodev; the `gust:os` I/O capability (v0.4.0) is the RTIO-shaped
+`submit`/`poll-completion` WIT interface. Research + citations:
+`docs/research/driver-framework-rtio-iouring.md`.
+
+**Readiness is the `rivet release status` burn-down, not this table.** The table is
+the *scope map*; whether a milestone is cuttable is a query. Live snapshot
+(2026-07-08, `rivet release status`, `require: coverage`):
+
+```
+v0.1.0  ✓ Cuttable            (11 artifacts, V closed)         — semaphore, done
+v0.2.0  ✗ NOT cuttable (3)    DD-DMA-ENFORCE/REGION, REQ-DMA-ASYNC — DMA, in progress
+v0.3.0  ✗ NOT cuttable (4)    REQ-DRV-{GPIO,TIMER,SPI,BREADTH}     — driver breadth, not started
+v0.4.0  ✗ NOT cuttable (1)    REQ-OS-SYSCALL                       — syscall seam
+v0.5.0  ✗ NOT cuttable (2)    REQ-OS-{MPU,MULTITENANT}             — isolation
+v1.0.0  ✗ NOT cuttable (1)    REQ-OS-RELEASE                       — the OS cut
+```
+
+A planned milestone deliberately carries **no verification artifacts** — under
+`require: coverage` a req reads "ready" the instant a `verifies` link exists, so
+pre-declaring the Kani verifiers would make v0.3.0 falsely report near-cuttable
+while nothing is built. Each `VER-DRV-*` is added by the feature loop **when its
+proof passes**; that incoming link is what drops the req off the not-ready list.
+Re-target scope with `rivet release move <artifact> <version>` (a logged decision).
+
+**Verification bar (every driver/component, unchanged from the driver model):**
+protocol/decision logic is verified wasm (Kani on the pure decision; Verus/Rocq when
+promoted into `gale/src`), dissolved to native; the TCB stays the irreducible
+mmio+irq(+dma-barrier) sliver. **Oracle gate per milestone:** Renode F100 content
+test (byte-exact I/O) + silicon boot + `nm` TCB-atom count + SRAM-budget check +
+byte-identical dissolve — all mechanical, per `oracle-gate-a-change`.
+
+**The perf track (0.7×) is orthogonal.** synth proof-carrying specialization
+(synth#494, the 0.45× floor) makes the dissolved OS *faster*; it is not on the
+OS-completeness critical path and does not gate any milestone above.
+
+**Immediate next step (v0.3.0, driver breadth):** start with **GPIO** — the smallest
+verified thin-seam driver — as the pattern-setter: `drivers/gpio-thin/` (wasm pin
+logic + Kani `pin-config` proof), a Renode F100 read-back content-gate, and a
+COMPARE.md row (dissolved size + confirming 0 new TCB atoms). Then timer, then SPI
+(reusing `dma-own`). Ship v0.3.0 when all four `VER-DRV-*` are green.
 
 ## Wasm-module distribution (added 2026-06-11)
 
