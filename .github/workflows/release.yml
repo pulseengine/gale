@@ -78,6 +78,21 @@ jobs:
           . /root/.cargo/env
           rustup target add wasm32-unknown-unknown
 
+      - name: Install matching Clang + LLD/wasm-ld (apt.llvm.org)
+        run: |
+          # build-wasm-dist.sh needs clang(wasm32) + wasm-ld; ci-base has neither.
+          # Match clang's LLVM major to rustc's bundled LLVM (same pattern as the
+          # engine-bench-renode-lto / llvm-lto workflows in this repo).
+          . /root/.cargo/env
+          RUST_LLVM=$(rustc -vV | grep 'LLVM version' | grep -o '[0-9]*' | head -1)
+          echo "Rustc LLVM major: ${RUST_LLVM}"
+          apt-get install -y -qq wget lsb-release software-properties-common gnupg > /dev/null 2>&1
+          wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- "${RUST_LLVM}" all
+          update-alternatives --install /usr/bin/clang   clang   /usr/bin/clang-${RUST_LLVM}   200
+          update-alternatives --install /usr/bin/wasm-ld wasm-ld /usr/bin/wasm-ld-${RUST_LLVM} 200
+          echo "Clang:   $(clang --version | head -1)"
+          echo "wasm-ld: $(wasm-ld --version | head -1)"
+
       - name: Install pinned loom + synth
         run: |
           . /root/.cargo/env
