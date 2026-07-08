@@ -236,6 +236,29 @@ image boots (task #20).
 ./compare-codegen.sh   # builds native thumbv7m + dissolved cortex-m3, prints the size table
 ```
 
+## Driver-class module — thin-seam GPIO (gust:hal, gust-OS v0.3.0 driver breadth)
+
+The first v0.3.0 driver-breadth module and the pattern-setter: proves the `gust:hal`
+thin-seam model generalizes past UART/DMA to digital I/O. Whole STM32F1 GPIO protocol
+(pin config, CRL/CRH placement, BSRR set/reset, IDR read) in verified wasm
+(`drivers/gpio-thin`), importing **only `gust:hal/mmio`** — a strict subset of what
+uart-thin needs (no irq), so **0 new TCB atoms**.
+
+| | dissolved (loom 1.1.18 + synth 0.31.0, cortex-m3) |
+|---|---|
+| `.text` (flash) | **490 B** — configure 216 / toggle 110 / clear 56 / read 54 / set 52 |
+| SRAM (`.bss`+`.data`) | **0 B** |
+| TCB | **2 relocations — `mmio_read32`, `mmio_write32`** — subset of the existing 4-item TCB → **0 new atoms** |
+| verified | Kani **4/4** (config total+injective+mode-consistent, slot in-range, unknown-mode-safe) + the `gust-gpio-renode` content-gate (dissolved driver drives PC8; asserts the exact CRH/BSRR values it writes on a real STM32 model over USART1) |
+
+Composition note (REQ-DRV-BREADTH-001): two synth-dissolved `.o`s collide on their
+internal `func_N` symbols, so the gpio + uart drivers can't be naively co-linked — a
+multi-driver node must meld-fuse the drivers into one module first (one `func_N`
+namespace), or synth must per-module-prefix internal symbols. Filed as a driver-breadth
+follow-on; the gate sidesteps it by linking only gpio + a raw-USART report path.
+
+Reproduce: `drivers/gpio-thin/RESULTS.md` + `renode-test/gust_gpio.robot`.
+
 ## Driver-class module — thin-seam UART (gust:hal, gale#65)
 
 A new dissolved module on the bench: the whole STM32 USART protocol in verified

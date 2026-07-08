@@ -9,7 +9,7 @@ IDR read — is verified wasm dissolved to native; the driver imports only
 
 | | dissolved (loom 1.1.18 + synth 0.31.0, cortex-m3) |
 |---|---|
-| `.text` (flash) | **504 B** — `gpio_configure` 232 / `gpio_toggle` 110 / `gpio_clear` 56 / `gpio_read` 54 / `gpio_set` 52 |
+| `.text` (flash) | **490 B** — `gpio_configure` 232 / `gpio_toggle` 110 / `gpio_clear` 56 / `gpio_read` 54 / `gpio_set` 52 |
 | SRAM (`.bss`+`.data`) | **0 B** (scalar ABI, no linmem/data segment) |
 | TCB | **2 relocations — `mmio_read32`, `mmio_write32`** — a **subset** of the existing 4-item TCB, so **0 new atoms** |
 | verified | Kani **4/4 harnesses, 0 failures** — pin-config encode is total + bounded (≤0xF) + mode-consistent (`is_output` ⇔ MODE≠00), **injective** (no two modes alias), slot placement always in range (shift∈{0,4,…,28}, field ⊂ 32-bit reg), and unknown mode-index is safe (never an output) |
@@ -41,7 +41,7 @@ cargo build --release --target wasm32-unknown-unknown  # 849 B wasm
 loom optimize target/wasm32-unknown-unknown/release/gust_gpio_thin.wasm \
   --passes inline --attestation false -o gpio_inl.wasm
 synth compile gpio_inl.wasm --target cortex-m3 --all-exports --relocatable \
-  -o gpio-thin-cm3.o                                   # 504 B .text, 0 SRAM
+  -o gpio-thin-cm3.o                                   # 490 B .text, 0 SRAM
 arm-zephyr-eabi-nm -u gpio-thin-cm3.o                  # only mmio_read32/write32
 ```
 

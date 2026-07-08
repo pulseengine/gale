@@ -58,3 +58,13 @@ renode_test(
         "REPL": ":m3_64k.repl",
     },
 )
+
+renode_test(
+    name = "gust-gpio-renode",
+    timeout = "short",
+    robot_test = "gust_gpio.robot",
+    variables_with_label = {
+        "ELF": ":gust_gpio.elf",
+        "REPL": ":gust_gpio.repl",
+    },
+)

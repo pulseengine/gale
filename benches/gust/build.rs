@@ -101,5 +101,15 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_uart={}", uobj.display());
         println!("cargo:rerun-if-changed={}", uobj.display());
     }
+    // The dissolved thin-seam GPIO driver (drivers/gpio-thin → loom → synth): the
+    // entire STM32F1 GPIO protocol in verified wasm (Kani 4/4, 0 new TCB atoms —
+    // mmio only). The gust_gpio demonstrator links BOTH gpio + uart drivers: it
+    // exercises gpio_configure/set/clear and emits the register-effect results over
+    // USART1 for the Renode content-gate (renode-test/gust_gpio.robot).
+    let gobj = Path::new(&manifest).join("drivers/gpio-thin/gpio-thin-cm3.o");
+    if gobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_gpio={}", gobj.display());
+        println!("cargo:rerun-if-changed={}", gobj.display());
+    }
     println!("cargo:rerun-if-changed=build.rs");
 }
