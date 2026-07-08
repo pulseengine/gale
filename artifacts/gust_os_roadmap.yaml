@@ -70,7 +70,7 @@ artifacts:
   - id: REQ-DRV-SPI-001
     type: sw-req
     title: "SPI is a verified thin-seam driver, DMA-capable via the own<buffer> handoff"
-    status: proposed
+    status: implemented
     release: v0.3.0
     description: >
       SPI master (mode/clock config, the transfer state machine, and CS framing)
@@ -165,9 +165,36 @@ artifacts:
       - type: verifies
         target: REQ-DRV-TIMER-001
 
-  # NOTE — SPI verifier still pending its proof. Planned bar:
-  #   SPI   — Kani: transfer FSM exclusive bus + no lost byte (under dma-own); Renode
-  #           loopback gate.
+  - id: VER-DRV-SPI-001
+    type: sw-verification
+    title: "SPI driver — Kani 6/6 (exclusive bus + no lost byte, SQE→CQE FSM) + Renode register-effect content-gate"
+    status: verified
+    release: v0.3.0
+    description: >
+      The spi-thin driver's transfer FSM and config core are Kani-proven (6/6, 0
+      failures): exclusive bus — `begin` succeeds IFF the bus is Idle and count > 0,
+      never onto a busy bus (REQ-DRV-SPI-001's one-in-flight-transfer property); no
+      lost byte — each Active `step` decrements `remaining` by exactly one and reports
+      Complete IFF that reached zero (so N steps shift exactly N bytes, none lost or
+      invented), and `step` is rejected unless Active; abort is total and always frees
+      the bus; the pack/unpack scalar ABI round-trips every state; and CR1 is
+      well-formed (master + SW-NSS + enabled, mode in [1:0], baud in [5:3], no stray
+      bit) — table-free (`wasm-tools print | grep 'i32.load offset='` = 0). The
+      transfer presents the RTIO iodev SQE→CQE shape (FIND-DRV-RTIO-001). End-to-end
+      the `gust-spi-renode` gate exercises the dissolved driver (linked native, mmio
+      bridge only — 0 new TCB atoms, 494 B .text / 0 SRAM): writes CR1 (mode 3 / baud
+      idx 2 → 0x357), shifts a byte full-duplex over a pre-seeded SR/DR, and runs the
+      FSM to completion on a real STM32 model, reported over USART1. A local qemu
+      semihosting probe of the dissolved .o confirmed CR1=0x357, byte shift 0xA5, and
+      the FSM (begin→step×3→complete, dup-begin faults, abort→idle) before CI.
+      Source-level proof + native register-effect check; the wasm→native dissolve is
+      differentially trusted, not proven equivalent (see
+      docs/safety/verification-honesty.md). Kill-criterion: a Kani harness fails, or
+      the Renode gate observes a spi-*-bad line.
+    tags: [gust, spi, kani, renode, rtio, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-SPI-001
 
   - id: FIND-DRV-RTIO-001
     type: finding
