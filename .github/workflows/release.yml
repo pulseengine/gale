@@ -71,6 +71,9 @@ jobs:
 
       - name: Install Rust + wasm32 target
         run: |
+          # ci-base ships no curl; install it first (same pattern as coverage.yml
+          # and the engine-bench-renode-* workflows in this repo).
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           . /root/.cargo/env
           rustup target add wasm32-unknown-unknown
