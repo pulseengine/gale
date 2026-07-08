@@ -236,6 +236,22 @@ image boots (task #20).
 ./compare-codegen.sh   # builds native thumbv7m + dissolved cortex-m3, prints the size table
 ```
 
+## Driver-class module — thin-seam hardware timer (gust:hal, gust-OS v0.3.0 driver breadth)
+
+The second v0.3.0 driver: a hardware timer as a verified thin-seam driver — STM32
+timer config (PSC/ARR/CR1) + **wrap-safe deadline math** in verified wasm, importing
+only `gust:hal/mmio` (**0 new TCB atoms**). Written **table-free from the start** (the
+gpio lesson), so it dissolves `--relocatable` clean.
+
+| | dissolved (loom 1.1.18 + synth 0.33.0, cortex-m3) |
+|---|---|
+| `.text` (flash) | **212 B** |
+| SRAM | **0 B** |
+| TCB | `mmio_read32`+`mmio_write32` only → **0 new atoms** |
+| verified | Kani **3/3** (wrap-safe deadline: no missed/early fire across the u32 wrap) + `gust-timer-renode` register-effect gate; local qemu probe confirmed the dissolved .o before CI |
+
+Reproduce: `drivers/timer-thin/RESULTS.md` + `renode-test/gust_timer.robot`.
+
 ## Driver-class module — thin-seam GPIO (gust:hal, gust-OS v0.3.0 driver breadth)
 
 The first v0.3.0 driver-breadth module and the pattern-setter: proves the `gust:hal`

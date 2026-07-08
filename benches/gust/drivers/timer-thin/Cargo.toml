@@ -1,0 +1,18 @@
+# Standalone (not part of the gust workspace) — built ad-hoc for wasm32 + dissolve.
+# gust-OS v0.3.0 driver breadth: hardware timer as a verified thin-seam driver.
+[workspace]
+
+[package]
+name = "gust-timer-thin"
+version = "0.1.0"
+edition = "2021"
+description = "gust:hal thin-seam hardware-timer driver — STM32 timer config + wrap-safe deadline math in verified wasm, importing only the generic mmio capability"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1

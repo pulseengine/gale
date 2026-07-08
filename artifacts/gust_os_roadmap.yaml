@@ -141,9 +141,31 @@ artifacts:
       - type: verifies
         target: REQ-DRV-GPIO-001
 
-  # NOTE — TIMER/SPI verifiers still pending their proofs. Planned bar per driver:
-  #   GPIO  — Kani: pin-config decode total + injective; Renode F100 read-back gate.
-  #   TIMER — Kani: deadline math no wrap-induced missed/early fire; Renode gate.
+  - id: VER-DRV-TIMER-001
+    type: sw-verification
+    title: "Timer driver — Kani 3/3 (wrap-safe deadline: no missed/early fire) + Renode register-effect content-gate"
+    status: verified
+    description: >
+      The timer-thin driver's deadline core is Kani-proven (3/3, 0 failures): the
+      wrap-safe predicate fires EXACTLY when elapsed ≥ interval for any interval and
+      elapsed < 2^31 — including across the u32 counter wrap, so no deadline is missed
+      or fired early because the counter wrapped (the REQ-DRV-TIMER-001 property);
+      plus reflexive-fires and a 0/1-boolean-export proof. End-to-end the
+      `gust-timer-renode` gate exercises the dissolved driver (linked native, mmio
+      bridge only — 0 new TCB atoms, table-free per the gpio-thin lesson): configures
+      TIM2 (PSC/ARR/CR1) and checks the register writes + the wrap-safe predicate on a
+      real STM32 model, reported over USART1. A local qemu semihosting probe of the
+      dissolved .o confirmed all cases (init 0x1234/0xABCD/CEN, deadline 149→0/150→1,
+      wrap 0xFFFFFFF0+0x20=0x10 → 0x0F→0/0x10→1) before CI. Source-level proof + native
+      register-effect check; the wasm→native dissolve is differentially trusted, not
+      proven equivalent (see docs/safety/verification-honesty.md). Kill-criterion: a
+      Kani harness fails, or the Renode gate observes a timer-*-bad line.
+    tags: [gust, timer, kani, renode, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-TIMER-001
+
+  # NOTE — SPI verifier still pending its proof. Planned bar:
   #   SPI   — Kani: transfer FSM exclusive bus + no lost byte (under dma-own); Renode
   #           loopback gate.
 

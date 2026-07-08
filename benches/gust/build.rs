@@ -111,5 +111,10 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_gpio={}", gobj.display());
         println!("cargo:rerun-if-changed={}", gobj.display());
     }
+    let tobj = Path::new(&manifest).join("drivers/timer-thin/timer-thin-cm3.o");
+    if tobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_timer={}", tobj.display());
+        println!("cargo:rerun-if-changed={}", tobj.display());
+    }
     println!("cargo:rerun-if-changed=build.rs");
 }
