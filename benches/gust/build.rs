@@ -141,5 +141,14 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_breadth_probe={}", bobj.display());
         println!("cargo:rerun-if-changed={}", bobj.display());
     }
+    // gust:os v0.4.0 syscall seam, step-1 node (drivers/os-node/os-time-cm3.o): an
+    // app importing only gust:os/time, wac-plugged with a time provider, dissolved
+    // to one 0-SRAM object exporting `run`, importing only read32. gust_os_probe is
+    // the local qemu liveness check.
+    let osobj = Path::new(&manifest).join("drivers/os-node/os-time-cm3.o");
+    if osobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_os_probe={}", osobj.display());
+        println!("cargo:rerun-if-changed={}", osobj.display());
+    }
     println!("cargo:rerun-if-changed=build.rs");
 }

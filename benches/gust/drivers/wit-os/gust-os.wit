@@ -1,0 +1,85 @@
+// gust:os — the OS syscall seam (v0.4.0, REQ-OS-SYSCALL-001). The single surface an
+// app sees: it imports `gust:os` capabilities and is portable across nodes; the
+// node's providers (kiln, gale::msgq, the dissolved drivers) EXPORT these, and the
+// meld-fuse dissolves the seam away. Design:
+// docs/superpowers/specs/2026-07-09-gust-os-syscall-seam-design.md
+package gust:os@0.1.0;
+
+/// Monotonic time — all-scalar, so this capability stays flat / 0-SRAM. Backed by a
+/// hardware timer through the node's TCB (gust:hal/mmio, via timer-comp).
+interface time {
+    /// Monotonic tick counter (wraps per the underlying timer width; math below is
+    /// wrap-safe over the 32-bit domain, widened to u64 at the seam).
+    now: func() -> u64;
+    /// Deadline = now + ticks (wrap-safe).
+    deadline: func(now: u64, ticks: u64) -> u64;
+    /// Has the deadline been reached? (wrap-safe: elapsed once now has passed it).
+    elapsed: func(now: u64, deadline: u64) -> bool;
+}
+
+/// Structured line/byte log — carries bytes, so this capability needs the node's
+/// bounded shared linmem (not 0-SRAM). Backed by uart-comp or a semihosting bridge.
+interface log {
+    line: func(msg: list<u8>);
+}
+
+/// Cooperative task spawn — a scalar handle into the kiln executor; the app polls it
+/// (no host Future crosses the seam). Backed by kiln.
+interface spawn {
+    /// Register a task (identified by an app-side entry id); returns a task handle.
+    start: func(entry: u32) -> u32;
+    /// Poll a task handle: 0 = pending, 1 = done, 0xFFFF_FFFF = invalid.
+    poll: func(handle: u32) -> u32;
+}
+
+/// Bounded message channel — payloads live in the shared linmem as `own<msg>`.
+/// Backed by gale::msgq's proven ring.
+interface channel {
+    /// A message buffer owned by whoever may currently touch it (send transfers it).
+    resource msg {
+        len: func() -> u32;
+    }
+    /// Non-blocking send; false if the ring is full (msg returned to caller-owned).
+    send: func(m: msg) -> bool;
+    /// Non-blocking receive; none if the ring is empty.
+    recv: func() -> option<msg>;
+}
+
+/// RTIO/io_uring-shape I/O — submit an SQE over an owned buffer, poll for the CQE.
+/// The buffer is `own<buffer>` (reuses the dma-own ownership model); no host Future.
+/// Backed by the composed iodevs (spi/dma).
+interface io {
+    /// A DMA-capable buffer in the shared segment; passing it by value moves
+    /// ownership to the engine for the transfer window (dma-own handoff).
+    resource buffer {
+        len: func() -> u32;
+    }
+    /// Submission-queue entry: op (0=read,1=write), target channel, and the buffer.
+    submit: func(op: u32, channel: u32, buf: buffer) -> u32;
+    /// Poll the completion queue for a submitted op-id; returns the re-owned buffer
+    /// on completion, none while pending.
+    poll-completion: func(op-id: u32) -> option<buffer>;
+}
+
+/// The app-facing world — an app imports the OS capabilities and exports its entry.
+/// A node satisfies every import via its composed providers; the app links to
+/// nothing else, so it is portable across nodes.
+world app {
+    import time;
+    import log;
+    import spawn;
+    import channel;
+    import io;
+    export run: func() -> u32;
+}
+
+/// Step-1 slice: the minimal all-scalar world that proves the gust:os compose
+/// end-to-end (app imports only time; a time provider exports it over gust:hal/mmio).
+world app-time {
+    import time;
+    export run: func() -> u32;
+}
+world time-provider {
+    import gust:hal/mmio@0.1.0;
+    export time;
+}
