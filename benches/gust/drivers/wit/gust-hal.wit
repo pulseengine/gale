@@ -79,6 +79,58 @@ interface dma {
     abort: func(channel: u32, buf: borrow<dma-buffer>);
 }
 
+// ── Per-driver EXPORT interfaces (v0.3.0 driver breadth, REQ-DRV-BREADTH-001) ──
+// The protocol surface each dissolved driver component PROVIDES. Every function is
+// scalar u32↔u32, so the Component-Model canonical ABI stays FLAT — no realloc, no
+// linmem growth → the thin-seam 0-SRAM property is preserved through
+// componentization. `wac` composes these sibling components (all sharing the mmio
+// import) and `meld fuse` merges them into one module, so a multi-driver node
+// dissolves to ONE relocatable object (no cross-object func_N symbol collision).
+
+/// STM32F1 GPIO protocol (mirrors gpio-thin's exports).
+interface gpio {
+    configure: func(port-base: u32, pin: u32, mode-idx: u32);
+    set: func(port-base: u32, pin: u32);
+    clear: func(port-base: u32, pin: u32);
+    read: func(port-base: u32, pin: u32) -> u32;
+    toggle: func(port-base: u32, pin: u32);
+}
+
+/// STM32 hardware-timer protocol (mirrors timer-thin's exports).
+interface timer {
+    init: func(base: u32, psc: u32, arr: u32);
+    now: func(base: u32) -> u32;
+    deadline: func(now: u32, ticks: u32) -> u32;
+    elapsed: func(now: u32, deadline: u32) -> u32;
+    ack: func(base: u32);
+}
+
+/// STM32 SPI protocol + transfer FSM (mirrors spi-thin's exports).
+interface spi {
+    configure: func(base: u32, mode: u32, br-idx: u32);
+    xfer-byte: func(base: u32, out: u32) -> u32;
+    begin: func(state: u32, count: u32) -> u32;
+    step: func(state: u32) -> u32;
+    is-complete: func(state: u32) -> u32;
+    abort: func(state: u32) -> u32;
+}
+
+/// STM32 USART protocol (mirrors uart-thin's exports; imports mmio + irq).
+interface uart {
+    init: func(brr: u32);
+    tx-byte: func(b: u32);
+    rx: func() -> u32;
+    rx-fired: func() -> u32;
+}
+
+/// Per-driver component worlds — each imports only the generic mmio capability
+/// (uart also irq) and exports its protocol interface. `wasm-tools component new`
+/// wraps the wit-bindgen core module into a component targeting one of these.
+world gpio-driver { import mmio; export gpio; }
+world timer-driver { import mmio; export timer; }
+world spi-driver { import mmio; export spi; }
+world uart-driver { import mmio; import irq; export uart; }
+
 /// Thin-seam driver world — imports only generic MMIO + IRQ; exports one step.
 world driver-thin {
     import mmio;

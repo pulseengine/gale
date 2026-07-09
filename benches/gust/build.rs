@@ -130,5 +130,16 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_spi_probe={}", spobj.display());
         println!("cargo:rerun-if-changed={}", spobj.display());
     }
+    // The 4-driver breadth node (REQ-DRV-BREADTH-001): gpio+timer+spi+uart, each a
+    // verified-wasm gust:hal component, wac/meld-fused → ONE dissolved .o exporting
+    // all 20 protocol fns (C-renamed), 0 SRAM, no func_N collision. Built by
+    // drivers/build-breadth.sh. gust_breadth (Renode gate) + gust_breadth_probe
+    // (local qemu liveness probe) link it; bridge = read32/write32/poll (3 atoms).
+    let bobj = Path::new(&manifest).join("drivers/breadth/breadth-cm3.o");
+    if bobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_breadth={}", bobj.display());
+        println!("cargo:rustc-link-arg-bin=gust_breadth_probe={}", bobj.display());
+        println!("cargo:rerun-if-changed={}", bobj.display());
+    }
     println!("cargo:rerun-if-changed=build.rs");
 }
