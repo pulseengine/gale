@@ -30,8 +30,9 @@ cycles on M3), with a correctness gate (native ≡ dissolved, bit-identical over
 | dissolved, initial | 1.125 | — | 24 B | synth 0.11, no loom inline |
 | dissolved, loom-inlined | 1.05 | 132 B | 8 B | loom 1.1.16 + synth 0.12.0 |
 | dissolved, **4 levers** | 0.725 | 90 B | 8 B | loom 1.1.16 + synth 0.15.0 |
-| dissolved, **0.37.1 re-pin** | **0.675** | **82 B** | 8 B | **loom 1.1.18 + synth 0.37.1** |
-| **ratio vs LLVM** | **2.81× → 2.63× → 1.81× → 1.69×** | −38 % | — | — |
+| dissolved, 0.37.1 re-pin | 0.675 | 82 B | 8 B | loom 1.1.18 + synth 0.37.1 |
+| dissolved, **0.38.0 mask-elide** | **0.600** | **68 B** | 8 B | **loom 1.1.18 + synth 0.38.0 `SYNTH_SHIFT_MASK_ELIDE=1`** |
+| **ratio vs LLVM** | **2.81× → 2.63× → 1.81× → 1.69× → 1.50×** | −48 % | — | — |
 
 **Progress (measured, 2026-06-25): the ranked synth#428 asks shipped and
 delivered.** synth landed all four ARM perf levers default-on across three
@@ -131,6 +132,23 @@ statically `<32` and never need the runtime mask. So the correctness-complete
 mask when the shift amount is provably `<32`** (constant or range-carried) — the
 same proof-carrying-facts pattern as the clamp-elision floor. Pinned 0.37.1 (one
 current toolchain, reproducible) rather than the superseded 0.37.0.
+**synth 0.38.0 (2026-07-10): the lever I filed SHIPPED (#692, `SYNTH_SHIFT_MASK_ELIDE`,
+flag-off) → RE-PINNED, 1.69× → 1.50×.** synth 0.38.0's changelog lands "Shift-mask
+elision (#686, flag-off) — recovers the #682 mask's 12% where the amount is provably
+< 32" — the exact lever, motivated by gale's measurement. Re-dissolved `gust_mix` with
+`SYNTH_SHIFT_MASK_ELIDE=1` (loom 1.1.18 inline → strip {memory,gust_mix} → synth 0.38.0
+`--target cortex-m3/-m4 --all-exports --relocatable`): **fn-only 0.675 → 0.600 ticks/call
+(−11 %)**, `.text` **82 → 68 B (−17 %)**, ratio **1.69× → 1.50×** — the best measured
+dissolved-vs-native on the shipped path, correctness-gated (`gust_floor_bench` soundness
+`mix_proven ≡ mix_native ≡ gust_mix` over [524,1524] PASSES; floor still 0.45×). cm3 + cm4
+re-pinned; silicon_bench links cleanly for thumbv7em. NOTE: the relocatable `.o` grew 432
+→ 496 B despite the smaller `.text` — that's 0.38.0's new ELF metadata (#656 STB_LOCAL
+internal symbols + #637 `.ARM.attributes`), dropped/merged at link time, so **flash
+footprint tracks the smaller 68 B `.text`, not the `.o`**. 0.38.0 DEFAULT (flag-off) is
+perf-neutral (1.69×, `.text` 82) — adopting the release is safe; the win needs the flag.
+Reported the measured 1.50× to synth#686 (the arc to default-on, like #428/#583). Ladder:
+1.81× (stale) → 1.69× (0.37.1) → **1.50× (0.38.0 elide)** → 0.45× (clamp-elision floor,
+synth#494 phase-2, still gated on select-arm elision + a verify build).
 **Still open:** (1) the RISC-V backend is now catching up — esp32c3
 `SYNTH_RV_CMP_SELECT` (0.28) + `SYNTH_RV_SHIFT_FOLD` (0.30.0) are default-on
 (−16 B combined vs the 0.12 baseline; synth#472 port closed), but the arithmetic
@@ -160,7 +178,7 @@ the bound. All three lowerings, timed over the SAME proven-range inputs:
 | lowering | fn-only ticks/call | ratio vs native | note |
 |---|---|---|---|
 | native (LLVM, full clamp) | **0.50** | 1.00× | what LLVM ships |
-| dissolved today (synth **0.37.1** re-pin) | 0.774 | 1.55× | in-range subset (full-domain = 1.69×) |
+| dissolved today (synth **0.38.0** mask-elide) | 0.700 | 1.40× | in-range subset (full-domain = 1.50×) |
 | **proof-carrying floor** (`ch+476`) | **0.225** | **0.45×** | what synth *could* ship (synth#494a) |
 
 **Measured floor = 0.45× native** — past the 0.7× goal, and unreachable by LLVM.
