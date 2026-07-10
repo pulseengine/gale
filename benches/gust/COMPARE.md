@@ -29,8 +29,9 @@ cycles on M3), with a correctness gate (native ≡ dissolved, bit-identical over
 | native (LLVM) | **0.40** | — | none | rustc/LLVM |
 | dissolved, initial | 1.125 | — | 24 B | synth 0.11, no loom inline |
 | dissolved, loom-inlined | 1.05 | 132 B | 8 B | loom 1.1.16 + synth 0.12.0 |
-| dissolved, **4 levers** | **0.725** | **90 B** | 8 B | **loom 1.1.16 + synth 0.15.0** |
-| **ratio vs LLVM** | **2.81× → 2.63× → 1.81×** | −32 % | — | — |
+| dissolved, **4 levers** | 0.725 | 90 B | 8 B | loom 1.1.16 + synth 0.15.0 |
+| dissolved, **0.37.1 re-pin** | **0.675** | **82 B** | 8 B | **loom 1.1.18 + synth 0.37.1** |
+| **ratio vs LLVM** | **2.81× → 2.63× → 1.81× → 1.69×** | −38 % | — | — |
 
 **Progress (measured, 2026-06-25): the ranked synth#428 asks shipped and
 delivered.** synth landed all four ARM perf levers default-on across three
@@ -111,6 +112,25 @@ flag-off; RV32 `SYNTH_RV_LOCAL_PROMO` default-on (#627) is **byte-neutral on the
 esp32c3 kernel** (512 B default == promo-off — nothing to promote, same as the ARM
 local-promo). So the shipped bytes don't move — the release's substance for gale is
 `wsc.facts` phase-1 (below).
+**synth 0.37.1 + loom 1.1.18 (2026-07-10): RE-PIN — the checked-in `gust_mix`
+pin was STALE (~0.15-era, 90 B / 0.725 ticks / 1.81×) and had missed every
+codegen gain from 0.16→0.37.** Re-dissolved `gust_kernel.wasm` (loom 1.1.18
+inline → strip exports to {memory, gust_mix} → synth 0.37.1 `--target cortex-m3
+--all-exports --relocatable`), re-measured on `gust_codegen_bench`: **fn-only
+0.725 → 0.675 ticks/call (−7 %)**, `.text` **90 → 82 B (−9 %)**, taking the gap
+to native LLVM from **1.81× → 1.69×**. Object 440 → 432 B. Correctness gated:
+`gust_floor_bench` soundness assertion `mix_proven ≡ mix_native ≡ gust_mix` over
+`[524,1524]` still passes; proof-carrying floor still **0.45×**. cm3 + cm4
+re-pinned identically (silicon_bench links cleanly for thumbv7em).
+**Measured finding — a `beat-LLVM` lever (filed synth#686):** on the SAME stripped
+input, synth **0.30.1→0.37.0 all emit 68 B / 0.600 ticks / 1.50×**; **0.37.1's
+#682 mod-32 shift mask (`AND rm,#31`) adds 14 B / +0.075 ticks** because it masks
+`gust_mix`'s shifts *unconditionally* — even though gale's shift amounts are
+statically `<32` and never need the runtime mask. So the correctness-complete
+0.37.1 costs a real 12 % vs 0.37.0 here; the gap is **recoverable by eliding the
+mask when the shift amount is provably `<32`** (constant or range-carried) — the
+same proof-carrying-facts pattern as the clamp-elision floor. Pinned 0.37.1 (one
+current toolchain, reproducible) rather than the superseded 0.37.0.
 **Still open:** (1) the RISC-V backend is now catching up — esp32c3
 `SYNTH_RV_CMP_SELECT` (0.28) + `SYNTH_RV_SHIFT_FOLD` (0.30.0) are default-on
 (−16 B combined vs the 0.12 baseline; synth#472 port closed), but the arithmetic
@@ -140,7 +160,7 @@ the bound. All three lowerings, timed over the SAME proven-range inputs:
 | lowering | fn-only ticks/call | ratio vs native | note |
 |---|---|---|---|
 | native (LLVM, full clamp) | **0.50** | 1.00× | what LLVM ships |
-| dissolved today (synth 0.15.1 / **0.16.0**) | 0.825 | 1.65× | in-range subset (full-domain = 1.81×) |
+| dissolved today (synth **0.37.1** re-pin) | 0.774 | 1.55× | in-range subset (full-domain = 1.69×) |
 | **proof-carrying floor** (`ch+476`) | **0.225** | **0.45×** | what synth *could* ship (synth#494a) |
 
 **Measured floor = 0.45× native** — past the 0.7× goal, and unreachable by LLVM.
