@@ -8,10 +8,13 @@ name: Compliance report
 # additive, and cannot affect the release flow if it fails.
 #
 # NOTE: rivet-version pins the rivet binary used to validate/export gale's
-# artifacts. v0.23.0: adds configurable release-status readiness (`release.require:
-# coverage`, rivet #612) so the V-model gate greens on link-based (not status-flip)
-# verification. `rivet validate` is PASS on gale's artifacts under 0.23.0; bump in
-# lockstep if a future schema needs a newer rivet.
+# artifacts. v0.25.0: keeps configurable release-status readiness (`release.require:
+# coverage`, rivet #612) and adds validate cross-repo UnknownPrefix scoping (#649),
+# ASPICE swe1-verification reachability (#652), schema-drift warning (#679), and
+# RUSTSEC bumps (quick-xml, crossbeam-epoch). `rivet validate` is PASS (331 warnings,
+# byte-for-byte same as 0.23.0) and `rivet release status` verdicts unchanged on
+# gale's artifacts under 0.25.0 (verified 2026-07-10). Bump in lockstep if a future
+# schema needs a newer rivet.
 
 on:
   release:
@@ -60,7 +63,7 @@ jobs:
         run: |
           set -uo pipefail
           d=$(mktemp -d)
-          gh release download v0.23.0 --repo pulseengine/rivet \
+          gh release download v0.25.0 --repo pulseengine/rivet \
             -p '*x86_64-unknown-linux-gnu*' -D "$d" 2>/dev/null || true
           tar xzf "$d"/*x86_64-unknown-linux-gnu*.tar.gz -C "$d" 2>/dev/null || true
           RV=$(find "$d" -name rivet -type f | head -1); chmod +x "$RV" 2>/dev/null || true
@@ -72,10 +75,10 @@ jobs:
 
       - name: Generate compliance report
         id: report
-        uses: pulseengine/rivet/.github/actions/compliance@v0.24.0
+        uses: pulseengine/rivet/.github/actions/compliance@v0.25.0
         with:
           theme: dark
-          rivet-version: v0.23.0
+          rivet-version: v0.25.0
           include-data-formats: true
           report-label: ${{ steps.tag.outputs.tag }}
           archive: 'true'
