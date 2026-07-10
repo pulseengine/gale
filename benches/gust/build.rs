@@ -24,13 +24,17 @@ fn main() {
     // object (no linmem .bss — gust_mix is pure scalar). Linked into the codegen
     // micro-bench only, so it can time the native (LLVM) vs dissolved (synth)
     // lowering of the SAME source. Scoped via -bin= so other bins are unaffected.
-    // Reproduce (loom 1.1.16 + synth 0.15.0): loom optimize gust_kernel.wasm
+    // Reproduce (loom 1.1.18 + synth 0.37.1): loom optimize gust_kernel.wasm
     //   --passes inline (merges the gust_mix wrapper into its body, loom#228),
     //   strip exports to {memory, gust_mix}, then synth compile <stripped>.wasm
-    //   --target cortex-m3 --all-exports --relocatable. COMPARE.md tracks the
-    //   measured 2.81x -> 2.63x -> 1.81x progression: synth v0.13-0.15 shipped the
-    //   four #428 levers default-on (cmp->select fusion, stack-reload elim, local
-    //   promotion, immediate-shift fold), -31% cycles / -32% .text, bit-identical.
+    //   --target cortex-m3 --all-exports --relocatable (cortex-m4 for the cm4 .o).
+    //   COMPARE.md tracks the measured 2.81x -> 2.63x -> 1.81x -> 1.69x progression:
+    //   synth v0.13-0.15 shipped the four #428 levers default-on; the 2026-07-10
+    //   re-pin refreshed a STALE ~0.15-era pin (90 B / 0.725 t) to 0.37.1 (82 B /
+    //   0.675 t), -7% cycles / -9% .text, soundness-gated. NOTE: 0.37.0 would be
+    //   68 B / 0.600 t / 1.50x; 0.37.1's #682 mod-32 shift mask costs +14 B here
+    //   (gale's shifts are statically <32 -> mask is elidable; filed as a synth
+    //   beat-LLVM lever). Pinned 0.37.1 for a single current toolchain.
     let kobj = Path::new(&manifest).join("wasm-kernel/gust_mix-cm3.o");
     if kobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_codegen_bench={}", kobj.display());
