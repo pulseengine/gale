@@ -10,7 +10,21 @@ is the codegen-quality figure and is on a common time base.
 
 | | native | dissolved | ratio vs LLVM | correctness |
 |---|---|---|---|---|
-| ESP32-C3 (synth 0.12.0, flag-off) | 0.259 tick/call | 0.549 tick/call | **2.12×** | identical |
+| ESP32-C3 (synth 0.12.0, flag-off) | 0.259 tick/call | 0.549 tick/call | 2.12× | identical |
+| **ESP32-C3 (synth 0.40.0, RV32 levers default-on)** | **0.271 tick/call** | **0.500 tick/call** | **1.839×** | **identical** |
+
+> **Re-anchored on real silicon (2026-07-11).** The committed
+> `gust_mix-esp32c3.o` is now the **synth 0.40.0** dissolve (byte-reproducible:
+> `synth compile <stripped gust_mix>.wasm -b riscv --target esp32c3 --all-exports
+> --relocatable`, 476 B ELF, 0 relocations, md5 `d3526178…`). Flashed to the real
+> ESP32-C3 (rev v0.4) and measured on the 16 MHz systimer over 200k iterations:
+> native **271** vs dissolved **500** milliticks/call → **1.839×**, correctness
+> **IDENTICAL** over the full input domain [0,2047] (mismatch=0). This confirms
+> on-hardware what the byte deltas below predicted: the 0.12-era object was 492 B,
+> the 0.40 object is **476 B (−16 B)** — exactly the cmp→select (−8 B) +
+> shift-fold (−8 B) default-on levers — and that −16 B moves the on-silicon ratio
+> **2.12× → 1.839×**. The RV32 flip-wave (synth#472) is now measured on silicon,
+> not just predicted.
 
 > **synth#472 UPDATE — the RV32 flip-wave began (synth 0.28).** The perf levers
 > that took the Cortex-M `gust_mix` from 2.63× → 1.81× were ported to synth's
@@ -39,21 +53,21 @@ is the codegen-quality figure and is on a common time base.
 > flag-off (byte-identical on gust_mix). So the RISC-V lane is now improving in the
 > shipped default, not just under flags.
 >
-> **Caveat — the 2.12× row above is a *silicon cycle* number, not codegen size, and
-> it predates all of this** (measured flag-off on synth 0.12 on the real ESP32-C3
-> systimer). The −8 B is a byte delta on the current toolchain; whether it moves the
-> on-hardware ratio needs a re-run on the board, which is pending. The committed
-> `gust_mix-esp32c3.o` (a 0.12-era single-function reference object) is left as-is —
-> re-pinning it to 0.28 changes its shape beyond the lever delta (version drift) and
-> the shipped figure that matters is the silicon cycle count, not the reference .o.
+> **RESOLVED (synth 0.40.0, 2026-07-11): the on-hardware re-run is done.** The
+> "whether it moves the on-hardware ratio needs a re-run on the board, which is
+> pending" caveat is now closed — see the 1.839× row above. The committed object is
+> re-pinned to the 0.40 dissolve (byte-reproducible), so the reproduce steps and the
+> reported silicon number now agree. Four RV32 levers total (synth#484); two are
+> default-on and both fire on gust_mix (−16 B, measured on silicon); the other two
+> (i32 local-promote, const-addr-fold) remain flag-off (byte-identical on gust_mix).
 
 ## Same wasm, three architectures, all measured on silicon/sim
 
 | arch | board | native vs dissolved | source |
 |---|---|---|---|
 | Cortex-M3 | STM32F100 (8 KB) | **1.73× (DWT, real)** | silicon/RESULTS-f100.md |
-| Cortex-M4 | NUCLEO-G474RE | 2.21× (DWT, real) | silicon/RESULTS-g474re.md |
-| **RISC-V RV32IMC** | **ESP32-C3** | **2.12× (systimer, real)** | this file |
+| Cortex-M4 | NUCLEO-G474RE | **1.448× (DWT, real, synth 0.40)** | silicon/RESULTS-g474re.md |
+| **RISC-V RV32IMC** | **ESP32-C3** | **1.839× (systimer, real, synth 0.40)** | this file |
 
 ## Reproduce
 
