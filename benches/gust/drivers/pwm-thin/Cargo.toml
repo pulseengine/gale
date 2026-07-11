@@ -1,0 +1,18 @@
+# Standalone (not part of the gust workspace) — built ad-hoc for wasm32 + dissolve.
+# gust-OS driver breadth: timer PWM output as a verified thin-seam iodev.
+[workspace]
+
+[package]
+name = "gust-pwm-thin"
+version = "0.1.0"
+edition = "2021"
+description = "gust:hal thin-seam PWM driver — STM32 advanced-timer PWM config + a Kani-proven output FSM (duty-never-exceeds-period clamp + total failsafe-to-outputs-off) in verified wasm, importing only the generic mmio capability. The actuator-output driver whose failsafe is the 4x failsafe-PWM the gale#63 Health Monitor trips."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1
