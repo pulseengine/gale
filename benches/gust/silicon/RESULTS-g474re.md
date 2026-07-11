@@ -30,3 +30,32 @@ control_step needs `--native-pointer-abi` + `--shadow-stack-size 8192` + the r11
 TCB trampoline (it reads its tables off the linmem base the scheduler clobbers), and
 the cortex-m4 `.o` (the cortex-m3 one won't link into a thumbv7em image). F100/M3
 pending the board.
+
+
+## Re-anchored on real M4 — the 2026-07 ladder (synth 0.40.0)
+
+`silicon/run.sh g474re` — probe-rs 0.31.0, STLink V3, DWT CYCCNT, 20000 iters,
+baseline-subtracted. Same harness as the 0.12.0 row above; only the dissolved
+`gust_mix-cm4.o` changed (the 2026-07 perf work).
+
+| synth codegen | native (LLVM) | dissolved | ratio vs LLVM | sound domain |
+|---|---|---|---|---|
+| 0.12.0 flag-off (historical) | 29.0 cyc | 64.0 cyc | 2.21× | full [0,2047] |
+| **0.40.0 `SHIFT_MASK_ELIDE` (current pin)** | 29.0 cyc | **42.0 cyc** | **1.448×** | full [0,2047] ✓ |
+| 0.40.0 `SYNTH_FACT_SPEC` (proof-carrying) | 29.0 cyc | 41.0 cyc | 1.413× | **[524,1524] only** |
+
+- **The 2026-07 ladder is confirmed on real M4 silicon: 2.21× → 1.448×.** Native
+  LLVM is unchanged (29.0 cyc/call — same compiler), so the −22 cyc/call (64→42) is
+  entirely the synth-side codegen work (mask elision + the accumulated 0.16→0.40
+  levers). Real-M4 **1.448×** tracks the qemu `-icount` **1.50×** closely (the M4
+  pipeline hides a hair more of the dissolved overhead than instruction-counting).
+- **The `SYNTH_FACT_SPEC` row is a proof-carrying, *specialized* measurement.** It is
+  faster (1.413×) but **sound only under the carried invariant `ch ∈ [524,1524]`** —
+  the bench's full-domain `[0,2047]` correctness gate **correctly FAILS** it, which is
+  the precondition made visible on hardware, not a defect. A clean in-range silicon
+  floor bench (mirroring `gust_floor_bench`'s proven-range harness, where the
+  source-level floor is 0.45×) is the follow-on. Not a committed pin (verify-only
+  synth build; premise not yet default).
+- **Fixed** a latent `run.sh` arg-parse bug (`${1:?... {g474re|f100}}` appended a
+  literal `}` to `$BOARD`). Two probes present (board ST-LINK + an ESP-JTAG); pass
+  `--probe <STLink VID:PID:serial>` explicitly.
