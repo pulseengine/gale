@@ -1,0 +1,18 @@
+# Standalone (not part of the gust workspace) — built ad-hoc for wasm32 + dissolve.
+# gust-OS driver breadth: I2C as a verified thin-seam iodev.
+[workspace]
+
+[package]
+name = "gust-i2c-thin"
+version = "0.1.0"
+edition = "2021"
+description = "gust:hal thin-seam I2C driver — STM32 I2C timing config + a Kani-proven master-transaction FSM (START→addr→data→STOP, ACK-all-but-last) in verified wasm, importing only the generic mmio capability"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1
