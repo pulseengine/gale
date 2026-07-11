@@ -1,0 +1,18 @@
+# Standalone (not part of the gust workspace) — built ad-hoc for wasm32 + dissolve.
+# gust-OS driver breadth: the independent watchdog (IWDG) as a verified thin-seam iodev.
+[workspace]
+
+[package]
+name = "gust-wdg-thin"
+version = "0.1.0"
+edition = "2021"
+description = "gust:hal thin-seam IWDG driver — STM32 independent-watchdog key-sequence + a Kani-proven lifecycle FSM (unlock→config→start→refresh, write-protection + cannot-un-start) in verified wasm, importing only the generic mmio capability. The module-level HW backstop for the partition-scheduler Health Monitor (gale#63)."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1
