@@ -41,6 +41,14 @@ entirely synth-side). Silicon **1.448×** ≈ qemu-`-icount` **1.50×**. Full ta
 proof-carrying `SYNTH_FACT_SPEC` variant (1.413×, sound only over the carried `[524,1524]` —
 the full-domain gate correctly flags it out-of-range): `silicon/RESULTS-g474re.md`.
 
+**On real RISC-V silicon (ESP32-C3 rev v0.4, 16 MHz systimer — the third arch):** the
+synth 0.40 pin measures **1.839× native LLVM** (271 → 500 milliticks/call, 2026-07-11),
+IDENTICAL over [0,2047] — down from the stale synth-0.12-era **2.12×**. The object shrank
+492 → 476 B (−16 B = `SYNTH_RV_CMP_SELECT` + `SYNTH_RV_SHIFT_FOLD`, both default-on), and
+that −16 B is now shown to move the on-silicon ratio, not just the byte count:
+`esp32c3/RESULTS.md`. Three architectures now measured on the current toolchain — M3 F100
+1.73×, M4 G474RE 1.448×, RV32 ESP32-C3 1.839× — same wasm, same dissolve pipeline.
+
 **Progress (measured, 2026-06-25): the ranked synth#428 asks shipped and
 delivered.** synth landed all four ARM perf levers default-on across three
 same-day releases — v0.13.0 cmp→select → IT-block predication fusion (the #1
@@ -159,8 +167,9 @@ synth#494 phase-2, still gated on select-arm elision + a verify build).
 **Still open:** (1) the RISC-V backend is now catching up — esp32c3
 `SYNTH_RV_CMP_SELECT` (0.28) + `SYNTH_RV_SHIFT_FOLD` (0.30.0) are default-on
 (−16 B combined vs the 0.12 baseline; synth#472 port closed), but the arithmetic
-levers still trail ARM and the on-silicon 2.12× ratio predates them (needs a board
-re-run);
+levers still trail ARM. The on-silicon ratio is now **re-measured on synth 0.40**:
+2.12× → **1.839×** (real ESP32-C3, board re-run done — the −16 B moved silicon cycles,
+not just bytes);
 (2) the dense `control_step` still register-exhausts under default-on local
 promotion (synth#474, confirmed on 0.15.0), so it builds with
 `SYNTH_NO_LOCAL_PROMOTE=1` and gets only three of the four levers (580 → 568 B).
