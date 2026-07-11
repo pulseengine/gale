@@ -32,3 +32,9 @@ docs:
   - docs
 
 results: results
+
+# Release readiness (rivet 0.23, #612): an artifact is release-ready when its
+# validate coverage rules pass (the V is closed), not when a status string flips —
+# the correct mode for gale's ASPICE V-model (verification is expressed via links).
+release:
+  require: coverage

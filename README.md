@@ -14,6 +14,18 @@
 
 Formally verified Rust replacement for Zephyr RTOS kernel primitives. ASIL-D targeted, triple-track verification: Verus (SMT/Z3) + Rocq (theorem proving) + Lean (scheduler/priority proofs).
 
+> **Honest reading of "formally verified"** (full claims ledger:
+> [docs/safety/verification-honesty.md](docs/safety/verification-honesty.md)):
+> the proofs are on the Rust/wasm **source** — Verus SMT on 39 modules (subject to
+> 133 named `external_body` trust units), 9 Rocq abstract-model invariant proofs
+> (poll/sched/thread_lifecycle are WIP `Admitted` stubs, not yet proven), and Lean
+> scheduling theory. Two limits stated up front: **(1)** Rocq/Lean reason about
+> abstract models, not the Rust directly; **(2)** the *shipped* artifact for the
+> wasm-dissolve line is native code from `meld→loom→synth` and is **differentially
+> tested against a reference wasm semantics, not proven equivalent** — there is no
+> translation-validation yet, so "end-to-end verified pipeline" is not claimed. The
+> engineering below is real; these bounds are what make each claim defensible.
+
 Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
 
 ## Modules

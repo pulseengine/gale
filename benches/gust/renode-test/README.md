@@ -31,9 +31,11 @@ target runs the control loop. This is the honest device-fit constraint.
 - **What's asserted (verified locally on the same Renode engine):** each
   dissolved ELF loads into its SRAM and the M3 executes the scheduler loop for
   ≥1 s with no early fault; the deterministic executed-instruction count is
-  logged (the fuel→cycles WCET seed; M3 has no cache → instr ≈ cycles). Measured:
-  `gust_control` = **0x162CB6 = 1,453,238 instr** over RunFor 2 s, no fault, SP at
-  the 64 KB top; the kernel ≈ 200 M instr on the 8 KB class.
+  logged (the fuel→cycles WCET seed; M3 has no cache → instr ≈ cycles). Measured
+  (synth 0.15.0 control_step): `gust_control` = **0x1605A4 = 1,442,724 instr** over
+  RunFor 2 s, no fault, SP at the 64 KB top (was 1,453,238 on synth 0.12.0 — the
+  three applicable levers; local-promotion is gated by synth#474 on this function);
+  the kernel ≈ 200 M instr on the 8 KB class.
 - **CI-first:** the hermetic Renode is the **linux** portable, so these run in
   CI / on Linux, not on a macOS host (the macOS targets are `incompatible` and
   skip). First green is in CI.
