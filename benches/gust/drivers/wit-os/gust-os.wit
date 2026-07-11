@@ -83,3 +83,19 @@ world time-provider {
     import gust:hal/mmio@0.1.0;
     export time;
 }
+
+/// Step-2 slice: time + log (the first BUFFER-carrying capability). `log.line`
+/// takes list<u8> → the CM canonical ABI needs a real shared linmem, so this node
+/// is bounded-SRAM (not 0), sized to fit the F100 8 KiB via synth --native-pointer-abi.
+world app-tl {
+    import time;
+    import log;
+    export run: func() -> u32;
+}
+world log-provider {
+    import gust:hal/mmio@0.1.0;
+    export log;
+}
+
+world app-ts { import time; import spawn; export run: func() -> u32; }
+world spawn-provider { export spawn; }
