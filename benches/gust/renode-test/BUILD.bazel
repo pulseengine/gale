@@ -58,3 +58,44 @@ renode_test(
         "REPL": ":m3_64k.repl",
     },
 )
+
+renode_test(
+    name = "gust-gpio-renode",
+    timeout = "short",
+    robot_test = "gust_gpio.robot",
+    variables_with_label = {
+        "ELF": ":gust_gpio.elf",
+        "REPL": ":gust_gpio.repl",
+    },
+)
+
+renode_test(
+    name = "gust-timer-renode",
+    timeout = "short",
+    robot_test = "gust_timer.robot",
+    variables_with_label = {
+        "ELF": ":gust_timer.elf",
+        "REPL": ":gust_timer.repl",
+    },
+)
+
+renode_test(
+    name = "gust-spi-renode",
+    timeout = "short",
+    robot_test = "gust_spi.robot",
+    variables_with_label = {
+        "ELF": ":gust_spi.elf",
+        "REPL": ":gust_spi.repl",
+    },
+)
+
+renode_test(
+    name = "gust-breadth-renode",
+    timeout = "short",
+    robot_test = "gust_breadth.robot",
+    variables_with_label = {
+        "ELF": ":gust_breadth.elf",
+        "REPL": ":gust_breadth.repl",
+    },
+)
+

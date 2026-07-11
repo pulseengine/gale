@@ -1,6 +1,12 @@
-(** * Formal Verification Proofs for Zephyr Thread Lifecycle
+(** * Zephyr Thread Lifecycle — invariant model (WIP STUB)
 
-    Proves properties about thread creation, priority management,
+    STATUS: WIP STUB — every theorem below is `Admitted` (0 Qed): statements
+    without proofs. Proof scaffolding, NOT proven results; do not cite as formal
+    verification. See docs/safety/verification-honesty.md (claims ledger,
+    2026-07-08). Fully-proven Rocq modules: sem/mutex/msgq/pipe/stack/condvar/
+    event/mem_slab/timer.
+
+    (Intended) properties about thread creation, priority management,
     stack invariants, and the ThreadTracker resource counter.
     Complements Verus SMT proofs in plain/src/thread_lifecycle.rs.
 

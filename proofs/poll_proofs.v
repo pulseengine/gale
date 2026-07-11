@@ -1,6 +1,12 @@
-(** * Formal Verification Proofs for Zephyr Poll Event State Machine
+(** * Zephyr Poll Event State Machine — invariant model (WIP STUB)
 
-    Proves properties about the poll event model and poll signal.
+    STATUS: WIP STUB — every theorem below is `Admitted` (0 Qed): statements
+    without proofs. This is proof scaffolding, NOT proven results; do not cite it
+    as formal verification. See docs/safety/verification-honesty.md (claims ledger,
+    2026-07-08). The fully-proven Rocq modules are sem/mutex/msgq/pipe/stack/
+    condvar/event/mem_slab/timer.
+
+    (Intended) properties about the poll event model and poll signal.
     Complements Verus SMT proofs in plain/src/poll.rs.
 
     State machine for PollSignal:

@@ -83,3 +83,126 @@ A reader citing the bench numbers should know:
 - The verified bodies are SMT-checked.
 - The `external_body` shims are reviewed-by-eye against the C they bridge to, with FFI-contract docstrings.
 - `verus --no-cheating` would intentionally reject these and is not the gate we run.
+
+---
+
+## Update 2026-07-08 — claims ledger (prompted by external formal-methods review)
+
+A formal-verification researcher raised critical views of our "formal proof" claims.
+That is the external check we otherwise lack, and it is correct on the substance. This
+section states, per claim, exactly what is established, at what level, and under what
+trusted base — so every claim we make is defensible, and the headline framing is
+reconciled with the honest internal picture above.
+
+### The overarching distinction we must always make: SOURCE vs SHIPPED
+
+Every proof/check below establishes a property of a **source** artifact — the
+Verus-annotated Rust, or the wasm compiled from it. The **shipped** artifact for the
+gust/dissolve line is *native code produced by `meld → loom → synth`*, a young,
+fast-moving toolchain (the "vibe-coded interpreter/compiler" an external reviewer
+correctly flagged). There is **no translation-validation and no equivalence proof**
+that the dissolve preserves the proven semantics. The shipped binary's correctness
+therefore rests on three things, only the first of which is a proof:
+
+1. source-level proofs/checks (Verus/Rocq/Kani — on the Rust/wasm, see below);
+2. **differential testing** — `wasmtime` (reference semantics) vs the dissolved native,
+   over sampled or finite input ranges (a *test*, not a proof);
+3. **trust in the dissolve toolchain** (synth/loom/meld), which is not itself verified.
+
+Honest one-liner: **"source-level formally checked; the shipped dissolved artifact is
+differentially tested against a reference semantics, not proven equivalent."** Any
+claim of an "end-to-end formally verified pipeline" or "one formally-verified artifact"
+across the wasm→native boundary is **not currently supported** and must not be made.
+
+### Rocq: real proofs vs shipped stubs
+
+`proofs/*.v` is **not uniformly proven**. Ground truth (counts of `Qed.` vs `Admitted.`):
+
+- **9 files fully proven (0 `Admitted`):** sem (82 `Qed`), pipe (10), stack (10),
+  mutex (9), msgq (9), condvar (8), event (7), mem_slab (7), timer (7). These are the
+  "9 abstract invariant proofs" the README counts, and the count is accurate.
+- **3 files are 100% `Admitted` stubs (0 `Qed`):** `poll_proofs.v` (22), `sched_proofs.v`
+  (23), `thread_lifecycle_proofs.v` (29) = **74 admitted theorems** shipped in the same
+  directory. Several carry `(* … Coq 9.0 tactic … *)` notes — they are proof *scaffolding*,
+  not proofs. A reader browsing `proofs/` will reasonably read these as "Rocq proofs";
+  they are not. **These must be labelled WIP/stub, and the "Rocq" claim must say "9 of 12
+  invariant modules proven; poll/sched/thread_lifecycle are admitted stubs."**
+- **All Rocq is over hand-written Z-valued models, NOT connected to the Rust** (README
+  line 124 already says this). Rocq here is *design-level* invariant checking, not an
+  implementation proof. Correct framing: "abstract-model theorem proving for design
+  validation," never "the implementation is Rocq-proven."
+
+### Kani: which harnesses are exhaustive vs bounded
+
+Kani is bounded model checking. A harness over `kani::any::<uN>()` with **no loop** is
+*exhaustive over the full type domain* (a genuine proof of the property for all inputs).
+A harness that **`kani::assume`s a bound** (`assume(cap <= 16)`) or contains a loop with an
+unwind bound proves the property **only within that bound** — and the bound's sufficiency
+is not itself argued.
+
+- The kernel harnesses in `tests/kani_harnesses.rs` / `kani_equivalence.rs` are largely
+  the **bounded** kind (`assume(count<=20)`, `assume(capacity<=100)`, `assume(msg_size<=256)`).
+  Defensible statement: "bounded-checked up to N," **not** "proven for all inputs."
+- The gust **driver** decision cores are the **exhaustive** kind and are the stronger
+  claim: `usart_rx_decide` over all 2³² SR (uart-thin), and gpio-thin's 4 harnesses are
+  straight-line over `kani::any()` (pin-config total/injective/mode-consistent, slot
+  in-range over all `u32`, unknown-mode-safe) — genuinely complete **for the source
+  decision function**. dma-own's 6 harnesses cover a small-bounded ring (RING=4); state
+  "proven for the modelled ring size," not unbounded. In all cases the proof is of the
+  **source** logic; the dissolved object is differentially checked, not proven (see above).
+
+### gust / dissolve perf-and-fact claims — precise status
+
+- **"0.45× proof-carrying floor" (`gust_floor_bench`)** — is an **exhaustive differential
+  test over the finite range [524,1524]** (1001 inputs): `mix_proven ≡ mix_native ≡ gust_mix`,
+  bit-for-bit. That is a *proof of equivalence for those 1001 inputs only* — sound for the
+  range, silent outside it. It does **not** verify the dissolve toolchain and does not
+  prove the specialization sound in general. Correct wording: "exhaustive differential
+  check over the proven range," not "soundness gate." The *0.45×* is a measured
+  qemu-`-icount` ratio, real; the "proof-carrying" adjective describes synth's design
+  intent (synth#494 ordeal/LRAT), which is **synth's** claim to substantiate, not ours.
+- **"wsc.facts phase-1 verified" (`wsc-facts-phase1.sh`)** — is a **byte-identity
+  regression test** (facts-carrying vs stripped compile) plus a fail-safe-warning check.
+  It establishes that phase-1 ingestion changes no bytes; it proves nothing about phase-2
+  consumption or about correctness. The script's own header says "regression test /
+  tripwire" — keep that framing; do not upgrade it to "verified."
+- **"the same SQ/CQ model, proof-carrying" (RTIO note, `FIND-DRV-RTIO-001`)** — the
+  `own<buffer>` ownership property is Kani-proven **at the source FSM level** (dma-own) and
+  is a Component-Model *type* property of the WIT; it is a defensible *source/design* claim.
+  It is **not** a claim that the shipped native enforces ownership at runtime (there is no
+  runtime; the guarantee is compile-time/type-level and inherits the source-vs-shipped gap).
+
+### Reconciling the headline
+
+`README.md:15` ("Formally verified Rust replacement … triple-track verification") and the
+architecture doc's "one formally-verified artifact" read as stronger than the honest
+internal picture in this file. They should be brought into line (a positioning decision):
+lead with what is *actually strong* — comprehensive functional + differential testing,
+real Verus SMT on the source (with the 133 `external_body` trust units named), 9 real Rocq
+model proofs — and state the limits up front: **(a)** the shipped dissolved artifact is
+tested against a reference semantics, not proven equivalent to the verified source
+(source-vs-shipped); and **(b)** a *green formal-verification CI badge is not "all
+proven"* — see the CI-cadence correction below. Nothing here weakens the engineering; it
+makes each claim one a skeptic cannot dismantle.
+
+### CORRECTION to the 2026-03-22 "does NOT run in CI" text above
+
+The **"The Gap" / "does NOT run in CI (local only)"** statements earlier in this file
+(dated 2026-03-22) are **superseded**: `.github/workflows/formal-verification.yml` now
+runs all three tracks on **push + pull_request + weekly cron** — Verus (`bazel test
+//:verus_test`), Kani (185 harnesses: `cargo kani --tests` + `--all-features`), and Rocq
+(13 files via `coq-of-rust` + Bazel). So formal verification **is** CI-enforced today.
+Two honest caveats remain, and they are sharper than "not in CI":
+
+- **A green Rocq job does not mean the theorems are proven.** Coq *accepts* `Admitted.`
+  (it is an axiom-like escape hatch that type-checks), so the Rocq CI job passes green
+  even though `poll`/`sched`/`thread_lifecycle` are 74 admitted stubs. "Rocq CI green" ⇒
+  "the files elaborate," NOT "the properties hold." (The 9 real modules are genuinely
+  `Qed`.)
+- **The Verus job is not `--no-cheating`.** It passes with the 133 `external_body` trust
+  units accepted; a maximalist `--no-cheating` run would (correctly) fail. So "Verus CI
+  green" ⇒ "the checked bodies verify," NOT "every line is SMT-proven."
+
+Net: formal tools run in CI (good — better than the old doc said), but a green badge
+certifies *elaboration + the checked subset*, not total proof. That distinction is the
+honest one to make.

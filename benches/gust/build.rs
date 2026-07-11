@@ -24,13 +24,20 @@ fn main() {
     // object (no linmem .bss — gust_mix is pure scalar). Linked into the codegen
     // micro-bench only, so it can time the native (LLVM) vs dissolved (synth)
     // lowering of the SAME source. Scoped via -bin= so other bins are unaffected.
-    // Reproduce (loom 1.1.16 + synth 0.15.0): loom optimize gust_kernel.wasm
-    //   --passes inline (merges the gust_mix wrapper into its body, loom#228),
-    //   strip exports to {memory, gust_mix}, then synth compile <stripped>.wasm
-    //   --target cortex-m3 --all-exports --relocatable. COMPARE.md tracks the
-    //   measured 2.81x -> 2.63x -> 1.81x progression: synth v0.13-0.15 shipped the
-    //   four #428 levers default-on (cmp->select fusion, stack-reload elim, local
-    //   promotion, immediate-shift fold), -31% cycles / -32% .text, bit-identical.
+    // Reproduce (loom 1.1.18 + synth 0.38.0, SYNTH_SHIFT_MASK_ELIDE=1): loom optimize
+    //   gust_kernel.wasm --passes inline (merges the gust_mix wrapper into its body,
+    //   loom#228), strip exports to {memory, gust_mix}, then
+    //   SYNTH_SHIFT_MASK_ELIDE=1 synth compile <stripped>.wasm --target cortex-m3
+    //   --all-exports --relocatable (cortex-m4 for the cm4 .o).
+    //   COMPARE.md tracks 2.81x -> 2.63x -> 1.81x -> 1.69x -> 1.50x: synth v0.13-0.15
+    //   shipped the four #428 levers default-on; 0.37.1 refreshed a STALE ~0.15-era
+    //   pin (90 B / 0.725 t) to 82 B / 0.675 t; 0.38.0's SYNTH_SHIFT_MASK_ELIDE (#686,
+    //   the beat-LLVM lever gale filed) elides #682's mod-32 mask where the shift
+    //   amount is provably <32 -> 68 B / 0.600 t / 1.50x, -11% cycles vs 0.37.1,
+    //   soundness-gated (gust_floor_bench mix_proven == native == gust_mix). NOTE: the
+    //   relocatable .o grew 432 -> 496 B from 0.38.0's new ELF metadata (#656 STB_LOCAL
+    //   + #637 .ARM.attributes) — dropped/merged at link, so flash tracks the 68 B
+    //   .text. The flag is REQUIRED to rebuild these .o's; 0.38.0 DEFAULT is 1.69x.
     let kobj = Path::new(&manifest).join("wasm-kernel/gust_mix-cm3.o");
     if kobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_codegen_bench={}", kobj.display());
@@ -100,6 +107,55 @@ fn main() {
     if uobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_uart={}", uobj.display());
         println!("cargo:rerun-if-changed={}", uobj.display());
+    }
+    // The dissolved thin-seam GPIO driver (drivers/gpio-thin → loom → synth): the
+    // entire STM32F1 GPIO protocol in verified wasm (Kani 4/4, 0 new TCB atoms —
+    // mmio only). The gust_gpio demonstrator links BOTH gpio + uart drivers: it
+    // exercises gpio_configure/set/clear and emits the register-effect results over
+    // USART1 for the Renode content-gate (renode-test/gust_gpio.robot).
+    let gobj = Path::new(&manifest).join("drivers/gpio-thin/gpio-thin-cm3.o");
+    if gobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_gpio={}", gobj.display());
+        println!("cargo:rerun-if-changed={}", gobj.display());
+    }
+    let tobj = Path::new(&manifest).join("drivers/timer-thin/timer-thin-cm3.o");
+    if tobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_timer={}", tobj.display());
+        println!("cargo:rerun-if-changed={}", tobj.display());
+    }
+    // The dissolved thin-seam SPI driver (drivers/spi-thin → loom → synth): the
+    // STM32F1 SPI protocol (CR1 mode/baud config + full-duplex byte shift) and a
+    // Kani-proven transfer FSM (SQE→CQE, exclusive-bus + no-lost-byte) in verified
+    // wasm (Kani 6/6, 0 new TCB atoms — mmio only). The gust_spi demonstrator
+    // asserts the CR1 write + byte shift + FSM over USART1 for the content-gate
+    // (renode-test/gust_spi.robot).
+    let spobj = Path::new(&manifest).join("drivers/spi-thin/spi-thin-cm3.o");
+    if spobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_spi={}", spobj.display());
+        // gust_spi_probe: the LOCAL qemu-semihosting probe of the SAME dissolved .o
+        // (RAM-window register effects + FSM), run before the Renode gate.
+        println!("cargo:rustc-link-arg-bin=gust_spi_probe={}", spobj.display());
+        println!("cargo:rerun-if-changed={}", spobj.display());
+    }
+    // The 4-driver breadth node (REQ-DRV-BREADTH-001): gpio+timer+spi+uart, each a
+    // verified-wasm gust:hal component, wac/meld-fused → ONE dissolved .o exporting
+    // all 20 protocol fns (C-renamed), 0 SRAM, no func_N collision. Built by
+    // drivers/build-breadth.sh. gust_breadth (Renode gate) + gust_breadth_probe
+    // (local qemu liveness probe) link it; bridge = read32/write32/poll (3 atoms).
+    let bobj = Path::new(&manifest).join("drivers/breadth/breadth-cm3.o");
+    if bobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_breadth={}", bobj.display());
+        println!("cargo:rustc-link-arg-bin=gust_breadth_probe={}", bobj.display());
+        println!("cargo:rerun-if-changed={}", bobj.display());
+    }
+    // gust:os v0.4.0 syscall seam, step-1 node (drivers/os-node/os-time-cm3.o): an
+    // app importing only gust:os/time, wac-plugged with a time provider, dissolved
+    // to one 0-SRAM object exporting `run`, importing only read32. gust_os_probe is
+    // the local qemu liveness check.
+    let osobj = Path::new(&manifest).join("drivers/os-node/os-time-cm3.o");
+    if osobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_os_probe={}", osobj.display());
+        println!("cargo:rerun-if-changed={}", osobj.display());
     }
     println!("cargo:rerun-if-changed=build.rs");
 }

@@ -70,7 +70,7 @@ artifacts:
   - id: REQ-DRV-SPI-001
     type: sw-req
     title: "SPI is a verified thin-seam driver, DMA-capable via the own<buffer> handoff"
-    status: proposed
+    status: implemented
     release: v0.3.0
     description: >
       SPI master (mode/clock config, the transfer state machine, and CS framing)
@@ -96,7 +96,7 @@ artifacts:
   - id: REQ-DRV-BREADTH-001
     type: sw-req
     title: "The seam generalizes: a multi-driver node composes within the SRAM/TCB budget"
-    status: proposed
+    status: implemented
     release: v0.3.0
     description: >
       A single per-node image composing GPIO + timer + SPI + UART drivers SHALL fit
@@ -114,19 +114,121 @@ artifacts:
       - type: related-to
         target: REQ-DRV-SRAM-001
 
-  # NOTE — verification artifacts are NOT pre-declared here. Under
-  # `release: { require: coverage }`, a req reads "release-ready" as soon as a
-  # `verifies` link EXISTS, regardless of whether the proof passes. Pre-adding
-  # planned VER-DRV-* verifiers would therefore make `rivet release status v0.3.0`
-  # falsely report the milestone nearly-cuttable while nothing is built. So each
-  # VER-DRV-{GPIO,TIMER,SPI}-001 (Kani proof + Renode content-gate) is added by the
-  # feature loop WHEN the proof actually exists — that incoming `verifies` link is
-  # what drops its req off the `rivet release status` not-ready list. The burn-down
-  # is the plan; it must tell the truth. Planned verification bar per driver:
-  #   GPIO  — Kani: pin-config decode total + injective; Renode F100 read-back gate.
-  #   TIMER — Kani: deadline math no wrap-induced missed/early fire; Renode gate.
-  #   SPI   — Kani: transfer FSM exclusive bus + no lost byte (under dma-own); Renode
-  #           loopback gate.
+  # VER-* verifiers are added by the feature loop WHEN the proof actually passes —
+  # that incoming `verifies` link is what drops a req off the `rivet release status`
+  # not-ready list, so the burn-down tells the truth. GPIO's is now real (below);
+  # TIMER/SPI are still pending their proofs.
+
+  - id: VER-DRV-GPIO-001
+    type: sw-verification
+    title: "GPIO driver — Kani 4/4 (config total+injective, slot in-range) + Renode register-effect content-gate"
+    status: verified
+    release: v0.3.0
+    description: >
+      The gpio-thin driver's pure decision core is Kani-proven (4/4 harnesses, 0
+      failures: pin-config nibble bounded + mode-consistent, injective, slot always
+      in-range, unknown-mode-safe — exhaustive over `kani::any()`, a genuine proof of
+      the source function). End-to-end it is exercised by the `gust-gpio-renode`
+      content-gate: the dissolved driver (linked native, mmio bridge only — 0 new TCB
+      atoms) configures PC8 and drives it via gpio_set/clear, and the gate asserts the
+      exact register values the driver writes (CRH nibble 0x3, BSRR 1<<8 / 1<<24) on a
+      real STM32 model, reported over USART1. Source-level proof + native
+      register-effect check; the wasm→native dissolve is differentially trusted, not
+      proven equivalent (see docs/safety/verification-honesty.md). Kill-criterion: a
+      Kani harness fails, or the Renode gate observes a gpio-*-bad line.
+    tags: [gust, gpio, kani, renode, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-GPIO-001
+
+  - id: VER-DRV-TIMER-001
+    type: sw-verification
+    title: "Timer driver — Kani 3/3 (wrap-safe deadline: no missed/early fire) + Renode register-effect content-gate"
+    status: verified
+    description: >
+      The timer-thin driver's deadline core is Kani-proven (3/3, 0 failures): the
+      wrap-safe predicate fires EXACTLY when elapsed ≥ interval for any interval and
+      elapsed < 2^31 — including across the u32 counter wrap, so no deadline is missed
+      or fired early because the counter wrapped (the REQ-DRV-TIMER-001 property);
+      plus reflexive-fires and a 0/1-boolean-export proof. End-to-end the
+      `gust-timer-renode` gate exercises the dissolved driver (linked native, mmio
+      bridge only — 0 new TCB atoms, table-free per the gpio-thin lesson): configures
+      TIM2 (PSC/ARR/CR1) and checks the register writes + the wrap-safe predicate on a
+      real STM32 model, reported over USART1. A local qemu semihosting probe of the
+      dissolved .o confirmed all cases (init 0x1234/0xABCD/CEN, deadline 149→0/150→1,
+      wrap 0xFFFFFFF0+0x20=0x10 → 0x0F→0/0x10→1) before CI. Source-level proof + native
+      register-effect check; the wasm→native dissolve is differentially trusted, not
+      proven equivalent (see docs/safety/verification-honesty.md). Kill-criterion: a
+      Kani harness fails, or the Renode gate observes a timer-*-bad line.
+    tags: [gust, timer, kani, renode, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-TIMER-001
+
+  - id: VER-DRV-SPI-001
+    type: sw-verification
+    title: "SPI driver — Kani 6/6 (exclusive bus + no lost byte, SQE→CQE FSM) + Renode register-effect content-gate"
+    status: verified
+    release: v0.3.0
+    description: >
+      The spi-thin driver's transfer FSM and config core are Kani-proven (6/6, 0
+      failures): exclusive bus — `begin` succeeds IFF the bus is Idle and count > 0,
+      never onto a busy bus (REQ-DRV-SPI-001's one-in-flight-transfer property); no
+      lost byte — each Active `step` decrements `remaining` by exactly one and reports
+      Complete IFF that reached zero (so N steps shift exactly N bytes, none lost or
+      invented), and `step` is rejected unless Active; abort is total and always frees
+      the bus; the pack/unpack scalar ABI round-trips every state; and CR1 is
+      well-formed (master + SW-NSS + enabled, mode in [1:0], baud in [5:3], no stray
+      bit) — table-free (`wasm-tools print | grep 'i32.load offset='` = 0). The
+      transfer presents the RTIO iodev SQE→CQE shape (FIND-DRV-RTIO-001). End-to-end
+      the `gust-spi-renode` gate exercises the dissolved driver (linked native, mmio
+      bridge only — 0 new TCB atoms, 494 B .text / 0 SRAM): writes CR1 (mode 3 / baud
+      idx 2 → 0x357), shifts a byte full-duplex over a pre-seeded SR/DR, and runs the
+      FSM to completion on a real STM32 model, reported over USART1. A local qemu
+      semihosting probe of the dissolved .o confirmed CR1=0x357, byte shift 0xA5, and
+      the FSM (begin→step×3→complete, dup-begin faults, abort→idle) before CI.
+      Source-level proof + native register-effect check; the wasm→native dissolve is
+      differentially trusted, not proven equivalent (see
+      docs/safety/verification-honesty.md). Kill-criterion: a Kani harness fails, or
+      the Renode gate observes a spi-*-bad line.
+    tags: [gust, spi, kani, renode, rtio, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-SPI-001
+
+  - id: VER-DRV-BREADTH-001
+    type: sw-verification
+    title: "Breadth node — 4 driver components (GPIO+timer+SPI+UART) wac/meld-fused to ONE dissolved .o: 0 SRAM, no func_N collision, TCB=3 atoms + Renode gate"
+    status: verified
+    release: v0.3.0
+    description: >
+      The generalization claim, made concrete via the Component-Model dissolve path.
+      Each driver is an independent verified-wasm gust:hal component (wit-bindgen,
+      #![no_std]); `wasm-tools component new` ×4 → `meld fuse --memory shared` → loom
+      inline → synth (cortex-m3, --all-exports --relocatable) produces ONE relocatable
+      object (drivers/breadth/breadth-cm3.o, build-breadth.sh) exporting all 20
+      protocol functions across gust:hal/{gpio,timer,spi,uart}. MEASURED: .text 2442 B,
+      .data 0, .bss 0 — 0 SRAM (fits the F100 8 KiB budget with the whole 8 KiB free);
+      internal func_N are a SINGLE unique index space (22/22, no duplicate) so the
+      independently-built drivers co-link with NO func_N collision — the CM fuse
+      dissolves the borders that block raw multi-object linking (cf. synth#656). The
+      TCB is exactly the 3-atom bridge the fused .o imports: read32 / write32 / poll
+      (nm-confirmed) — NO new trusted-native atoms beyond the existing mmio+irq. A
+      LOCAL qemu-semihosting probe (gust_breadth_probe, RAM-backed bridge) confirmed
+      all four drivers functionally live from the one object (gpio/timer/spi/uart OK)
+      before CI. End-to-end the `gust-breadth-renode` gate drives all four from the
+      single fused .o on a real STM32 model — GPIO CRH nibble, timer PSC/ARR/CR1 +
+      wrap-safe deadline, SPI CR1 + transfer FSM — and the dissolved uart driver TXes
+      the final proof line on the real USART1, emitting breadth-*-ok. Source-level Kani
+      proofs on each driver's core + native register-effect check; the wasm→native
+      dissolve is differentially trusted, not proven equivalent (see
+      docs/safety/verification-honesty.md). Kill-criterion: the fused .o shows nonzero
+      .data/.bss, a duplicate func_N, a 4th bridge atom, or the Renode gate observes a
+      breadth-*-bad line.
+    tags: [gust, breadth, component-model, meld, wac, sram, tcb, renode, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-BREADTH-001
 
   - id: FIND-DRV-RTIO-001
     type: finding

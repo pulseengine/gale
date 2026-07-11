@@ -52,6 +52,10 @@ jobs:
             //:gust-control-renode \
             //:gust-f100-renode \
             //:gust-uart-renode \
+            //:gust-gpio-renode \
+            //:gust-timer-renode \
+            //:gust-spi-renode \
+            //:gust-breadth-renode \
             --test_output=all
 
       - name: Upload Renode test logs

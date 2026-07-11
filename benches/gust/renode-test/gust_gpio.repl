@@ -1,0 +1,22 @@
+// Cortex-M3 + 64 KB SRAM / 512 KB flash (STM32F103RE-class), plus a RAM-mapped
+// GPIOC register window for the thin-seam GPIO driver content-gate. The gate
+// asserts the exact register values the DRIVER writes (CRH config nibble, BSRR
+// set/reset) — its verified logic — so a plain memory region at the GPIOC base is
+// the correct, deterministic model (no dependence on Renode's F1 GPIO peripheral
+// electrical behaviour). USART1 is the real STM32 UART model, the report channel.
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m3"
+    nvic: nvic
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    -> cpu@0
+flash: Memory.MappedMemory @ sysbus 0x0
+    size: 0x80000
+sram: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x10000
+// GPIOC register window (0x40011000) as plain memory — the driver's RMW of CRH and
+// its BSRR writes store and read back deterministically; the gate checks those bytes.
+gpioc: Memory.MappedMemory @ sysbus 0x40011000
+    size: 0x400
+// USART1 — real STM32 USART model, the gate's report channel to the robot tester.
+usart1: UART.STM32_UART @ sysbus <0x40013800, +0x100>
+    -> nvic@37

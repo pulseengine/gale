@@ -1,0 +1,18 @@
+// Cortex-M3 + 64 KB SRAM / 512 KB flash, plus a RAM-mapped TIM2 register window for
+// the thin-seam timer driver content-gate. The gate asserts the register values the
+// DRIVER writes (PSC/ARR/CR1) + its Kani-proven wrap-safe deadline math on a plain
+// memory region — deterministic, no dependence on Renode's timer peripheral model.
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m3"
+    nvic: nvic
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    -> cpu@0
+flash: Memory.MappedMemory @ sysbus 0x0
+    size: 0x80000
+sram: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x10000
+// TIM2 register window (0x40000000) as plain memory — driver PSC/ARR/CR1 writes read back.
+tim2: Memory.MappedMemory @ sysbus 0x40000000
+    size: 0x400
+usart1: UART.STM32_UART @ sysbus <0x40013800, +0x100>
+    -> nvic@37

@@ -71,9 +71,31 @@ jobs:
 
       - name: Install Rust + wasm32 target
         run: |
+          # ci-base ships no curl; install it first (same pattern as coverage.yml
+          # and the engine-bench-renode-* workflows in this repo).
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           . /root/.cargo/env
           rustup target add wasm32-unknown-unknown
+
+      - name: Install matching Clang + LLD/wasm-ld (apt.llvm.org)
+        run: |
+          # build-wasm-dist.sh needs clang(wasm32) + wasm-ld; ci-base has neither.
+          # Match clang's LLVM major to rustc's bundled LLVM (same pattern as the
+          # engine-bench-renode-lto / llvm-lto workflows in this repo).
+          . /root/.cargo/env
+          RUST_LLVM=$(rustc -vV | grep 'LLVM version' | grep -o '[0-9]*' | head -1)
+          echo "Rustc LLVM major: ${RUST_LLVM}"
+          apt-get install -y -qq wget lsb-release software-properties-common gnupg > /dev/null 2>&1
+          wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- "${RUST_LLVM}" all
+          update-alternatives --install /usr/bin/clang        clang        /usr/bin/clang-${RUST_LLVM}        200
+          update-alternatives --install /usr/bin/wasm-ld      wasm-ld      /usr/bin/wasm-ld-${RUST_LLVM}      200
+          # llvm-objcopy does build-wasm-dist.sh's symbol renames (--redefine-sym /
+          # --keep-global-symbol) — it's ELF-arch-agnostic, so no Zephyr SDK needed.
+          update-alternatives --install /usr/bin/llvm-objcopy llvm-objcopy /usr/bin/llvm-objcopy-${RUST_LLVM} 200
+          echo "Clang:        $(clang --version | head -1)"
+          echo "wasm-ld:      $(wasm-ld --version | head -1)"
+          echo "llvm-objcopy: $(llvm-objcopy --version | head -1)"
 
       - name: Install pinned loom + synth
         run: |
@@ -84,12 +106,11 @@ jobs:
           # additive hardening over v0.11.48, all three modules build clean.
           cargo install loom-cli --git https://github.com/pulseengine/loom --tag v1.1.14 --locked
           cargo install synth-cli --git https://github.com/pulseengine/synth --tag v0.11.50 --locked
-
-      - name: Install arm toolchain (objcopy for the import renames)
-        run: |
-          pip3 install west
-          west sdk install -t arm-zephyr-eabi || true
-          echo "$HOME/zephyr-sdk/arm-zephyr-eabi/bin" >> "$GITHUB_PATH" || true
+          # wasm-tools produces the .wat evidence files (build-wasm-dist.sh); ci-base
+          # has neither loom/synth nor wasm-tools. Without it `wasm-tools print` fails
+          # silently → 0-byte .wat → GitHub rejects the asset upload (HTTP 400 Bad
+          # Content-Length). Pin for reproducibility (recorded via build-env).
+          cargo install wasm-tools --version 1.245.1 --locked
 
       - name: Build distribution
         env:
@@ -97,7 +118,12 @@ jobs:
         run: |
           set -euo pipefail
           . /root/.cargo/env
-          export TC=arm-zephyr-eabi
+          # build-wasm-dist.sh resolves objcopy as ${TC}-objcopy; TC=llvm → llvm-objcopy
+          # (installed above). The renames are pure symbol-table ops (--redefine-sym /
+          # --keep-global-symbol), ELF-arch-agnostic, so no arm-zephyr-eabi SDK needed —
+          # `west sdk install` requires a west workspace and the SDK is NOT pre-baked in
+          # ci-base:v0.29.0 (the working engine-bench workflows west-init a workspace first).
+          export TC=llvm
           VERSION="${INPUT_TAG:-${GITHUB_REF#refs/tags/}}"
           scripts/build-wasm-dist.sh dist "$VERSION"
           ls -la dist/

@@ -100,7 +100,7 @@ artifacts:
     type: sw-req
     title: "DMA completion is a kiln waitable; no host Future crosses the wasm boundary"
     status: proposed
-    release: v0.2.0
+    release: v0.2.1
     description: >
       A transfer SHALL resolve via the existing split-phase pattern: the completion
       IRQ wakes a kiln waitable that resolves the future<own<dma-buffer>>, keeping DMA
@@ -117,8 +117,8 @@ artifacts:
   - id: DD-DMA-ENFORCE-001
     type: sw-detail-design
     title: "Ownership enforced BOTH at composition (own<T>) and at runtime (Kani-proven FSM)"
-    status: proposed
-    release: v0.2.0
+    status: accepted
+    release: v0.2.1
     description: >
       CM own<T> move-checks live at the wac/meld composition layer, but synth
       dissolves core wasm — so the guarantee is encoded twice, deliberately: the WIT
@@ -139,7 +139,7 @@ artifacts:
     type: sw-detail-design
     title: "synth identifies the DMA-owned window via a dedicated shared segment in meld-fused memory"
     status: proposed
-    release: v0.2.0
+    release: v0.2.1
     description: >
       The DMA region is a dedicated, marked segment in the meld-fused merged memory
       that synth treats as externally-mutable (no caching loads across the transfer
@@ -307,3 +307,33 @@ artifacts:
         target: SAC-DMA-SEAM
       - type: related-to
         target: REQ-DMA-OWN-001
+
+  # ---- v0.2.1 verifier (trace-close against the already-proven dma-own core) ----
+  # DD-DMA-ENFORCE-001 is a design DECISION (sw-detail-design), not a requirement, so
+  # it is not `verifies`-targeted — it is ACCEPTED (decided + implemented by dma-own's
+  # Kani-proven ownership FSM + the CM own<dma-buffer> move in gust:hal/dma). Its
+  # parent reqs (REQ-DMA-VERIFY/BARRIER/STREAM-001) carry the machine-checked proof via
+  # VER-DMA-KANI. REQ-DMA-ASYNC-001 IS a requirement, so it gets a real verifier:
+  - id: VER-DMA-ASYNC-001
+    type: sw-verification
+    title: "DMA completion is a kiln waitable — no host Future crosses the wasm boundary"
+    status: verified
+    release: v0.2.1
+    description: >
+      REQ-DMA-ASYNC-001. The dissolved dma-own exports `dma_poll_complete(state,
+      channel)` (drivers/dma-own): a split-phase, non-blocking poll that calls the
+      trusted `dma_irq_poll(channel)` seam atom, and on a fired IRQ transitions the
+      ownership FSM (Dma→Wasm) emitting the invalidate+DMB barrier and returning the
+      re-owned scalar state; when not fired it returns the input state unchanged (the
+      kiln poll yields to the scheduler). No `future`/`Future` value is constructed on
+      or crossed from the host side — completion is a WASM-side scalar state transition
+      driven by the IRQ-poll atom, which is exactly the kiln-waitable model (the WIT's
+      `future<own<dma-buffer>>` is a Component-Model future resolved on-device by the
+      IRQ, not a host executor Future). TCB unchanged: dma_irq_poll is one of the 3
+      existing DMA seam atoms (VER-DMA-TCB), no new trusted-native surface. Kill-criterion:
+      a host Future/executor appears across the seam, or completion blocks the scheduler
+      instead of yielding.
+    tags: [gust, dma, async, kiln, rtio, verification]
+    links:
+      - type: verifies
+        target: REQ-DMA-ASYNC-001
