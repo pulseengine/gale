@@ -1,0 +1,18 @@
+# Standalone (not part of the gust workspace) — built ad-hoc for wasm32 + dissolve.
+# gust-OS driver breadth: DAC as a verified thin-seam iodev.
+[workspace]
+
+[package]
+name = "gust-dac-thin"
+version = "0.1.0"
+edition = "2021"
+description = "gust:hal thin-seam DAC driver — STM32 DAC channel/trigger config + a Kani-proven software-triggered output FSM (enable→load→trigger→output, glitch-free: output changes only on trigger, 12-bit range clamp) in verified wasm, importing only the generic mmio capability"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1
