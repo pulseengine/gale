@@ -34,6 +34,13 @@ cycles on M3), with a correctness gate (native ≡ dissolved, bit-identical over
 | dissolved, **0.38.0 mask-elide** | **0.600** | **68 B** | 8 B | **loom 1.1.18 + synth 0.38.0 `SYNTH_SHIFT_MASK_ELIDE=1`** |
 | **ratio vs LLVM** | **2.81× → 2.63× → 1.81× → 1.69× → 1.50×** | −48 % | — | — |
 
+**On real M4 silicon (NUCLEO-G474RE, DWT CYCCNT — not qemu):** the current pin measures
+**1.448× native LLVM** (29.0 → 42.0 cyc/call, 2026-07-11), confirming the 2026-07 ladder on
+hardware (vs 2.21× on synth 0.12.0; native LLVM unchanged at 29.0 cyc, so the −22 cyc/call is
+entirely synth-side). Silicon **1.448×** ≈ qemu-`-icount` **1.50×**. Full table + the
+proof-carrying `SYNTH_FACT_SPEC` variant (1.413×, sound only over the carried `[524,1524]` —
+the full-domain gate correctly flags it out-of-range): `silicon/RESULTS-g474re.md`.
+
 **Progress (measured, 2026-06-25): the ranked synth#428 asks shipped and
 delivered.** synth landed all four ARM perf levers default-on across three
 same-day releases — v0.13.0 cmp→select → IT-block predication fusion (the #1

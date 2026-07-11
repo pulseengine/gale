@@ -13,7 +13,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BENCH="$(dirname "$HERE")"   # benches/gust
-BOARD="${1:?usage: run.sh {g474re|f100}}"
+BOARD="${1:?usage: run.sh g474re or f100}"
 
 case "$BOARD" in
   g474re) TARGET=thumbv7em-none-eabi; CHIP=STM32G474RETx; MEM=memory-g474re.x; DEFAULT_O=wasm-kernel/gust_mix-cm4.o ;;
