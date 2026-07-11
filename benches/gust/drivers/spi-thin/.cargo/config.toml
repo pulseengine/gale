@@ -1,0 +1,4 @@
+# rustc >=1.97 rust-lld errors on undefined wasm cdylib symbols; the mmio capability
+# externs are resolved by the TCB bridge at dissolve-link, so emit them as wasm IMPORTS.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=--allow-undefined"]
