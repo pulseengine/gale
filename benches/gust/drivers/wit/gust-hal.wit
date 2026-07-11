@@ -1,0 +1,158 @@
+package gust:hal@0.1.0;
+
+/// gust:hal — the driver capability seam. A dissolved driver component IMPORTS
+/// these; the trusted host bridge IMPLEMENTS them. The verified-wasm / trusted-TCB
+/// boundary is this typed contract. Three granularities (thin → fat) trade TCB
+/// size against how much of the driver is verified wasm; see
+/// docs/superpowers/specs/2026-06-25-gust-driver-model-design.md.
+
+/// THIN seam — the irreducible TCB primitive. The driver reads/writes device
+/// registers by physical address; the bridge performs the actual volatile access
+/// (sandboxed wasm cannot touch MMIO). One ~10-line generic bridge serves every
+/// driver; the entire peripheral protocol lives in wasm.
+interface mmio {
+    read32: func(addr: u32) -> u32;
+    write32: func(addr: u32, val: u32);
+    read8: func(addr: u32) -> u8;
+    write8: func(addr: u32, val: u8);
+}
+
+/// THIN seam, split-phase companion. `poll` is non-blocking: true (and clears)
+/// if the line fired since last poll, so the driver yields to kiln between events
+/// rather than blocking the scheduler. The bridge ISR sets the flag + wakes.
+interface irq {
+    poll: func(line: u32) -> bool;
+}
+
+/// MID seam — byte-level UART. The bridge owns byte register access + the RX IRQ
+/// buffer; the driver owns framing/protocol above the byte.
+interface uart-byte {
+    put-byte: func(b: u8);
+    rx-poll: func() -> option<u8>;
+}
+
+/// FAT seam — whole-transfer UART. The bridge (e.g. embassy-stm32) owns the
+/// driver; the wasm side only calls. Largest TCB; expected to exceed the 8 KiB
+/// F100 SRAM budget (the overflow check).
+interface uart-block {
+    write: func(buf: list<u8>);
+    read: func(max: u32) -> list<u8>;
+}
+
+/// DMA seam (gale#124) — a transfer modeled as Component-Model OWNERSHIP HANDOFF.
+/// The buffer is a `resource`; passing it by value moves `own<dma-buffer>`, so the
+/// type system proves the previous holder can no longer touch it. A transfer is an
+/// ownership round-trip: wasm hands `own<dma-buffer>` to the engine and regains it
+/// only when the returned `future` resolves on the completion IRQ. Because meld
+/// fuses component memories into one shared segment, the handle carries only the
+/// PERMISSION, not the bytes — zero-copy DMA with statically-checked exclusive
+/// ownership. This is the FIRST resource/handle type in gust:hal; the verified
+/// ownership state machine (drivers/dma-own, Kani-proven) is its runtime twin, and
+/// the `barrier` op is emitted by construction at each handoff (clean+DSB before a
+/// DMA write, invalidate+DMB after) so coherency cannot be forgotten.
+interface dma {
+    /// A DMA-capable buffer in the meld-fused shared segment. Held as
+    /// `own<dma-buffer>` by whoever may currently access it; the DMA engine (a
+    /// non-wasm trusted agent) is the counterparty during a transfer.
+    resource dma-buffer {
+        /// Length in bytes of the region this handle governs.
+        len: func() -> u32;
+    }
+
+    /// The cache/barrier op at a handoff. No-op on M3 (no cache); real clean/
+    /// invalidate + DSB/DMB on M7/A-class. The abstraction holds on all targets.
+    enum barrier { clean-dsb, invalidate-dmb }
+
+    /// Single transfer. Consumes `own<dma-buffer>` — the buffer is statically
+    /// inaccessible to wasm until the returned future resolves with the re-owned
+    /// handle. The impl emits clean+DSB and programs the descriptor at the handoff.
+    read: func(channel: u32, buf: dma-buffer) -> future<dma-buffer>;
+    write: func(channel: u32, buf: dma-buffer) -> future<dma-buffer>;
+
+    /// Circular / double-buffered transfer (v1 streaming scope): per-chunk `own`
+    /// handoff. Each yielded item is a re-owned chunk; the stream models the ring,
+    /// each chunk owned by exactly one side at a time (proven in dma-own).
+    read-stream: func(channel: u32, buf: dma-buffer, chunk-bytes: u32) -> stream<dma-buffer>;
+
+    /// Abort / channel teardown: return the buffer to wasm from any state — never
+    /// ownerless (the faulted-transfer safety path).
+    abort: func(channel: u32, buf: borrow<dma-buffer>);
+}
+
+// ── Per-driver EXPORT interfaces (v0.3.0 driver breadth, REQ-DRV-BREADTH-001) ──
+// The protocol surface each dissolved driver component PROVIDES. Every function is
+// scalar u32↔u32, so the Component-Model canonical ABI stays FLAT — no realloc, no
+// linmem growth → the thin-seam 0-SRAM property is preserved through
+// componentization. `wac` composes these sibling components (all sharing the mmio
+// import) and `meld fuse` merges them into one module, so a multi-driver node
+// dissolves to ONE relocatable object (no cross-object func_N symbol collision).
+
+/// STM32F1 GPIO protocol (mirrors gpio-thin's exports).
+interface gpio {
+    configure: func(port-base: u32, pin: u32, mode-idx: u32);
+    set: func(port-base: u32, pin: u32);
+    clear: func(port-base: u32, pin: u32);
+    read: func(port-base: u32, pin: u32) -> u32;
+    toggle: func(port-base: u32, pin: u32);
+}
+
+/// STM32 hardware-timer protocol (mirrors timer-thin's exports).
+interface timer {
+    init: func(base: u32, psc: u32, arr: u32);
+    now: func(base: u32) -> u32;
+    deadline: func(now: u32, ticks: u32) -> u32;
+    elapsed: func(now: u32, deadline: u32) -> u32;
+    ack: func(base: u32);
+}
+
+/// STM32 SPI protocol + transfer FSM (mirrors spi-thin's exports).
+interface spi {
+    configure: func(base: u32, mode: u32, br-idx: u32);
+    xfer-byte: func(base: u32, out: u32) -> u32;
+    begin: func(state: u32, count: u32) -> u32;
+    step: func(state: u32) -> u32;
+    is-complete: func(state: u32) -> u32;
+    abort: func(state: u32) -> u32;
+}
+
+/// STM32 USART protocol (mirrors uart-thin's exports; imports mmio + irq).
+interface uart {
+    init: func(brr: u32);
+    tx-byte: func(b: u32);
+    rx: func() -> u32;
+    rx-fired: func() -> u32;
+}
+
+/// Per-driver component worlds — each imports only the generic mmio capability
+/// (uart also irq) and exports its protocol interface. `wasm-tools component new`
+/// wraps the wit-bindgen core module into a component targeting one of these.
+world gpio-driver { import mmio; export gpio; }
+world timer-driver { import mmio; export timer; }
+world spi-driver { import mmio; export spi; }
+world uart-driver { import mmio; import irq; export uart; }
+
+/// Thin-seam driver world — imports only generic MMIO + IRQ; exports one step.
+world driver-thin {
+    import mmio;
+    import irq;
+    export driver-step: func() -> u32;
+}
+
+/// DMA driver world — imports the ownership-handoff DMA seam (+ mmio/irq for the
+/// descriptor/IRQ atoms). The dissolved dma-own FSM drives it under kiln.
+world driver-dma {
+    import mmio;
+    import irq;
+    import dma;
+    export driver-step: func() -> u32;
+}
+
+world driver-mid {
+    import uart-byte;
+    export driver-step: func() -> u32;
+}
+
+world driver-fat {
+    import uart-block;
+    export driver-step: func() -> u32;
+}

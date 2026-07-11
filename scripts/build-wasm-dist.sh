@@ -32,6 +32,11 @@ build_module() {
     --allow-undefined --gc-sections "$LIBFFI" "$t/$name.shim.o" -o "$t/$name.merged.wasm"
   loom optimize "$t/$name.merged.wasm" --passes inline --attestation false -o "$OUT/gale-wasm-$name-$VER.wasm"
   wasm-tools print "$OUT/gale-wasm-$name-$VER.wasm" > "$OUT/gale-wasm-$name-$VER.wat" 2>/dev/null || true
+  # The .wat is human-readable evidence, not a hard artifact. If wasm-tools is
+  # missing/errors it leaves a 0-byte file, which GitHub's asset upload rejects
+  # (HTTP 400 Bad Content-Length) and blocks the whole release. Drop it if empty so
+  # a missing evidence file degrades gracefully instead of failing the release.
+  [ -s "$OUT/gale-wasm-$name-$VER.wat" ] || rm -f "$OUT/gale-wasm-$name-$VER.wat"
   # shellcheck disable=SC2086
   synth compile "$OUT/gale-wasm-$name-$VER.wasm" --target cortex-m4f $extra --all-exports --relocatable -o "$t/$name.o"
   local rargs=(); local p; for p in "${renames[@]}"; do rargs+=(--redefine-sym "$p"); done

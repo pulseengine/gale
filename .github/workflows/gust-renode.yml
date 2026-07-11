@@ -38,19 +38,24 @@ jobs:
 
       # Cache the Bazel repo cache (the hermetic Renode portable + .NET, ~hundreds
       # of MB, and the rules_renode/rules_python fetches) keyed on the module deps.
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/bazel
           key: gust-renode-bazel-${{ hashFiles('benches/gust/renode-test/MODULE.bazel') }}
           restore-keys: gust-renode-bazel-
 
       # ubuntu-22.04 ships bazelisk as `bazel`; it reads the root .bazelversion (9.1.0).
-      - name: Run the three M3 device-class Renode tests
+      - name: Run the M3 device-class + driver Renode tests
         run: |
           bazel test \
             //:gust-renode \
             //:gust-control-renode \
             //:gust-f100-renode \
+            //:gust-uart-renode \
+            //:gust-gpio-renode \
+            //:gust-timer-renode \
+            //:gust-spi-renode \
+            //:gust-breadth-renode \
             --test_output=all
 
       - name: Upload Renode test logs

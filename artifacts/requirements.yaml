@@ -68,12 +68,13 @@ artifacts:
     type: system-req
     title: Counting semaphore with init/give/take/reset
     status: approved
+    release: v0.1.0
     description: >
       A counting semaphore that matches the Zephyr k_sem API semantics:
       initialization with count and limit, give (signal), take (wait),
       and reset.  Must maintain priority-ordered wait queue for blocked
       threads and never exhibit undefined behavior or arithmetic overflow.
-    tags: [sem, kernel, release-v0.1.0]
+    tags: [sem, kernel]
     fields:
       req-type: functional
       priority: must
@@ -97,11 +98,12 @@ artifacts:
     type: sw-req
     title: "P1: 0 <= count <= limit (always)"
     status: approved
+    release: v0.1.0
     description: >
       The semaphore count is always between 0 and limit inclusive.
       This is the fundamental invariant — it must hold after init, give,
       take, reset, and any interleaving of operations.
-    tags: [sem, invariant, asil-d, release-v0.1.0]
+    tags: [sem, invariant, asil-d]
     fields:
       req-type: safety
       priority: must
@@ -128,10 +130,11 @@ artifacts:
     type: sw-req
     title: "P2: limit > 0 (always)"
     status: approved
+    release: v0.1.0
     description: >
       The semaphore limit is always strictly positive.
       Enforced by init rejecting limit == 0 with -EINVAL.
-    tags: [sem, invariant, asil-d, release-v0.1.0]
+    tags: [sem, invariant, asil-d]
     fields:
       req-type: safety
       priority: must
@@ -147,12 +150,13 @@ artifacts:
     type: sw-req
     title: "P3: give with no waiters increments count, capped at limit"
     status: approved
+    release: v0.1.0
     description: >
       When give is called and the wait queue is empty:
       if count < limit, count increments by 1 (GiveResult::Incremented).
       If count == limit, count is unchanged (GiveResult::Saturated).
       Maps to z_impl_k_sem_give lines 109-111 in kernel/sem.c.
-    tags: [sem, give, asil-d, release-v0.1.0]
+    tags: [sem, give, asil-d]
     fields:
       req-type: functional
       priority: must
@@ -171,12 +175,13 @@ artifacts:
     type: sw-req
     title: "P4: give with waiters wakes highest-priority thread, count unchanged"
     status: approved
+    release: v0.1.0
     description: >
       When give is called and the wait queue is non-empty, the
       highest-priority (numerically lowest) waiting thread is woken with
       return value 0 (OK).  The count does not change.
       Maps to z_impl_k_sem_give lines 103-108 in kernel/sem.c.
-    tags: [sem, give, wake, asil-d, release-v0.1.0]
+    tags: [sem, give, wake, asil-d]
     fields:
       req-type: functional
       priority: must
@@ -193,11 +198,12 @@ artifacts:
     type: sw-req
     title: "P5: take when count > 0 decrements by exactly 1"
     status: approved
+    release: v0.1.0
     description: >
       When take is called and count > 0, count decrements by 1 and
       returns 0 (OK).
       Maps to z_impl_k_sem_take lines 143-148 in kernel/sem.c.
-    tags: [sem, take, asil-d, release-v0.1.0]
+    tags: [sem, take, asil-d]
     fields:
       req-type: functional
       priority: must
@@ -215,11 +221,12 @@ artifacts:
     type: sw-req
     title: "P6: take when count == 0, no wait, returns -EBUSY"
     status: approved
+    release: v0.1.0
     description: >
       When take is called with K_NO_WAIT and count == 0, returns -EBUSY
       without modifying the semaphore.
       Maps to z_impl_k_sem_take lines 150-154 in kernel/sem.c.
-    tags: [sem, take, asil-d, release-v0.1.0]
+    tags: [sem, take, asil-d]
     fields:
       req-type: functional
       priority: must
@@ -235,11 +242,12 @@ artifacts:
     type: sw-req
     title: "P7: take when count == 0, with wait, blocks calling thread"
     status: approved
+    release: v0.1.0
     description: >
       When take is called with a timeout and count == 0, the calling
       thread is blocked and inserted into the wait queue in priority order.
       Maps to z_impl_k_sem_take line 158 (z_pend_curr) in kernel/sem.c.
-    tags: [sem, take, blocking, asil-d, release-v0.1.0]
+    tags: [sem, take, blocking, asil-d]
     fields:
       req-type: functional
       priority: must
@@ -259,11 +267,12 @@ artifacts:
     type: sw-req
     title: "P8: reset sets count to 0, wakes all waiters with -EAGAIN"
     status: approved
+    release: v0.1.0
     description: >
       Reset clears count to 0 and wakes every waiting thread with
       return value -EAGAIN.  Returns the number of threads woken.
       Maps to z_impl_k_sem_reset lines 166-192 in kernel/sem.c.
-    tags: [sem, reset, asil-d, release-v0.1.0]
+    tags: [sem, reset, asil-d]
     fields:
       req-type: functional
       priority: must
@@ -281,12 +290,13 @@ artifacts:
     type: sw-req
     title: "P9: no arithmetic overflow in any operation"
     status: approved
+    release: v0.1.0
     description: >
       No arithmetic operation on count or limit causes integer overflow
       or underflow.  Give at limit saturates; take at 0 returns error.
       The C code uses (count != limit) ? 1U : 0U pattern (line 110).
       Gale uses checked_add/saturating_sub.
-    tags: [sem, safety, overflow, asil-d, release-v0.1.0]
+    tags: [sem, safety, overflow, asil-d]
     fields:
       req-type: safety
       priority: must
@@ -302,11 +312,12 @@ artifacts:
     type: sw-req
     title: "P10: wait queue ordering preserved across all operations"
     status: approved
+    release: v0.1.0
     description: >
       The wait queue maintains priority ordering (numerically lowest
       priority value = highest priority) at all times.  Threads are
       woken strictly in priority order.
-    tags: [sem, wait-queue, ordering, asil-d, release-v0.1.0]
+    tags: [sem, wait-queue, ordering, asil-d]
     fields:
       req-type: functional
       priority: must

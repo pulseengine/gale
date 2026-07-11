@@ -1,0 +1,20 @@
+# Standalone (not part of the gust workspace) — built ad-hoc for wasm32 + dissolve.
+# gust-OS v0.3.0 driver breadth: GPIO as the pattern-setter (mirrors uart-thin).
+[workspace]
+
+[package]
+name = "gust-gpio-thin"
+version = "0.1.0"
+edition = "2021"
+description = "gust:hal thin-seam GPIO driver — STM32F1 pin config/read/write in verified wasm, importing only the generic mmio capability"
+
+[lib]
+# cdylib for the wasm32 dissolve target; rlib so Kani can model-check the pure
+# pin-config decision logic (cargo kani) — the driver's verifiable core.
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1
