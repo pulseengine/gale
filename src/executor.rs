@@ -9,7 +9,7 @@ verus! {
 
 pub const MAX_TASKS: usize = 8;
 
-#[derive(PartialEq, Eq, Structural)]
+#[derive(PartialEq, Eq)]
 pub enum TaskState { Free, Pending, Done }
 
 pub struct Tasks {
@@ -24,7 +24,7 @@ impl Tasks {
     /// and only within [0, MAX_TASKS). This is the anchor every proof rests on.
     pub open spec fn inv(&self) -> bool {
         forall|i: int| 0 <= i < MAX_TASKS ==>
-            (#[trigger] self.ready_bit(i)) ==> self.state[i as int] == TaskState::Pending
+            (#[trigger] self.ready_bit(i)) ==> self.state[i as int] === TaskState::Pending
     }
 
     /// Ghost: is bit i of `ready` set?
@@ -45,7 +45,7 @@ impl Tasks {
             ready: 0u32,
         };
         assert forall|i: int| 0 <= i < MAX_TASKS implies
-            (#[trigger] r.ready_bit(i)) ==> r.state[i as int] == TaskState::Pending
+            (#[trigger] r.ready_bit(i)) ==> r.state[i as int] === TaskState::Pending
         by {
             if r.ready_bit(i) {
                 lemma_zero_shr_bit(i as u32);
