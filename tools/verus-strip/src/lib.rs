@@ -203,6 +203,15 @@ fn strip_body(body: &str) -> String {
             continue;
         }
 
+        // Check for Verus `assert forall|...| <expr> [implies <expr>] by { ... }` —
+        // a ghost-only proof statement, entirely dropped (like bare `assert(...)`).
+        if is_verus_assert_forall_at(&trees, i) {
+            let skip_to = skip_verus_assert_forall(&trees, i);
+            trim_trailing_blank_lines(&mut out);
+            i = skip_to;
+            continue;
+        }
+
         // Check for #[verifier::*] or #[trigger] attributes
         if is_verifier_attr_at(&trees, i) {
             i += 2; // skip # + [group]
@@ -501,6 +510,51 @@ fn skip_verus_assert(trees: &[TokenTree], pos: usize) -> usize {
         }
     }
     j
+}
+
+/// Check for Verus `assert forall|...| ... by { ... }` — distinguished from
+/// bare `assert(...)` by an `Ident("forall")` immediately after `assert`
+/// (instead of a paren group).
+fn is_verus_assert_forall_at(trees: &[TokenTree], pos: usize) -> bool {
+    if let Some(TokenTree::Ident(id)) = trees.get(pos) {
+        if id.to_string() == "assert" {
+            if let Some(TokenTree::Ident(next)) = trees.get(pos + 1) {
+                return next.to_string() == "forall";
+            }
+        }
+    }
+    false
+}
+
+/// Skip an `assert forall|params| <expr> [implies <expr>] by { <proof> }`
+/// statement in its entirety. The binder, condition, and optional `implies`
+/// consequent are all ghost-only; scan forward for the terminal `by { ... }`
+/// block (the form's only fixed anchor) and drop everything through its
+/// closing brace, plus a trailing semicolon if present.
+fn skip_verus_assert_forall(trees: &[TokenTree], pos: usize) -> usize {
+    let mut j = pos + 2; // skip `assert` `forall`
+    while j < trees.len() {
+        if let TokenTree::Ident(id) = &trees[j] {
+            if id.to_string() == "by" {
+                if let Some(TokenTree::Group(g)) = trees.get(j + 1) {
+                    if g.delimiter() == Delimiter::Brace {
+                        let mut end = j + 2;
+                        if let Some(TokenTree::Punct(p)) = trees.get(end) {
+                            if p.as_char() == ';' {
+                                end += 1;
+                            }
+                        }
+                        return end;
+                    }
+                }
+            }
+        }
+        j += 1;
+    }
+    // No `by { ... }` found (malformed input) — skip past `assert forall`
+    // only, guaranteeing forward progress (returning `pos` would loop the
+    // caller forever re-matching the same position).
+    pos + 2
 }
 
 // ─── Attribute stripping ────────────────────────────────────────────────

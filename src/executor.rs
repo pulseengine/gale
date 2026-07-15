@@ -130,6 +130,10 @@ impl Tasks {
             forall|j: int| 0 <= j < MAX_TASKS && j != h as int ==>
                 self.ready_bit(j) == old(self).ready_bit(j),
     {
+        // When the guard is false, postconditions hold trivially: self ==
+        // old(self), so ready_bit is pointwise unchanged and inv is preserved
+        // unmodified — no `else` branch needed (an empty documentation-only
+        // else strips down to a `clippy::needless_else` lint in plain Rust).
         if h < MAX_TASKS as u32 && matches!(self.state[h as usize], TaskState::Pending) {
             let old_ready = self.ready;
             self.ready = self.ready | (1u32 << h);
@@ -154,9 +158,6 @@ impl Tasks {
                     }
                 }
             }
-        } else {
-            // Postconditions hold trivially: self == old(self), so ready_bit is
-            // pointwise unchanged and inv is preserved unmodified.
         }
     }
 
@@ -165,6 +166,52 @@ impl Tasks {
         ensures b == self.ready_bit(h as int),
     {
         ((self.ready >> h) & 1u32) == 1u32
+    }
+
+    /// The highest-priority ready task's handle (lowest `prio` value wins;
+    /// among equal priorities the lowest index — i.e. the first found by the
+    /// scan — wins). Work-conserving: if anything is ready, some ready task
+    /// is returned. Fair: the returned task has no ready rival with strictly
+    /// lower `prio` (strictly higher priority). Returns `MAX_TASKS as u32`
+    /// (an always-invalid handle) when nothing is ready.
+    pub fn pick_next(&self) -> (h: u32)
+        requires self.inv(),
+        ensures
+            // either nothing is ready...
+            (h == MAX_TASKS as u32 && forall|i: int| 0 <= i < MAX_TASKS ==> !self.ready_bit(i))
+            // ...or h is a valid ready task and no ready task outranks it
+            // (lower prio value == higher priority).
+            || (h < MAX_TASKS as u32 && self.ready_bit(h as int)
+                && forall|j: int| 0 <= j < MAX_TASKS && self.ready_bit(j) ==>
+                       self.prio[h as int] <= self.prio[j]),
+    {
+        let mut best: u32 = MAX_TASKS as u32;
+        let mut i: u32 = 0;
+        while i < MAX_TASKS as u32
+            invariant
+                self.inv(), 0 <= i <= MAX_TASKS as u32,
+                // Strengthened vs. the naive "best == MAX_TASKS as u32" disjunct:
+                // that alone doesn't tell Verus anything about ready bits already
+                // scanned, so the inductive step (proving a freshly-found best is
+                // truly minimal) can't get off the ground. Spell out "nothing ready
+                // in [0, i) yet" for the not-found-anything-so-far case too.
+                (best == MAX_TASKS as u32 && forall|j: int| 0 <= j < i ==> !self.ready_bit(j))
+                    || (best < i && self.ready_bit(best as int)
+                        && forall|j: int| 0 <= j < i && self.ready_bit(j) ==>
+                               self.prio[best as int] <= self.prio[j]),
+            decreases MAX_TASKS as u32 - i,
+        {
+            // Exec array indexing uses `as usize` (spec-context comparisons
+            // above use `as int`) — `int` is ghost-only and does not exist
+            // at runtime.
+            if ((self.ready >> i) & 1u32) == 1u32 {
+                if best == MAX_TASKS as u32 || self.prio[i as usize] < self.prio[best as usize] {
+                    best = i;
+                }
+            }
+            i += 1;
+        }
+        best
     }
 
     /// Clear task `h`'s ready bit — called as the task is about to be polled.
@@ -270,6 +317,60 @@ pub proof fn lemma_no_lost_wakeup(t0: Tasks, h: u32, other: u32)
         }),
 {
     lemma_clear_bit_other(t0.ready, other, h);
+}
+
+/// Kani cross-check: `pick_next` (Verus-proven above via SMT/Z3) against an
+/// independent brute-force scan, under Kani's bounded model checker (a
+/// different solver/engine entirely — SAT-based CBMC). This is not a
+/// duplicate of the Verus proof; it is a second, independent tool checking
+/// the SAME shipped executable code path (after `verus-strip` removes the
+/// ghost-only `requires`/`ensures`/`invariant`/`decreases` clauses,
+/// `pick_next`'s body is plain executable Rust — Kani calls that exact
+/// function, not a hand-copied mirror, so there is no risk of a spec/impl
+/// drift between what Verus verified and what Kani exercises).
+#[cfg(kani)]
+mod exec_kani {
+    use super::*;
+
+    /// An arbitrary well-formed `Tasks`: `prio` and `ready` are unconstrained
+    /// (the two fields `pick_next` actually reads); `state` is fixed to
+    /// all-`Pending` so `inv()` holds trivially regardless of `ready`
+    /// (`inv()` only constrains slots whose ready bit IS set).
+    fn arbitrary_tasks() -> Tasks {
+        let prio: [u32; MAX_TASKS] = kani::any();
+        let ready: u32 = kani::any();
+        Tasks {
+            state: [
+                TaskState::Pending, TaskState::Pending, TaskState::Pending, TaskState::Pending,
+                TaskState::Pending, TaskState::Pending, TaskState::Pending, TaskState::Pending,
+            ],
+            prio,
+            deadline: [0u64; MAX_TASKS],
+            ready,
+        }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(9)]
+    fn pick_next_is_min_prio_ready() {
+        let t = arbitrary_tasks();
+        let h = t.pick_next();
+        if h == MAX_TASKS as u32 {
+            // brute force: nothing is ready
+            for j in 0..MAX_TASKS as u32 {
+                assert!(!t.is_ready(j));
+            }
+        } else {
+            assert!(t.is_ready(h));
+            // brute force: no ready j has strictly higher priority (strictly
+            // lower prio value) than h.
+            for j in 0..MAX_TASKS as u32 {
+                if t.is_ready(j) {
+                    assert!(t.prio[h as usize] <= t.prio[j as usize]);
+                }
+            }
+        }
+    }
 }
 
 } // verus!
