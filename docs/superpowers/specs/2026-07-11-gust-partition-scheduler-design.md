@@ -2,8 +2,9 @@
 
 **Status:** design (validated with jess on gale#63; awaiting user review before an
 implementation plan).
-**Date:** 2026-07-11. **Revised:** 2026-07-15 (rev 5 — re-pointed ambition per the
-disposition panel: lead with the design-point thesis §1, two-column v1 ledger, synth#757
+**Date:** 2026-07-11. **Revised:** 2026-07-15 (rev 6 — schedulability is analyzable-now via
+spar's Lean-verified RTA + Shin-Lee supply bound §7; synth#757 reframed as a
+maturing-compiler waypoint §5. rev 5 — re-pointed ambition per the disposition panel: lead with the design-point thesis §1, two-column v1 ledger, synth#757
 as the flagship containment demo, build-vs-host costed decision §12; rev 4 — ARMv8-A/AArch64
 target + synth verification tiers; rev 3 — silicon-independence governing principle §1.1;
 rev 2 — six-lens expert-review pass — see the revision notes below).
@@ -11,6 +12,20 @@ rev 2 — six-lens expert-review pass — see the revision notes below).
 ASIL-D / actually-lands reframe, a verified-scheduling research survey, and jess's
 gale#63 endorsement + 3-core RT1176 mapping.
 
+> **Revision note (rev 6).** Two author-directed corrections, both grounded in research.
+> (a) **Schedulability is not an open gap.** Dedicated research (spar repo + ARINC SOTA)
+> found the inner executor's response time is bounded by textbook periodic-resource theory
+> (Shin & Lee supply-bound function, worst-case blackout `2(Π−Θ)` ≈ 1.4 ms on a 1 kHz/300 µs
+> window) with a one-to-one prior-art method (ROS 2 single-threaded-executor RTA under
+> reservation scheduling, ECRTS 2019). It is *owned by spar*, which already ships a
+> **Lean-verified (0-`sorry`) jittered fixed-priority WCRT engine** — closing it is a scoped
+> spar extension that then emits *machine-checked* timing bounds (stronger than DWT). §7
+> updated accordingly; the genuinely-open item shrank to a research *opportunity* (the
+> verified sbf-∘-cooperative composition would be a first). (b) **synth#757 reframed** (§5):
+> synth is mid-bootstrap from transpiler → formal-proof compiler, so an uncovered path is an
+> expected maturity waypoint, not a design risk — I-ISO decouples compiler maturity from
+> isolation assurance so they advance independently.
+>
 > **Revision note (rev 5).** A second review panel (2 tech-optimists, 2 skeptics, 1 neutral)
 > found rev 2–4 calibrated right on *risk-disclosure*, too *timid* in *self-presentation*
 > (auditing away its own lead), and too *grand* in *roadmap sequencing* (aiming novelty at
@@ -253,10 +268,16 @@ per-rule SMT proofs (RULE-VERIFY) on the ARM/Cortex-M backend (the ASIL-D tier) 
 object-code verification is the shipped mechanism, not a black-box qualification. The
 trusted switch/MPU/HM object is compiled on the ARM RULE-VERIFY (ASIL-D) path and is the
 specific artifact that validation must cover with **zero gap** before any
-partition-isolation claim. synth#757 is a miscompile that slipped the *current coverage* of
-these checks on the fused-shared-memory path (the synth-side #760 / THM_CALL-oracle work
-closes exactly that). Until that coverage is demonstrated on the fused path, I-ISO is what
-bounds the blast radius of any residual defect to within a partition.
+partition-isolation claim. **This is a maturing-compiler trajectory, not a design risk
+(rev 6):** synth is being bootstrapped from a transpiler into a formal-proof compiler
+(hand-coded rules → per-rule-proven), so an uncovered path like synth#757 (a miscompile the
+*current* verification coverage did not yet reach on the fused-shared-memory path; the
+synth-side #760 / THM_CALL-oracle work extends coverage to it) is an **expected waypoint on
+that curve, not evidence the approach is unsound** — the verification *mechanism* is in
+place and its *coverage* is being driven to completion. What makes this safe to build on:
+I-ISO bounds the blast radius of any not-yet-covered defect to within a partition, so
+compiler maturity and isolation assurance advance independently rather than gating each
+other.
 
 ## 6. Honesty constraints & non-goals (from the research survey)
 
@@ -306,18 +327,38 @@ discharged (1081/0), Kani 2/2, dissolved to a single cortex-m3 object and qemu-p
 
 **These are FUNCTIONAL / LIVENESS properties, not timing credentials (rev 2, load-bearing
 clarification).** `bounded-poll` is a **step-count / termination** bound — it is **not** a
-wall-clock latency bound (DO-178C 6.3.4f WCET is wall-clock). With DWT disclaimed and a
-static-WCET toolchain not yet selected, the **intra-partition response time** of a
-high-priority inner task released mid-window is **not yet bounded**. Two further open
-obligations that the functional proofs do *not* cover:
+wall-clock latency bound (DO-178C 6.3.4f WCET is wall-clock). The intra-partition
+*response time* is a **separate** obligation from these proofs — but it is *analyzable by
+standard, textbook theory* and owned by `spar` (next bullet), not an open research problem.
+One further obligation the functional proofs do *not* cover is genuinely still open (the
+`poll_task` seam, below).
 
-- **Compositional schedulability (open, §10).** The tickless inner executor must be
-  analyzed against the outer partition's **supply-bound function** (periodic resource
-  model, Shin & Lee), *not* wall-clock. A tickless `Timer::after(200µs)` that expires while
-  the partition is descheduled is not observed until resume, so inner release jitter is up
-  to (period − budget) — e.g. ~700µs on a 1 kHz / 300µs-budget flight window. The spec
-  must state whether inner deadlines are partition-local or global time and bound the
-  effective-deadline degradation.
+- **Compositional schedulability (rev 6: analyzable now; a scoped spar bridge in progress —
+  not an open problem).** The inner executor's intra-partition response time is bounded by
+  standard periodic-resource theory: the outer partition (period Π, budget Θ) delivers a
+  **supply-bound function** `sbf(t)=(Θ/Π)(t−2(Π−Θ))` (Shin & Lee, RTSS 2003 / TECS 2008),
+  whose `2(Π−Θ)` term is the worst-case blackout a tickless inner `Timer::after` suffers
+  when it expires mid-deschedule — e.g. **~1.4 ms on a 1 kHz / 300 µs window** (this is the
+  quantity a naive read would miss, and it is finite and computable). The cooperative task
+  set's response time under this supply is **named prior art**, not new theory: the ROS 2
+  single-threaded-executor RTA under reservation-based scheduling (Casini et al., ECRTS
+  2019; Blaß et al., RTSS 2021) analyzes exactly a non-preemptive run-to-completion callback
+  scheduler inside a `(Q,P)` reservation — the inner executor *instantiates* it. This
+  analysis is **owned by `spar`**: gale feeds the AADL two-level model (partition windows +
+  inner task set) and spar already computes **Lean-verified** fixed-priority WCRT
+  (`RTA.lean` / `RTAJittered.lean`, 0 `sorry`) plus the ARINC-653 window-utilization gate.
+  The remaining work is a *scoped* spar extension — derive the `2(Π−Θ)` blackout as the
+  inner tasks' release-jitter term `J_i` (consumed unchanged by the existing verified
+  jittered recurrence), add the cooperative non-preemptive blocking term
+  `B_i = max lower-priority poll-body`, and cap demand against `sbf` — after which spar
+  emits a **machine-checked inner-response / release-jitter bound, a categorically stronger
+  evidence class than the DWT high-water-marks (§6).** Caveats that still hold: the WCET
+  *inputs* (`C_i`, Θ) require a sound static-WCET source, not DWT; unqualified Lean carries
+  no DO-330 credit on its own; and the one *genuinely* open item is a research *opportunity,
+  not a blocker* — no published proof yet machine-checks the *composition* of an sbf-supply
+  with a cooperative-demand analysis (the paper bound exists today; the verified composition
+  would be a first, and spar already holds both halves). The spec must also state whether
+  inner deadlines are partition-local or global time.
 - **The `poll_task` FFI seam is an unbounded hole the proofs cannot see across.**
   bounded-poll termination is valid only *assuming* each callee returns, does not re-enter,
   and does not mutate the ready-queue. Kani/CBMC give no guarantee past the FFI. Rev 2
