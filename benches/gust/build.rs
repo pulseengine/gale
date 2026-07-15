@@ -157,5 +157,14 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_os_probe={}", osobj.display());
         println!("cargo:rerun-if-changed={}", osobj.display());
     }
+    // gust:os v1 async executor (Task 6, REQ-OS-EXEC-001): the Verus+Kani-proven
+    // scheduler core (src/executor.rs), dissolved SINGLE-component (no wac plug,
+    // no meld fuse -> not synth#739-blocked) via drivers/exec-provider ->
+    // drivers/os-node/exec-cm3.o. gust_exec_probe is the qemu liveness oracle.
+    let eobj = Path::new(&manifest).join("drivers/os-node/exec-cm3.o");
+    if eobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_exec_probe={}", eobj.display());
+        println!("cargo:rerun-if-changed={}", eobj.display());
+    }
     println!("cargo:rerun-if-changed=build.rs");
 }

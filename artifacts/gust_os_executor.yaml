@@ -1,0 +1,75 @@
+# gust:os v1 cooperative async executor — the inner scheduler under the v0.4.0
+# capability/syscall seam (REQ-OS-SYSCALL-001). A static, fixed-priority,
+# tickless-deadline scheduler core over a bounded task table (src/executor.rs,
+# Verus + Kani), dissolved to a SINGLE native object (no meld fuse — not
+# synth#739-blocked) and qemu-cortex-m3-probed. v1 scope is a static
+# single-partition inner layer only; the outer preemptive partition switch,
+# multi-partition, and the fused multi-provider node are v2 (gust_partition_
+# scheduler roadmap item), deliberately out of scope here.
+artifacts:
+  # ---------------------------------------------------------------- requirements
+  - id: REQ-OS-EXEC-001
+    type: sw-req
+    title: "gust:os cooperative async executor (v1, static single-partition)"
+    status: implemented
+    release: v0.4.0
+    description: >
+      The gust:os inner async layer SHALL schedule a static set of up to
+      MAX_TASKS (8) cooperative tasks by fixed priority (lower value = higher
+      priority) with a tickless deadline queue, guaranteeing: (1) no-lost-
+      wakeups — a wake delivered to a Pending task's ready bit survives until
+      consumed, regardless of what happens to any other task in between; (2)
+      bounded-poll — each ready task is dispatched at most once per
+      poll_round, and every round terminates (decreases on ready-popcount);
+      (3) a fair, work-conserving ready queue — pick_next always returns the
+      highest-priority (lowest prio value) ready task, and never reports idle
+      while any task is ready; (4) tickless dispatch — next_deadline/expire
+      arm and fire a one-shot alarm rather than a periodic tick. Task bodies
+      run through the trusted poll_task FFI seam (the one unverified
+      boundary); the scheduler core itself (Tasks::{new, admit, wake,
+      is_ready, pick_next, next_deadline, expire, consume, poll_round}) is
+      scalar-only (no async/closures/trait objects in the verified core, per
+      the Verus+Rocq+Kani intersection rule) and dissolves as ONE native
+      component (no meld fuse), so it is not blocked on synth#739.
+    tags: [gust, os, executor, scheduler, async, verified, tickless]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-SYSCALL-001
+      - type: related-to
+        target: REQ-DRV-ASYNC-001
+      - type: related-to
+        target: REQ-DRV-VERIFY-001
+
+  # ------------------------------------------------------------- verification
+  - id: VER-OS-EXEC-001
+    type: sw-verification
+    title: "Verus proofs + Kani + qemu probe for the async executor"
+    method: formal-verification
+    status: verified
+    description: >
+      Multi-track evidence for REQ-OS-EXEC-001, all against the SAME source:
+      (1) Verus (SMT/Z3) over src/executor.rs proves no-lost-wakeups (wake/
+      consume), pick_next fair + work-conserving, poll_round bounded +
+      terminating, and next_deadline/expire tickless dispatch — 1081/0 at
+      HEAD (bazel //:verus_test). (2) cargo kani over the verus-strip'd
+      plain/src/executor.rs (the SAME shipped executable code, not a
+      hand-copied mirror — tools/verus-strip/tests/gate.rs enforces
+      convergence): pick_next_is_min_prio_ready and
+      poll_round_drains_and_bounds, both SUCCESSFUL. (3) The executable
+      liveness oracle: benches/gust/src/bin/gust_exec_probe.rs, a
+      qemu-cortex-m3 semihosting probe that admits two tasks at distinct
+      priorities and a due-now deadline, drives one poll_round via the
+      dissolved exec-cm3.o (loom optimize --passes inline | synth compile
+      --target cortex-m3 --all-exports --relocatable — single-component,
+      no wac plug / no meld fuse, so not synth#739-blocked), and asserts
+      both reach Done with the higher-priority task's readiness honored.
+      The dissolved object executes the plain-mirror executor verbatim
+      (benches/gust/drivers/exec-provider includes plain/src/executor.rs
+      via #[path], adding only a #[no_mangle] C-ABI marshalling shim —
+      no scheduling logic is re-implemented at the wasm boundary).
+    tags: [gust, os, executor, verus, kani, qemu, oracle, verified]
+    links:
+      - type: verifies
+        target: REQ-OS-EXEC-001
