@@ -2,13 +2,26 @@
 
 **Status:** design (validated with jess on gale#63; awaiting user review before an
 implementation plan).
-**Date:** 2026-07-11. **Revised:** 2026-07-15 (rev 3 — added the silicon-independence
-governing principle §1.1; rev 2 was the six-lens expert-review pass — see the revision
-note below).
+**Date:** 2026-07-11. **Revised:** 2026-07-15 (rev 4 — ARMv8-A/AArch64 target + synth's
+per-backend verification tiers as the object-code-verification route; rev 3 — silicon-
+independence governing principle §1.1; rev 2 — six-lens expert-review pass — see the
+revision notes below).
 **Origin:** user ask ("kiln async should do more — priority tasks + supervision"), the
 ASIL-D / actually-lands reframe, a verified-scheduling research survey, and jess's
 gale#63 endorsement + 3-core RT1176 mapping.
 
+> **Revision note (rev 4).** Grounded §1.1's portability in synth's actual backend set:
+> ARM Cortex-M, **AArch64 / ARMv8-A**, and RISC-V RV32 are all shipping synth backends.
+> Two consequences folded in: (a) *isolation strengthens with silicon* — I-ISO ports up
+> from the ARMv7-M MPU (region-limited) to the ARMv8-A **MMU + EL2 stage-2** (hypervisor-
+> grade, no region ceiling), so a capable target raises the assurance ceiling, not just the
+> clock; and (b) synth already ships the **object-code-verification** the review panels
+> unanimously demanded — binary translation validation (BIN-VERIFY, ASIL-B) on all
+> backends plus per-rule SMT proofs (RULE-VERIFY, ASIL-D) on the ARM backend — so "get synth
+> out of the isolation trust argument" is a *coverage-extension* problem (synth#757 slipped
+> current coverage on the fused path), not a from-scratch build. §2.1's I-ISO is generalized
+> from "the MPU" to "the target's memory-protection facility (MPU / MMU+EL / PMP)."
+>
 > **Revision note (rev 3).** Added §1.1 as the *governing principle*: the silicon is a
 > substitutable external parameter, not a premise — the design is silicon-independent by
 > construction (author once in the Component Model, dissolve to any synth target, isolate
@@ -46,12 +59,22 @@ ergonomics that ride on top.
 
 The architecture is **silicon-independent by construction**, and this — not any one chip —
 is what the general argument rests on. A component is authored once in the WebAssembly
-Component Model, dissolved by synth to whatever native target is in hand (cortex-m3 / m4 /
-m7 and riscv today — all three already anchored on real silicon; more as backends land),
-and its spatial isolation is rooted in *that target's* hardware memory-protection unit
-(ARMv7-M / ARMv8-M **MPU** or RISC-V **PMP**) per I-ISO (§2.1). The silicon is therefore an
-**input parameter, not a premise**: it *bounds* the assurance level and timing margin a
-given deployment can claim, but it neither validates nor invalidates the design.
+Component Model, dissolved by synth to whatever native target is in hand. **synth backends
+today: ARM Cortex-M (the custom backend carrying per-rule SMT proofs — the ASIL-D
+verification tier), AArch64 / ARMv8-A, and RISC-V RV32 — all with binary-level translation
+validation (the ASIL-B tier); more as backends mature.** Cortex-M3/M4 and RV32 are already
+anchored on real silicon. Spatial isolation is rooted in *that target's* hardware
+memory-protection facility per I-ISO (§2.1): ARMv7-M / ARMv8-M **MPU**, ARMv8-A **MMU +
+exception levels**, or RISC-V **PMP**. The silicon is therefore an **input parameter, not a
+premise**: it *bounds* the assurance level and timing margin a given deployment can claim,
+but it neither validates nor invalidates the design.
+
+**Isolation strengthens with silicon — it does not merely port down.** On a constrained
+part (ARMv7-M: ~8–16 base-aligned power-of-2 MPU regions, the limit the review flagged),
+I-ISO uses the MPU. On **ARMv8-A the identical invariant is discharged by the MMU + EL2
+stage-2 translation** — hypervisor-grade separation, region-count ceiling gone. A more
+capable target *raises* the achievable assurance ceiling, not just throughput; the
+degradation ladder below is matched by an *upgrade* ladder.
 
 - **Today = i.MX RT1176**, because it is the best Pixhawk-class silicon currently
   available. The design assumes this will change and does not hard-code to it.
@@ -98,7 +121,8 @@ separate, still-open obligation).
 
 ### 2.1 Isolation root of trust — the load-bearing architectural invariant (rev 2)
 
-**INVARIANT (I-ISO):** *The hardware MPU (ARMv7-M PMSA) is the sole root of trust for
+**INVARIANT (I-ISO):** *The target's hardware memory-protection facility — ARMv7-M/ARMv8-M
+MPU, ARMv8-A MMU + exception levels, or RISC-V PMP — is the sole root of trust for
 spatial partition isolation. The Component Model, WIT capabilities, and the dissolve
 pipeline provide ergonomics and intra-partition structure only. A synth/meld/loom
 miscompile, a wasm bounds-check elision, or a corrupted inner component can corrupt
@@ -198,7 +222,16 @@ their own analysis.)
   proof of this class. Closure plan for the *trusted core's* source→binary gap: translation
   validation (seL4/Valex-style), a DO-330-qualified compiler, or object-code proof — the
   project's gale#173 LRAT direction (trust the checker, not the solver) is the natural
-  route. I-ISO is what bounds the blast radius of any residual defect to within a partition.
+  route. **synth already carries most of this route (rev 4):** binary-level translation
+validation (BIN-VERIFY) on ALL backends (ARM / AArch64 / RISC-V, the ASIL-B tier) plus
+per-rule SMT proofs (RULE-VERIFY) on the ARM/Cortex-M backend (the ASIL-D tier) — so
+object-code verification is the shipped mechanism, not a black-box qualification. The
+trusted switch/MPU/HM object is compiled on the ARM RULE-VERIFY (ASIL-D) path and is the
+specific artifact that validation must cover with **zero gap** before any
+partition-isolation claim. synth#757 is a miscompile that slipped the *current coverage* of
+these checks on the fused-shared-memory path (the synth-side #760 / THM_CALL-oracle work
+closes exactly that). Until that coverage is demonstrated on the fused path, I-ISO is what
+bounds the blast radius of any residual defect to within a partition.
 
 ## 6. Honesty constraints & non-goals (from the research survey)
 
