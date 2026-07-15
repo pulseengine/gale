@@ -214,6 +214,107 @@ impl Tasks {
         best
     }
 
+    /// Minimum `deadline` over Pending tasks, or `u64::MAX` if none are Pending —
+    /// the value the outer layer/HW timer arms a one-shot alarm for (tickless: no
+    /// periodic tick, just "wake me at this instant").
+    pub fn next_deadline(&self) -> (d: u64)
+        requires self.inv(),
+        ensures
+            forall|i: int| 0 <= i < MAX_TASKS && self.state[i as int] === TaskState::Pending
+                ==> d <= self.deadline[i as int],
+    {
+        let mut d: u64 = u64::MAX;
+        let mut i: usize = 0;
+        while i < MAX_TASKS
+            invariant
+                0 <= i <= MAX_TASKS,
+                forall|k: int| 0 <= k < i && self.state[k as int] === TaskState::Pending
+                    ==> d <= self.deadline[k as int],
+            decreases MAX_TASKS - i,
+        {
+            if matches!(self.state[i], TaskState::Pending) && self.deadline[i] < d {
+                d = self.deadline[i];
+            }
+            i += 1;
+        }
+        d
+    }
+
+    /// Tickless expiry: on the one-shot alarm firing at `now`, mark every Pending
+    /// task whose deadline has passed as ready. No periodic tick — this runs only
+    /// when `now >= next_deadline()`. Reuses the `wake`/`consume` set-bit lemmas:
+    /// setting bit `i` never disturbs any other bit, so ready bits established in
+    /// earlier loop iterations survive later ones.
+    pub fn expire(&mut self, now: u64)
+        requires old(self).inv(),
+        ensures self.inv(),
+            forall|i: int| 0 <= i < MAX_TASKS
+                && self.state[i as int] === TaskState::Pending && self.deadline[i as int] <= now
+                ==> self.ready_bit(i),
+    {
+        let mut i: usize = 0;
+        while i < MAX_TASKS
+            invariant
+                self.inv(),
+                0 <= i <= MAX_TASKS,
+                forall|k: int| 0 <= k < i
+                    && self.state[k as int] === TaskState::Pending && self.deadline[k as int] <= now
+                    ==> self.ready_bit(k),
+            decreases MAX_TASKS - i,
+        {
+            if matches!(self.state[i], TaskState::Pending) && self.deadline[i] <= now {
+                let old_ready = self.ready;
+                proof {
+                    // Snapshot facts about old_ready while self.ready still equals it
+                    // (i.e. before this iteration's write), so the loop invariants —
+                    // which talk about "self" at loop-top — apply directly.
+                    assert forall|k: int| 0 <= k < i
+                        && self.state[k as int] === TaskState::Pending && self.deadline[k as int] <= now implies
+                        ((old_ready >> (k as u32)) & 1u32) == 1u32
+                    by {
+                        assert(self.ready_bit(k));
+                    }
+                    assert forall|kk: int| 0 <= kk < MAX_TASKS
+                        && ((old_ready >> (kk as u32)) & 1u32) == 1u32 implies
+                        self.state[kk as int] === TaskState::Pending
+                    by {
+                        assert(self.ready_bit(kk));
+                        lemma_inv_ready_implies_pending(*self, kk);
+                    }
+                }
+                self.ready = self.ready | (1u32 << (i as u32));
+                proof {
+                    lemma_set_bit_self(old_ready, i as u32);
+                    // Progress invariant carries forward to i+1: bits [0, i) already
+                    // satisfying the expiry condition (snapshotted above from
+                    // old_ready) are untouched by setting bit i; bit i itself is now
+                    // set exactly when this branch's guard held.
+                    assert forall|k: int| 0 <= k < i
+                        && self.state[k as int] === TaskState::Pending && self.deadline[k as int] <= now implies
+                        self.ready_bit(k)
+                    by {
+                        lemma_set_bit_other(old_ready, i as u32, k as u32);
+                    }
+                    assert forall|kk: int| 0 <= kk < MAX_TASKS implies
+                        (#[trigger] self.ready_bit(kk)) ==> self.state[kk as int] === TaskState::Pending
+                    by {
+                        if self.ready_bit(kk) {
+                            if kk == i as int {
+                                // branch guard establishes state[i] === Pending.
+                            } else {
+                                lemma_set_bit_other(old_ready, i as u32, kk as u32);
+                                // self.ready_bit(kk) == (old_ready bit kk); the
+                                // pre-mutation snapshot above closes state[kk] ===
+                                // Pending from that.
+                            }
+                        }
+                    }
+                }
+            }
+            i += 1;
+        }
+    }
+
     /// Clear task `h`'s ready bit — called as the task is about to be polled.
     pub fn consume(&mut self, h: u32)
         requires old(self).inv(), h < MAX_TASKS as u32,

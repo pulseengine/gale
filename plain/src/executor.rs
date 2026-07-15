@@ -85,6 +85,35 @@ impl Tasks {
         }
         best
     }
+    /// Minimum `deadline` over Pending tasks, or `u64::MAX` if none are Pending —
+    /// the value the outer layer/HW timer arms a one-shot alarm for (tickless: no
+    /// periodic tick, just "wake me at this instant").
+    pub fn next_deadline(&self) -> u64 {
+        let mut d: u64 = u64::MAX;
+        let mut i: usize = 0;
+        while i < MAX_TASKS {
+            if matches!(self.state[i], TaskState::Pending) && self.deadline[i] < d {
+                d = self.deadline[i];
+            }
+            i += 1;
+        }
+        d
+    }
+    /// Tickless expiry: on the one-shot alarm firing at `now`, mark every Pending
+    /// task whose deadline has passed as ready. No periodic tick — this runs only
+    /// when `now >= next_deadline()`. Reuses the `wake`/`consume` set-bit lemmas:
+    /// setting bit `i` never disturbs any other bit, so ready bits established in
+    /// earlier loop iterations survive later ones.
+    pub fn expire(&mut self, now: u64) {
+        let mut i: usize = 0;
+        while i < MAX_TASKS {
+            if matches!(self.state[i], TaskState::Pending) && self.deadline[i] <= now {
+                let old_ready = self.ready;
+                self.ready = self.ready | (1u32 << (i as u32));
+            }
+            i += 1;
+        }
+    }
     /// Clear task `h`'s ready bit — called as the task is about to be polled.
     pub fn consume(&mut self, h: u32) {
         let old_ready = self.ready;
