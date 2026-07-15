@@ -157,5 +157,15 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_os_probe={}", osobj.display());
         println!("cargo:rerun-if-changed={}", osobj.display());
     }
+    // gust:os v0.4.0 syscall seam, step-2 node (drivers/os-node/os-tl-cm3.o): an app
+    // importing gust:os {time, log} — log.line is the first BUFFER-CARRYING capability
+    // (list<u8>) crossing the seam — wac-plugged with a time provider + a log
+    // provider, dissolved to one bounded-SRAM object exporting `run`, importing only
+    // read32/write32. gust_os_tl_probe is the local qemu liveness check.
+    let tlobj = Path::new(&manifest).join("drivers/os-node/os-tl-cm3.o");
+    if tlobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_os_tl_probe={}", tlobj.display());
+        println!("cargo:rerun-if-changed={}", tlobj.display());
+    }
     println!("cargo:rerun-if-changed=build.rs");
 }
