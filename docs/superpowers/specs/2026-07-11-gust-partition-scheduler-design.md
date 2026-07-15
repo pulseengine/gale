@@ -3,7 +3,7 @@
 **Status:** design (validated with jess on gale#63; awaiting user review before an
 implementation plan).
 **Date:** 2026-07-11. **Revised:** 2026-07-15 (rev 6 — schedulability is analyzable-now via
-spar's Lean-verified RTA + Shin-Lee supply bound §7; synth#757 reframed as a
+spar's Lean-verified RTA + periodic-resource supply bound §7; synth#757 reframed as a
 maturing-compiler waypoint §5. rev 5 — re-pointed ambition per the disposition panel: lead with the design-point thesis §1, two-column v1 ledger, synth#757
 as the flagship containment demo, build-vs-host costed decision §12; rev 4 — ARMv8-A/AArch64
 target + synth verification tiers; rev 3 — silicon-independence governing principle §1.1;
@@ -15,8 +15,8 @@ gale#63 endorsement + 3-core RT1176 mapping.
 > **Revision note (rev 6).** Two author-directed corrections, both grounded in research.
 > (a) **Schedulability is not an open gap.** Dedicated research (spar repo + ARINC SOTA)
 > found the inner executor's response time is bounded by textbook periodic-resource theory
-> (Shin & Lee supply-bound function, worst-case blackout `2(Π−Θ)` ≈ 1.4 ms on a 1 kHz/300 µs
-> window) with a one-to-one prior-art method (ROS 2 single-threaded-executor RTA under
+> (periodic-resource supply-bound function, worst-case blackout `2(Π−Θ)` ≈ 1.4 ms on a 1 kHz/300 µs
+> window) with a one-to-one prior-art method (the published cooperative-executor RTA under
 > reservation scheduling, ECRTS 2019). It is *owned by spar*, which already ships a
 > **Lean-verified (0-`sorry`) jittered fixed-priority WCRT engine** — closing it is a scoped
 > spar extension that then emits *machine-checked* timing bounds (stronger than DWT). §7
@@ -77,7 +77,7 @@ gale#63 endorsement + 3-core RT1176 mapping.
 occupies a design point no shipping system does: **author high-level in the WebAssembly
 Component Model, prove in multiple tracks, ship *zero runtime* (dissolved to one native
 object), and root isolation in hardware that scales with the silicon.** The incumbents
-split the other way — WAMR/wasmtime keep a runtime *inside* the TCB; seL4/Muen/PikeOS have
+split the other way — general-purpose wasm runtimes keep a runtime *inside* the TCB; verified/separation microkernels have
 no Component-Model composition; and none ships object-code-verified codegen across ARM +
 AArch64 + RISC-V. The two novel, defensible assets are (1) a *tiny verified dissolve core*
 (switch + MPU/MMU-program + HM as an mmio/scalar-FSM sliver) that a COTS binary kernel
@@ -246,9 +246,9 @@ their own analysis.)
 
 - **Trusted + proven (small):** the partition-switch + **MPU-program-on-switch** + HM
   core — an mmio + scalar-FSM sliver with no heap, matching the thin-seam driver TCB
-  discipline. Precedent for a *small* verified isolation core: seL4-MCS (functional
-  correctness proven), Muen (SPARK), ProvenCore. (seL4-MCS is cited **directionally** for
-  the "time as a budget capability" *shape* only; its proofs are for a *dynamic* MCS
+  discipline. Precedent for a *small* verified isolation core: verified microkernels (functional
+  correctness proven for comparable cores). (That precedent is cited **directionally** for
+  the "time as a budget capability" *shape* only; its proofs are for a *dynamic* mixed-criticality-scheduling
   model on an MMU base and do **not** transfer to static ARINC 653 windows — verified 653
   temporal partitioning is a separate ~76k-LoC effort.)
 - **Untrusted / dissolved (outside the core):** apps, drivers, the async machinery — all
@@ -260,7 +260,7 @@ their own analysis.)
   the pipeline would be in the **isolation TCB** too. **synth#757** (a static-string buffer
   copy that reads the wrong source bytes on the fused syscall path) is a live existence
   proof of this class. Closure plan for the *trusted core's* source→binary gap: translation
-  validation (seL4/Valex-style), a DO-330-qualified compiler, or object-code proof — the
+  validation (object-code / translation-validation style), a DO-330-qualified compiler, or object-code proof — the
   project's gale#173 LRAT direction (trust the checker, not the solver) is the natural
   route. **synth already carries most of this route (rev 4):** binary-level translation
 validation (BIN-VERIFY) on ALL backends (ARM / AArch64 / RISC-V, the ASIL-B tier) plus
@@ -298,7 +298,7 @@ These are hard lines, not preferences:
   partitions; inner tenants share a partition only at a shared assurance level.
 - **Verified ≠ timing-verified, and verified ≠ certified.** Prove functional correctness of
   the switch/HM core mechanically; treat WCET/timing as a *separate, partly-manual*
-  soundness case (seL4's own gap). Also: unqualified Verus/Z3, Kani/CBMC, and Rocq carry
+  soundness case (a known gap even for verified microkernels). Also: unqualified Verus/Z3, Kani/CBMC, and Rocq carry
   **zero DO-330 tool-qualification credit** on their own — the "verified TCB" is
   engineering rigor and an input to a safety case, **not** certification evidence until the
   tools are qualified or the results independently checked.
@@ -315,7 +315,7 @@ These are hard lines, not preferences:
 
 ## 7. The gale-side critical path: the executor (epic #3) — SHIPPED, with scope
 
-jess's one open dependency on our side was the inner **async executor** — Embassy-class,
+jess's one open dependency on our side was the inner **async executor** — futures-based (async-executor-class),
 `no_std`, dissolved. **Status: built, verified, and merged (PR #176).** Verus obligations
 discharged (1081/0), Kani 2/2, dissolved to a single cortex-m3 object and qemu-probed:
 
@@ -336,13 +336,11 @@ One further obligation the functional proofs do *not* cover is genuinely still o
 - **Compositional schedulability (rev 6: analyzable now; a scoped spar bridge in progress —
   not an open problem).** The inner executor's intra-partition response time is bounded by
   standard periodic-resource theory: the outer partition (period Π, budget Θ) delivers a
-  **supply-bound function** `sbf(t)=(Θ/Π)(t−2(Π−Θ))` (Shin & Lee, RTSS 2003 / TECS 2008),
+  **supply-bound function** `sbf(t)=(Θ/Π)(t−2(Π−Θ))` (the standard periodic-resource model),
   whose `2(Π−Θ)` term is the worst-case blackout a tickless inner `Timer::after` suffers
   when it expires mid-deschedule — e.g. **~1.4 ms on a 1 kHz / 300 µs window** (this is the
   quantity a naive read would miss, and it is finite and computable). The cooperative task
-  set's response time under this supply is **named prior art**, not new theory: the ROS 2
-  single-threaded-executor RTA under reservation-based scheduling (Casini et al., ECRTS
-  2019; Blaß et al., RTSS 2021) analyzes exactly a non-preemptive run-to-completion callback
+  set's response time under this supply is **named prior art**, not new theory: the published cooperative single-threaded-executor RTA under reservation-based scheduling analyzes exactly a non-preemptive run-to-completion callback
   scheduler inside a `(Q,P)` reservation — the inner executor *instantiates* it. This
   analysis is **owned by `spar`**: gale feeds the AADL two-level model (partition windows +
   inner task set) and spar already computes **Lean-verified** fixed-priority WCRT
@@ -409,7 +407,7 @@ three, and none of the three yet carries qualification credit (§6).
   (the mechanism that *discharges* I-ISO) + the verified syscall/TCB boundary + multi-partition
   scheduling. This is where freedom-from-interference is earned. Contribute the **proof** of
   the tiny switch/MPU/HM core (novel — no COTS kernel can offer a re-verifiable isolation
-  core); **adopt** the mechanism (Jailhouse/Bao static-partitioning + textbook ARMv7-M PMSA /
+  core); **adopt** the mechanism (established static-partitioning hypervisor patterns + textbook ARMv7-M PMSA /
   ARMv8-A MMU) rather than inventing it. Gated on: the MPU/MMU mechanism (verified
   obligation), the synth#757 coverage fix + the trusted-core object-code-verification closure
   (§5), and meld's reloc-consumer for the fused multi-provider node (gale-side `--emit-relocs`
@@ -480,7 +478,7 @@ AMC 20-193):
   partition as a payload *inside* a certified ARINC-653 kernel?** Cost both explicitly for
   the near-term customer. Hosting (gale's dissolved, verified, MPU/MMU-contained component
   running as one partition on a proven 653 separation kernel) de-risks the shippable *without*
-  requiring gale to out-build PikeOS/INTEGRITY-178, and keeps the verified-outer as a parallel
+  requiring gale to out-build a certified separation kernel, and keeps the verified-outer as a parallel
   long-horizon research track. The honest counter (record it): a COTS kernel is an
   unverifiable blob in the TCB, which breaks the "verified all the way down with checkable
   certificates" claim that makes gale category-defining — *which is exactly why this deserves
@@ -497,8 +495,9 @@ AMC 20-193):
   memory is capped by that budget and alignment. This is where I-ISO is *discharged*.
 - **synth#757 fix + trusted-core translation-validation/qualification route (§5).** Gates
   the v0.4.0 fused syscall seam; until then the fused path carries no isolation claim.
-- **Static-WCET toolchain (aiT / RapiTime / hybrid) + compositional supply-bound analysis
-  (§7).** Gates DAL-A budget and inner-deadline claims.
+- **Sound static-WCET source (a gale-owned synth-emitted bound, and/or a qualified
+  third-party static-WCET tool) + compositional supply-bound analysis (§7).** Gates DAL-A
+  budget and inner-deadline claims.
 - **meld copy-vs-reference semantics for `--memory shared`.** If it passes references into
   the shared arena instead of Canonical-ABI copies, it opens a TOCTOU / shared-mutable-state
   channel *before* the MPU question arises. Copy = isolation; reference = speed. Must be
