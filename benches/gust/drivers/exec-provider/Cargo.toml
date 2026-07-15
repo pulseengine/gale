@@ -1,0 +1,19 @@
+# Standalone (not part of the gust workspace) — built ad-hoc for wasm32 + dissolve.
+# gust:os v0.4.0 executor node: the verified async executor (src/executor.rs, Verus
+# + Kani) as a single dissolved component. Task 6 of the gust-async-executor plan.
+[workspace]
+
+[package]
+name = "gust-exec-provider"
+version = "0.1.0"
+edition = "2021"
+description = "gust:os executor node — the SAME plain-mirror executor.rs (verus-strip output of the Verus+Kani-proven src/executor.rs) included verbatim, wrapped in a #[no_mangle] C-ABI marshalling shim (exec_admit/exec_poll_round/exec_state) and dissolved to a single relocatable Cortex-M3 object. No scheduling logic lives in this crate — only scalar arg/return marshalling into the verified Tasks type."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1

@@ -14,7 +14,7 @@ const FILES: &[&str] = &[
     "sched", "thread_lifecycle", "timeslice", "heap", "kheap", "work",
     "fatal", "fault_decode", "mempool", "dynamic", "smp_state",
     "stack_config", "device_init", "mem_domain", "spinlock", "atomic",
-    "userspace", "ring_buf", "lib",
+    "userspace", "ring_buf", "lib", "executor",
 ];
 
 fn find_gale_root() -> &'static Path {

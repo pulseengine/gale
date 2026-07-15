@@ -10,6 +10,75 @@
 // gust_fused bin via -bin= so the native `gust` / `bench` binaries are
 // unaffected.
 use std::path::Path;
+use std::process::Command;
+
+/// Symbol-presence guard against the synth#746-class silent-skip defect
+/// (disclosed in drivers/exec-provider/RESULTS.md's "separate synth finding"
+/// section): a dissolve can silently DROP a function from the relocatable
+/// object (no warning, no error — the function is simply absent), which
+/// otherwise only surfaces as an undefined-symbol link error IF something
+/// still references it, or worse, as silently-absent logic if nothing does.
+/// Run `nm` on the object and require each name in `required` to appear as a
+/// DEFINED text symbol (`T`/`t`); anything missing or undefined (`U`) fails
+/// the BUILD rather than the field. Hermetic: if no `nm`-compatible tool is
+/// on PATH, this warns and skips rather than failing (keeps the bench
+/// buildable without the ARM toolchain installed) — but once `nm` DOES run,
+/// a missing required symbol is a hard build failure, not a warning.
+fn check_defined_text_symbols(obj: &Path, required: &[&str]) {
+    const NM_CANDIDATES: &[&str] = &[
+        "/opt/homebrew/bin/arm-none-eabi-nm",
+        "arm-none-eabi-nm",
+        "llvm-nm",
+    ];
+    let nm = NM_CANDIDATES
+        .iter()
+        .find(|c| Command::new(c).arg("--version").output().is_ok());
+    let Some(nm) = nm else {
+        println!(
+            "cargo:warning=no nm-compatible tool (arm-none-eabi-nm/llvm-nm) found on PATH; \
+             skipping symbol-presence guard for {} (synth#746-class silent-skip would NOT be caught)",
+            obj.display()
+        );
+        return;
+    };
+    let output = Command::new(nm)
+        .arg(obj)
+        .output()
+        .unwrap_or_else(|e| panic!("failed to run {nm} on {}: {e}", obj.display()));
+    if !output.status.success() {
+        println!(
+            "cargo:warning={nm} exited non-zero on {}; skipping symbol-presence guard",
+            obj.display()
+        );
+        return;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let is_defined_text = |sym: &str| {
+        text.lines().any(|l| {
+            let parts: Vec<&str> = l.split_whitespace().collect();
+            match parts.as_slice() {
+                // "<addr> <type> <name>" (defined) or "<type> <name>" (undefined, no addr)
+                [_, ty, name] | [ty, name] if *name == sym => matches!(*ty, "T" | "t"),
+                _ => false,
+            }
+        })
+    };
+    let missing: Vec<&str> = required
+        .iter()
+        .copied()
+        .filter(|sym| !is_defined_text(sym))
+        .collect();
+    if !missing.is_empty() {
+        panic!(
+            "symbol-presence guard FAILED for {}: expected symbols {missing:?} to be DEFINED \
+             text symbols (T/t) but nm did not report them as such (missing entirely, or only \
+             undefined 'U') — this is exactly the synth#746-class silent-skip failure mode: a \
+             dissolved function silently absent from the object with no compile warning. Full \
+             nm output:\n{text}",
+            obj.display()
+        );
+    }
+}
 
 fn main() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -156,6 +225,22 @@ fn main() {
     if osobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_os_probe={}", osobj.display());
         println!("cargo:rerun-if-changed={}", osobj.display());
+    }
+    // gust:os v1 async executor (Task 6, REQ-OS-EXEC-001): the Verus+Kani-proven
+    // scheduler core (src/executor.rs), dissolved SINGLE-component (no wac plug,
+    // no meld fuse -> not synth#739-blocked) via drivers/exec-provider ->
+    // drivers/os-node/exec-cm3.o. gust_exec_probe is the qemu liveness oracle.
+    let eobj = Path::new(&manifest).join("drivers/os-node/exec-cm3.o");
+    if eobj.exists() {
+        // Guard against the synth#746-class silent-skip gap disclosed in
+        // exec-provider/RESULTS.md: require exec_admit/exec_poll_round/
+        // exec_state to actually be defined text symbols in the object.
+        // `poll_task` is deliberately NOT checked here — it is the trusted
+        // FFI seam, expected undefined until this probe's own `poll_task`
+        // resolves it at final native link.
+        check_defined_text_symbols(&eobj, &["exec_admit", "exec_poll_round", "exec_state"]);
+        println!("cargo:rustc-link-arg-bin=gust_exec_probe={}", eobj.display());
+        println!("cargo:rerun-if-changed={}", eobj.display());
     }
     println!("cargo:rerun-if-changed=build.rs");
 }

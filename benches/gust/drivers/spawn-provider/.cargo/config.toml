@@ -1,0 +1,6 @@
+# See drivers/exec-provider/.cargo/config.toml for the full rationale (same crate
+# shape: stateful, needs --allow-undefined for the trusted poll_task extern, and a
+# small explicit wasm-ld stack-size so a subsequent --native-pointer-abi dissolve's
+# .bss stays bounded to the small Tasks table rather than the 1 MiB default stack).
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=--allow-undefined", "-C", "link-arg=-zstack-size=1024"]

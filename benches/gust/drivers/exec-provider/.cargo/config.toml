@@ -1,0 +1,19 @@
+# rustc >=1.97 rust-lld errors on undefined wasm cdylib symbols; `poll_task` (the
+# trusted FFI seam declared inside the included plain/src/executor.rs) is resolved
+# by the qemu probe's own `poll_task` export at dissolve-link, so emit it as a wasm
+# IMPORT (--allow-undefined) rather than failing the wasm link — the same pattern
+# every thin-seam driver in this repo uses for its mmio externs.
+#
+# Unlike those (stateless, scalar-only) thin drivers, this crate has REAL static
+# state (the Tasks table) — synth's plain `--relocatable` dissolve alone doesn't
+# materialize any linear-memory data/bss for a stateful module (verified: without
+# `--native-pointer-abi` the executor's static-table writes were silently
+# discarded — see drivers/exec-provider RESULTS.md), so the dissolve step must
+# pass `--native-pointer-abi` (still with NO --shadow-stack-size, so this stays
+# outside the specific synth#746 combination, which needs both flags AND a
+# meld-fused node). Left at wasm-ld's 1 MiB default, that flag would reserve the
+# WHOLE default shadow stack as `.bss`; -z stack-size shrinks it at the wasm-ld
+# level (upstream of synth entirely) to the small bound this module actually
+# needs (no recursion, ~80 B max stack frame observed).
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=--allow-undefined", "-C", "link-arg=-zstack-size=1024"]

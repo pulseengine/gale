@@ -1,0 +1,15 @@
+[workspace]
+[package]
+name = "gust-spawn-provider"
+version = "0.1.0"
+edition = "2021"
+description = "gust:os spawn provider — backs the gust:os/spawn WIT interface (start/poll) with the SAME verified async executor (plain/src/executor.rs, included verbatim) that Task 6's exec-provider dissolves. start() = admit + wake (spawn is ready-now; this WIT ABI carries no deadline); poll() drives one poll_round and reports the handle's state."
+[lib]
+crate-type = ["cdylib"]
+[dependencies]
+wit-bindgen = { version = "0.52", default-features = false, features = ["macros"] }
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1
