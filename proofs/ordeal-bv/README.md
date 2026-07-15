@@ -54,6 +54,29 @@ direction of the `⟺` is one refutation).
 
 Both directions of the `⟺` hold over the full `u32` domain, independently re-checkable.
 
+## Pilot 3 — `spinlock_validate.rs` owner encode/decode round-trip (this commit)
+
+`src/spinlock_validate.rs`, the SV4/SV5 obligations the module's own proof notes flag as
+needing `by(bit_vector)`: the spinlock owner word packs `(cpu, thread)` as `owner = thread |
+cpu` (with `cpu < MAX_CPUS = 4` and `thread` aligned so its low 2 bits are free), and the
+decode must **losslessly recover both** — the real concurrency-safety property (a corrupted
+owner would mis-attribute a lock).
+
+Two directions, both certificate-checked (implicitly-conjoined asserts; ordeal 0.9.1 takes no
+boolean `and`/`define-fun`):
+
+- `sv_cpu_recover.smt2` — **SV4**: `(thread | cpu) & 3 == cpu`. Refute the negation under the
+  premises. → **`unsat`**, **1,064-byte LRAT**.
+- `sv_thread_recover.smt2` — **SV5**: `(thread | cpu) & 0xFFFFFFFC == thread`. →
+  **`unsat`**, **22,082-byte LRAT**.
+- Discrimination sanity (`sv_cpu_recover_mutant.smt2`, non-vacuous): drop the
+  **thread-alignment** premise and CPU recovery becomes falsifiable — ordeal returns
+  **`sat`** with model `cpu=0, thread=2` (an unaligned thread's low bit corrupts `owner&3`),
+  confirming the alignment premise is load-bearing.
+
+Both round-trip directions hold over the full 32-bit domain, independently re-checkable.
+**3 of 54** obligation-sites now piloted (cpu_mask, mpu, spinlock_validate).
+
 ## Reproduce
 
     # build ordeal >= 0.9.1 (pulseengine/ordeal): cargo build --release --bin ordeal
