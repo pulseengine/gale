@@ -2,14 +2,25 @@
 
 **Status:** design (validated with jess on gale#63; awaiting user review before an
 implementation plan).
-**Date:** 2026-07-11. **Revised:** 2026-07-15 (rev 4 — ARMv8-A/AArch64 target + synth's
-per-backend verification tiers as the object-code-verification route; rev 3 — silicon-
-independence governing principle §1.1; rev 2 — six-lens expert-review pass — see the
-revision notes below).
+**Date:** 2026-07-11. **Revised:** 2026-07-15 (rev 5 — re-pointed ambition per the
+disposition panel: lead with the design-point thesis §1, two-column v1 ledger, synth#757
+as the flagship containment demo, build-vs-host costed decision §12; rev 4 — ARMv8-A/AArch64
+target + synth verification tiers; rev 3 — silicon-independence governing principle §1.1;
+rev 2 — six-lens expert-review pass — see the revision notes below).
 **Origin:** user ask ("kiln async should do more — priority tasks + supervision"), the
 ASIL-D / actually-lands reframe, a verified-scheduling research survey, and jess's
 gale#63 endorsement + 3-core RT1176 mapping.
 
+> **Revision note (rev 5).** A second review panel (2 tech-optimists, 2 skeptics, 1 neutral)
+> found rev 2–4 calibrated right on *risk-disclosure*, too *timid* in *self-presentation*
+> (auditing away its own lead), and too *grand* in *roadmap sequencing* (aiming novelty at
+> the already-certified 653 backbone). Rev 5 re-points ambition without lowering it: leads
+> §1 with the design-point thesis (promoted from the non-goals), gives v1 a two-column
+> safety-case ledger (isolation evidence = 0, functional evidence = substantial & shipped),
+> names **synth#757 as the flagship v2 containment demo**, splits v2 into "contribute the
+> proof / adopt the mechanism", and elevates the **build-verified-outer vs. host-on-a-
+> certified-653-kernel** choice to a first-class costed §12 decision.
+>
 > **Revision note (rev 4).** Grounded §1.1's portability in synth's actual backend set:
 > ARM Cortex-M, **AArch64 / ARMv8-A**, and RISC-V RV32 are all shipping synth backends.
 > Two consequences folded in: (a) *isolation strengthens with silicon* — I-ISO ports up
@@ -46,6 +57,20 @@ gale#63 endorsement + 3-core RT1176 mapping.
 > first-class obligations.
 
 ## 1. Problem & goal
+
+**The thesis (the unoccupied design point — say it first, not in the non-goals).** gale
+occupies a design point no shipping system does: **author high-level in the WebAssembly
+Component Model, prove in multiple tracks, ship *zero runtime* (dissolved to one native
+object), and root isolation in hardware that scales with the silicon.** The incumbents
+split the other way — WAMR/wasmtime keep a runtime *inside* the TCB; seL4/Muen/PikeOS have
+no Component-Model composition; and none ships object-code-verified codegen across ARM +
+AArch64 + RISC-V. The two novel, defensible assets are (1) a *tiny verified dissolve core*
+(switch + MPU/MMU-program + HM as an mmio/scalar-FSM sliver) that a COTS binary kernel
+structurally cannot offer, and (2) *checkable-certificate assurance at both layers* — the
+compiler contained by hardware (I-ISO, §2.1) and the solver contained by a proof checker
+(gale#173 LRAT; synth's own BIN-VERIFY/RULE-VERIFY, §5). Everything else in this document —
+the ARINC-653 backbone, the MPU/MMU mechanism, static WCET — is deliberately **boring and
+adopted**, because novelty is load-bearing only where it shrinks or certifies the TCB.
 
 gust's async today is `gust:os/spawn` — cooperative, scalar, dissolved-to-native
 (`gust_poll` = kiln `poll_round`). Cooperative-only gives no bounded latency and no
@@ -330,14 +355,29 @@ three, and none of the three yet carries qualification credit (§6).
   the explicitly-non-safety inner layer plus an availability-tier HM FSM — there is no
   partition isolation (no outer preemptive switch, no MPU region-swap), no bounded
   intra-partition latency, and the fused syscall path is blocked on synth#757. The inner
-  executor being merged (PR #176) does **not** advance the safety case; by this spec's own
-  logic safety lives in the still-unbuilt outer layer.
-- **v2 (the safety-load-bearing epic — mostly UNBUILT):** the outer preemptive
-  time-partitioning + the **MPU region-swap-on-switch** (the mechanism that *discharges*
-  I-ISO) + the verified syscall/TCB boundary + multi-partition scheduling. This is where
-  freedom-from-interference is earned. Gated on: the MPU mechanism (verified obligation),
-  the synth#757 fix + the trusted-core source→binary closure (§5), and meld's reloc-consumer
-  for the fused multi-provider node (gale-side `--emit-relocs` already solved, gale#168).
+  executor being merged (PR #176) does **not** advance the *isolation* safety case. But
+  read the ledger with **two columns, not one**: *isolation evidence = 0* (honest, and it
+  stays), while *functional-correctness evidence = substantial and machine-checked* — a
+  Verus-proven (1081/0), Kani-checked, dissolved-to-native tickless fixed-priority async
+  executor plus 10 Kani-proven 0-SRAM drivers on real Renode silicon. Machine-checked
+  proofs on *shipped* code are the single hardest artifact to fake; v1 delivers real,
+  rare evidence on the functional leg and zero on the isolation leg. Say both in the same
+  breath.
+- **v2 (the safety-load-bearing epic — mostly UNBUILT; be bold in the core, boring in the
+  backbone):** the outer preemptive time-partitioning + the **MPU/MMU region-swap-on-switch**
+  (the mechanism that *discharges* I-ISO) + the verified syscall/TCB boundary + multi-partition
+  scheduling. This is where freedom-from-interference is earned. Contribute the **proof** of
+  the tiny switch/MPU/HM core (novel — no COTS kernel can offer a re-verifiable isolation
+  core); **adopt** the mechanism (Jailhouse/Bao static-partitioning + textbook ARMv7-M PMSA /
+  ARMv8-A MMU) rather than inventing it. Gated on: the MPU/MMU mechanism (verified
+  obligation), the synth#757 coverage fix + the trusted-core object-code-verification closure
+  (§5), and meld's reloc-consumer for the fused multi-provider node (gale-side `--emit-relocs`
+  already solved, gale#168).
+  - **Flagship v2 acceptance demo — weaponize synth#757.** The live, reproducible miscompile
+    on the exact fused path is the perfect adversarial artifact: script a compiler-introduced
+    cross-partition write and show the **MPU/MMU physically faulting it** — converting I-ISO
+    from a claim into a filmed demonstration. No competitor has a natural miscompile on hand;
+    gale already possesses one. This is the single highest-leverage demo the design owns.
 - **v3:** the full multi-core mapping in the Renode model (jess wires the 653 outer window +
   kiln inner; the F100/gust HM tier is already demonstrable), with the multicore-interference
   mitigation (§11) in place.
@@ -395,6 +435,16 @@ AMC 20-193):
 
 ## 12. Open items (owners + gates)
 
+- **DECISION (first-class, costed): build the verified outer kernel, or host gale's verified
+  partition as a payload *inside* a certified ARINC-653 kernel?** Cost both explicitly for
+  the near-term customer. Hosting (gale's dissolved, verified, MPU/MMU-contained component
+  running as one partition on a proven 653 separation kernel) de-risks the shippable *without*
+  requiring gale to out-build PikeOS/INTEGRITY-178, and keeps the verified-outer as a parallel
+  long-horizon research track. The honest counter (record it): a COTS kernel is an
+  unverifiable blob in the TCB, which breaks the "verified all the way down with checkable
+  certificates" claim that makes gale category-defining — *which is exactly why this deserves
+  a costed decision, not a default.* This decision, with the cert-target below, is what turns
+  the optimist and skeptic readings of this spec into the same verdict.
 - **Certification target — a PER-TARGET OUTPUT, not a gate on the architecture (§1.1).**
   For each deployment: the claimable DAL letter / ISO 26262 ASIL / SORA specific-category is
   the *min* of (the integrator's need, the silicon's physical ceiling from §11). jess owns
