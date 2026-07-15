@@ -1,0 +1,64 @@
+# gust:hal thin-seam CAN (bxCAN) driver — driver breadth, the 10th verified iodev
+# (after GPIO/timer/SPI/UART/I2C/ADC/DAC/WDG/PWM). The STM32F1 bxCAN master path —
+# bit-timing (BTR) config + the INRQ→INAK init handshake + TX-mailbox / RX-FIFO
+# gating — lives in verified wasm importing ONLY gust:hal/mmio (read32/write32):
+# zero new TCB atoms. Single-component dissolve (loom inline → synth cortex-m3
+# --all-exports --relocatable), scalar-only FSM → 0 SRAM. Not meld-fused, so not
+# synth#757-blocked.
+artifacts:
+  # ---------------------------------------------------------------- requirement
+  - id: REQ-DRV-CAN-001
+    type: sw-req
+    title: "gust:hal thin-seam CAN (bxCAN) driver — config-only-in-init"
+    status: implemented
+    release: v0.5.0
+    description: >
+      The gust:hal CAN driver SHALL drive the STM32F1 bxCAN master path over the
+      gust:hal/mmio capability (read32/write32) ONLY — adding zero new TCB atoms —
+      with a scalar mode FSM (Sleep/Init/Normal) carried as a packed u32,
+      guaranteeing: (1) config-only-in-init (the distinctive bxCAN safety
+      property) — the bit-timing register (BTR: BRP/TS1/TS2/SJW) is accepted for
+      write ONLY while the peripheral is in Init mode (INRQ set, INAK confirmed);
+      a config write in Sleep or Normal is rejected without mutating, because the
+      hardware silently ignores BTR outside init and a wrong bit-timing corrupts
+      every frame on the bus; (2) init-handshake ordering — Normal is reachable
+      ONLY by passing through Init (via leave_init from Init), so bit-timing
+      always had a valid configuration window; (3) TX-only-when-empty — a
+      transmit request is gated on the addressed mailbox being empty (TME), never
+      overwriting an in-flight frame; (4) RX-release-only-when-pending — a FIFO
+      release is gated on a pending message (FMP > 0), releasing each received
+      frame exactly once; (5) table-free config — every register value is pure
+      bit arithmetic (no .rodata table, which a --relocatable dissolve would read
+      as 0). The driver dissolves as ONE native component (no meld fuse).
+    tags: [gust, hal, driver, can, bxcan, thin-seam, verified, zero-sram]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-VERIFY-001
+
+  # ------------------------------------------------------------- verification
+  - id: VER-DRV-CAN-001
+    type: sw-verification
+    title: "Kani proofs + single-component dissolve for the thin-seam CAN driver"
+    method: formal-verification
+    status: verified
+    description: >
+      Multi-track evidence for REQ-DRV-CAN-001, all against the SAME source
+      (benches/gust/drivers/can-thin/src/lib.rs): (1) cargo kani proves the
+      full-input-space safety properties — config-only-in-init (BTR write
+      accepted IFF phase == Init), init-handshake ordering (leave_init requires
+      Init → Normal), TX-only-when-empty, RX-release-only-when-pending, mode-
+      transition gating (enter_init/leave_init phase-gated, never corrupting
+      off-phase), bit-timing config well-formed (BRP/TS1/TS2/SJW masked to their
+      fields, table-free), and pack/unpack round-trip of every reachable mode.
+      (2) The single-component dissolve: cargo build --release --target
+      wasm32-unknown-unknown (with .cargo/config --allow-undefined for the mmio
+      externs on rustc >= 1.97) | loom optimize --passes inline | synth compile
+      --target cortex-m3 --all-exports --relocatable → can-thin-cm3.o, with the
+      undefined-symbol set confirmed (nm) to be EXACTLY mmio_read32/mmio_write32
+      (zero new TCB atoms) and .bss == 0 (scalar-only FSM, no linmem state).
+    tags: [gust, hal, driver, can, kani, dissolve, zero-sram, verified]
+    links:
+      - type: verifies
+        target: REQ-DRV-CAN-001
