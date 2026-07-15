@@ -7,7 +7,7 @@ QF_BV solver whose LRAT checker is **machine-proven sound in Lean 4** — so the
 becomes an independently re-checkable certificate ("the solver is untrusted; only the
 proven checker is trusted", CompCert-style).
 
-## Pilot — `cpu_mask.rs` power-of-two obligation (this commit)
+## Pilot 1 — `cpu_mask.rs` power-of-two obligation
 
 `src/cpu_mask.rs:179`, `by(bit_vector)`:
 
@@ -27,6 +27,32 @@ in SMT-LIB2 QF_BV; ordeal returns **`unsat`** ⇒ the lemma holds.
 The UNSAT verdict is only returned *after* ordeal's Lean-proven `ordeal-lrat` checker
 validates the certificate; the certificate is portable and re-checkable with zero trust in
 the solver (`cert.recheck()`).
+
+## Pilot 2 — `mpu.rs` power-of-two obligation (this commit)
+
+`src/mpu.rs:98`, `is_power_of_two`, `by(bit_vector)`. Unlike pilot 1 (a single
+implication `premise ⇒ pow2`), this obligation is a **biconditional** — so it splits into
+**two** directional QF_BV obligations, both re-discharged:
+
+> for all `n: u32`:  `(n > 0 ∧ n & (n-1) == 0)  ⟺  n ∈ {1, 2, …, 2^31}`
+
+- `mpu_pow2_fwd.smt2` — **forward** `idiom ⇒ enumeration`: refute `idiom ∧ ¬enumeration`.
+- `mpu_pow2_bwd.smt2` — **backward** `enumeration ⇒ idiom`: refute `enumeration ∧ ¬idiom`.
+
+Each side is expressed as implicitly-conjoined top-level `assert`s (ordeal 0.9.1's parser
+takes no boolean `and`/`define-fun`; multiple asserts are the conjunction, and each
+direction of the `⟺` is one refutation).
+
+**Result (ordeal 0.9.1, `ordeal check`):**
+- `mpu_pow2_fwd.smt2` → **`unsat`**, **15,193-byte checker-validated LRAT certificate**.
+- `mpu_pow2_bwd.smt2` → **`unsat`**, **45,156-byte checker-validated LRAT certificate**.
+- Discrimination sanity (`mpu_pow2_fwd_mutant.smt2`, the encoding is not vacuously unsat):
+  the forward obligation with the `bv2` enumeration term **removed** returns **`sat`** with
+  model **`n = 0x00000002`** — `2` satisfies the idiom yet is absent from the reduced
+  enumeration, so ordeal correctly exhibits the counterexample. A vacuous/broken checker
+  returning `unsat` here would be caught.
+
+Both directions of the `⟺` hold over the full `u32` domain, independently re-checkable.
 
 ## Reproduce
 
