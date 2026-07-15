@@ -75,6 +75,7 @@ impl Tasks {
                 self.state[i] = TaskState::Pending;
                 self.prio[i] = prio;
                 self.ready = self.ready & !(1u32 << (i as u32));
+                let new_ready = self.ready;
                 return i as u32;
             }
             i += 1;
@@ -176,10 +177,11 @@ impl Tasks {
     /// decreases every iteration (`lemma_popcount_decreases`), so the loop
     /// is bounded by the entry popcount (<= `MAX_TASKS`). It exits only when
     /// `pick_next` finds nothing ready, at which point `ready == 0u32`
-    /// (`lemma_zero_when_no_low_bits_and_bounded`, using the loop-maintained
-    /// `ready < 2^MAX_TASKS` bound established via `consume`'s new frame
-    /// fact). This is bounded-poll: at most `popcount(ready) <= MAX_TASKS`
-    /// dispatches, each ready task consumed exactly once.
+    /// (`lemma_zero_when_no_low_bits_and_bounded`, using the `ready <
+    /// 2^MAX_TASKS` bound that is now `inv()`'s own second conjunct —
+    /// every mutator proves it, so it no longer needs restating here). This
+    /// is bounded-poll: at most `popcount(ready) <= MAX_TASKS` dispatches,
+    /// each ready task consumed exactly once.
     pub fn poll_round(&mut self) {
         loop {
             let h = self.pick_next();

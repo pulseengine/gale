@@ -50,9 +50,17 @@ pub struct Tasks {
 impl Tasks {
     /// Representation invariant: `ready` bits only ever set for Pending slots,
     /// and only within [0, MAX_TASKS). This is the anchor every proof rests on.
+    ///
+    /// Second conjunct (`ready < 256`, i.e. no bits set at positions >=
+    /// MAX_TASKS==8): originally this was a local `requires` bolted onto
+    /// `poll_round` alone (every real mutator already respects it, but
+    /// nothing said so at the `inv()` level). Reviewer-flagged design debt on
+    /// Task 5 — folded in here so every mutator proves it once, and callers
+    /// no longer need to restate it.
     pub open spec fn inv(&self) -> bool {
-        forall|i: int| 0 <= i < MAX_TASKS ==>
-            (#[trigger] self.ready_bit(i)) ==> self.state[i as int] === TaskState::Pending
+        (forall|i: int| 0 <= i < MAX_TASKS ==>
+            (#[trigger] self.ready_bit(i)) ==> self.state[i as int] === TaskState::Pending)
+            && self.ready < 256u32
     }
 
     /// Ghost: is bit i of `ready` set?
@@ -97,6 +105,7 @@ impl Tasks {
                 assert(false);
             }
         }
+        assert(r.ready < 256u32);
         r
     }
 
@@ -132,8 +141,17 @@ impl Tasks {
                 // Clear (a fresh admit must not appear ready), keeping inv trivially:
                 // the invariant only constrains bits that ARE set.
                 self.ready = self.ready & !(1u32 << (i as u32));
+                let new_ready = self.ready;
                 proof {
                     lemma_clear_bit_self(old_ready, i as u32);
+                    // AND-with-mask is monotone non-increasing; old_ready ==
+                    // old(self).ready (nothing written before this point in
+                    // the scan, per the loop's `self.ready == old(self).ready`
+                    // invariant), which is < 256 via old(self).inv()'s second
+                    // conjunct — so new_ready stays < 256 too.
+                    assert(new_ready <= old_ready) by (bit_vector)
+                        requires new_ready == old_ready & !(1u32 << (i as u32));
+                    assert(old_ready < 256u32);
                     assert forall|j: int| 0 <= j < MAX_TASKS implies
                         (#[trigger] self.ready_bit(j)) ==> self.state[j as int] === TaskState::Pending
                     by {
@@ -184,6 +202,11 @@ impl Tasks {
             self.ready = self.ready | (1u32 << h);
             proof {
                 lemma_set_bit_self(old_ready, h);
+                // old_ready == old(self).ready (unmodified so far) < 256 via
+                // old(self).inv()'s second conjunct; h < MAX_TASKS == 8, so
+                // the freshly-set bit keeps `ready` in inv()'s bound.
+                assert(old_ready < 256u32);
+                lemma_set_bit_bounded(old_ready, h);
                 assert forall|j: int| 0 <= j < MAX_TASKS && j != h as int implies
                     self.ready_bit(j) == old(self).ready_bit(j)
                 by {
@@ -330,6 +353,12 @@ impl Tasks {
                 self.ready = self.ready | (1u32 << (i as u32));
                 proof {
                     lemma_set_bit_self(old_ready, i as u32);
+                    // old_ready == self.ready at loop-top (nothing written
+                    // yet this iteration) < 256 via the loop's `self.inv()`
+                    // invariant's second conjunct; i < MAX_TASKS == 8, so the
+                    // freshly-set bit keeps `ready` within inv()'s bound.
+                    assert(old_ready < 256u32);
+                    lemma_set_bit_bounded(old_ready, i as u32);
                     // Progress invariant carries forward to i+1: bits [0, i) already
                     // satisfying the expiry condition (snapshotted above from
                     // old_ready) are untouched by setting bit i; bit i itself is now
@@ -381,6 +410,11 @@ impl Tasks {
         proof {
             assert(new_ready <= old_ready) by (bit_vector)
                 requires new_ready == old_ready & !(1u32 << h);
+            // old_ready == old(self).ready (nothing written before this
+            // point) < 256 via old(self).inv()'s second conjunct; combined
+            // with the AND-with-mask monotonicity above, new_ready stays
+            // within inv()'s bound too.
+            assert(old_ready < 256u32);
             lemma_clear_bit_self(old_ready, h);
             assert forall|j: int| 0 <= j < MAX_TASKS && j != h as int implies
                 self.ready_bit(j) == old(self).ready_bit(j)
@@ -438,20 +472,14 @@ impl Tasks {
     /// decreases every iteration (`lemma_popcount_decreases`), so the loop
     /// is bounded by the entry popcount (<= `MAX_TASKS`). It exits only when
     /// `pick_next` finds nothing ready, at which point `ready == 0u32`
-    /// (`lemma_zero_when_no_low_bits_and_bounded`, using the loop-maintained
-    /// `ready < 2^MAX_TASKS` bound established via `consume`'s new frame
-    /// fact). This is bounded-poll: at most `popcount(ready) <= MAX_TASKS`
-    /// dispatches, each ready task consumed exactly once.
+    /// (`lemma_zero_when_no_low_bits_and_bounded`, using the `ready <
+    /// 2^MAX_TASKS` bound that is now `inv()`'s own second conjunct —
+    /// every mutator proves it, so it no longer needs restating here). This
+    /// is bounded-poll: at most `popcount(ready) <= MAX_TASKS` dispatches,
+    /// each ready task consumed exactly once.
     pub fn poll_round(&mut self)
         requires
             old(self).inv(),
-            // See `consume`'s "Additive (Task 5)" note: `inv()` alone doesn't
-            // bound `ready`'s bits >= MAX_TASKS (never set in practice by any
-            // real mutator — `admit`/`wake`/`expire`/`consume` only ever
-            // touch bits < MAX_TASKS — but not excluded by `inv()` as
-            // literally stated). Required here, honestly, so `ready == 0u32`
-            // below is a real proof rather than a weakened postcondition.
-            old(self).ready < 256u32,
         ensures
             self.inv(),
             self.ready == 0u32,
@@ -459,7 +487,6 @@ impl Tasks {
         loop
             invariant
                 self.inv(),
-                self.ready < 256u32,
             decreases self.ready_popcount(),
         {
             let h = self.pick_next();
@@ -499,6 +526,11 @@ impl Tasks {
                         }
                     }
                 }
+                // dispatch_one's `ensures self.ready == old(self).ready`
+                // means `ready` is untouched by it; the bound established by
+                // `consume` (whose own `ensures self.inv()` includes
+                // `ready < 256`) therefore survives verbatim.
+                assert(self.ready < 256u32);
                 lemma_popcount_decreases(pre, *self, h as int);
             }
         }
@@ -529,6 +561,18 @@ proof fn lemma_set_bit_other(x: u32, h: u32, j: u32)
 {
     assert(((x | (1u32 << h)) >> j) & 1u32 == (x >> j) & 1u32) by (bit_vector)
         requires h < 32, j < 32, h != j;
+}
+
+/// Setting a bit at a position < MAX_TASKS (8) in a value already < 256
+/// (i.e. already confined to the low 8 bits) keeps the result < 256.
+/// Discharges the `inv()` bound (`ready < 256`) across `wake`/`expire`'s
+/// bit-set mutation, extending the `lemma_set_bit_*` family above.
+proof fn lemma_set_bit_bounded(x: u32, h: u32)
+    requires x < 256u32, h < 8,
+    ensures (x | (1u32 << h)) < 256u32,
+{
+    assert((x | (1u32 << h)) < 256u32) by (bit_vector)
+        requires x < 256u32, h < 8;
 }
 
 /// Clearing bit `h` and then reading bit `h` back always yields 0.
