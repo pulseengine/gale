@@ -33,6 +33,22 @@ mod executor;
 
 use executor::{TaskState, Tasks, MAX_TASKS};
 
+/// Footgun guard: `src/executor.rs`'s `by(bit_vector)` lemmas
+/// (`lemma_set_bit_bounded`, `lemma_zero_when_no_low_bits_and_bounded`) and
+/// `Tasks::ready_popcount`'s 8-term sum both hardcode the task-table width to
+/// 8, not `MAX_TASKS` symbolically — Verus's `by(bit_vector)` blocks and the
+/// popcount unrolling need concrete bit positions, so they were written
+/// against the literal 8. If `MAX_TASKS` ever changes, those proofs and this
+/// popcount go silently out of sync with the actual table size. Placed here
+/// (rather than in `src/executor.rs`) so it fails loudly for any crate that
+/// builds against the plain mirror without requiring a `src/executor.rs`
+/// edit + plain/ regen + Verus/strip-gate re-run just to add a compile-time
+/// check.
+const _: () = assert!(
+    MAX_TASKS == 8,
+    "executor bit_vector lemmas + ready_popcount hardcode width 8"
+);
+
 /// One instance's worth of scheduler state. A dissolved component (like a wasm
 /// component instance) owns its state for its lifetime — this is the executor
 /// node's only static data, and it is exactly `size_of::<Tasks>()`, which is

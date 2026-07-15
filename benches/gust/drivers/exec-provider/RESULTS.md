@@ -47,14 +47,20 @@ bookkeeping — small and bounded, not proportional to anything unbounded.
 ## Oracle: `gust_exec_probe` (qemu-cortex-m3)
 
     cd benches/gust && cargo run --release --bin gust_exec_probe
-    gust-exec-probe OK: both tasks Done, hi-prio first   (exit 0, EXIT_SUCCESS)
+    gust-exec-probe OK: both tasks Done, hi-prio first (dispatch order observed)   (exit 0, EXIT_SUCCESS)
 
 Admits two tasks at priorities 1 and 9 with a due-now deadline (0), drives one
 `exec_poll_round(0)`, and asserts both reach `Done` — exercising `admit`,
-`expire` (tickless: deadline `<=` now marks ready), `pick_next`
-(fairness — not separately observable from a 2-task drain-to-completion, but
-the SAME proven scan the Kani harness checks), `consume`, and `dispatch_one`
-end to end on the dissolved object. Reproducible across repeated clean runs.
+`expire` (tickless: deadline `<=` now marks ready), `pick_next`, `consume`,
+and `dispatch_one` end to end on the dissolved object. The probe's own
+`poll_task` (the trusted FFI seam `dispatch_one` calls) records each `id`
+argument into a small `static mut ORDER` buffer as it's called; the probe
+then asserts `ORDER[0]` is the priority-1 handle and `ORDER[1]` is the
+priority-9 handle before printing "hi-prio first" — so `pick_next`'s
+fairness/priority ordering is genuinely OBSERVED at dispatch time on this run
+(not merely inferred from both tasks reaching `Done`, which alone cannot
+distinguish dispatch order for two tasks that complete on first poll).
+Reproducible across repeated clean runs.
 
 ## ABI deviations from the brief's literal probe code (both are marshalling-only)
 
