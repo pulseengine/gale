@@ -1,8 +1,37 @@
+
+// ===========================================================================
+// Trusted FFI seam (Task 5) — the intersection boundary
+// ===========================================================================
+//
+// `poll_task` is NOT verified: it dispatches into the app's async task body
+// (possibly meld-dissolved, possibly hand-written) for one poll. This is the
+// one place the verified scheduler core hands control to unverified code, so
+// it is declared outside the verification macro's block below — it never
+// becomes a proof obligation. The only caller is `Tasks::dispatch_one`
+// (`#[verifier::external_body]`, below), which is itself only reachable
+// through the fully verified `Tasks::poll_round` loop.
+//
+// Edition 2024 requires `unsafe extern` blocks and an `unsafe { }` at the
+// call site; both are used here even though the Verus checker itself invokes
+// `rustc --edition=2021` (`unsafe extern` parses under both editions, so one
+// source serves both toolchains).
+//
+// Crate-wide `unsafe_code = "deny"` (Cargo.toml `[lints.rust]`, an ASIL-D
+// safety-critical policy) is deliberately overridden here with a single,
+// narrowly-scoped `#[allow(unsafe_code)]` — the intersection boundary is
+// the ONE place in this crate an FFI call is unavoidable. Everything else
+// in the crate (including the rest of this file) stays under the deny.
+
 //! gust async executor (v1) — a verified fixed-priority + tickless-deadline
 //! scheduler core over a static task table. Scalar-only (no async/closures in the
 //! verified core); task bodies run through the trusted `poll_task` seam (Task 5).
 //! Builds on `crate::priority::Priority`. Single-component dissolve (not meld-fused),
 //! so it is not blocked on synth#739.
+#[allow(unsafe_code)]
+unsafe extern "C" {
+    /// Poll task `id` once. Returns 0 if still pending, 1 if it completed.
+    pub fn poll_task(id: u32) -> u32;
+}
 pub const MAX_TASKS: usize = 8;
 #[derive(PartialEq, Eq)]
 pub enum TaskState {
@@ -118,6 +147,48 @@ impl Tasks {
     pub fn consume(&mut self, h: u32) {
         let old_ready = self.ready;
         self.ready = self.ready & !(1u32 << h);
+        let new_ready = self.ready;
+    }
+    /// The trusted FFI seam, wrapped to the minimum trusted surface: dispatch
+    /// task `h`'s pending poll once via `poll_task`, and record `Done` if it
+    /// completed. `#[verifier::external_body]` means Verus takes this
+    /// function's `ensures` on faith (the body is not checked) — kept
+    /// deliberately weak (only a frame condition: `ready` untouched, every
+    /// OTHER slot's `state` untouched) so `poll_round`'s termination and
+    /// `ready == 0` proof never has to trust *what* `poll_task` decided, only
+    /// that dispatching can't resurrect readiness or clobber other slots.
+    /// `poll_round` (the only caller) re-derives `inv()` itself afterwards
+    /// from these two facts plus `consume`'s already-established `inv()` —
+    /// i.e. the trusted annotation carries as little weight as possible.
+    #[allow(unsafe_code)]
+    fn dispatch_one(&mut self, h: u32) {
+        let done = unsafe { poll_task(h) };
+        if done == 1u32 {
+            self.state[h as usize] = TaskState::Done;
+        }
+    }
+    /// One scheduler round: drain every currently-ready task, each polled
+    /// exactly once via the trusted `poll_task` seam, until nothing is ready.
+    ///
+    /// Terminates because `consume` clears exactly the picked task's ready
+    /// bit each iteration and `dispatch_one` never sets any ready bit (its
+    /// `ensures` says `ready` is untouched) — `ready_popcount()` strictly
+    /// decreases every iteration (`lemma_popcount_decreases`), so the loop
+    /// is bounded by the entry popcount (<= `MAX_TASKS`). It exits only when
+    /// `pick_next` finds nothing ready, at which point `ready == 0u32`
+    /// (`lemma_zero_when_no_low_bits_and_bounded`, using the loop-maintained
+    /// `ready < 2^MAX_TASKS` bound established via `consume`'s new frame
+    /// fact). This is bounded-poll: at most `popcount(ready) <= MAX_TASKS`
+    /// dispatches, each ready task consumed exactly once.
+    pub fn poll_round(&mut self) {
+        loop {
+            let h = self.pick_next();
+            if h == MAX_TASKS as u32 {
+                return;
+            }
+            self.consume(h);
+            self.dispatch_one(h);
+        }
     }
 }
 /// Kani cross-check: `pick_next` (Verus-proven above via SMT/Z3) against an
@@ -172,5 +243,83 @@ mod exec_kani {
                 }
             }
         }
+    }
+    /// Same construction as `arbitrary_tasks`, additionally constrained to
+    /// `ready < 2^MAX_TASKS` — the bound `poll_round` requires (see its
+    /// "Additive (Task 5)" note: `inv()` alone doesn't rule out garbage bits
+    /// >= MAX_TASKS, which real mutators never set but which an unconstrained
+    /// `kani::any()` u32 certainly can). Kani can't call the spec-only
+    /// `inv()` (stripped from the plain/executable code this harness runs
+    /// against), so the bound is asserted directly here instead, mirroring
+    /// what `poll_round`'s `requires` demands of any real caller.
+    fn arbitrary_tasks_bounded() -> Tasks {
+        let prio: [u32; MAX_TASKS] = kani::any();
+        let ready: u32 = kani::any();
+        kani::assume(ready < 256u32);
+        Tasks {
+            state: [
+                TaskState::Pending,
+                TaskState::Pending,
+                TaskState::Pending,
+                TaskState::Pending,
+                TaskState::Pending,
+                TaskState::Pending,
+                TaskState::Pending,
+                TaskState::Pending,
+            ],
+            prio,
+            deadline: [0u64; MAX_TASKS],
+            ready,
+        }
+    }
+    /// Hamming weight of `x`'s low `MAX_TASKS` bits — the plain-executable
+    /// (non-spec) counterpart to `Tasks::ready_popcount`, used only to state
+    /// the Kani harness's bound.
+    fn popcount(x: u32) -> u32 {
+        let mut n = 0u32;
+        let mut i = 0u32;
+        while i < MAX_TASKS as u32 {
+            if (x >> i) & 1u32 == 1u32 {
+                n += 1;
+            }
+            i += 1;
+        }
+        n
+    }
+    /// Exec-only mirror of `poll_round`'s loop, driving the SAME verified,
+    /// shipped `pick_next`/`consume` (post-`verus-strip`, plain executable
+    /// Rust — no hand-copied duplicate of the scheduling logic). The only
+    /// thing it substitutes is the trusted FFI dispatch: Kani cannot link
+    /// against the real `poll_task` extern (no implementation exists), so a
+    /// `kani::any()` bool stands in for its result, applied via the exact
+    /// same Pending -> Done transition on exactly the consumed slot that
+    /// `dispatch_one` performs — nothing else. Counts iterations for the
+    /// bounded-poll check.
+    fn poll_round_counted(t: &mut Tasks) -> u32 {
+        let mut calls: u32 = 0;
+        loop {
+            let h = t.pick_next();
+            if h == MAX_TASKS as u32 {
+                break;
+            }
+            t.consume(h);
+            calls += 1;
+            let done: bool = kani::any();
+            if done {
+                t.state[h as usize] = TaskState::Done;
+            }
+        }
+        calls
+    }
+    /// `poll_round` drains all ready tasks (`ready == 0` afterwards) and is
+    /// bounded: at most one dispatch per task that was ready at entry.
+    #[kani::proof]
+    #[kani::unwind(9)]
+    fn poll_round_drains_and_bounds() {
+        let mut t = arbitrary_tasks_bounded();
+        let before = popcount(t.ready);
+        let calls = poll_round_counted(&mut t);
+        assert!(t.ready == 0);
+        assert!(calls <= before);
     }
 }

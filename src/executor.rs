@@ -5,6 +5,34 @@
 //! so it is not blocked on synth#739.
 use vstd::prelude::*;
 
+// ===========================================================================
+// Trusted FFI seam (Task 5) — the intersection boundary
+// ===========================================================================
+//
+// `poll_task` is NOT verified: it dispatches into the app's async task body
+// (possibly meld-dissolved, possibly hand-written) for one poll. This is the
+// one place the verified scheduler core hands control to unverified code, so
+// it is declared outside the verification macro's block below — it never
+// becomes a proof obligation. The only caller is `Tasks::dispatch_one`
+// (`#[verifier::external_body]`, below), which is itself only reachable
+// through the fully verified `Tasks::poll_round` loop.
+//
+// Edition 2024 requires `unsafe extern` blocks and an `unsafe { }` at the
+// call site; both are used here even though the Verus checker itself invokes
+// `rustc --edition=2021` (`unsafe extern` parses under both editions, so one
+// source serves both toolchains).
+//
+// Crate-wide `unsafe_code = "deny"` (Cargo.toml `[lints.rust]`, an ASIL-D
+// safety-critical policy) is deliberately overridden here with a single,
+// narrowly-scoped `#[allow(unsafe_code)]` — the intersection boundary is
+// the ONE place in this crate an FFI call is unavoidable. Everything else
+// in the crate (including the rest of this file) stays under the deny.
+#[allow(unsafe_code)]
+unsafe extern "C" {
+    /// Poll task `id` once. Returns 0 if still pending, 1 if it completed.
+    pub fn poll_task(id: u32) -> u32;
+}
+
 verus! {
 
 pub const MAX_TASKS: usize = 8;
@@ -30,6 +58,23 @@ impl Tasks {
     /// Ghost: is bit i of `ready` set?
     pub open spec fn ready_bit(&self, i: int) -> bool {
         0 <= i < MAX_TASKS && (self.ready >> (i as u32)) & 1u32 == 1u32
+    }
+
+    /// Hamming weight of `ready` — the termination measure for `poll_round`'s
+    /// loop. `consume`-of-a-ready-bit strictly decreases it (proven by
+    /// `lemma_popcount_decreases` below), so it drives the loop's
+    /// `decreases`. Hardcoded to `MAX_TASKS == 8` terms, matching the
+    /// hardcoded-8 style already used for the `state` array literal in
+    /// `new()`.
+    pub open spec fn ready_popcount(&self) -> nat {
+        (if self.ready_bit(0) { 1nat } else { 0nat })
+        + (if self.ready_bit(1) { 1nat } else { 0nat })
+        + (if self.ready_bit(2) { 1nat } else { 0nat })
+        + (if self.ready_bit(3) { 1nat } else { 0nat })
+        + (if self.ready_bit(4) { 1nat } else { 0nat })
+        + (if self.ready_bit(5) { 1nat } else { 0nat })
+        + (if self.ready_bit(6) { 1nat } else { 0nat })
+        + (if self.ready_bit(7) { 1nat } else { 0nat })
     }
 
     pub fn new() -> (r: Tasks)
@@ -321,10 +366,21 @@ impl Tasks {
         ensures self.inv(), !self.ready_bit(h as int),
             forall|j: int| 0 <= j < MAX_TASKS && j != h as int ==>
                 self.ready_bit(j) == old(self).ready_bit(j),
+            // Additive (Task 5): AND-with-mask never increases the bitmask's
+            // numeric value. `ready_bit`'s domain guard (0 <= i < MAX_TASKS)
+            // means the two facts above are silent about bits >= MAX_TASKS,
+            // so a black-box call to `consume` alone can't otherwise carry a
+            // `ready < 2^MAX_TASKS` bound across the call — needed by
+            // `poll_round` to conclude `self.ready == 0u32` (not just "no
+            // low ready bit") once nothing is left ready.
+            self.ready <= old(self).ready,
     {
         let old_ready = self.ready;
         self.ready = self.ready & !(1u32 << h);
+        let new_ready = self.ready;
         proof {
+            assert(new_ready <= old_ready) by (bit_vector)
+                requires new_ready == old_ready & !(1u32 << h);
             lemma_clear_bit_self(old_ready, h);
             assert forall|j: int| 0 <= j < MAX_TASKS && j != h as int implies
                 self.ready_bit(j) == old(self).ready_bit(j)
@@ -343,6 +399,107 @@ impl Tasks {
                         lemma_clear_bit_other(old_ready, h, i as u32);
                     }
                 }
+            }
+        }
+    }
+
+    /// The trusted FFI seam, wrapped to the minimum trusted surface: dispatch
+    /// task `h`'s pending poll once via `poll_task`, and record `Done` if it
+    /// completed. `#[verifier::external_body]` means Verus takes this
+    /// function's `ensures` on faith (the body is not checked) — kept
+    /// deliberately weak (only a frame condition: `ready` untouched, every
+    /// OTHER slot's `state` untouched) so `poll_round`'s termination and
+    /// `ready == 0` proof never has to trust *what* `poll_task` decided, only
+    /// that dispatching can't resurrect readiness or clobber other slots.
+    /// `poll_round` (the only caller) re-derives `inv()` itself afterwards
+    /// from these two facts plus `consume`'s already-established `inv()` —
+    /// i.e. the trusted annotation carries as little weight as possible.
+    #[verifier::external_body]
+    #[allow(unsafe_code)] // see the trusted-seam note at the top of this file
+    fn dispatch_one(&mut self, h: u32)
+        requires h < MAX_TASKS as u32,
+        ensures
+            self.ready == old(self).ready,
+            forall|i: int| 0 <= i < MAX_TASKS && i != h as int ==>
+                self.state[i as int] === old(self).state[i as int],
+    {
+        let done = unsafe { poll_task(h) };
+        if done == 1u32 {
+            self.state[h as usize] = TaskState::Done;
+        }
+    }
+
+    /// One scheduler round: drain every currently-ready task, each polled
+    /// exactly once via the trusted `poll_task` seam, until nothing is ready.
+    ///
+    /// Terminates because `consume` clears exactly the picked task's ready
+    /// bit each iteration and `dispatch_one` never sets any ready bit (its
+    /// `ensures` says `ready` is untouched) — `ready_popcount()` strictly
+    /// decreases every iteration (`lemma_popcount_decreases`), so the loop
+    /// is bounded by the entry popcount (<= `MAX_TASKS`). It exits only when
+    /// `pick_next` finds nothing ready, at which point `ready == 0u32`
+    /// (`lemma_zero_when_no_low_bits_and_bounded`, using the loop-maintained
+    /// `ready < 2^MAX_TASKS` bound established via `consume`'s new frame
+    /// fact). This is bounded-poll: at most `popcount(ready) <= MAX_TASKS`
+    /// dispatches, each ready task consumed exactly once.
+    pub fn poll_round(&mut self)
+        requires
+            old(self).inv(),
+            // See `consume`'s "Additive (Task 5)" note: `inv()` alone doesn't
+            // bound `ready`'s bits >= MAX_TASKS (never set in practice by any
+            // real mutator — `admit`/`wake`/`expire`/`consume` only ever
+            // touch bits < MAX_TASKS — but not excluded by `inv()` as
+            // literally stated). Required here, honestly, so `ready == 0u32`
+            // below is a real proof rather than a weakened postcondition.
+            old(self).ready < 256u32,
+        ensures
+            self.inv(),
+            self.ready == 0u32,
+    {
+        loop
+            invariant
+                self.inv(),
+                self.ready < 256u32,
+            decreases self.ready_popcount(),
+        {
+            let h = self.pick_next();
+            let ghost pre = *self;
+            if h == MAX_TASKS as u32 {
+                proof {
+                    assert(!self.ready_bit(0));
+                    assert(!self.ready_bit(1));
+                    assert(!self.ready_bit(2));
+                    assert(!self.ready_bit(3));
+                    assert(!self.ready_bit(4));
+                    assert(!self.ready_bit(5));
+                    assert(!self.ready_bit(6));
+                    assert(!self.ready_bit(7));
+                    lemma_zero_when_no_low_bits_and_bounded(self.ready);
+                }
+                return;
+            }
+            self.consume(h);
+            self.dispatch_one(h);
+            proof {
+                assert forall|i: int| 0 <= i < MAX_TASKS implies
+                    (#[trigger] self.ready_bit(i)) ==> self.state[i as int] === TaskState::Pending
+                by {
+                    if self.ready_bit(i) {
+                        if i == h as int {
+                            // consume already cleared ready_bit(h); dispatch_one
+                            // doesn't touch `ready`, so ready_bit(h) is still
+                            // false here — contradicts the branch assumption.
+                            assert(false);
+                        } else {
+                            // dispatch_one only ever touches state[h] (its
+                            // ensures says every other slot's state is
+                            // unchanged), so state[i] carries over from right
+                            // after `consume`, which already established
+                            // inv() there.
+                        }
+                    }
+                }
+                lemma_popcount_decreases(pre, *self, h as int);
             }
         }
     }
@@ -420,6 +577,65 @@ pub proof fn lemma_no_lost_wakeup(t0: Tasks, h: u32, other: u32)
     lemma_clear_bit_other(t0.ready, other, h);
 }
 
+/// Termination lemma for `poll_round`: consuming a set ready bit `h` (going
+/// from `t0` to `t1`, with every other tracked bit unchanged) strictly
+/// decreases `ready_popcount`. Instantiates the `j != h` frame hypothesis at
+/// each of the 8 concrete indices directly (rather than relying on the
+/// prover to fire the `forall` while also unfolding `ready_popcount`'s 8-term
+/// sum) so both are fully pinned down before the arithmetic conclusion.
+proof fn lemma_popcount_decreases(t0: Tasks, t1: Tasks, h: int)
+    requires
+        0 <= h < MAX_TASKS as int,
+        t0.ready_bit(h),
+        !t1.ready_bit(h),
+        forall|j: int| 0 <= j < MAX_TASKS as int && j != h ==> t1.ready_bit(j) == t0.ready_bit(j),
+    ensures
+        t1.ready_popcount() < t0.ready_popcount(),
+{
+    assert(0 != h ==> t1.ready_bit(0) == t0.ready_bit(0));
+    assert(1 != h ==> t1.ready_bit(1) == t0.ready_bit(1));
+    assert(2 != h ==> t1.ready_bit(2) == t0.ready_bit(2));
+    assert(3 != h ==> t1.ready_bit(3) == t0.ready_bit(3));
+    assert(4 != h ==> t1.ready_bit(4) == t0.ready_bit(4));
+    assert(5 != h ==> t1.ready_bit(5) == t0.ready_bit(5));
+    assert(6 != h ==> t1.ready_bit(6) == t0.ready_bit(6));
+    assert(7 != h ==> t1.ready_bit(7) == t0.ready_bit(7));
+    assert(h == 0 || h == 1 || h == 2 || h == 3 || h == 4 || h == 5 || h == 6 || h == 7);
+}
+
+/// If `x`'s low `MAX_TASKS` bits are all clear and `x < 2^MAX_TASKS` (i.e. it
+/// has no bits set outside that low range to begin with), `x` is exactly
+/// zero. Hardcoded to `MAX_TASKS == 8` / `2^8 == 256`, matching
+/// `ready_popcount`'s hardcoded-8-terms style. Closes `poll_round`'s
+/// `self.ready == 0u32` postcondition from `pick_next`'s "nothing left
+/// ready" fact plus the loop-maintained bound (via `consume`'s `self.ready
+/// <= old(self).ready` frame fact).
+proof fn lemma_zero_when_no_low_bits_and_bounded(x: u32)
+    requires
+        x < 256u32,
+        (x >> 0u32) & 1u32 != 1u32,
+        (x >> 1u32) & 1u32 != 1u32,
+        (x >> 2u32) & 1u32 != 1u32,
+        (x >> 3u32) & 1u32 != 1u32,
+        (x >> 4u32) & 1u32 != 1u32,
+        (x >> 5u32) & 1u32 != 1u32,
+        (x >> 6u32) & 1u32 != 1u32,
+        (x >> 7u32) & 1u32 != 1u32,
+    ensures x == 0u32,
+{
+    assert(x == 0u32) by (bit_vector)
+        requires
+            x < 256u32,
+            (x >> 0u32) & 1u32 != 1u32,
+            (x >> 1u32) & 1u32 != 1u32,
+            (x >> 2u32) & 1u32 != 1u32,
+            (x >> 3u32) & 1u32 != 1u32,
+            (x >> 4u32) & 1u32 != 1u32,
+            (x >> 5u32) & 1u32 != 1u32,
+            (x >> 6u32) & 1u32 != 1u32,
+            (x >> 7u32) & 1u32 != 1u32;
+}
+
 /// Kani cross-check: `pick_next` (Verus-proven above via SMT/Z3) against an
 /// independent brute-force scan, under Kani's bounded model checker (a
 /// different solver/engine entirely — SAT-based CBMC). This is not a
@@ -471,6 +687,82 @@ mod exec_kani {
                 }
             }
         }
+    }
+
+    /// Same construction as `arbitrary_tasks`, additionally constrained to
+    /// `ready < 2^MAX_TASKS` — the bound `poll_round` requires (see its
+    /// "Additive (Task 5)" note: `inv()` alone doesn't rule out garbage bits
+    /// >= MAX_TASKS, which real mutators never set but which an unconstrained
+    /// `kani::any()` u32 certainly can). Kani can't call the spec-only
+    /// `inv()` (stripped from the plain/executable code this harness runs
+    /// against), so the bound is asserted directly here instead, mirroring
+    /// what `poll_round`'s `requires` demands of any real caller.
+    fn arbitrary_tasks_bounded() -> Tasks {
+        let prio: [u32; MAX_TASKS] = kani::any();
+        let ready: u32 = kani::any();
+        kani::assume(ready < 256u32);
+        Tasks {
+            state: [
+                TaskState::Pending, TaskState::Pending, TaskState::Pending, TaskState::Pending,
+                TaskState::Pending, TaskState::Pending, TaskState::Pending, TaskState::Pending,
+            ],
+            prio,
+            deadline: [0u64; MAX_TASKS],
+            ready,
+        }
+    }
+
+    /// Hamming weight of `x`'s low `MAX_TASKS` bits — the plain-executable
+    /// (non-spec) counterpart to `Tasks::ready_popcount`, used only to state
+    /// the Kani harness's bound.
+    fn popcount(x: u32) -> u32 {
+        let mut n = 0u32;
+        let mut i = 0u32;
+        while i < MAX_TASKS as u32 {
+            if (x >> i) & 1u32 == 1u32 {
+                n += 1;
+            }
+            i += 1;
+        }
+        n
+    }
+
+    /// Exec-only mirror of `poll_round`'s loop, driving the SAME verified,
+    /// shipped `pick_next`/`consume` (post-`verus-strip`, plain executable
+    /// Rust — no hand-copied duplicate of the scheduling logic). The only
+    /// thing it substitutes is the trusted FFI dispatch: Kani cannot link
+    /// against the real `poll_task` extern (no implementation exists), so a
+    /// `kani::any()` bool stands in for its result, applied via the exact
+    /// same Pending -> Done transition on exactly the consumed slot that
+    /// `dispatch_one` performs — nothing else. Counts iterations for the
+    /// bounded-poll check.
+    fn poll_round_counted(t: &mut Tasks) -> u32 {
+        let mut calls: u32 = 0;
+        loop {
+            let h = t.pick_next();
+            if h == MAX_TASKS as u32 {
+                break;
+            }
+            t.consume(h);
+            calls += 1;
+            let done: bool = kani::any();
+            if done {
+                t.state[h as usize] = TaskState::Done;
+            }
+        }
+        calls
+    }
+
+    /// `poll_round` drains all ready tasks (`ready == 0` afterwards) and is
+    /// bounded: at most one dispatch per task that was ready at entry.
+    #[kani::proof]
+    #[kani::unwind(9)]
+    fn poll_round_drains_and_bounds() {
+        let mut t = arbitrary_tasks_bounded();
+        let before = popcount(t.ready);
+        let calls = poll_round_counted(&mut t);
+        assert!(t.ready == 0);
+        assert!(calls <= before);
     }
 }
 
