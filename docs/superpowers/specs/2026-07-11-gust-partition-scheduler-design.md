@@ -2,12 +2,24 @@
 
 **Status:** design (validated with jess on gale#63; awaiting user review before an
 implementation plan).
-**Date:** 2026-07-11. **Revised:** 2026-07-15 (rev 2, after a six-lens expert design
-review — see the revision note below).
+**Date:** 2026-07-11. **Revised:** 2026-07-15 (rev 3 — added the silicon-independence
+governing principle §1.1; rev 2 was the six-lens expert-review pass — see the revision
+note below).
 **Origin:** user ask ("kiln async should do more — priority tasks + supervision"), the
 ASIL-D / actually-lands reframe, a verified-scheduling research survey, and jess's
 gale#63 endorsement + 3-core RT1176 mapping.
 
+> **Revision note (rev 3).** Added §1.1 as the *governing principle*: the silicon is a
+> substitutable external parameter, not a premise — the design is silicon-independent by
+> construction (author once in the Component Model, dissolve to any synth target, isolate
+> via that target's MPU/PMP), and the certification level is a per-target output bounded by
+> the silicon's physical ceiling, never a gate on the general argument. §11 (RT1176
+> interference) and §12 (cert target) are reframed accordingly: they *parameterize* the
+> argument per deployment; they do not dominate it. This resolves the review panels'
+> largest tension (whether the RT1176 interference wall is a design-killer) by scoping it
+> to the RT1176 *deployment*, with graceful degradation to a lower assurance level (or a
+> silicon change) where hardware is insufficient.
+>
 > **Revision note (rev 2).** A six-perspective expert review (WASM Component Model,
 > functional-safety certification, real-time/hierarchical scheduling, drone flight-SW
 > integration, formal methods, embedded security) found the architecture shape sound but
@@ -29,6 +41,36 @@ freedom-from-interference when a task faults or over-runs. For a flight target y
 add priority scheduling + fault supervision **without inventing a novel scheduler** —
 keep the proven backbone, make what's new be its *size*, its *verification*, and the
 ergonomics that ride on top.
+
+### 1.1 Silicon is a substitutable external parameter (governing principle)
+
+The architecture is **silicon-independent by construction**, and this — not any one chip —
+is what the general argument rests on. A component is authored once in the WebAssembly
+Component Model, dissolved by synth to whatever native target is in hand (cortex-m3 / m4 /
+m7 and riscv today — all three already anchored on real silicon; more as backends land),
+and its spatial isolation is rooted in *that target's* hardware memory-protection unit
+(ARMv7-M / ARMv8-M **MPU** or RISC-V **PMP**) per I-ISO (§2.1). The silicon is therefore an
+**input parameter, not a premise**: it *bounds* the assurance level and timing margin a
+given deployment can claim, but it neither validates nor invalidates the design.
+
+- **Today = i.MX RT1176**, because it is the best Pixhawk-class silicon currently
+  available. The design assumes this will change and does not hard-code to it.
+- **Better silicon → supported.** Retarget the synth backend + the MPU/PMP region table;
+  the verified core and its proofs are written silicon-parametrically (mmio addresses +
+  region layout are configuration, not code). Porting is a re-instantiation, not a redesign.
+- **Insufficient silicon → graceful degradation, not failure.** Where a target physically
+  cannot meet a safety bar (e.g. DAL-A temporal isolation on a shared-XIP, shared-bus part
+  — see §11), the *deployment* is capped at the level that silicon supports (DAL-C / SORA
+  specific-category, or the DAL-A-critical slice relocated to TCM). That is an **external
+  hardware limitation, explicitly not a flaw in the architecture.**
+
+**Consequences for the rest of this document (so nothing downstream reads a silicon fact
+as a design verdict):** the certification *level* (§12) is a **per-target output**, a
+function of the integrator's need *and* the silicon's physical ceiling — not a precondition
+that gates the architecture; the general argument targets *the highest assurance the target
+silicon physically permits*, with the degradation ladder above. The RT1176 multicore-
+interference analysis (§11) is a **per-target capability bound on the RT1176 deployment**,
+not a blocker on the design. Neither dominates the argument; both parameterize it.
 
 ## 2. The two-level model (endorsed by jess, research-confirmed canonical IMA)
 
@@ -298,15 +340,20 @@ state an adversary model: freedom-from-interference (against *random* faults) an
   (L1 + FlexSPI prefetch are cross-partition micro-architectural side/covert channels — the
   confidentiality analogue of §11).
 
-## 11. RT1176 multicore-interference plan (rev 2 — promoted from open item to blocker)
+## 11. RT1176 multicore-interference — a per-target capability bound (not a design blocker)
 
-M7@1GHz + M4@400MHz share the AXI bus and the 64 MB XIP flash; code executes from external
-QSPI. A memory-bound M4 task stalls M7 instruction fetch, so the M7 partition's WCET is
-**not independent** of M4 — the temporal-isolation premise fails, and the literature
-documents 8–13× WCET inflation from unmitigated contention. The independent F100 detects
-loss-of-function; it **cannot** restore a missed deadline or bound interference-induced
-inflation. This determines whether the platform is DAL-A-capable, a realistic DAL-C/ASIL-B
-system, or infeasible on this silicon. Required in the spec (CAST-32A / AMC 20-193):
+Per §1.1, this section bounds the *RT1176 deployment's* claimable assurance level; it does
+not gate the architecture. M7@1GHz + M4@400MHz share the AXI bus and the 64 MB XIP flash;
+code executes from external QSPI. A memory-bound M4 task stalls M7 instruction fetch, so the
+M7 partition's WCET is **not independent** of M4 — the temporal-isolation premise fails on
+the naive layout, and the literature documents 8–13× WCET inflation from unmitigated
+contention. The independent F100 detects loss-of-function; it **cannot** restore a missed
+deadline or bound interference-induced inflation. So on *this silicon*: the mitigations
+below determine whether the RT1176 deployment claims DAL-A (critical slice TCM-resident +
+bandwidth control) or degrades to DAL-C/ASIL-B/SORA — and if even the mitigated ceiling is
+too low for the integrator's need, that is an RT1176 limitation answered by picking better
+silicon, not a defect in the general design. Required for the RT1176 target (CAST-32A /
+AMC 20-193):
 
 - Relocate DAL-critical code/data to **ITCM/DTCM** (not XIP).
 - Enforced **bandwidth/arbitration control** (or way-partitioning) between M7 and M4.
@@ -315,9 +362,12 @@ system, or infeasible on this silicon. Required in the spec (CAST-32A / AMC 20-1
 
 ## 12. Open items (owners + gates)
 
-- **Certification target — DAL letter / ISO 26262 ASIL / SORA-EASA specific-category
-  (jess owns).** *Blocks* every "certifiable" claim, decides whether MBTA is even a gap and
-  whether RT1176-with-XIP is viable. Promote to the first decision, not the last.
+- **Certification target — a PER-TARGET OUTPUT, not a gate on the architecture (§1.1).**
+  For each deployment: the claimable DAL letter / ISO 26262 ASIL / SORA specific-category is
+  the *min* of (the integrator's need, the silicon's physical ceiling from §11). jess owns
+  fixing it *per target*; the general argument does not wait on it. What it sets per target:
+  the WCET-justification bar and whether that silicon's ceiling meets the mission — if not,
+  the answer is better silicon or a lower-assurance deployment, not a redesign.
 - **MPU region-swap mechanism + fused-memory layout / region-budget plan.** ARMv7-M PMSA
   gives ~8–16 power-of-2-sized, base-aligned regions; N-tenant isolation in one linear
   memory is capped by that budget and alignment. This is where I-ISO is *discharged*.
