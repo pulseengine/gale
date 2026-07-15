@@ -41,6 +41,7 @@
 extern crate kani;
 
 pub mod error;
+pub mod executor;
 pub mod priority;
 pub mod thread;
 pub mod wait_queue;
