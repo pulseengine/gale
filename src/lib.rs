@@ -88,6 +88,7 @@ pub mod ring_buf;
 pub mod zms;
 pub mod systick;
 pub mod mpu;
+pub mod mpu_switch;
 pub mod mmu;
 pub mod usage;
 pub mod net_buf;
