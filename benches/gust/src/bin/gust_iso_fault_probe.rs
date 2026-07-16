@@ -3,6 +3,10 @@
 //! demonstrated as a REAL hardware isolation boundary on qemu's v7-M MPU
 //! (lm3s6965evb, cortex-m3 — enforcement pre-verified by src/bin/mpu_spike.rs).
 //!
+//! SCOPE: fault-containment (contains an accidental out-of-grant access), not
+//! security-containment — the privileged tenant could reprogram the un-checked
+//! PPB. Evidence is local qemu (real v7-M MPU / CFSR=0x82), not yet CI-gated.
+//!
 //! The MPU is programmed EXCLUSIVELY through the verified path:
 //! `RegionTable::switch_to_partition(0)` → `program_partition` (P1–P4 proven)
 //! → `apply_program` → the `mpu_write` trusted seam, which THIS probe

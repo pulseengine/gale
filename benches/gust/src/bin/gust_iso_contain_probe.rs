@@ -3,6 +3,12 @@
 //! region-programming core (gale src/mpu_switch.rs, Verus 1098/0 + Kani 4/4)
 //! instead of silently corrupting output.
 //!
+//! SCOPE: this is FAULT-containment (an accidental compiler miscompile), NOT
+//! security-containment. The tenant runs privileged and the PPB (MPU_CTRL) is
+//! not MPU-checked, so a *malicious* privileged tenant could reprogram the MPU;
+//! defeating that needs unprivileged tenants and is out of scope here. Evidence
+//! is local qemu lm3s6965evb (real v7-M MPU / CFSR=0x82), not yet CI-gated.
+//!
 //! The tenant: drivers/os-node/repro-757/os-tl-buggy.o — the BUGGY synth
 //! 0.45.0 dissolve of the archived exact miscompile input repro-757/loom.wasm
 //! (md5 18da000d9142dfa0885f57578d3af150). Its ONLY difference from the fixed

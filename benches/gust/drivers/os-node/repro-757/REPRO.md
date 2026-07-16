@@ -42,9 +42,9 @@ flagship oracle (`src/bin/gust_iso_contain_probe.rs` + no-fault control
 `loom.wasm` (md5 above) with the one-command recipe above:
 
 - `os-tl-buggy.o` — synth **0.45.0** (miscompiles; md5 `f0ec01ecbd048fecb6441f686bd32d4a`)
-- `os-tl-fixed.o` — synth **0.45.1** (control; md5 `db79315e928d3ff66c76d02114b7136a` is
-  the checked-in `../os-tl-cm3.o` from a separate build — THIS pair's fixed object is a
-  fresh dissolve so the diff below is exact)
+- `os-tl-fixed.o` — synth **0.45.1** (control; md5 `06cf5a747df7097dc02cefdf906b6f96` — a
+  fresh dissolve of the SAME `loom.wasm`, not the checked-in `../os-tl-cm3.o`, so the diff
+  below is exact)
 
 `.text` and `.data` of the pair are BYTE-IDENTICAL; the entire 0.45.0 defect is
 **one relocation**: the literal-pool word at `.text+0x694` (in `func_20`, inline
@@ -63,3 +63,19 @@ the renamed `.data` at `0x2000_BFF0` (see `../../../iso_contain.x`) so
 program needs is granted, programs the MPU through the VERIFIED
 `gale::mpu_switch` core, and observes the miscompiled read MemManage-fault at
 exactly `MMFAR == 0x2000_BFF8` with 0 bytes reaching the log sink.
+
+## Scope of this oracle (what it does and does NOT claim)
+
+- **Fault-containment, not security-containment.** The tenant here runs
+  privileged, and the ARM PPB (which holds `MPU_CTRL`) is not itself MPU-checked,
+  so a *malicious* privileged tenant could reprogram the MPU. This oracle
+  demonstrates that a **compiler-introduced miscompile** (an accidental wrong
+  data pointer, synth#757) is physically contained by the verified MPU program —
+  it does not claim isolation against a hostile tenant. The privilege/PPB
+  reasoning is the verified core's own precondition (`mpu_switch` region-model);
+  security-containment would additionally require running tenants unprivileged.
+- **Local-qemu evidence.** These bins run under `qemu lm3s6965evb -cpu
+  cortex-m3` (which does model the ARMv7-M PMSA MPU and raises real MemManage /
+  `CFSR=0x82`). They are not yet wired into a CI job — the isolation claim is
+  reproduced locally with the one-command recipe above, not gated in the
+  pipeline. Silicon and CI gating are follow-ons.
