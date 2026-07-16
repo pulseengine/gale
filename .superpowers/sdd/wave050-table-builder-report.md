@@ -138,11 +138,19 @@ Also run: `cargo build` clean, `cargo clippy --lib` clean (exit 0),
 
 ## Concerns / follow-ons
 
-- `//:fmt_test` fails LOCALLY on this machine on ~30 pre-existing
-  `plain/` files (cbprintf, condvar, executor, ... — none of them touched
-  by this change; reproduced on a pristine main checkout via stash). It
-  is a local rustfmt-version style mismatch, not introduced here; the
-  authoritative plain-convergence gate (verus-strip gate 2/2) passes.
+- `//:fmt_test` fails LOCALLY on this machine on ~30 `plain/` files
+  (cbprintf, condvar, executor, ...); the same failing FILE set reproduces
+  on a pristine main checkout, so it is a local rustfmt-version style
+  mismatch, not a new gate regression. CORRECTION (per wave050 review): the
+  failing set DOES include `plain/src/mpu_switch.rs`, which this change
+  touches — the newly generated builder/harness code adds six rustfmt
+  divergence hunks (verus-strip pretty-printer spacing artifacts, e.g.
+  `assert!(! t.covers_addr...)`). This is immaterial to correctness — no CI
+  workflow runs `//:fmt_test`, and `plain/` is machine-generated and cannot
+  be rustfmt-formatted without breaking the byte-exact verus-strip gate — but
+  the earlier "none of them touched by this change" wording was wrong. The
+  authoritative plain-convergence gate (verus-strip gate 2/2) passes. The
+  `! t.` spacing is verus-strip pretty-printer friction (follow-on).
 - kb1 is the heaviest harness (~5 min): the exec-form `table_inv`
   assume/assert spans all 32 slots (224 same-partition pairs each way).
   Acceptable for nightly `cargo kani --tests`; if CI time matters it can
