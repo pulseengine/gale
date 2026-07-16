@@ -168,3 +168,78 @@ harness-infrastructure bound, not a property weakening).
 3. The referenced plan doc (`docs/superpowers/plans/2026-07-15-gust-safety-release-line.md`)
    is not on main — it lives on branch `plan/gust-safety-release-line`
    (commit a612b01); §v0.5.0 was read from there.
+
+## Fix wave
+
+Applied 2026-07-16 in response to the adversarial review
+(`.superpowers/sdd/wave-iso-core-review.md`, verdict FIX_REQUIRED). All 3
+Important findings fixed (none scoped-away), plus the cheap minors M1/M4.
+
+### What changed (all in `src/mpu_switch.rs` + regenerated plain mirror)
+
+- **I1 — disable-first sequence.** `ProgramSeq` now emits
+  `MPU_CTRL := MPU_CTRL_DISABLE` (0) as sequence element 0; `SEQ_LEN`
+  9 → 10; region slot `r` moves to position `r + 1`; the enable stays
+  last (position `MAX_REGIONS + 1`). P4 is now P4a (disable-first) +
+  P4b (enable-last) in `program_partition`'s ensures — machine-checked,
+  not narrated — so regions are rewritten only while the MPU is
+  disabled and no transient mixed old/new map is ever enforced (ARM's
+  recommended reprogramming discipline). Module header P4, `ProgramSeq`
+  doc, and `apply_program` doc updated to match; the header also states
+  that the switch window runs privileged under the default map (the
+  review's point (d)).
+- **I2 — barrier obligation in the seam contract.** `mpu_write`'s
+  doc-comment now carries an explicit "Platform contract (trusted —
+  load-bearing for I-ISO)" section: DSB followed by ISB after every
+  `rnr == MPU_CTRL_ID` write (both disable and enable) before returning,
+  with the consequence of omission spelled out. A platform implementing
+  the contract to the letter now delivers the "physically denies" claim.
+- **I3 — DREGION==8 platform precondition.** New documented const
+  `REQUIRED_DREGION: u32 = 8`; the seam contract (item 2) and the module
+  header state the init-time check obligation: read `MPU_TYPE.DREGION`,
+  refuse to start unless it equals 8 — on a 16-region part (Cortex-M7 /
+  i.MX RT1176) slots 8..=15 would be left stale, defeating P2.
+  Parametrizing `MAX_REGIONS` over DREGION is the NAMED follow-on for
+  16-region targets.
+- **M1 — RASR field model documented.** Module header now documents
+  XN=0 (every granted region executable ⇒ writable regions are W+X;
+  an `executable` bit in the verified table-builder is the named
+  follow-on before the security-containment demo) and TEX/C/B/S=0000
+  (strongly-ordered).
+- **M4 — `mpu_write` is now `pub(crate)`** (was `pub`), shrinking the
+  raw-seam bypass surface.
+- **k4 extended** (`iso_sequence_total_and_ordered`): now asserts
+  disable-first (`w[0].rnr == MPU_CTRL_ID`, `w[0].rasr == 0`, ENABLE
+  bit clear) in addition to totality and enable-last; k1–k3 re-indexed
+  to the new positions (extents still decoded back out of the emitted
+  RASR, independent of the table).
+
+Not changed (per review, not required): M2 (ordering-at-hardware remains
+code-inspection; `apply_program` doc now phrases it as in-order emission +
+the barrier contract), M3 (top-32-bytes modeling restriction, deliberate
+consistency with `validate_region`'s U-6 model), M5/M6 (follow-on scope,
+already tracked above).
+
+### Gate evidence (fix wave, fresh runs, with exit codes)
+
+    $ bazel test //:verus_test --cache_test_results=no --test_output=errors
+    verification results:: 1098 verified, 0 errors
+    //:verus_test  PASSED in 5.6s
+    exit 0            # 1098 >= 1096: +2 (P4a obligations), zero regressions
+
+    $ cargo run --manifest-path tools/verus-strip/Cargo.toml -- src/mpu_switch.rs -o plain/src/mpu_switch.rs
+    Wrote plain/src/mpu_switch.rs
+    $ cargo test --manifest-path tools/verus-strip/Cargo.toml --test gate
+    test result: ok. 2 passed; 0 failed   exit 0
+
+    $ cargo kani --harness iso_deny_by_default             VERIFICATION:- SUCCESSFUL  exit 0
+    $ cargo kani --harness iso_emitted_matches_table       VERIFICATION:- SUCCESSFUL  exit 0
+    $ cargo kani --harness iso_emissions_disjoint          VERIFICATION:- SUCCESSFUL  exit 0
+    $ cargo kani --harness iso_sequence_total_and_ordered  VERIFICATION:- SUCCESSFUL  exit 0
+
+    $ cargo clippy --lib -- -D warnings    exit 0
+    $ cargo test                           all suites ok, 0 failed
+
+Honesty: still zero Verus-level `assume`/`admit`; the same 3
+`kani::assume` harness-input constraints only; no ensures weakened —
+P4 got STRONGER (P4a added); `emit_write` still carries no ensures.

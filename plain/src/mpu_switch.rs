@@ -29,8 +29,40 @@
 //!      previous partition.
 //!   P3 (total): the sequence addresses all `MAX_REGIONS` hardware slots,
 //!      exactly one write per slot, no slot skipped.
-//!   P4 (ordered): the single MPU_CTRL enable write is the LAST element
-//!      of the sequence — all region programming precedes any enable bit.
+//!   P4 (disable-first, enable-last): sequence element 0 is the single
+//!      MPU_CTRL disable write (`MPU_CTRL := 0`) and the FINAL element is
+//!      the single MPU_CTRL enable write — regions are rewritten ONLY
+//!      while the MPU is disabled, and the enable bit reaches the
+//!      hardware strictly after every region write. There is therefore
+//!      no transient window in which a MIXED old/new region map (or a
+//!      half-written slot) is live: this is ARM's recommended MPU
+//!      reprogramming discipline. While disabled (and until the enable
+//!      write) the MPU enforces nothing and privileged code runs under
+//!      the default memory map — the switch window is privileged-only
+//!      by construction.
+//!
+//! Platform preconditions (init-time check obligations — see the
+//! `mpu_write` seam contract below for the full statement):
+//!
+//!   * `MPU_TYPE.DREGION == REQUIRED_DREGION` (== 8). On a 16-region
+//!     ARMv7-M part (e.g. Cortex-M7 / i.MX RT1176) this sequence would
+//!     leave hardware slots 8..=15 STALE, silently defeating P2;
+//!     parametrizing the model over DREGION is the named follow-on for
+//!     16-region targets.
+//!   * DSB/ISB barrier discipline after MPU_CTRL writes (the `mpu_write`
+//!     contract, item 1).
+//!
+//! RASR attribute-field model (deliberate, documented restrictions):
+//!
+//!   * XN = 0: every granted region is emitted EXECUTABLE — a writable
+//!     region is therefore W+X. This is sufficient for the
+//!     fault-containment property proven here, but W+X is not acceptable
+//!     for the security-containment demo; adding an `executable` bit to
+//!     the region model (emitting XN=1 on data regions) is a named
+//!     follow-on for the verified table-builder work.
+//!   * TEX/C/B/S = 0000: every granted region is strongly-ordered
+//!     (uncached, unbuffered, shareable-irrelevant). Correct but slow;
+//!     memory-attribute modeling is out of scope for the isolation claim.
 //!
 //! The mmio EMISSION crosses a trusted extern seam (`mpu_write`, mirroring
 //! the executor's `poll_task` seam): the verified core computes the
@@ -47,7 +79,34 @@ unsafe extern "C" {
     /// Write one MPU register triple. For `rnr < MAX_REGIONS`: RNR := rnr,
     /// RBAR := rbar, RASR := rasr. For `rnr == MPU_CTRL_ID`: MPU_CTRL :=
     /// rasr (rbar ignored). Implemented by the platform layer.
-    pub fn mpu_write(rnr: u32, rbar: u32, rasr: u32);
+    ///
+    /// # Platform contract (trusted — load-bearing for I-ISO)
+    ///
+    /// The module's "physically denies" claim holds only on a platform
+    /// whose implementation delivers BOTH of the following. They are part
+    /// of this extern contract, not optional hardening — an
+    /// implementation satisfying only the register-store sentence above
+    /// does NOT deliver the guarantee:
+    ///
+    /// 1. **Barriers (ARMv7-M):** after every `rnr == MPU_CTRL_ID` write
+    ///    — both the leading disable and the trailing enable of a program
+    ///    sequence — execute `DSB` followed by `ISB` before returning, so
+    ///    the MPU reprogramming completes and the new (or disabled)
+    ///    region map is in effect for all subsequent instruction fetches
+    ///    and data accesses. Without the barriers, accesses issued after
+    ///    `apply_program` returns may still be checked against the OLD
+    ///    map, and the sequence ordering proven in P4 never reaches the
+    ///    hardware.
+    /// 2. **Region count (`MPU_TYPE.DREGION == REQUIRED_DREGION`):** at
+    ///    init, before the first `switch_to_partition`, the platform MUST
+    ///    read `MPU_TYPE.DREGION` and refuse to start if it is not
+    ///    exactly `REQUIRED_DREGION` (8). The sequence addresses hardware
+    ///    slots `0..MAX_REGIONS` only; on a 16-region ARMv7-M part
+    ///    (e.g. Cortex-M7 / i.MX RT1176) slots 8..=15 would be left STALE
+    ///    from the previous configuration, silently defeating
+    ///    deny-by-default (P2). Parametrizing `MAX_REGIONS` over DREGION
+    ///    is the named follow-on for 16-region targets.
+    pub(crate) fn mpu_write(rnr: u32, rbar: u32, rasr: u32);
 }
 /// Number of partitions the static table configures.
 pub const MAX_PARTITIONS: usize = 4;
@@ -55,9 +114,17 @@ pub const MAX_PARTITIONS: usize = 4;
 pub const MAX_REGIONS: usize = 8;
 /// Total table slots: `MAX_PARTITIONS * MAX_REGIONS`.
 pub const TABLE_SLOTS: usize = 32;
-/// Length of one program sequence: all `MAX_REGIONS` region writes plus
-/// the single trailing MPU_CTRL enable write.
-pub const SEQ_LEN: usize = 9;
+/// Length of one program sequence: the single leading MPU_CTRL disable
+/// write, all `MAX_REGIONS` region writes, and the single trailing
+/// MPU_CTRL enable write.
+pub const SEQ_LEN: usize = 10;
+/// `MPU_TYPE.DREGION` value this model is proven against. The platform
+/// layer MUST check `MPU_TYPE.DREGION == REQUIRED_DREGION` at init,
+/// before the first `switch_to_partition` (see the `mpu_write` contract,
+/// item 2): on parts with MORE regions the sequence leaves the extra
+/// slots stale, defeating deny-by-default. Parametrizing the model over
+/// DREGION is the named follow-on for 16-region targets.
+pub const REQUIRED_DREGION: u32 = 8;
 /// Sentinel register id for the MPU_CTRL enable write (not a region
 /// number — region numbers are `0..MAX_REGIONS`).
 pub const MPU_CTRL_ID: u32 = 0xFFFF_FFFF;
@@ -66,6 +133,11 @@ pub const MPU_CTRL_ID: u32 = 0xFFFF_FFFF;
 /// stays disabled, so anything outside the programmed regions is denied
 /// even to privileged code — deny-by-default all the way down.
 pub const MPU_CTRL_ENABLE: u32 = 1;
+/// MPU_CTRL value emitted as sequence element 0: all bits clear — the
+/// MPU is DISABLED before any region is rewritten, so no transient mixed
+/// old/new region map is ever enforced (ARM's recommended reprogramming
+/// discipline; see P4).
+pub const MPU_CTRL_DISABLE: u32 = 0;
 /// One scalar register-write triple, RNR/RBAR/RASR-shaped.
 #[derive(Clone, Copy)]
 pub struct MpuWrite {
@@ -77,9 +149,10 @@ pub struct MpuWrite {
     /// value for the trailing enable write.
     pub rasr: u32,
 }
-/// The exact register-write sequence for one partition switch:
-/// `w[0..MAX_REGIONS]` are the region writes (one per hardware slot, in
-/// slot order), `w[MAX_REGIONS]` is the single MPU_CTRL enable write.
+/// The exact register-write sequence for one partition switch: `w[0]` is
+/// the single MPU_CTRL disable write, `w[1..=MAX_REGIONS]` are the region
+/// writes (hardware slot `r` at position `r + 1`, in slot order), and
+/// `w[MAX_REGIONS + 1]` is the single MPU_CTRL enable write.
 pub struct ProgramSeq {
     pub w: [MpuWrite; SEQ_LEN],
 }
@@ -187,18 +260,23 @@ impl RegionTable {
                 rasr: 0,
             }; SEQ_LEN],
         };
+        out.w[0] = MpuWrite {
+            rnr: MPU_CTRL_ID,
+            rbar: 0,
+            rasr: MPU_CTRL_DISABLE,
+        };
         let mut r: usize = 0;
         while r < MAX_REGIONS {
             let i = (part as usize) * MAX_REGIONS + r;
             if self.enabled[i] {
                 let rasr = rasr_for(self.size[i], self.writable[i]);
-                out.w[r] = MpuWrite {
+                out.w[r + 1] = MpuWrite {
                     rnr: r as u32,
                     rbar: self.base[i],
                     rasr,
                 };
             } else {
-                out.w[r] = MpuWrite {
+                out.w[r + 1] = MpuWrite {
                     rnr: r as u32,
                     rbar: 0,
                     rasr: 0,
@@ -206,7 +284,7 @@ impl RegionTable {
             }
             r += 1;
         }
-        out.w[MAX_REGIONS] = MpuWrite {
+        out.w[MAX_REGIONS + 1] = MpuWrite {
             rnr: MPU_CTRL_ID,
             rbar: 0,
             rasr: MPU_CTRL_ENABLE,
@@ -234,9 +312,11 @@ fn emit_write(w: &MpuWrite) {
 /// Emit a computed program sequence, in sequence order. The loop is
 /// verified (invariant + `decreases` — it visits every element exactly
 /// once and terminates); only `emit_write`'s single register store is
-/// external. Because `ProgramSeq` places the MPU_CTRL enable at the final
-/// index (P4), in-order emission guarantees all region programming
-/// reaches the hardware before the enable bit.
+/// external. Because `ProgramSeq` places the MPU_CTRL disable at index 0
+/// and the MPU_CTRL enable at the final index (P4), in-order emission
+/// guarantees the MPU is disabled before any region write reaches the
+/// hardware and re-enabled only after all of them (given the `mpu_write`
+/// barrier contract).
 pub fn apply_program(seq: &ProgramSeq) {
     let mut i: usize = 0;
     while i < SEQ_LEN {
@@ -307,9 +387,9 @@ mod iso_kani {
         for r in 0..MAX_REGIONS {
             let i = part as usize * MAX_REGIONS + r;
             if !t.enabled[i] {
-                assert!(seq.w[r].rasr & 1 == 0);
-                assert!(seq.w[r].rasr == 0);
-                assert!(seq.w[r].rbar == 0);
+                assert!(seq.w[r + 1].rasr & 1 == 0);
+                assert!(seq.w[r + 1].rasr == 0);
+                assert!(seq.w[r + 1].rbar == 0);
             }
         }
     }
@@ -325,12 +405,12 @@ mod iso_kani {
         for r in 0..MAX_REGIONS {
             let i = part as usize * MAX_REGIONS + r;
             if t.enabled[i] {
-                assert!(seq.w[r].rbar == t.base[i]);
-                assert!(seq.w[r].rasr & 1 == 1);
+                assert!(seq.w[r + 1].rbar == t.base[i]);
+                assert!(seq.w[r + 1].rasr & 1 == 1);
                 let expect_field = t.size[i].trailing_zeros() - 1;
-                assert!((seq.w[r].rasr >> 1) & 0x1F == expect_field);
+                assert!((seq.w[r + 1].rasr >> 1) & 0x1F == expect_field);
                 let expect_ap = if t.writable[i] { 3u32 } else { 6u32 };
-                assert!((seq.w[r].rasr >> 24) & 0x7 == expect_ap);
+                assert!((seq.w[r + 1].rasr >> 24) & 0x7 == expect_ap);
             }
         }
     }
@@ -344,29 +424,36 @@ mod iso_kani {
         let seq = t.program_partition(part);
         for r1 in 0..MAX_REGIONS {
             for r2 in 0..MAX_REGIONS {
-                if r1 != r2 && seq.w[r1].rasr & 1 == 1 && seq.w[r2].rasr & 1 == 1 {
-                    let s1 = 1u64 << (((seq.w[r1].rasr >> 1) & 0x1F) + 1);
-                    let s2 = 1u64 << (((seq.w[r2].rasr >> 1) & 0x1F) + 1);
-                    let b1 = seq.w[r1].rbar as u64;
-                    let b2 = seq.w[r2].rbar as u64;
+                let p1 = r1 + 1;
+                let p2 = r2 + 1;
+                if r1 != r2 && seq.w[p1].rasr & 1 == 1 && seq.w[p2].rasr & 1 == 1 {
+                    let s1 = 1u64 << (((seq.w[p1].rasr >> 1) & 0x1F) + 1);
+                    let s2 = 1u64 << (((seq.w[p2].rasr >> 1) & 0x1F) + 1);
+                    let b1 = seq.w[p1].rbar as u64;
+                    let b2 = seq.w[p2].rbar as u64;
                     assert!(b1 + s1 <= b2 || b2 + s2 <= b1);
                 }
             }
         }
     }
-    /// k4 — sequence-total + ordered: all 8 region slots emitted exactly
-    /// once (slot r at position r, so no slot skipped and no duplicates),
-    /// and the single MPU_CTRL enable write is the final element.
+    /// k4 — sequence-total + ordered: the MPU_CTRL DISABLE write is the
+    /// FIRST element (regions are rewritten only while the MPU is off),
+    /// all 8 region slots are emitted exactly once (slot r at position
+    /// r + 1, so no slot skipped and no duplicates), and the single
+    /// MPU_CTRL enable write is the final element.
     #[kani::proof]
     #[kani::unwind(33)]
     fn iso_sequence_total_and_ordered() {
         let (t, part) = arbitrary_table_and_partition();
         let seq = t.program_partition(part);
+        assert!(seq.w[0].rnr == MPU_CTRL_ID);
+        assert!(seq.w[0].rasr == MPU_CTRL_DISABLE);
+        assert!(seq.w[0].rasr & 1 == 0);
         for r in 0..MAX_REGIONS {
-            assert!(seq.w[r].rnr == r as u32);
-            assert!(seq.w[r].rnr != MPU_CTRL_ID);
+            assert!(seq.w[r + 1].rnr == r as u32);
+            assert!(seq.w[r + 1].rnr != MPU_CTRL_ID);
         }
-        assert!(seq.w[MAX_REGIONS].rnr == MPU_CTRL_ID);
-        assert!(seq.w[MAX_REGIONS].rasr == MPU_CTRL_ENABLE);
+        assert!(seq.w[MAX_REGIONS + 1].rnr == MPU_CTRL_ID);
+        assert!(seq.w[MAX_REGIONS + 1].rasr == MPU_CTRL_ENABLE);
     }
 }
