@@ -235,6 +235,7 @@ fn main() {
     if tlobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_os_tl_probe={}", tlobj.display());
         println!("cargo:rerun-if-changed={}", tlobj.display());
+    }
     // gust:os v1 async executor (Task 6, REQ-OS-EXEC-001): the Verus+Kani-proven
     // scheduler core (src/executor.rs), dissolved SINGLE-component (no wac plug,
     // no meld fuse -> not synth#739-blocked) via drivers/exec-provider ->
