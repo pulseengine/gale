@@ -160,8 +160,11 @@ macro_rules! fail {
 }
 
 // ---------------------------------------------------------------------------
-// The `mpu_write` trusted-seam bridge — the ONLY register-store path, exactly
-// per the seam's platform contract in src/mpu_switch.rs.
+// The `mpu_write` trusted-seam bridge — the only path through which the verified
+// core PROGRAMS region registers (RBAR/RASR/MPU_CTRL enable), exactly per the
+// seam's platform contract in src/mpu_switch.rs. (The probe also writes MPU_RNR
+// as a readback selector in ctx_resume, and MPU_CTRL:=0 on a fail path — neither
+// programs a region.)
 // ---------------------------------------------------------------------------
 
 /// Platform implementation of the verified core's trusted extern seam.
