@@ -75,7 +75,30 @@ boolean `and`/`define-fun`):
   confirming the alignment premise is load-bearing.
 
 Both round-trip directions hold over the full 32-bit domain, independently re-checkable.
-**3 of 54** obligation-sites now piloted (cpu_mask, mpu, spinlock_validate).
+
+## Pilot 4 — `fault_decode.rs` CFSR sub-register partition (this commit)
+
+`src/fault_decode.rs:663-666`, `lemma_cfsr_masks_partition`: the three Cortex-M
+fault-status sub-register masks — `MMFSR_MASK = 0x000000FF` (MemManage, bits 0-7),
+`BFSR_MASK = 0x0000FF00` (BusFault, bits 8-15), `UFSR_MASK = 0xFFFF0000` (UsageFault,
+bits 16-31) — are **pairwise non-overlapping** and together **cover all 32 bits**. This is
+the well-formedness backbone of the fault decode: it guarantees a `CFSR` word is split into
+the three fault classes with no bit lost and no bit double-counted (the same decode that
+attributes the `CFSR=0x00000082` MemManage evidence in the v0.5.0 I-ISO oracle).
+
+- `cfsr_masks_partition.smt2` — the lemma verbatim: masks pinned to their source constants,
+  refute the 4-conjunct conclusion (3× disjoint + cover `0xFFFFFFFF`). → **`unsat`**,
+  **1,832-byte LRAT**.
+- `cfsr_partition_lossless.smt2` — the operational **strengthening** over a free `cfsr`:
+  for ANY fault word the three masked slices are pairwise disjoint AND reassemble to `cfsr`
+  (`(cfsr&MMFSR) | (cfsr&BFSR) | (cfsr&UFSR) == cfsr`). Implies the four constant conjuncts
+  (take `cfsr = 0xFFFFFFFF`). → **`unsat`** + LRAT.
+- Discrimination sanity (`cfsr_partition_mutant.smt2`, non-vacuous): drop bit 31 from UFSR
+  (`0xFFFF0000 → 0x7FFF0000`) so coverage fails — ordeal returns **`sat`** with model
+  `cfsr = 0x80000000` (bit 31 set but covered by no slice), the exact counterexample a
+  vacuous checker would miss.
+
+**4 of 54** obligation-sites now piloted (cpu_mask, mpu, spinlock_validate, fault_decode).
 
 ## Reproduce
 

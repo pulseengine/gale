@@ -27,3 +27,12 @@ echo "# sv_thread_recover.smt2  (owner & ~3 == thread)    — expect: unsat + LR
 "$ORDEAL" check "$HERE/sv_thread_recover.smt2"
 echo "# sv_cpu_recover_mutant.smt2  (discrimination, alignment premise dropped) — expect: sat + model"
 "$ORDEAL" check "$HERE/sv_cpu_recover_mutant.smt2"
+
+echo
+echo "## Pilot 4 — fault_decode.rs:663-666 lemma_cfsr_masks_partition (CFSR sub-register partition)"
+echo "# cfsr_masks_partition.smt2   (MMFSR/BFSR/UFSR disjoint + cover 0xFFFFFFFF) — expect: unsat + LRAT"
+"$ORDEAL" check "$HERE/cfsr_masks_partition.smt2"
+echo "# cfsr_partition_lossless.smt2  (parametric: any cfsr slices disjoint + reassemble) — expect: unsat + LRAT"
+"$ORDEAL" check "$HERE/cfsr_partition_lossless.smt2"
+echo "# cfsr_partition_mutant.smt2  (discrimination, UFSR bit 31 dropped) — expect: sat + model cfsr=0x80000000"
+"$ORDEAL" check "$HERE/cfsr_partition_mutant.smt2"
