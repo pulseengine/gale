@@ -32,3 +32,34 @@ Bytes 7–10 (`" up\n"`) correct; bytes 0–6 are the LOW-offset `.data` constan
 - r11=0 trampoline ruled out (failure identical with/without).
 
 `os-tl-0.45.disasm` is the full `objdump -dr` of the miscompiled object. Happy to pair on it.
+
+## v0.5.0 I-ISO oracle set: this bug, physically contained (2026-07-16)
+
+The archived input above is now also the tenant of the I-ISO fault-containment
+flagship oracle (`src/bin/gust_iso_contain_probe.rs` + no-fault control
+`gust_iso_contain_ctl.rs`, qemu lm3s6965evb — enforcement pre-verified by
+`src/bin/mpu_spike.rs`). Committed here, both dissolved from the SAME
+`loom.wasm` (md5 above) with the one-command recipe above:
+
+- `os-tl-buggy.o` — synth **0.45.0** (miscompiles; md5 `f0ec01ecbd048fecb6441f686bd32d4a`)
+- `os-tl-fixed.o` — synth **0.45.1** (control; md5 `db79315e928d3ff66c76d02114b7136a` is
+  the checked-in `../os-tl-cm3.o` from a separate build — THIS pair's fixed object is a
+  fresh dissolve so the diff below is exact)
+
+`.text` and `.data` of the pair are BYTE-IDENTICAL; the entire 0.45.0 defect is
+**one relocation**: the literal-pool word at `.text+0x694` (in `func_20`, inline
+addend `+8` — the log string-copy's head-chunk source pointer) is bound to
+`__synth_wasm_seg_0` instead of `__synth_wasm_seg_2`:
+
+    $ objdump -r os-tl-buggy.o | diff - <(objdump -r os-tl-fixed.o)
+    < 00000694 R_ARM_ABS32   __synth_wasm_seg_0     (buggy: seg_0+8 = the stale constants)
+    > 00000694 R_ARM_ABS32   __synth_wasm_seg_2     (fixed: seg_2+8 = "gust:os up\n")
+
+Re-verified live before the oracle was built: `gust_os_tl_probe` linked against
+`os-tl-buggy.o` FAILs with exactly the head-byte signature above
+(`[2, 0, 0, 0, 1, 0, 0, 32, 117, 112, 10]`). The containment probe then places
+the renamed `.data` at `0x2000_BFF0` (see `../../../iso_contain.x`) so
+`seg_0+8 = 0x2000_BFF8` sits in MPU-denied SRAM while everything the correct
+program needs is granted, programs the MPU through the VERIFIED
+`gale::mpu_switch` core, and observes the miscompiled read MemManage-fault at
+exactly `MMFAR == 0x2000_BFF8` with 0 bytes reaching the log sink.

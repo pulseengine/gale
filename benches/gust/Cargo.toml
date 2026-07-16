@@ -7,6 +7,11 @@ description = "gust: a maximal-wasm mini-RTOS for tiny bare-metal nodes (Cortex-
 [workspace]
 
 [dependencies]
+# The verified I-ISO region-programming core (src/mpu_switch.rs, Verus+Kani;
+# this dep builds the plain/ stripped mirror — the SAME executable code the
+# proofs are about). The gust_iso_* probes program the qemu MPU exclusively
+# through gale::mpu_switch::RegionTable::switch_to_partition — never by hand.
+gale = { path = "../.." }
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 cortex-m-semihosting = "0.5"
