@@ -130,7 +130,7 @@ artifacts:
   - id: REQ-OS-SWITCH-001
     type: sw-req
     title: "Outer fixed-priority time-partitioned preemptive switch + per-partition region-swap"
-    status: proposed
+    status: implemented
     release: v0.6.0
     description: >
       The outer scheduler SHALL provide fixed-priority, time-partitioned,

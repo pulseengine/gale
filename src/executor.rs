@@ -606,6 +606,12 @@ proof fn lemma_inv_ready_implies_pending(t: Tasks, j: int)
 /// no-lost-wakeups: if `h` is Pending and ready in `t0`, then consuming any OTHER
 /// handle `other` (clearing `other`'s ready bit) leaves `h`'s readiness untouched.
 /// This is the ghost-level model of `consume(other)` applied to `t0.ready`.
+///
+/// Rocq twin: `proofs/executor_proofs.v` proves the same property on an
+/// independently hand-written model of this state machine, quantified over
+/// arbitrary finite wake/consume/pick_next traces (checked by the Rocq kernel,
+/// no SMT). See README "Executor no-lost-wakeups: one property, three
+/// independent tracks".
 pub proof fn lemma_no_lost_wakeup(t0: Tasks, h: u32, other: u32)
     requires
         t0.inv(), h < MAX_TASKS as u32, other < MAX_TASKS as u32, other != h,
