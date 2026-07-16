@@ -24,6 +24,8 @@ load("//bzl:defs.bzl",
 VERUS_SRCS = [
     "src/lib.rs",
     "src/error.rs",
+    "src/executor.rs",
+    "src/partition_switch.rs",
     "src/priority.rs",
     "src/thread.rs",
     "src/wait_queue.rs",

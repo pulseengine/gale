@@ -1,0 +1,482 @@
+# gust safety release line — the load-bearing build (BUILD path, gale#63).
+#
+# Maps docs/superpowers/plans/2026-07-15-gust-safety-release-line.md into typed
+# rivet artifacts so the release line executes against tracked requirements
+# rather than a prose plan. The build-vs-host fork is resolved to BUILD:
+# verified all the way down, no outside dependency, checkable certificates at
+# every layer (codegen / isolation / timing / proof-obligations). Critical
+# path: v0.4.0 syscall seam (REQ-OS-SYSCALL-001, already tracked) -> v0.5.0
+# I-ISO MPU/MMU region-swap (the KEYSTONE) -> v0.6.0 outer preemptive switch
+# -> v0.7.0 value-domain Health Monitor -> v1.0 closed safety case, with
+# cross-cutting tracks T1 (tri-track completion), T2 (object-code
+# verification), T3 (spar schedulability bridge) and T4 (sound static-WCET)
+# threading across the critical path. Everything here is `status: proposed`
+# (planned work, not yet built); this file records WHAT must close its V for
+# each release to be cuttable, not that it has closed.
+#
+# Reuses (via related-to, not redefined): REQ-OS-SYSCALL-001, REQ-OS-MPU-001,
+# REQ-OS-EXEC-001 / VER-OS-EXEC-001, REQ-OS-MULTITENANT-001,
+# REQ-OS-RELEASE-001, SYSREQ-BYOOS-001 (the anchor every req below derives
+# from).
+
+artifacts:
+  # ==========================================================================
+  # The resolved build-vs-host decision — the premise the whole line stands on
+  # ==========================================================================
+
+  - id: DD-OS-BUILD-001
+    type: sw-detail-design
+    title: "Build the verified outer, not host on a certified kernel (the build-vs-host fork, resolved)"
+    status: proposed
+    description: >
+      Records the resolved build-vs-host fork (gale#63 spec §12): gust BUILDS
+      the outer preemptive partition switch, the MPU/MMU region-swap, and the
+      Health-Monitor core as gale's own tiny verified sliver, rather than
+      hosting the two-level partition model on an externally-certified
+      partitioning kernel. The load-bearing argument for BUILD is checkable
+      certificates at every layer of the stack, not any single piece:
+      codegen (per-rule and binary-translation object-code verification),
+      isolation (the I-ISO invariant — a hardware memory-protection boundary
+      contains the compiler), timing (a machine-checked schedulability
+      bound), and proof-obligations (LRAT-certified discharge of the SMT
+      leaves). Each layer is an untrusted-fast-tool paired with a small
+      trusted checker; that symmetry — not any one proof — is what makes
+      "we do it and we control it" a safety argument rather than a slogan,
+      and keeps no unverifiable third-party blob in the TCB. This decision
+      is the premise every requirement in the safety release line below
+      builds on: it is why the isolation keystone (REQ-OS-ISO-001), the
+      outer switch (REQ-OS-SWITCH-001), and the value-domain Health Monitor
+      (REQ-OS-HM-001) are gale-authored and gale-verified rather than
+      integration points onto someone else's certified kernel.
+    tags: [gust, os, decision, build-vs-host, safety, gale63]
+    links:
+      - type: refines
+        target: SAC-BYOOS-SCAFFOLD
+      - type: related-to
+        target: REQ-OS-RELEASE-001
+
+  # ==========================================================================
+  # v0.5.0 — I-ISO core: verified MPU/MMU region-swap (THE KEYSTONE)
+  # ==========================================================================
+
+  - id: REQ-OS-ISO-001
+    type: sw-req
+    title: "I-ISO: the hardware memory-protection boundary is the SOLE isolation root of trust (the keystone)"
+    status: proposed
+    release: v0.5.0
+    description: >
+      This is the release-line KEYSTONE (invariant I-ISO): the target's
+      hardware memory-protection facility (an ARMv7-M/ARMv8-M MPU region
+      table, an AArch64 MMU with exception-level separation, or a RISC-V
+      PMP), programmed by the verified core on entry to a partition, SHALL
+      be the sole isolation root of trust for the two-level partition model.
+      The Component-Model / dissolve layer provides ergonomics and
+      portability ONLY — it is never the isolation boundary. Concretely: the
+      region-table + program_regions_on_switch SHALL be an mmio/scalar-FSM
+      sliver (thin-seam discipline, no new TCB shape); the programmed
+      regions SHALL be disjoint, SHALL cover exactly the partition granted
+      to the entering component, and SHALL deny everything else
+      (deny-by-default). Consequence: a synth/meld/loom miscompile can
+      corrupt data only WITHIN the partition it targets, never across a
+      partition boundary — because the boundary is enforced by hardware the
+      compiler does not control. This is the first release in the line to
+      deliver ANY isolation/safety evidence; everything shipped before it
+      (the inner executor, the ten thin-seam drivers) is functional-only
+      evidence (see the plan's two-column ledger). The ARMv7-M MPU
+      instantiation lands first; the AArch64 MMU+EL path is scoped but not
+      required for this release.
+    tags: [gust, os, isolation, mpu, mmu, i-iso, keystone, safety, gale63]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-MPU-001
+      - type: related-to
+        target: DD-OS-BUILD-001
+
+  - id: VER-OS-ISO-001
+    type: sw-verification
+    title: "Verus/Kani region-program FSM + fault-injection + the synth#757 containment demo"
+    method: formal-verification
+    status: proposed
+    release: v0.5.0
+    description: >
+      Multi-part evidence for REQ-OS-ISO-001, all against the same
+      region-program source: (1) Verus and Kani proofs over the
+      region-program FSM establishing disjointness (no two programmed
+      regions overlap), totality (every entering partition gets a fully
+      programmed region set before it resumes), and deny-by-default (any
+      address not covered by the entering partition's regions is denied by
+      construction, not by omission). (2) A Renode/qemu fault-injection
+      demo: a crafted cross-region write from inside a partition faults
+      (BusFault/MPU fault) rather than silently corrupting a sibling
+      partition or the TCB. (3) The flagship acceptance test — the
+      synth#757 containment demo: a scripted, compiler-introduced
+      cross-partition write (the exact class of miscompile synth#757
+      tracks) is physically denied by the programmed MPU/MMU boundary,
+      taking I-ISO from a documented invariant to a filmed, hardware-
+      enforced demonstration. Kill-criterion: a Kani/Verus harness fails, a
+      crafted cross-region access does NOT fault, or the containment demo's
+      cross-partition write is NOT denied.
+    tags: [gust, os, isolation, mpu, verus, kani, renode, synth757, verified]
+    links:
+      - type: verifies
+        target: REQ-OS-ISO-001
+
+  # ==========================================================================
+  # v0.6.0 — Outer preemptive partition switch (ARINC-653-class backbone)
+  # ==========================================================================
+
+  - id: REQ-OS-SWITCH-001
+    type: sw-req
+    title: "Outer fixed-priority time-partitioned preemptive switch + per-partition region-swap"
+    status: implemented
+    release: v0.6.0
+    description: >
+      The outer scheduler SHALL provide fixed-priority, time-partitioned,
+      preemptive switching across N partitions on an offline-planned major
+      frame, combining two independent guarantees: TEMPORAL isolation — a
+      non-maskable window-end preemption that inner (partition-local) code
+      cannot defer, mask, or extend — and SPATIAL isolation — the
+      per-partition MPU/MMU region-swap (REQ-OS-ISO-001) ordered strictly
+      before the entering partition's inner scheduler is resumed, so no
+      instruction of the new partition ever executes under the old
+      partition's memory map. gale contributes the PROOF that this
+      particular switch implementation has these properties; it explicitly
+      ADOPTS the mechanism from established static-partitioning
+      hypervisor/ARINC-653-class patterns rather than inventing a novel
+      scheduling algorithm — the load-bearing claim of this requirement is
+      verification, not novelty. Scope for this release includes
+      multi-partition-per-core placement (e.g. a flight-control partition
+      and a mission partition sharing one core, an estimator partition on a
+      second core) and the multi-core mapping wired into the Renode model.
+    tags: [gust, os, scheduler, partition-switch, temporal, spatial, arinc653, safety, gale63]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-ISO-001
+      - type: related-to
+        target: REQ-OS-EXEC-001
+      - type: related-to
+        target: DD-OS-BUILD-001
+
+  - id: VER-OS-SWITCH-001
+    type: sw-verification
+    title: "Verus/Kani on the outer switch (un-maskable window-end preemption, ordered region-swap) + multi-partition Renode demo"
+    method: formal-verification
+    status: proposed
+    release: v0.6.0
+    description: >
+      Verus and Kani proofs over the outer switch core establish: (1)
+      window-end preemption fires unconditionally at the planned major-frame
+      boundary regardless of what the currently-running partition's inner
+      scheduler does — inner code has no code path that can mask, defer, or
+      extend its allotted window; (2) the per-partition region-swap
+      (REQ-OS-ISO-001's region-program FSM) is always fully applied BEFORE
+      the entering partition's first instruction executes, i.e. the switch
+      is temporally ordered spatial-isolation-then-resume with no window in
+      which the wrong memory map is live. End-to-end: a multi-partition
+      demo on the Renode multi-core model exercising at least three
+      partitions across the planned major frame, confirming each partition
+      only ever executes within its own window and its own memory map.
+      Schedulability of the inner tasks under this outer supply is closed
+      separately by track T3 (REQ-OS-SCHED-001). Kill-criterion: a
+      Verus/Kani harness fails, a partition's window is observed to run
+      past its planned boundary, or the region-swap is observed applied
+      after the entering partition has already resumed.
+    tags: [gust, os, scheduler, partition-switch, verus, kani, renode, verified]
+    links:
+      - type: verifies
+        target: REQ-OS-SWITCH-001
+
+  # ==========================================================================
+  # v0.7.0 — Value-domain Health Monitor + failsafe state machine
+  # ==========================================================================
+
+  - id: REQ-OS-HM-001
+    type: sw-req
+    title: "Value-domain Health Monitor + failsafe state machine (erroneous-but-timely detection)"
+    status: proposed
+    release: v0.7.0
+    description: >
+      The Health Monitor SHALL detect the dominant real-world loss mode —
+      output that is ERRONEOUS BUT TIMELY, not merely late or absent — via
+      explicit value-domain detectors: data freshness/staleness checks,
+      plausibility and innovation gating against a physical/estimator
+      model, cross-sensor voting, and estimator-divergence detection. This
+      SHALL be paired with an explicit failsafe state machine covering, at
+      minimum: loss of the remote-control link, loss of the telemetry/
+      datalink, loss of GPS or estimator convergence, geofence breach, and
+      low-battery/power-budget exhaustion, each mapping onto the existing
+      independent cross-core monitor tier (the F100 Health-Monitor tier
+      already demonstrated as a hardware-independent backstop). The
+      escalation ladder from a single detector trip to the terminal
+      failsafe action SHALL be provably terminating (no detector
+      combination can leave the system oscillating between states without
+      reaching a defined terminal action). The design SHALL state a
+      diagnostic-coverage figure against a named fault model, not merely
+      assert coverage qualitatively.
+    tags: [gust, os, health-monitor, failsafe, value-domain, safety, gale63]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-SWITCH-001
+      - type: related-to
+        target: DD-OS-BUILD-001
+
+  - id: VER-OS-HM-001
+    type: sw-verification
+    title: "Verus/Kani on the HM/failsafe FSM + per-trigger fault-injection + diagnostic-coverage figure"
+    method: formal-verification
+    status: proposed
+    release: v0.7.0
+    description: >
+      Verus and Kani proofs over the Health-Monitor/failsafe state machine
+      establish that the escalation ladder is total (every reachable state
+      has a defined transition for every detector event) and terminating
+      (no cycle exists that avoids the terminal failsafe action once its
+      trigger condition holds). End-to-end: a fault-injection demo exercises
+      each named failsafe trigger (RC-loss, datalink-loss, GPS/estimator-
+      loss, geofence, low-battery) independently and confirms the system
+      reaches the correct terminal state within the modelled detection
+      latency, plus a stated diagnostic-coverage figure computed against
+      the named fault model in REQ-OS-HM-001. Kill-criterion: a Verus/Kani
+      harness fails, an injected fault does not reach its mapped failsafe
+      state, or the escalation ladder is observed to cycle without
+      reaching a terminal action.
+    tags: [gust, os, health-monitor, failsafe, verus, kani, fault-injection, verified]
+    links:
+      - type: verifies
+        target: REQ-OS-HM-001
+
+  # ==========================================================================
+  # Track T2 — object-code verification (cross-cutting; gates v0.5.0/v0.6.0)
+  # ==========================================================================
+
+  - id: REQ-OS-OBJVERIFY-001
+    type: sw-req
+    title: "T2: zero-coverage-gap object-code verification of the trusted switch/MPU/HM object"
+    status: proposed
+    release: v0.6.0
+    description: >
+      Cross-cutting track T2. The compiled object implementing the trusted
+      switch, MPU/MMU region-program, and Health-Monitor core (the
+      isolation-critical binary produced by v0.5.0/v0.6.0) SHALL be
+      object-code-verified with ZERO coverage gap: every codegen rule the
+      compiler applies to this object SHALL carry a per-rule verification
+      obligation (RULE-VERIFY), and the resulting binary SHALL additionally
+      pass a binary-translation validation pass (BIN-VERIFY) confirming the
+      emitted machine code is a faithful lowering of the verified source.
+      This closes the source-to-binary gap for the isolation-critical
+      object specifically — not the whole compiler surface — so the
+      compiler is removed from the isolation trust argument BY
+      CONSTRUCTION rather than by review. The first milestone on this track
+      is synth#757 coverage completion, which also gates the v0.4.0 syscall
+      seam.
+    tags: [gust, os, track-t2, object-code-verification, synth, codegen, safety, gale63]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-ISO-001
+      - type: related-to
+        target: DD-OS-BUILD-001
+
+  - id: VER-OS-OBJVERIFY-001
+    type: sw-verification
+    title: "RULE-VERIFY (per-rule) + BIN-VERIFY (binary-translation) zero-gap coverage report on the trusted object"
+    method: formal-verification
+    status: proposed
+    release: v0.6.0
+    description: >
+      Evidence for REQ-OS-OBJVERIFY-001: a coverage report over the
+      compiled switch/MPU/HM object showing every applied codegen rule
+      carries a discharged RULE-VERIFY obligation (no rule applied without
+      one), plus a BIN-VERIFY binary-translation validation run confirming
+      the emitted instructions are a faithful lowering of the verified
+      source for that same object. The report's coverage figure SHALL be
+      100% over the rules actually exercised by this object (a zero-gap
+      claim scoped to the isolation-critical binary, not a whole-compiler
+      claim). Kill-criterion: any applied codegen rule on this object
+      lacks a RULE-VERIFY obligation, or BIN-VERIFY reports a translation
+      mismatch.
+    tags: [gust, os, track-t2, object-code-verification, synth, verified]
+    links:
+      - type: verifies
+        target: REQ-OS-OBJVERIFY-001
+
+  # ==========================================================================
+  # Track T3 — compositional schedulability (cross-cutting; gates v0.6.0+)
+  # ==========================================================================
+
+  - id: REQ-OS-SCHED-001
+    type: sw-req
+    title: "T3: machine-checked compositional schedulability — inner response time bounded against the outer supply"
+    status: proposed
+    release: v0.6.0
+    description: >
+      Cross-cutting track T3. The inner tickless cooperative executor's
+      worst-case response time, running under the outer partition's
+      periodic-resource supply bound (REQ-OS-SWITCH-001), SHALL be bounded
+      by a MACHINE-CHECKED (Lean-verified) analysis, not a measured
+      high-water-mark. This SHALL derive the standard periodic-resource
+      supply-bound blackout as the inner tasks' effective release jitter,
+      feed it into a Lean-verified jittered worst-case-response-time
+      recurrence, add the cooperative non-preemptive blocking term for the
+      inner executor's run-to-completion polling model, and cap total
+      demand against the supply bound function — producing a
+      machine-checked inner-response bound that is provably sound at every
+      poll/await point, not merely observed sound over a finite set of
+      test runs. This is strictly stronger than the DWT-based high-water-
+      mark evidence the project has relied on to date.
+    tags: [gust, os, track-t3, schedulability, spar, lean, wcet, safety, gale63]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-EXEC-001
+      - type: related-to
+        target: REQ-OS-SWITCH-001
+      - type: related-to
+        target: DD-OS-BUILD-001
+
+  - id: VER-OS-SCHED-001
+    type: sw-verification
+    title: "Lean-verified jittered WCRT recurrence + cooperative blocking term + demand-vs-supply cap, on the shipped executor"
+    method: formal-verification
+    status: proposed
+    release: v0.6.0
+    description: >
+      Evidence for REQ-OS-SCHED-001: the Lean-verified worst-case-response-
+      time recurrence, instantiated with (1) the derived release-jitter
+      term from the outer partition's periodic-resource supply-bound
+      blackout, (2) the cooperative non-preemptive blocking term for the
+      inner executor's poll-to-completion dispatch model (REQ-OS-EXEC-001),
+      and (3) a demand-bound function capped against the outer supply-bound
+      function — applied against the SAME shipped executor source
+      (src/executor.rs), not a hand-derived model. The resulting bound is
+      checked to dominate every observed DWT high-water-mark from the
+      existing probes, establishing the machine-checked bound is sound
+      relative to measured evidence. Kill-criterion: the Lean proof fails
+      to discharge, or an observed DWT high-water-mark exceeds the
+      machine-checked bound (which would falsify the bound's soundness).
+    tags: [gust, os, track-t3, schedulability, spar, lean, verified]
+    links:
+      - type: verifies
+        target: REQ-OS-SCHED-001
+
+  # ==========================================================================
+  # Track T4 — sound static-WCET inputs (cross-cutting; gates every timing claim)
+  # ==========================================================================
+
+  - id: REQ-OS-WCET-001
+    type: sw-req
+    title: "T4: sound static-WCET inputs, gale-owned — no partition budget sized from raw DWT high-water-marks"
+    status: proposed
+    release: v0.6.0
+    description: >
+      Cross-cutting track T4. The per-function cycle bound feeding the
+      track-T3 schedulability analysis SHALL be a SOUND static bound, and
+      on the BUILD (all-from-us) path the natural owner is gale's own
+      compiler: since the compiler emits the exact instructions for a
+      function, it SHALL also emit a sound per-function timing bound from
+      its own instruction-timing model — a gale-owned static-WCET, not a
+      third-party WCET tool integration. This is a BUILD GATE: no
+      partition time budget may be sized directly from a raw cycle-counter
+      high-water-mark; every budget SHALL trace to a sound static bound (or
+      a recognized rigorous complement such as a measurement-based,
+      sound-by-extreme-value-theory statistical WCET method used to
+      cross-check the static bound — categorically above a raw high-water-
+      mark, but not a substitute for the static bound as the primary
+      input).
+    tags: [gust, os, track-t4, wcet, timing, synth, safety, gale63]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-SCHED-001
+      - type: related-to
+        target: DD-OS-BUILD-001
+
+  - id: VER-OS-WCET-001
+    type: sw-verification
+    title: "Sound per-function static-WCET emission cross-checked against a statistical (EVT) bound, on the trusted object's functions"
+    method: formal-verification
+    status: proposed
+    release: v0.6.0
+    description: >
+      Evidence for REQ-OS-WCET-001: for every function in the trusted
+      switch/MPU/HM object and the inner executor core, the compiler-
+      emitted static cycle bound is checked sound against its own
+      instruction-timing model, and cross-checked against a measurement-
+      based, sound-by-extreme-value-theory statistical bound derived from
+      repeated DWT sampling. The static bound SHALL dominate both the
+      statistical bound and every observed raw DWT high-water-mark for
+      that function. The build-gate itself is checked mechanically: no
+      partition budget artifact in the release traces to a raw DWT value
+      as its sole justification. Kill-criterion: a function's static bound
+      is exceeded by its statistical bound or by an observed DWT sample,
+      or a partition budget is found sized from a raw DWT value alone.
+    tags: [gust, os, track-t4, wcet, timing, synth, verified]
+    links:
+      - type: verifies
+        target: REQ-OS-WCET-001
+
+  # ==========================================================================
+  # Track T1 — tri-track completion (cross-cutting; makes the tri-track claim real)
+  # ==========================================================================
+
+  - id: REQ-OS-TRITRACK-001
+    type: sw-req
+    title: "T1: at least one load-bearing theorem discharged on all three tracks — Verus + Rocq + Kani"
+    status: proposed
+    release: v0.8.0
+    description: >
+      Cross-cutting track T1. gust's tri-track claim ("Verus + Rocq +
+      Kani") is currently true only for the Verus and Kani tracks — the
+      Rocq track is stubbed. This requirement closes that gap: AT LEAST ONE
+      load-bearing theorem already proven for the executor or the
+      isolation core SHALL be independently discharged on Rocq as well,
+      against the same source (or a documented, reviewed transcription of
+      it), making the tri-track claim DEMONSTRATED rather than
+      aspirational. Candidate theorems are the executor's no-lost-wakeups
+      property (REQ-OS-EXEC-001) or the v0.5.0 region-disjointness theorem
+      (REQ-OS-ISO-001) — either satisfies this requirement provided the
+      theorem is genuinely load-bearing (part of an existing safety or
+      functional claim, not a throwaway lemma picked for ease of proof).
+      This requirement gates every future claim in the project that says
+      "tri-track verified."
+    tags: [gust, os, track-t1, tri-track, rocq, verus, kani, safety, gale63]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-EXEC-001
+      - type: related-to
+        target: REQ-OS-ISO-001
+      - type: related-to
+        target: DD-OS-BUILD-001
+
+  - id: VER-OS-TRITRACK-001
+    type: sw-verification
+    title: "Rocq discharge of a load-bearing theorem already proven in Verus/Kani, over the same source"
+    method: formal-verification
+    status: proposed
+    release: v0.8.0
+    description: >
+      Evidence for REQ-OS-TRITRACK-001: a Rocq proof script that
+      independently discharges the chosen load-bearing theorem (no-lost-
+      wakeups or region-disjointness), reviewed against the same source the
+      Verus and Kani proofs target (or a documented, reviewed
+      transcription where a direct Rocq embedding of the source is not
+      practical), with the discrepancy — if any — between the Rocq model
+      and the shipped source explicitly recorded rather than glossed over.
+      Kill-criterion: the Rocq proof fails to discharge, or the chosen
+      theorem is found not to be load-bearing (removing it would not
+      invalidate an existing claim).
+    tags: [gust, os, track-t1, tri-track, rocq, verified]
+    links:
+      - type: verifies
+        target: REQ-OS-TRITRACK-001
