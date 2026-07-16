@@ -270,7 +270,7 @@ artifacts:
   - id: REQ-OS-SYSCALL-001
     type: sw-req
     title: "gust:os — a typed capability world is the OS ABI (not ad-hoc imports)"
-    status: proposed
+    status: implemented
     release: v0.4.0
     description: >
       The OS surface an app sees SHALL be a single WIT world `gust:os` exposing
@@ -362,3 +362,32 @@ artifacts:
         target: STKH-BYOOS-001
       - type: related-to
         target: REQ-OS-MULTITENANT-001
+
+  - id: VER-OS-SYSCALL-001
+    type: sw-verification
+    title: "v0.4.0 syscall seam — tl (buffer) + ts (spawn) fused nodes probe green on synth 0.45.1"
+    method: test
+    status: verified
+    release: v0.4.0
+    description: >
+      Executable evidence for REQ-OS-SYSCALL-001, both capability classes of the
+      gust:os world exercised end-to-end through the full dissolve pipeline
+      (component new x3 -> wac plug -> meld 0.41.0 fuse --memory shared ->
+      loom 1.2.0 inline -> synth 0.45.1 --relocatable --native-pointer-abi
+      --shadow-stack-size 2048): (1) the tl node (time + log; log.line carries
+      list<u8>, the first BUFFER-carrying capability) — gust_os_tl_probe asserts
+      the exact bytes "gust:os up\n" captured at the mmio sink AND run()==0xA
+      (qemu cortex-m3, exit 0); (2) the ts node (time + spawn; spawn backed by
+      the Verus-proven executor via the WIT-TYPED gust:os/taskdisp poll-task
+      seam) — gust_os_ts_probe asserts poll==1 (exit 0). Sizes: tl 5282 B, ts
+      4164 B, both within the 8192 budget; undefined symbols exactly the
+      gust:hal mmio seam (+ the typed taskdisp seam). The tl node's exact
+      loom.wasm is a permanent upstream synth CI regression fixture (the
+      overlapping-segment miscompile class, synth#757, fixed in 0.45.1). The
+      wasm->native dissolve is differentially trusted, not proven equivalent
+      (docs/safety/verification-honesty.md); upstream VCR-VER-003 (synth#777)
+      is the named path to closing that class by construction.
+    tags: [gust, os, syscall, capability, probe, qemu, verified]
+    links:
+      - type: verifies
+        target: REQ-OS-SYSCALL-001

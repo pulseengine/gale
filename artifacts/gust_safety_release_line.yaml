@@ -431,7 +431,7 @@ artifacts:
   - id: REQ-OS-TRITRACK-001
     type: sw-req
     title: "T1: at least one load-bearing theorem discharged on all three tracks — Verus + Rocq + Kani"
-    status: proposed
+    status: implemented
     release: v0.8.0
     description: >
       Cross-cutting track T1. gust's tri-track claim ("Verus + Rocq +
@@ -463,7 +463,7 @@ artifacts:
     type: sw-verification
     title: "Rocq discharge of a load-bearing theorem already proven in Verus/Kani, over the same source"
     method: formal-verification
-    status: proposed
+    status: verified
     release: v0.8.0
     description: >
       Evidence for REQ-OS-TRITRACK-001: a Rocq proof script that
