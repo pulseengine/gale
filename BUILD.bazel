@@ -25,6 +25,7 @@ VERUS_SRCS = [
     "src/lib.rs",
     "src/error.rs",
     "src/executor.rs",
+    "src/health_monitor.rs",
     "src/partition_switch.rs",
     "src/priority.rs",
     "src/thread.rs",

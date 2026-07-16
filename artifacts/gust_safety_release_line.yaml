@@ -197,7 +197,7 @@ artifacts:
   - id: REQ-OS-HM-001
     type: sw-req
     title: "Value-domain Health Monitor + failsafe state machine (erroneous-but-timely detection)"
-    status: proposed
+    status: implemented
     release: v0.7.0
     description: >
       The Health Monitor SHALL detect the dominant real-world loss mode —

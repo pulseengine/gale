@@ -42,6 +42,7 @@ extern crate kani;
 
 pub mod error;
 pub mod executor;
+pub mod health_monitor;
 pub mod partition_switch;
 pub mod priority;
 pub mod thread;
