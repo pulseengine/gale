@@ -71,6 +71,7 @@ VERUS_SRCS = [
     "src/ipi.rs",
     "src/systick.rs",
     "src/mpu.rs",
+    "src/mpu_switch.rs",
     "src/usage.rs",
     "src/mmu.rs",
     "src/net_buf.rs",

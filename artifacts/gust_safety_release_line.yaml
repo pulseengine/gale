@@ -62,7 +62,7 @@ artifacts:
   - id: REQ-OS-ISO-001
     type: sw-req
     title: "I-ISO: the hardware memory-protection boundary is the SOLE isolation root of trust (the keystone)"
-    status: proposed
+    status: implemented
     release: v0.5.0
     description: >
       This is the release-line KEYSTONE (invariant I-ISO): the target's
