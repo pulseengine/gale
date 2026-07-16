@@ -263,5 +263,52 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_exec_probe={}", eobj.display());
         println!("cargo:rerun-if-changed={}", eobj.display());
     }
+    // I-ISO fault-containment oracles (v0.5.0): gust_iso_contain_probe links the
+    // BUGGY synth 0.45.0 dissolve of the ARCHIVED synth#757 miscompile input
+    // (repro-757/loom.wasm -> repro-757/os-tl-buggy.o — its ONLY difference from
+    // the fixed 0.45.1 dissolve, repro-757/os-tl-fixed.o, is the one R_ARM_ABS32
+    // at .text+0x694 bound to __synth_wasm_seg_0 instead of __synth_wasm_seg_2);
+    // gust_iso_contain_ctl links the fixed object under the IDENTICAL memory
+    // arrangement as the no-fault control. Both need the object's .data renamed
+    // to .iso_stale_data (objcopy, into OUT_DIR) so iso_contain.x can pin it at
+    // 0x2000_BFF0 straddling the MPU guard boundary — see iso_contain.x.
+    let out_dir = std::env::var("OUT_DIR").unwrap();
+    const OBJCOPY_CANDIDATES: &[&str] = &["/opt/homebrew/bin/arm-none-eabi-objcopy", "arm-none-eabi-objcopy", "llvm-objcopy"];
+    let objcopy = OBJCOPY_CANDIDATES
+        .iter()
+        .find(|c| Command::new(c).arg("--version").output().is_ok());
+    for (src, bin, placed) in [
+        ("drivers/os-node/repro-757/os-tl-buggy.o", "gust_iso_contain_probe", "os-tl-buggy-placed.o"),
+        ("drivers/os-node/repro-757/os-tl-fixed.o", "gust_iso_contain_ctl", "os-tl-fixed-placed.o"),
+    ] {
+        let sobj = Path::new(&manifest).join(src);
+        if !sobj.exists() {
+            continue;
+        }
+        let Some(objcopy) = objcopy else {
+            println!(
+                "cargo:warning=no objcopy-compatible tool found; {bin} cannot place \
+                 .iso_stale_data and will fail to link if built"
+            );
+            continue;
+        };
+        let out = Path::new(&out_dir).join(placed);
+        let status = Command::new(objcopy)
+            .args(["--rename-section", ".data=.iso_stale_data"])
+            .arg(&sobj)
+            .arg(&out)
+            .status()
+            .unwrap_or_else(|e| panic!("failed to run {objcopy}: {e}"));
+        assert!(status.success(), "{objcopy} failed renaming .data in {}", sobj.display());
+        // synth#746-class guard: the dissolved entry point must actually be there.
+        check_defined_text_symbols(&out, &["run"]);
+        println!("cargo:rustc-link-arg-bin={bin}={}", out.display());
+        println!(
+            "cargo:rustc-link-arg-bin={bin}=-T{}",
+            Path::new(&manifest).join("iso_contain.x").display()
+        );
+        println!("cargo:rerun-if-changed={}", sobj.display());
+    }
+    println!("cargo:rerun-if-changed=iso_contain.x");
     println!("cargo:rerun-if-changed=build.rs");
 }
