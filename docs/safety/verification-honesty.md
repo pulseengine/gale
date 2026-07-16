@@ -118,15 +118,18 @@ across the wasm→native boundary is **not currently supported** and must not be
 
 `proofs/*.v` is **not uniformly proven**. Ground truth (counts of `Qed.` vs `Admitted.`):
 
-- **9 files fully proven (0 `Admitted`):** sem (82 `Qed`), pipe (10), stack (10),
-  mutex (9), msgq (9), condvar (8), event (7), mem_slab (7), timer (7). These are the
-  "9 abstract invariant proofs" the README counts, and the count is accurate.
+- **10 files fully proven (0 `Admitted`):** sem (82 `Qed`), executor (15 — added
+  2026-07-16: gust executor no-lost-wakeups over an N-bitmask model, axiom-free per
+  its `Print Assumptions` closure audit), pipe (10), stack (10), mutex (9), msgq (9),
+  condvar (8), event (7), mem_slab (7), timer (7). These are the
+  "10 abstract invariant proofs" the README counts, and the count is accurate.
 - **3 files are 100% `Admitted` stubs (0 `Qed`):** `poll_proofs.v` (22), `sched_proofs.v`
   (23), `thread_lifecycle_proofs.v` (29) = **74 admitted theorems** shipped in the same
   directory. Several carry `(* … Coq 9.0 tactic … *)` notes — they are proof *scaffolding*,
   not proofs. A reader browsing `proofs/` will reasonably read these as "Rocq proofs";
-  they are not. **These must be labelled WIP/stub, and the "Rocq" claim must say "9 of 12
-  invariant modules proven; poll/sched/thread_lifecycle are admitted stubs."**
+  they are not. **These must be labelled WIP/stub, and the "Rocq" claim must say "10 of 13
+  non-empty invariant modules proven; poll/sched/thread_lifecycle are admitted stubs."**
+  (`heap_proofs.v` is an empty file — 0 `Qed`, 0 `Admitted` — and counts as neither.)
 - **All Rocq is over hand-written Z-valued models, NOT connected to the Rust** (README
   line 124 already says this). Rocq here is *design-level* invariant checking, not an
   implementation proof. Correct framing: "abstract-model theorem proving for design
@@ -178,7 +181,7 @@ is not itself argued.
 architecture doc's "one formally-verified artifact" read as stronger than the honest
 internal picture in this file. They should be brought into line (a positioning decision):
 lead with what is *actually strong* — comprehensive functional + differential testing,
-real Verus SMT on the source (with the 133 `external_body` trust units named), 9 real Rocq
+real Verus SMT on the source (with the 133 `external_body` trust units named), 10 real Rocq
 model proofs — and state the limits up front: **(a)** the shipped dissolved artifact is
 tested against a reference semantics, not proven equivalent to the verified source
 (source-vs-shipped); and **(b)** a *green formal-verification CI badge is not "all
@@ -191,13 +194,13 @@ The **"The Gap" / "does NOT run in CI (local only)"** statements earlier in this
 (dated 2026-03-22) are **superseded**: `.github/workflows/formal-verification.yml` now
 runs all three tracks on **push + pull_request + weekly cron** — Verus (`bazel test
 //:verus_test`), Kani (185 harnesses: `cargo kani --tests` + `--all-features`), and Rocq
-(13 files via `coq-of-rust` + Bazel). So formal verification **is** CI-enforced today.
+(14 files via `coq-of-rust` + Bazel). So formal verification **is** CI-enforced today.
 Two honest caveats remain, and they are sharper than "not in CI":
 
 - **A green Rocq job does not mean the theorems are proven.** Coq *accepts* `Admitted.`
   (it is an axiom-like escape hatch that type-checks), so the Rocq CI job passes green
   even though `poll`/`sched`/`thread_lifecycle` are 74 admitted stubs. "Rocq CI green" ⇒
-  "the files elaborate," NOT "the properties hold." (The 9 real modules are genuinely
+  "the files elaborate," NOT "the properties hold." (The 10 real modules are genuinely
   `Qed`.)
 - **The Verus job is not `--no-cheating`.** It passes with the 133 `external_body` trust
   units accepted; a maximalist `--no-cheating` run would (correctly) fail. So "Verus CI
