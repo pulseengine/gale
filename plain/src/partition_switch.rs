@@ -227,12 +227,13 @@ impl Switcher {
     }
     /// Drive one full switch after a boundary preemption: SaveCtx →
     /// ProgramRegions → Resume → Running, crossing each trusted seam in
-    /// order. The verified `mark_*` transitions interleave with the seam
-    /// calls, so the FSM's `swapped` invariant machine-checks that
-    /// `seam_region_swap` has been issued before the FSM can reach Resume —
-    /// and therefore before `seam_ctx_resume` (S2, region-swap strictly
-    /// precedes inner resume). Ends back in Running with the window index
-    /// advanced by exactly one (mod MAX_WINDOWS).
+    /// order. The `swapped` invariant machine-checks the FSM ordering:
+    /// `mark_swapped` strictly precedes `mark_resumed` (S2 at the FSM
+    /// level). The binding of `seam_region_swap` to `mark_swapped` — that
+    /// the seam call is actually issued on that edge — is trusted code
+    /// order in this body, not machine-checked (see the trusted-seam note
+    /// at the top of this file). Ends back in Running with the window
+    /// index advanced by exactly one (mod MAX_WINDOWS).
     pub fn run_switch(&mut self) {
         let outgoing = self.frame.partition_id[self.cur as usize];
         let next = if self.cur + 1 == MAX_WINDOWS as u32 { 0 } else { self.cur + 1 };
