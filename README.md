@@ -17,8 +17,9 @@ Formally verified Rust replacement for Zephyr RTOS kernel primitives. ASIL-D tar
 > **Honest reading of "formally verified"** (full claims ledger:
 > [docs/safety/verification-honesty.md](docs/safety/verification-honesty.md)):
 > the proofs are on the Rust/wasm **source** — Verus SMT on 39 modules (subject to
-> 133 named `external_body` trust units), 9 Rocq abstract-model invariant proofs
-> (poll/sched/thread_lifecycle are WIP `Admitted` stubs, not yet proven), and Lean
+> 133 named `external_body` trust units), 10 Rocq abstract-model invariant proofs
+> (incl. the gust executor's no-lost-wakeups; poll/sched/thread_lifecycle are WIP
+> `Admitted` stubs, not yet proven), and Lean
 > scheduling theory. Two limits stated up front: **(1)** Rocq/Lean reason about
 > abstract models, not the Rust directly; **(2)** the *shipped* artifact for the
 > wasm-dissolve line is native code from `meld→loom→synth` and is **differentially
@@ -123,6 +124,8 @@ src/*.rs          Verus-annotated Rust (39 modules, single source of truth)
     |       |
     |       +--standalone--> plain/*.rs ---> Rocq proofs (9 modules)
     |
+    +---> proofs/executor_proofs.v ---> Rocq model proof (gust executor, no-lost-wakeups)
+    |
     +---> proofs/lean/*.lean ---> Lean 4 proofs (3 files, scheduler + priority)
     |
     +---> ffi/ ---> C shim ---> Zephyr kernel (qemu_cortex_m3/m4f/m33)
@@ -133,9 +136,41 @@ src/*.rs          Verus-annotated Rust (39 modules, single source of truth)
 ### Formal verification (via Bazel + Nix, CI-gated on source changes):
 
 - **Verus (SMT/Z3):** 39/39 modules, 805 properties verified by Z3 (0 errors). Includes poll and sched with `external_body` trusted array helpers.
-- **Rocq:** 9 abstract invariant proofs over Z-valued math (0 Admitted). NOT connected to the Rust code — proofs reason about hand-written mathematical models, not the rocq-of-rust translation.
+- **Rocq:** 10 fully-proven abstract invariant modules (0 Admitted): 9 over Z-valued math for the Zephyr primitives, plus `executor_proofs.v` — an N-bitmask model of the gust executor proving no-lost-wakeups (see below). NOT connected to the Rust code — proofs reason about hand-written mathematical models, not the rocq-of-rust translation. poll/sched/thread_lifecycle remain `Admitted` WIP stubs.
 - **Lean 4:** 3 mathematical proofs — RMA bound, priority ceiling protocol, priority queue ordering. Pure scheduling theory, not implementation proofs.
 - **Kani BMC:** 185 bounded model checking harnesses (87 model + 98 FFI). Not in CI until Bazel workflow is confirmed working.
+
+### Executor no-lost-wakeups: one property, three independent tracks
+
+The gust executor's load-bearing liveness-support property — **a wakeup delivered
+to a Pending task is never lost**: its ready bit stays set across any interleaving
+of `wake`/`consume`/`pick_next` until that task itself is consumed — is discharged
+on all three verification tracks:
+
+| Track | Artifact | What it checks | Engine |
+|---|---|---|---|
+| Verus | `src/executor.rs` (`lemma_no_lost_wakeup` + per-mutator `ensures`) | the property on the Rust source itself | SMT (Z3) |
+| Rocq | `proofs/executor_proofs.v` (`no_lost_wakeups`, `delivered_wake_survives`) | the property on a hand-written model of the same state machine, over arbitrary finite operation traces | Rocq kernel (type theory, no SMT) |
+| Kani | `src/executor.rs` `#[cfg(kani)]` harnesses | the executable scheduler loop (drain + bounded-poll) on the shipped code path | BMC (CBMC/SAT) |
+
+**What the Rocq proof is:** a fully-`Qed` theorem (0 `Admitted`, no axioms —
+the file ends with `Print Assumptions`, and the compile log shows "Closed under
+the global context") about an abstract state machine that mirrors
+`src/executor.rs` field-by-field and operation-by-operation, with the
+correspondence documented inline. It quantifies over *all finite interleavings*
+of the modeled operations — something neither the per-function Verus contracts
+nor the bounded Kani harnesses state in that form. Gate:
+`bazel test //proofs:executor_proofs_test` (in the Formal Verification workflow).
+
+**What it is NOT:** a proof about the compiled binary. There is no extraction,
+no refinement, and no translation-validation connecting the Rocq model to the
+Rust source or to the dissolved native artifact — the model-to-source
+correspondence is a structural argument (readable, but human-checked). The
+value of the Rocq track here is **diverse redundancy**: the same property
+formalized twice, independently, and checked by two engines with disjoint
+trusted bases (Z3's SMT core vs Rocq's kernel), plus a third bounded check on
+the executable path. A spec-encoding mistake or soundness bug in any single
+track alone can no longer silently invalidate the property.
 
 ### Functional testing (CI-enforced on every commit):
 
