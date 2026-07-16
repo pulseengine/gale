@@ -178,7 +178,7 @@ artifacts:
     type: sw-verification
     title: "Verus/Kani on the outer switch (un-maskable window-end preemption, ordered region-swap) + multi-partition Renode demo"
     method: formal-verification
-    status: proposed
+    status: implemented
     release: v0.6.0
     description: >
       Verus and Kani proofs over the outer switch core establish: (1)
@@ -198,6 +198,28 @@ artifacts:
       Verus/Kani harness fails, a partition's window is observed to run
       past its planned boundary, or the region-swap is observed applied
       after the entering partition has already resumed.
+      DELIVERED (2026-07-16, status implemented): part (1) FULLY — Verus
+      1095/0 + Kani 4/4 over the outer switch FSM (src/partition_switch.rs,
+      #187): window disjointness/no-skip, un-maskable boundary detection,
+      and lemma_resume_implies_region_swap (Resume reachable only through
+      ProgramRegions ⇒ region-swap strictly precedes resume). AND part (2)
+      CORE — a single-core qemu (lm3s6965evb, real ARMv7-M PMSA MPU)
+      demonstrator (benches/gust/src/bin/gust_switch_probe.rs) driving the
+      VERIFIED gale::partition_switch::Switcher across a 3-partition major
+      frame (windows P0→P1→P2→P0): each partition writes its OWN scratch
+      (no fault) and every cross-partition write is DENIED by a real
+      MemManage fault (CFSR=0x82 DACCVIOL+MMARVALID, MMFAR == the exact
+      neighbour address), the MPU programmed ONLY through the verified
+      switch_to_partition, region-swap-before-resume OBSERVED via RBAR
+      readback, plus an in-probe non-vacuity control (P0 denied in P1's
+      window). Adversarially reviewed 0-critical incl. neuter tests
+      (no-op the switch ⇒ oracle FLIPS TO FAIL, confirmed) — the
+      confinement is attributable to the verified switch, not the layout.
+      REMAINING for `verified`: the multi-CORE Renode placement demo (a
+      second core / estimator partition wired into the Renode model) — this
+      adds deployment/integration breadth, NOT a new verification property;
+      scoped as a v0.6.x follow-on. Evidence to date is local qemu, not yet
+      CI-gated.
     tags: [gust, os, scheduler, partition-switch, verus, kani, renode, verified]
     links:
       - type: verifies
