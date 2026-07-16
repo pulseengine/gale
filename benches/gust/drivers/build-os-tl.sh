@@ -27,7 +27,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 WT="${WASM_TOOLS:-wasm-tools}"; WAC="${WAC:-wac}"
 MELD="${MELD:-$HOME/pe-toolchain/meld-0.41.0/meld-v0.41.0-aarch64-apple-darwin/meld}"
 LOOM="${LOOM:-$HOME/pe-toolchain/loom-1.2.0/loom}"
-SYNTH="${SYNTH:-$HOME/pe-toolchain/synth-0.43.0/synth}"
+SYNTH="${SYNTH:-$HOME/pe-toolchain/synth-0.45.1/synth}"
 T="$(mktemp -d)"
 
 # 1. build the three guest wasm modules
