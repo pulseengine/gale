@@ -217,6 +217,27 @@ rocq_proof_test(
     deps = [":sched_proofs"],
 )
 
+# ── Executor proofs (gust executor: no-lost-wakeups) ────────────────────
+#
+# Pure-Stdlib model proof (no RocqOfRust import, hence no deps and no
+# -impredicative-set): a hand-written Rocq twin of src/executor.rs's
+# wake/consume state machine, proving that a delivered wakeup is never
+# lost across any interleaving of wake/consume/pick_next. Fully Qed-proven
+# (no admitted statements, no axioms — see the file's Print Assumptions
+# closure audit). Complements the Verus SMT proof of the same property in
+# src/executor.rs.
+
+rocq_library(
+    name = "executor_proofs",
+    srcs = ["executor_proofs.v"],
+)
+
+rocq_proof_test(
+    name = "executor_proofs_test",
+    srcs = ["executor_proofs.v"],
+    deps = [":executor_proofs"],
+)
+
 # ── Thread lifecycle proofs ───────────────────────────────────────────────
 
 rocq_library(
