@@ -59,7 +59,22 @@
 //!     fault-containment property proven here, but W+X is not acceptable
 //!     for the security-containment demo; adding an `executable` bit to
 //!     the region model (emitting XN=1 on data regions) is a named
-//!     follow-on for the verified table-builder work.
+//!     follow-on (`try_add_region` would grow an `executable` parameter).
+//!
+//! Verified table builder (`try_add_region` / `covers`): the constructor
+//! path for `RegionTable`. Every accepted region request is proven to
+//! keep `table_inv` (B1: well-formed + same-partition pairwise disjoint),
+//! every rejected request is proven to leave the table byte-for-byte
+//! unchanged (B2) — so a caller building a table exclusively through
+//! `new()` + `try_add_region` CANNOT construct an isolation-violating
+//! table: `new()` establishes `table_inv`, `try_add_region` preserves it
+//! (both machine-checked ensures), and `table_inv` is exactly
+//! `program_partition`'s table precondition, so the deny-by-default (P2)
+//! and disjointness proofs compose on any builder-constructed table.
+//! `covers` is the address-level grant predicate (some enabled region of
+//! the partition contains the address); `lemma_covers_unique` proves the
+//! grant is DETERMINISTIC on any `table_inv` table — at most one enabled
+//! region of a partition contains any given address.
 //!   * TEX/C/B/S = 0000: every granted region is strongly-ordered
 //!     (uncached, unbuffered, shareable-irrelevant). Correct but slow;
 //!     memory-attribute modeling is out of scope for the isolation claim.
@@ -299,6 +314,91 @@ impl RegionTable {
         let seq = self.program_partition(part);
         apply_program(&seq);
     }
+    /// Verified table builder: add region request (`base`, `size`,
+    /// `writable`) to partition `part`'s FIRST free slot.
+    ///
+    /// Rejects (returns `false`, table proven unchanged — B2) when:
+    ///   * `part` is out of range (defensive: keeps the stripped exec
+    ///     builder total — no panic on any input),
+    ///   * `size` is not a power of two >= `MIN_REGION_SIZE` (32) — the
+    ///     same characterisation `crate::mpu::validate_region` enforces,
+    ///     reusing the verified `crate::mpu::is_power_of_two`,
+    ///   * `base` is not `size`-aligned,
+    ///   * `base + size` wraps the address space (the U-6 bound),
+    ///   * the request OVERLAPS an enabled region already granted to
+    ///     `part` (THE isolation-bearing check), or
+    ///   * all of `part`'s region slots are occupied.
+    ///
+    /// On acceptance the resulting table is proven to still satisfy
+    /// `table_inv` (B1) — in particular the new region is well-formed and
+    /// disjoint from every other enabled region of `part` — so a caller
+    /// building exclusively through `new()` + `try_add_region` cannot
+    /// construct an isolation-violating table, and `program_partition`'s
+    /// precondition holds on the result by construction.
+    pub fn try_add_region(
+        &mut self,
+        part: u32,
+        base: u32,
+        size: u32,
+        writable: bool,
+    ) -> bool {
+        if part >= MAX_PARTITIONS as u32 {
+            return false;
+        }
+        if !crate::mpu::is_power_of_two(size) {
+            return false;
+        }
+        if size < MIN_REGION_SIZE {
+            return false;
+        }
+        if base % size != 0 {
+            return false;
+        }
+        if base.checked_add(size).is_none() {
+            return false;
+        }
+        let mut r: usize = 0;
+        while r < MAX_REGIONS {
+            let i = (part as usize) * MAX_REGIONS + r;
+            if self.enabled[i] {
+                if !(base + size <= self.base[i] || self.base[i] + self.size[i] <= base)
+                {
+                    return false;
+                }
+            }
+            r += 1;
+        }
+        let mut f: usize = 0;
+        while f < MAX_REGIONS {
+            let i = (part as usize) * MAX_REGIONS + f;
+            if !self.enabled[i] {
+                self.base[i] = base;
+                self.size[i] = size;
+                self.writable[i] = writable;
+                self.enabled[i] = true;
+                return true;
+            }
+            f += 1;
+        }
+        false
+    }
+    /// Exec mirror of `covers`, proven equivalent: does some enabled
+    /// region of partition `part` contain `addr`? Post-strip this is the
+    /// plain runtime query for what the builder granted (and the
+    /// Kani-checkable form of `covers`).
+    pub fn covers_addr(&self, part: u32, addr: u32) -> bool {
+        let mut r: usize = 0;
+        while r < MAX_REGIONS {
+            let i = (part as usize) * MAX_REGIONS + r;
+            if self.enabled[i] && self.base[i] <= addr
+                && addr - self.base[i] < self.size[i]
+            {
+                return true;
+            }
+            r += 1;
+        }
+        false
+    }
 }
 /// The trusted FFI seam, wrapped to the minimum trusted surface: hand ONE
 /// scalar triple to the platform's register-store routine.
@@ -455,5 +555,132 @@ mod iso_kani {
         }
         assert!(seq.w[MAX_REGIONS + 1].rnr == MPU_CTRL_ID);
         assert!(seq.w[MAX_REGIONS + 1].rasr == MPU_CTRL_ENABLE);
+    }
+}
+/// Kani cross-check of the table builder (Verus-proven above via SMT/Z3)
+/// under Kani's bounded model checker — the same shipped (post-strip)
+/// executable code path, no hand-copied mirror. `table_inv` is spec-only
+/// (stripped), so the harnesses assume/assert its exec-checkable
+/// equivalent: `crate::mpu::validate_region` per enabled slot plus
+/// explicit pairwise same-partition range-disjointness — over ALL
+/// partitions this time (the builder's requires/ensures span the whole
+/// table, unlike `program_partition` which reads one partition).
+#[cfg(kani)]
+mod builder_kani {
+    use super::*;
+    use crate::mpu::validate_region;
+    /// An arbitrary table.
+    fn arbitrary_table() -> RegionTable {
+        let base: [u32; TABLE_SLOTS] = kani::any();
+        let size: [u32; TABLE_SLOTS] = kani::any();
+        let enabled: [bool; TABLE_SLOTS] = kani::any();
+        let writable: [bool; TABLE_SLOTS] = kani::any();
+        RegionTable {
+            base,
+            size,
+            enabled,
+            writable,
+        }
+    }
+    /// ASSUME table_inv, exec form, over all slots: every enabled slot
+    /// well-formed, same-partition enabled pairs range-disjoint.
+    fn assume_table_inv(t: &RegionTable) {
+        for i in 0..TABLE_SLOTS {
+            if t.enabled[i] {
+                kani::assume(validate_region(t.base[i], t.size[i]));
+            }
+        }
+        for i in 0..TABLE_SLOTS {
+            for j in 0..TABLE_SLOTS {
+                if i != j && i / MAX_REGIONS == j / MAX_REGIONS && t.enabled[i]
+                    && t.enabled[j]
+                {
+                    let e1 = t.base[i] as u64 + t.size[i] as u64;
+                    let e2 = t.base[j] as u64 + t.size[j] as u64;
+                    kani::assume(e1 <= t.base[j] as u64 || e2 <= t.base[i] as u64);
+                }
+            }
+        }
+    }
+    /// ASSERT table_inv, exec form, over all slots (same characterisation
+    /// as `assume_table_inv`, checked instead of assumed).
+    fn assert_table_inv(t: &RegionTable) {
+        for i in 0..TABLE_SLOTS {
+            if t.enabled[i] {
+                assert!(validate_region(t.base[i], t.size[i]));
+            }
+        }
+        for i in 0..TABLE_SLOTS {
+            for j in 0..TABLE_SLOTS {
+                if i != j && i / MAX_REGIONS == j / MAX_REGIONS && t.enabled[i]
+                    && t.enabled[j]
+                {
+                    let e1 = t.base[i] as u64 + t.size[i] as u64;
+                    let e2 = t.base[j] as u64 + t.size[j] as u64;
+                    assert!(e1 <= t.base[j] as u64 || e2 <= t.base[i] as u64);
+                }
+            }
+        }
+    }
+    /// kb1 — invariant preservation: from ANY table satisfying table_inv
+    /// and ANY request (including out-of-range partition ids), the table
+    /// after try_add_region STILL satisfies table_inv — accepted or not.
+    #[kani::proof]
+    #[kani::unwind(33)]
+    fn builder_preserves_table_inv() {
+        let mut t = arbitrary_table();
+        assume_table_inv(&t);
+        let part: u32 = kani::any();
+        let base: u32 = kani::any();
+        let size: u32 = kani::any();
+        let writable: bool = kani::any();
+        let _ok = t.try_add_region(part, base, size, writable);
+        assert_table_inv(&t);
+    }
+    /// kb2 — rejected add leaves the table byte-for-byte unchanged.
+    #[kani::proof]
+    #[kani::unwind(33)]
+    fn builder_reject_leaves_table_unchanged() {
+        let mut t = arbitrary_table();
+        assume_table_inv(&t);
+        let snap_base = t.base;
+        let snap_size = t.size;
+        let snap_enabled = t.enabled;
+        let snap_writable = t.writable;
+        let part: u32 = kani::any();
+        let base: u32 = kani::any();
+        let size: u32 = kani::any();
+        let writable: bool = kani::any();
+        let ok = t.try_add_region(part, base, size, writable);
+        if !ok {
+            for i in 0..TABLE_SLOTS {
+                assert!(t.base[i] == snap_base[i]);
+                assert!(t.size[i] == snap_size[i]);
+                assert!(t.enabled[i] == snap_enabled[i]);
+                assert!(t.writable[i] == snap_writable[i]);
+            }
+        }
+    }
+    /// kb3 — grant coverage with exclusive upper bound: adding ANY
+    /// well-formed region to a fresh (all-disabled) table MUST succeed,
+    /// and the added region is covers-reachable at `base` and at
+    /// `base + size - 1` (in-range) but NOT at `base + size` (one past
+    /// the end — the only region in the table, so nothing else can
+    /// cover it either).
+    #[kani::proof]
+    #[kani::unwind(33)]
+    fn builder_added_region_covered_exclusive() {
+        let mut t = RegionTable::new();
+        let part: u32 = kani::any();
+        kani::assume(part < MAX_PARTITIONS as u32);
+        let base: u32 = kani::any();
+        let size: u32 = kani::any();
+        let writable: bool = kani::any();
+        kani::assume(validate_region(base, size));
+        let ok = t.try_add_region(part, base, size, writable);
+        assert!(ok);
+        assert!(t.covers_addr(part, base));
+        assert!(t.covers_addr(part, base + size - 1));
+        assert!(! t.covers_addr(part, base + size));
     }
 }
