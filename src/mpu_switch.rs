@@ -54,7 +54,22 @@
 //!     fault-containment property proven here, but W+X is not acceptable
 //!     for the security-containment demo; adding an `executable` bit to
 //!     the region model (emitting XN=1 on data regions) is a named
-//!     follow-on for the verified table-builder work.
+//!     follow-on (`try_add_region` would grow an `executable` parameter).
+//!
+//! Verified table builder (`try_add_region` / `covers`): the constructor
+//! path for `RegionTable`. Every accepted region request is proven to
+//! keep `table_inv` (B1: well-formed + same-partition pairwise disjoint),
+//! every rejected request is proven to leave the table byte-for-byte
+//! unchanged (B2) — so a caller building a table exclusively through
+//! `new()` + `try_add_region` CANNOT construct an isolation-violating
+//! table: `new()` establishes `table_inv`, `try_add_region` preserves it
+//! (both machine-checked ensures), and `table_inv` is exactly
+//! `program_partition`'s table precondition, so the deny-by-default (P2)
+//! and disjointness proofs compose on any builder-constructed table.
+//! `covers` is the address-level grant predicate (some enabled region of
+//! the partition contains the address); `lemma_covers_unique` proves the
+//! grant is DETERMINISTIC on any `table_inv` table — at most one enabled
+//! region of a partition contains any given address.
 //!   * TEX/C/B/S = 0000: every granted region is strongly-ordered
 //!     (uncached, unbuffered, shareable-irrelevant). Correct but slow;
 //!     memory-attribute modeling is out of scope for the isolation claim.
@@ -69,6 +84,7 @@
 //! (`is_pow2_spec`, `MIN_REGION_SIZE`, and the same well-formedness
 //! characterisation `validate_region` enforces at runtime).
 use vstd::prelude::*;
+use vstd::arithmetic::div_mod::lemma_remainder;
 
 // NOTE: `crate::mpu::is_pow2_spec` is referenced fully qualified below —
 // it is a spec-only item, and a top-level `use` of it would survive
@@ -483,6 +499,332 @@ impl RegionTable {
         let seq = self.program_partition(part);
         apply_program(&seq);
     }
+
+    // =======================================================================
+    // Verified table builder — the RegionTable constructor path
+    // =======================================================================
+
+    /// Ghost: flat table slot `i` is enabled AND its region contains
+    /// address `addr` (half-open range [base, base+size)).
+    pub open spec fn slot_contains(&self, i: int, addr: u32) -> bool {
+        self.enabled[i]
+        && self.base[i] <= addr
+        && (addr as int) < self.base[i] as int + self.size[i] as int
+    }
+
+    /// Ghost: some enabled region of partition `part` contains `addr` —
+    /// the address-level statement of what the builder GRANTED to the
+    /// partition. Composes with `program_partition`: covered addresses
+    /// are emitted through P1 (emitted-matches-table); everything else is
+    /// deny-by-default (P2 emits non-enabled slots DISABLED, and
+    /// `MPU_CTRL_ENABLE` carries no PRIVDEFENA), so a `!covers` address
+    /// is physically denied to the partition.
+    pub open spec fn covers(&self, part: u32, addr: u32) -> bool {
+        exists|r: int| 0 <= r < MAX_REGIONS
+            && #[trigger] self.slot_contains(slot_of(part, r), addr)
+    }
+
+    /// Verified table builder: add region request (`base`, `size`,
+    /// `writable`) to partition `part`'s FIRST free slot.
+    ///
+    /// Rejects (returns `false`, table proven unchanged — B2) when:
+    ///   * `part` is out of range (defensive: keeps the stripped exec
+    ///     builder total — no panic on any input),
+    ///   * `size` is not a power of two >= `MIN_REGION_SIZE` (32) — the
+    ///     same characterisation `crate::mpu::validate_region` enforces,
+    ///     reusing the verified `crate::mpu::is_power_of_two`,
+    ///   * `base` is not `size`-aligned,
+    ///   * `base + size` wraps the address space (the U-6 bound),
+    ///   * the request OVERLAPS an enabled region already granted to
+    ///     `part` (THE isolation-bearing check), or
+    ///   * all of `part`'s region slots are occupied.
+    ///
+    /// On acceptance the resulting table is proven to still satisfy
+    /// `table_inv` (B1) — in particular the new region is well-formed and
+    /// disjoint from every other enabled region of `part` — so a caller
+    /// building exclusively through `new()` + `try_add_region` cannot
+    /// construct an isolation-violating table, and `program_partition`'s
+    /// precondition holds on the result by construction.
+    pub fn try_add_region(&mut self, part: u32, base: u32, size: u32, writable: bool) -> (ok: bool)
+        requires
+            old(self).table_inv(),
+        ensures
+            // B1 — the builder PRESERVES the isolation invariant:
+            // program_partition's table precondition holds on any
+            // builder-constructed table.
+            self.table_inv(),
+            // B2 — a rejected add leaves the table UNCHANGED.
+            !ok ==> *self == *old(self),
+            // B3 — an accepted region is well-formed, targeted the named
+            // partition, and is granted: it covers its own base address.
+            ok ==> part < MAX_PARTITIONS as u32,
+            ok ==> region_wf(base, size),
+            ok ==> self.covers(part, base),
+            // B4 — an accepted region went into partition `part`'s FIRST
+            // free slot (every earlier slot was already occupied), and
+            // every OTHER table slot is untouched.
+            ok ==> exists|r: int| 0 <= r < MAX_REGIONS
+                && #[trigger] self.slot_enabled(slot_of(part, r))
+                && !old(self).slot_enabled(slot_of(part, r))
+                && (forall|q: int| 0 <= q < r ==>
+                    (#[trigger] old(self).slot_enabled(slot_of(part, q))))
+                && self.base[slot_of(part, r)] == base
+                && self.size[slot_of(part, r)] == size
+                && self.writable[slot_of(part, r)] == writable
+                && (forall|j: int| 0 <= j < TABLE_SLOTS && j != slot_of(part, r) ==>
+                    (#[trigger] self.enabled[j]) == old(self).enabled[j]
+                    && self.base[j] == old(self).base[j]
+                    && self.size[j] == old(self).size[j]
+                    && self.writable[j] == old(self).writable[j]),
+    {
+        // Gate 0 — partition id in range.
+        if part >= MAX_PARTITIONS as u32 {
+            return false;
+        }
+        // Gate 1 — well-formedness (region_wf, exec form — the same
+        // checks crate::mpu::validate_region enforces at runtime).
+        if !crate::mpu::is_power_of_two(size) {
+            return false;
+        }
+        if size < MIN_REGION_SIZE {
+            return false;
+        }
+        if base % size != 0 {
+            return false;
+        }
+        if base.checked_add(size).is_none() {
+            return false;
+        }
+        // Gate 2 — disjointness (the isolation-bearing check): the new
+        // region must not overlap ANY enabled region already granted to
+        // this partition.
+        let mut r: usize = 0;
+        while r < MAX_REGIONS
+            invariant
+                // Loop bodies are verified against the invariant list
+                // alone — restate the function's requires.
+                old(self).table_inv(),
+                *self == *old(self),
+                part < MAX_PARTITIONS as u32,
+                region_wf(base, size),
+                0 <= r <= MAX_REGIONS,
+                forall|q: int| 0 <= q < r
+                    && (#[trigger] old(self).slot_enabled(slot_of(part, q)))
+                    ==> regions_disjoint(base, size,
+                        old(self).base[slot_of(part, q)],
+                        old(self).size[slot_of(part, q)]),
+            decreases MAX_REGIONS - r,
+        {
+            let i = (part as usize) * MAX_REGIONS + r;
+            if self.enabled[i] {
+                proof {
+                    // Instantiate table_inv's per-slot forall at i:
+                    // enabled ==> region_wf ==> base[i] + size[i] does
+                    // not wrap (the exec additions below are safe).
+                    assert(old(self).slot_wf(i as int));
+                }
+                if !(base + size <= self.base[i] || self.base[i] + self.size[i] <= base) {
+                    // Overlaps an existing grant — reject, table untouched.
+                    return false;
+                }
+            }
+            r += 1;
+        }
+        // Gate 3 — first free slot; insert and re-establish table_inv.
+        let mut f: usize = 0;
+        while f < MAX_REGIONS
+            invariant
+                old(self).table_inv(),
+                *self == *old(self),
+                part < MAX_PARTITIONS as u32,
+                region_wf(base, size),
+                0 <= f <= MAX_REGIONS,
+                // Gate-2 result: the request is disjoint from every
+                // enabled region already granted to `part`.
+                forall|q: int| 0 <= q < MAX_REGIONS
+                    && (#[trigger] old(self).slot_enabled(slot_of(part, q)))
+                    ==> regions_disjoint(base, size,
+                        old(self).base[slot_of(part, q)],
+                        old(self).size[slot_of(part, q)]),
+                // First-free: every slot before f is already occupied.
+                forall|q: int| 0 <= q < f ==>
+                    (#[trigger] old(self).slot_enabled(slot_of(part, q))),
+            decreases MAX_REGIONS - f,
+        {
+            let i = (part as usize) * MAX_REGIONS + f;
+            if !self.enabled[i] {
+                self.base[i] = base;
+                self.size[i] = size;
+                self.writable[i] = writable;
+                self.enabled[i] = true;
+                proof {
+                    let i0 = i as int;
+                    assert(i0 == slot_of(part, f as int));
+                    // (a) every enabled slot stays well-formed: only i0
+                    // changed, and the new region is region_wf by Gate 1.
+                    assert forall|k: int| 0 <= k < TABLE_SLOTS implies
+                        #[trigger] self.slot_wf(k)
+                    by {
+                        if k != i0 {
+                            assert(old(self).slot_wf(k));
+                        }
+                    }
+                    // (b) same-partition pairwise disjointness: pairs not
+                    // involving i0 are inherited from old(self).table_inv();
+                    // pairs involving i0 reduce — via the Euclidean-
+                    // division block characterisation — to Gate 2's
+                    // loop-carried disjointness result.
+                    assert forall|a: int, b: int|
+                        0 <= a < TABLE_SLOTS && 0 <= b < TABLE_SLOTS && a != b
+                        && same_partition(a, b)
+                        && #[trigger] self.slot_enabled(a)
+                        && #[trigger] self.slot_enabled(b)
+                        implies regions_disjoint(
+                            self.base[a], self.size[a], self.base[b], self.size[b])
+                    by {
+                        if a == i0 || b == i0 {
+                            let c = if a == i0 { b } else { a };
+                            assert(c != i0);
+                            assert(same_partition(i0, c));
+                            lemma_same_partition_block(part, f as int, c);
+                            let q = c - part as int * (MAX_REGIONS as int);
+                            assert(0 <= q < MAX_REGIONS as int && c == slot_of(part, q));
+                            assert(self.enabled[c] == old(self).enabled[c]);
+                            assert(old(self).slot_enabled(slot_of(part, q)));
+                            assert(regions_disjoint(base, size,
+                                old(self).base[c], old(self).size[c]));
+                            assert(self.base[c] == old(self).base[c]
+                                && self.size[c] == old(self).size[c]);
+                            assert(self.base[i0] == base && self.size[i0] == size);
+                        } else {
+                            assert(old(self).slot_enabled(a));
+                            assert(old(self).slot_enabled(b));
+                            assert(regions_disjoint(
+                                old(self).base[a], old(self).size[a],
+                                old(self).base[b], old(self).size[b]));
+                        }
+                    }
+                    // B3 — the new region covers its own base
+                    // (size >= 32 > 0, so base is inside [base, base+size)).
+                    assert(self.slot_contains(slot_of(part, f as int), base));
+                    assert(self.covers(part, base));
+                    // B4 — witness r == f: enabled now, free before, all
+                    // earlier slots occupied (loop invariant), all other
+                    // slots framed (array-update axioms).
+                    assert(self.slot_enabled(slot_of(part, f as int)));
+                    assert(!old(self).slot_enabled(slot_of(part, f as int)));
+                    assert forall|j: int| 0 <= j < TABLE_SLOTS && j != i0 implies
+                        (#[trigger] self.enabled[j]) == old(self).enabled[j]
+                        && self.base[j] == old(self).base[j]
+                        && self.size[j] == old(self).size[j]
+                        && self.writable[j] == old(self).writable[j]
+                    by {}
+                }
+                return true;
+            }
+            f += 1;
+        }
+        // Partition full — every slot occupied; table untouched.
+        false
+    }
+
+    /// Exec mirror of `covers`, proven equivalent: does some enabled
+    /// region of partition `part` contain `addr`? Post-strip this is the
+    /// plain runtime query for what the builder granted (and the
+    /// Kani-checkable form of `covers`).
+    pub fn covers_addr(&self, part: u32, addr: u32) -> (b: bool)
+        requires
+            part < MAX_PARTITIONS as u32,
+        ensures
+            b == self.covers(part, addr),
+    {
+        let mut r: usize = 0;
+        while r < MAX_REGIONS
+            invariant
+                part < MAX_PARTITIONS as u32,
+                0 <= r <= MAX_REGIONS,
+                forall|q: int| 0 <= q < r ==>
+                    !(#[trigger] self.slot_contains(slot_of(part, q), addr)),
+            decreases MAX_REGIONS - r,
+        {
+            let i = (part as usize) * MAX_REGIONS + r;
+            // Short-circuit keeps the subtraction safe: `addr - base` is
+            // evaluated only under `base <= addr`, and `addr - base < size`
+            // is exactly `addr < base + size` without overflow.
+            if self.enabled[i] && self.base[i] <= addr && addr - self.base[i] < self.size[i] {
+                proof {
+                    assert(self.slot_contains(slot_of(part, r as int), addr));
+                }
+                return true;
+            }
+            r += 1;
+        }
+        false
+    }
+}
+
+/// Euclidean-division bridge for `same_partition`: partition `part`'s
+/// slot `r` divides down to `part`, so any flat index `j` in the same
+/// partition lies inside `part`'s `MAX_REGIONS`-slot block — i.e. `j` IS
+/// one of `part`'s slots, at offset `j - part * MAX_REGIONS`. This is
+/// what lets `try_add_region`'s Gate-2 scan (which walks exactly the
+/// slots `slot_of(part, 0..MAX_REGIONS)`) discharge `table_inv`'s
+/// disjointness quantifier (which is guarded by the division-based
+/// `same_partition`).
+proof fn lemma_same_partition_block(part: u32, r: int, j: int)
+    requires
+        part < MAX_PARTITIONS as u32,
+        0 <= r < MAX_REGIONS as int,
+        0 <= j < TABLE_SLOTS as int,
+        same_partition(slot_of(part, r), j),
+    ensures
+        0 <= j - part as int * (MAX_REGIONS as int) < MAX_REGIONS as int,
+        j == slot_of(part, j - part as int * (MAX_REGIONS as int)),
+{
+    let m = MAX_REGIONS as int;
+    let i = slot_of(part, r);
+    // 0 <= i - (i/m)*m < m (Euclidean remainder); with i == part*m + r
+    // and 0 <= r < m, linear arithmetic pins i/m == part.
+    lemma_remainder(i, m);
+    assert(i / m == part as int);
+    // same_partition gives j/m == i/m == part; the remainder bound on j
+    // then pins j into part's block: 0 <= j - part*m < m.
+    lemma_remainder(j, m);
+}
+
+/// Deterministic-grant property of any `table_inv` table (in particular
+/// any builder-constructed one): at most ONE enabled region of a
+/// partition contains a given address — the same-partition disjointness
+/// half of `table_inv` makes the region match unambiguous (the ARMv7-M
+/// PMSA requirement that overlapping regions with different attributes
+/// would make hardware matching unpredictable can therefore never arise
+/// within a partition built through `try_add_region`).
+pub proof fn lemma_covers_unique(t: &RegionTable, part: u32, addr: u32, r1: int, r2: int)
+    requires
+        t.table_inv(),
+        part < MAX_PARTITIONS as u32,
+        0 <= r1 < MAX_REGIONS as int,
+        0 <= r2 < MAX_REGIONS as int,
+        t.slot_contains(slot_of(part, r1), addr),
+        t.slot_contains(slot_of(part, r2), addr),
+    ensures
+        r1 == r2,
+{
+    if r1 != r2 {
+        let m = MAX_REGIONS as int;
+        let i = slot_of(part, r1);
+        let j = slot_of(part, r2);
+        // Both slots divide down to `part`, so they are same_partition.
+        lemma_remainder(i, m);
+        lemma_remainder(j, m);
+        assert(i / m == part as int && j / m == part as int);
+        assert(same_partition(i, j));
+        // Instantiate table_inv's disjointness at (i, j) — but both
+        // regions contain addr: contradiction.
+        assert(t.slot_enabled(i) && t.slot_enabled(j));
+        assert(regions_disjoint(t.base[i], t.size[i], t.base[j], t.size[j]));
+        assert(false);
+    }
 }
 
 /// The trusted FFI seam, wrapped to the minimum trusted surface: hand ONE
@@ -655,6 +997,138 @@ mod iso_kani {
         }
         assert!(seq.w[MAX_REGIONS + 1].rnr == MPU_CTRL_ID);
         assert!(seq.w[MAX_REGIONS + 1].rasr == MPU_CTRL_ENABLE);
+    }
+}
+
+/// Kani cross-check of the table builder (Verus-proven above via SMT/Z3)
+/// under Kani's bounded model checker — the same shipped (post-strip)
+/// executable code path, no hand-copied mirror. `table_inv` is spec-only
+/// (stripped), so the harnesses assume/assert its exec-checkable
+/// equivalent: `crate::mpu::validate_region` per enabled slot plus
+/// explicit pairwise same-partition range-disjointness — over ALL
+/// partitions this time (the builder's requires/ensures span the whole
+/// table, unlike `program_partition` which reads one partition).
+#[cfg(kani)]
+mod builder_kani {
+    use super::*;
+    use crate::mpu::validate_region;
+
+    /// An arbitrary table.
+    fn arbitrary_table() -> RegionTable {
+        let base: [u32; TABLE_SLOTS] = kani::any();
+        let size: [u32; TABLE_SLOTS] = kani::any();
+        let enabled: [bool; TABLE_SLOTS] = kani::any();
+        let writable: [bool; TABLE_SLOTS] = kani::any();
+        RegionTable { base, size, enabled, writable }
+    }
+
+    /// ASSUME table_inv, exec form, over all slots: every enabled slot
+    /// well-formed, same-partition enabled pairs range-disjoint.
+    fn assume_table_inv(t: &RegionTable) {
+        for i in 0..TABLE_SLOTS {
+            if t.enabled[i] {
+                kani::assume(validate_region(t.base[i], t.size[i]));
+            }
+        }
+        for i in 0..TABLE_SLOTS {
+            for j in 0..TABLE_SLOTS {
+                if i != j && i / MAX_REGIONS == j / MAX_REGIONS && t.enabled[i] && t.enabled[j] {
+                    let e1 = t.base[i] as u64 + t.size[i] as u64;
+                    let e2 = t.base[j] as u64 + t.size[j] as u64;
+                    kani::assume(e1 <= t.base[j] as u64 || e2 <= t.base[i] as u64);
+                }
+            }
+        }
+    }
+
+    /// ASSERT table_inv, exec form, over all slots (same characterisation
+    /// as `assume_table_inv`, checked instead of assumed).
+    fn assert_table_inv(t: &RegionTable) {
+        for i in 0..TABLE_SLOTS {
+            if t.enabled[i] {
+                assert!(validate_region(t.base[i], t.size[i]));
+            }
+        }
+        for i in 0..TABLE_SLOTS {
+            for j in 0..TABLE_SLOTS {
+                if i != j && i / MAX_REGIONS == j / MAX_REGIONS && t.enabled[i] && t.enabled[j] {
+                    let e1 = t.base[i] as u64 + t.size[i] as u64;
+                    let e2 = t.base[j] as u64 + t.size[j] as u64;
+                    assert!(e1 <= t.base[j] as u64 || e2 <= t.base[i] as u64);
+                }
+            }
+        }
+    }
+
+    /// kb1 — invariant preservation: from ANY table satisfying table_inv
+    /// and ANY request (including out-of-range partition ids), the table
+    /// after try_add_region STILL satisfies table_inv — accepted or not.
+    #[kani::proof]
+    #[kani::unwind(33)]
+    fn builder_preserves_table_inv() {
+        let mut t = arbitrary_table();
+        assume_table_inv(&t);
+        let part: u32 = kani::any();
+        let base: u32 = kani::any();
+        let size: u32 = kani::any();
+        let writable: bool = kani::any();
+        let _ok = t.try_add_region(part, base, size, writable);
+        assert_table_inv(&t);
+    }
+
+    /// kb2 — rejected add leaves the table byte-for-byte unchanged.
+    #[kani::proof]
+    #[kani::unwind(33)]
+    fn builder_reject_leaves_table_unchanged() {
+        let mut t = arbitrary_table();
+        assume_table_inv(&t);
+        let snap_base = t.base;
+        let snap_size = t.size;
+        let snap_enabled = t.enabled;
+        let snap_writable = t.writable;
+        let part: u32 = kani::any();
+        let base: u32 = kani::any();
+        let size: u32 = kani::any();
+        let writable: bool = kani::any();
+        let ok = t.try_add_region(part, base, size, writable);
+        if !ok {
+            // Element-wise (array `==` lowers to a byte-wise memcmp whose
+            // 128-byte loop would need a larger unwind bound).
+            for i in 0..TABLE_SLOTS {
+                assert!(t.base[i] == snap_base[i]);
+                assert!(t.size[i] == snap_size[i]);
+                assert!(t.enabled[i] == snap_enabled[i]);
+                assert!(t.writable[i] == snap_writable[i]);
+            }
+        }
+    }
+
+    /// kb3 — grant coverage with exclusive upper bound: adding ANY
+    /// well-formed region to a fresh (all-disabled) table MUST succeed,
+    /// and the added region is covers-reachable at `base` and at
+    /// `base + size - 1` (in-range) but NOT at `base + size` (one past
+    /// the end — the only region in the table, so nothing else can
+    /// cover it either).
+    #[kani::proof]
+    #[kani::unwind(33)]
+    fn builder_added_region_covered_exclusive() {
+        let mut t = RegionTable::new();
+        let part: u32 = kani::any();
+        kani::assume(part < MAX_PARTITIONS as u32);
+        let base: u32 = kani::any();
+        let size: u32 = kani::any();
+        let writable: bool = kani::any();
+        // validate_region == the builder's Gate-1 (power-of-2 >= 32,
+        // aligned, no wrap); a fresh table has no overlaps and 8 free
+        // slots, so the add must be accepted.
+        kani::assume(validate_region(base, size));
+        let ok = t.try_add_region(part, base, size, writable);
+        assert!(ok);
+        // validate_region guarantees base + size <= u32::MAX, so both
+        // probe addresses below are computable without overflow.
+        assert!(t.covers_addr(part, base));
+        assert!(t.covers_addr(part, base + size - 1));
+        assert!(!t.covers_addr(part, base + size));
     }
 }
 

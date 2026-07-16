@@ -98,26 +98,39 @@ artifacts:
     type: sw-verification
     title: "Verus/Kani region-program FSM + fault-injection + the synth#757 containment demo"
     method: formal-verification
-    status: proposed
+    status: verified
     release: v0.5.0
     description: >
       Multi-part evidence for REQ-OS-ISO-001, all against the same
-      region-program source: (1) Verus and Kani proofs over the
-      region-program FSM establishing disjointness (no two programmed
-      regions overlap), totality (every entering partition gets a fully
-      programmed region set before it resumes), and deny-by-default (any
-      address not covered by the entering partition's regions is denied by
-      construction, not by omission). (2) A Renode/qemu fault-injection
-      demo: a crafted cross-region write from inside a partition faults
-      (BusFault/MPU fault) rather than silently corrupting a sibling
-      partition or the TCB. (3) The flagship acceptance test — the
-      synth#757 containment demo: a scripted, compiler-introduced
-      cross-partition write (the exact class of miscompile synth#757
-      tracks) is physically denied by the programmed MPU/MMU boundary,
-      taking I-ISO from a documented invariant to a filmed, hardware-
-      enforced demonstration. Kill-criterion: a Kani/Verus harness fails, a
-      crafted cross-region access does NOT fault, or the containment demo's
-      cross-partition write is NOT denied.
+      region-program source (src/mpu_switch.rs, Verus 1159 verified / 0
+      errors + Kani): (1) Verus and Kani proofs over the region-program
+      FSM establishing disjointness (no two programmed regions overlap),
+      totality (every entering partition gets a fully programmed region set
+      before it resumes), and deny-by-default (any address not covered by
+      the entering partition's regions is denied by construction, not by
+      omission) — strengthened by the verified table BUILDER
+      (RegionTable::try_add_region, machine-checked to PRESERVE table_inv on
+      every path, + covers/covers_addr grant predicate; a caller building
+      exclusively through new()+try_add_region cannot construct an
+      isolation-violating table). (2) A qemu fault-injection oracle
+      (benches/gust/src/bin/gust_iso_fault_probe.rs, lm3s6965evb v7-M PMSA
+      MPU pre-verified by mpu_spike.rs): a cross-region write from inside a
+      partition takes a REAL MemManage fault (CFSR=0x00000082
+      DACCVIOL+MMARVALID) — handler-flag-gated, non-vacuous (granting the
+      hole flips it to FAIL) — rather than silently corrupting a sibling.
+      (3) The flagship acceptance test — the synth#757 containment demo
+      (gust_iso_contain_probe.rs + no-fault control gust_iso_contain_ctl.rs):
+      the EXACT archived synth#757 miscompile (os-tl-buggy.o, one wrong
+      R_ARM_ABS32 relocation) has its stale head-chunk read physically
+      DENIED at MMFAR==0x2000bff8 by the MPU programmed through the verified
+      switch_to_partition, 0 bytes reaching the log sink; the fixed-object
+      control runs clean under the identical map, pinning containment to the
+      miscompiled read. SCOPE: fault-containment (an accidental compiler
+      miscompile), not security-containment (the demo tenant runs privileged
+      and the PPB is not MPU-checked); evidence is local qemu, not yet
+      CI-gated — silicon + CI gating are v0.5.x follow-ons. Kill-criterion: a
+      Kani/Verus harness fails, a crafted cross-region access does NOT fault,
+      or the containment demo's miscompiled read is NOT denied.
     tags: [gust, os, isolation, mpu, verus, kani, renode, synth757, verified]
     links:
       - type: verifies

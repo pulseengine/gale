@@ -69,12 +69,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gale"
+version = "0.1.0"
+
+[[package]]
 name = "gust"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "cortex-m-semihosting",
+ "gale",
  "kiln-async",
  "panic-halt",
 ]
