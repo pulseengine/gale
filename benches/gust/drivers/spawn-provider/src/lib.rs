@@ -27,17 +27,35 @@ use exports::gust::os::spawn::Guest;
 mod executor;
 use executor::{TaskState, Tasks, MAX_TASKS};
 
-static mut TASKS: Option<Tasks> = None;
+/// Resolve the executor's trusted `extern "C" poll_task` seam INSIDE the module by
+/// forwarding it to the WIT-typed `gust:os/taskdisp.poll-task` import. This is the
+/// "WIT-typed task-dispatch seam" RESULTS.md deferred: with it, no raw
+/// `env::poll_task` core import survives, so `wasm-tools component new` accepts the
+/// module and the ts-node composes like step-1/2. The contract is unchanged
+/// (dispatch task `id` once; 1 = completed) — only the import's TYPE moved from raw
+/// C-ABI to WIT.
+#[no_mangle]
+pub extern "C" fn poll_task(id: u32) -> u32 {
+    crate::gust::os::taskdisp::poll_task(id)
+}
+
+// Lazily-initialized executor state. NOT `Option<Tasks>`: the niche-encoded
+// `None` discriminant is one initialized byte inside an otherwise-zero struct,
+// which wasm-ld splits across the .data end / .bss tail — exactly the
+// straddling-static geometry synth's --shadow-stack-size shrink refuses
+// (VCR-MEM-001/#678) when this module is meld-fused into the ts-node. A
+// MaybeUninit table + separate flag is all-zero at init, so the whole table
+// lands in .bss and the node's data segment stays clean.
+static mut TASKS_INIT: u32 = 0;
+static mut TASKS: core::mem::MaybeUninit<Tasks> = core::mem::MaybeUninit::uninit();
 
 #[allow(static_mut_refs)]
 unsafe fn tasks() -> &'static mut Tasks {
-    if TASKS.is_none() {
-        TASKS = Some(Tasks::new());
+    if TASKS_INIT == 0 {
+        TASKS.write(Tasks::new());
+        TASKS_INIT = 1;
     }
-    match &mut TASKS {
-        Some(t) => t,
-        None => unreachable!(),
-    }
+    TASKS.assume_init_mut()
 }
 
 struct P;

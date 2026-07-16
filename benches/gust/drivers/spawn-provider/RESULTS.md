@@ -18,16 +18,17 @@ only; `admit`/`wake`/`poll_round` run unmodified.
 ## ABI: byte-identical, confirmed
 
     wasm-tools print target/wasm32-unknown-unknown/release/gust_spawn_provider.wasm
-      (import "env" "poll_task" (func $poll_task ...))
+      (import "gust:os/taskdisp@0.1.0" "poll-task" (func ...))
       (export "gust:os/spawn@0.1.0#poll" (func $gust:os/spawn@0.1.0#poll))
       (export "gust:os/spawn@0.1.0#start" (func $gust:os/spawn@0.1.0#start))
 
-Same two exported function names/shapes the WIT world declared before this
-change (the WIT file itself was not touched) — `start`/`poll` are unchanged.
-No prior spawn-provider probe existed in this repo to re-run for a regression
-check (the directory held only a build leftover, no committed source); this
-`wasm-tools print` comparison against the WIT source is the ABI-parity check
-in its place.
+Same two exported function names/shapes the WIT world declared — `start`/`poll`
+are unchanged. The trusted dispatch import moved from raw `env::poll_task` to
+the WIT-typed `gust:os/taskdisp.poll-task` (see "ts-node compose" below); the
+contract (dispatch task `id` once; 1 = completed) is identical, and
+`plain/src/executor.rs` is still included verbatim — the forwarding
+`#[no_mangle] poll_task` in this crate resolves the executor's extern in-module
+and calls the WIT import.
 
 ## Build (same shape as exec-provider — see its RESULTS.md for the
 `--native-pointer-abi` / stack-size rationale, which applies identically here)
@@ -37,21 +38,29 @@ in its place.
     synth compile loom.wasm --target cortex-m3 --all-exports --relocatable \
       --native-pointer-abi -o spawn-provider-cm3.o
 
-Measured (synth 0.42.0 + loom 1.1.18): `spawn-provider-cm3.o` = text 1068 /
-data 124 / bss 1152 = 2344 B, no skipped functions. Smaller than
-`exec-provider`'s object: `start`/`poll` never call `expire`/`next_deadline`
-(spawn has no deadline concept), so this crate never exercises the wide
-(`i64`) static-load-under-`--native-pointer-abi` codegen path noted in
-exec-provider's RESULTS.md at all.
+Measured (synth 0.45.1 + loom 1.2.0): `spawn-provider-cm3.o` = text 1108 /
+data 16 / bss 1168 = 2292 B, no skipped functions, sole undefined symbol
+`poll-task` (the taskdisp seam). Smaller than `exec-provider`'s object:
+`start`/`poll` never call `expire`/`next_deadline` (spawn has no deadline
+concept), so this crate never exercises the wide (`i64`)
+static-load-under-`--native-pointer-abi` codegen path noted in exec-provider's
+RESULTS.md at all. (Earlier, synth 0.42.0 + loom 1.1.18 measured
+1068/124/1152 = 2344 B on the pre-taskdisp source; data shrank 124 -> 16
+because the lazily-initialized table is now `MaybeUninit` + flag instead of a
+niche-encoded `Option<Tasks>`, whose `None` discriminant byte was initialized
+data — see src/lib.rs.)
 
-## Deferred (v2 / not in Task 6 scope)
+## ts-node compose (v0.4.0 step-3 — resolves the seam this section deferred)
 
-`wasm-tools component new` cannot componentize this module as-is: the trusted
-`poll_task` FFI seam (inside the included `executor` module) is a raw
-`extern "C"` import (`env::poll_task`), not a WIT-typed one, and the
-`spawn-provider` world declares no import for it — so full wac-plug
-composition into an `app-ts` node (the way `time-provider`/`log-provider`
-compose into the `os-node` step-1/2 nodes) needs a WIT-typed task-dispatch
-seam design first. Out of scope for Task 6 (v1 static single-partition); the
-executable liveness oracle for this task is `gust_exec_probe`, which drives
-the SAME executor through its raw C-ABI end to end and passes.
+The blocker documented here previously — `wasm-tools component new` rejecting
+the raw `env::poll_task` core import — is RESOLVED by the WIT-typed
+task-dispatch seam: `gust:os/taskdisp { poll-task: func(id: u32) -> u32 }`
+(wit-os/gust-os.wit), imported by `world spawn-provider`. This crate forwards
+the executor's `extern "C" poll_task` to that import, so no raw `env` import
+survives, the module componentizes, and `wac` plugs it (with time-provider)
+into the `app-ts` node: `drivers/build-os-ts.sh` ->
+`os-node/os-ts-cm3.o` (text 1540 / data 40 / bss 2584 = 4164 B / 8192,
+undefined = `read32` + `poll-task` only). Liveness oracle:
+`gust_os_ts_probe` (qemu) — the app's spawn.start/poll round-trip through the
+dissolved executor returns 1 (done); `gust_exec_probe` still covers the raw
+C-ABI surface of the SAME executor.

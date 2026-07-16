@@ -23,6 +23,18 @@ interface log {
     line: func(msg: list<u8>);
 }
 
+/// Trusted task-dispatch seam — the executor's `poll_task` FFI (plain/src/
+/// executor.rs), WIT-typed so the spawn provider componentizes (`wasm-tools
+/// component new` rejects the raw `env::poll_task` core import; see
+/// drivers/spawn-provider/RESULTS.md "Deferred"). The node's TRUSTED layer
+/// dispatches app task `id`'s pending poll once and returns 1 if it completed,
+/// 0 if still pending — same contract as `poll_task`, which gust_exec_probe
+/// already resolves natively. Dissolving leaves this as the ts-node's single
+/// non-mmio undefined symbol, resolved by the probe/bridge at final link.
+interface taskdisp {
+    poll-task: func(id: u32) -> u32;
+}
+
 /// Cooperative task spawn — a scalar handle into the kiln executor; the app polls it
 /// (no host Future crosses the seam). Backed by kiln.
 interface spawn {
@@ -97,5 +109,8 @@ world log-provider {
     export log;
 }
 
+/// Step-3 slice: time + spawn (the first EXECUTOR-BACKED capability). The spawn
+/// provider marshals start/poll onto the verified executor; its trusted `poll_task`
+/// dispatch crosses the taskdisp seam, so the composed node imports mmio + taskdisp.
 world app-ts { import time; import spawn; export run: func() -> u32; }
-world spawn-provider { export spawn; }
+world spawn-provider { import taskdisp; export spawn; }
