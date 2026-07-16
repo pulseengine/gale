@@ -1,6 +1,16 @@
 # gust safety release line — the load-bearing build (BUILD path)
 
-**Status:** release plan (draft, for user review). **Date:** 2026-07-15. **Owner:** gale/gust.
+**Status:** APPROVED (user review 2026-07-16) — the standing release-line reference.
+**Date:** 2026-07-15 (approved + status-refreshed 2026-07-16). **Owner:** gale/gust.
+
+> **Execution status at approval (2026-07-16):** v0.4.0 SHIPPED (#192 — both syscall-seam
+> probes green on synth 0.45.1, the fused-path miscompile root-caused as synth#757 and fixed
+> upstream). v0.5.0 SHIPPED (#193 — `VER-OS-ISO-001` **verified**; the I-ISO keystone
+> delivered exactly as planned, incl. the synth#757 containment demo as the flagship
+> acceptance test). v0.6.0 CORE LANDED (#195 — `VER-OS-SWITCH-001` **implemented**;
+> single-core 3-partition demonstrator green, multi-core Renode placement is the remaining
+> v0.6.x item). ordeal-BV pilots 1–4 landed on T1's certificate thesis. T3/T4 specs filed
+> upstream (spar#331 / synth#778).
 **Decision context:** the build-vs-host fork (gale#63 spec §12) is resolved to **BUILD** —
 verified all the way down, no outside dependency, gale owns and controls the whole stack.
 This plan sequences the *safety-load-bearing* build from what is shipped today to a
@@ -189,12 +199,18 @@ turns I-ISO from a documented invariant into a demonstrated, verified, hardware-
 boundary (with the synth#757 containment demo as its flagship acceptance test). Everything
 after it composes; nothing before it carries a safety claim.
 
-## 6. Open items for this plan (user/jess to confirm)
+## 6. Open items — dispositions (user review, 2026-07-16)
 
-- Per-target certification level(s) — DAL letter / ASIL / SORA — sets the WCET-justification
-  bar per deployment (spec §12; a per-target output, not a gate on the line).
-- Release cadence / sequencing of T1–T4 against the critical path (which track gates which
-  release, and staffing).
-- The RT1176 interference characterization owner + the TCM-vs-XIP placement decision (spec §11).
-- Whether v0.5.0's flagship (the synth#757 containment demo) is also the public/marketing
-  artifact for the "contain-the-compiler" thesis.
+- **Per-target certification level(s) — DEFERRED by decision:** stays a per-deployment
+  output (spec §12), decided when a deployment lands; not a gate on the line. The
+  methodology bar (rivet safety-case discipline, checkable certificates) is maintained
+  regardless.
+- **T1–T4 sequencing — resolved by execution:** the de facto order (T1 certificate pilots
+  continuous; T2 riding synth's coverage curve; T3/T4 filed upstream and gating the timing
+  claims from v0.6.0 on) is ratified as planned.
+- **RT1176 interference characterization owner + TCM-vs-XIP — open** (no RT1176 BSP yet;
+  revisit when the BSP work starts).
+- **v0.5.0 flagship as public artifact — YES by decision:** the synth#757 containment demo
+  (a real compiler miscompile physically denied by the verified MPU core) becomes the
+  public showcase for the "contain-the-compiler" thesis; a Pages/showcase write-up is
+  queued as follow-on work.
