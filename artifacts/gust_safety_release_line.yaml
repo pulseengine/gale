@@ -306,7 +306,7 @@ artifacts:
     type: sw-verification
     title: "Verus/Kani on the HM/failsafe FSM + per-trigger fault-injection + diagnostic-coverage figure"
     method: formal-verification
-    status: proposed
+    status: verified
     release: v0.7.0
     description: >
       Verus and Kani proofs over the Health-Monitor/failsafe state machine
@@ -322,6 +322,39 @@ artifacts:
       harness fails, an injected fault does not reach its mapped failsafe
       state, or the escalation ladder is observed to cycle without
       reaching a terminal action.
+      DELIVERED (2026-07-17): part (1) FULLY — Verus H1-H5 + Kani
+      h1_escalation_terminates..h7_replenish_requires_quiet
+      (src/health_monitor.rs, #189) prove the escalation ladder total and
+      terminating (an always-faulting input reaches CrossCoreTrip in
+      <= MAX_RESTARTS+2 steps from any well-formed Normal), no-silent-clear
+      on restart, the two failsafe states absorbing (PartitionFailsafe only
+      escalates on a liveness fault; CrossCoreTrip is terminal for
+      software), cause-preservation, and the long-run cooldown-bounded
+      restart rate (chattering/intermittent faults cannot restart
+      indefinitely). AND part (2) — the per-cause fault-injection
+      demonstrator (benches/gust/src/bin/gust_hm_probe.rs, qemu
+      lm3s6965evb): all 5 named causes from REQ-OS-HM-001 (RC-loss ->
+      HeartbeatLoss, datalink-loss -> Stale, GPS/estimator-loss ->
+      Diverged, geofence breach -> Implausible, low-battery -> BudgetOverrun)
+      independently drive the REAL Hm FSM to their correct terminal state
+      (2 CrossCoreTrip via the liveness-class detectors, 3 PartitionFailsafe
+      via the value-domain detectors, by design per H3 -- value faults are
+      absorbed, only liveness faults cross-trip) within the proven step
+      bound (MAX_RESTARTS+1=4 / MAX_RESTARTS+2=5 on_fault calls), with an
+      explicit no-silent-clear check per cause, a non-vacuity check (a
+      healthy observation clears every gate, a Normal Hm stays Normal, a
+      Degraded Hm genuinely restarts to Normal), and a standalone
+      CrossCoreTrip absorbing check over all 6 Fault kinds. Plus the stated
+      diagnostic-coverage figure (docs/gust/hm-diagnostic-coverage.md):
+      5/5 named mission-loss causes covered by a mapped detector with a
+      proven terminal-state path; 5/6 detector classes directly exercised
+      by a named cause (DeadlineMiss proven identically but not primary for
+      any of the 5). Honest scope: qemu logic demonstrator, not silicon;
+      the DC figure is model-coverage against the named fault list, NOT a
+      hardware FMEA/FMEDA DC%-lambda claim -- that remains a
+      per-deployment input. `cargo run --bin gust_hm_probe` OK; regression
+      `gust_switch_probe` OK; no change to src/health_monitor.rs or plain/
+      (the verified core from #189 is unmodified).
     tags: [gust, os, health-monitor, failsafe, verus, kani, fault-injection, verified]
     links:
       - type: verifies
