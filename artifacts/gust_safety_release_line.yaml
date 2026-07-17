@@ -306,7 +306,7 @@ artifacts:
     type: sw-verification
     title: "Verus/Kani on the HM/failsafe FSM + per-trigger fault-injection + diagnostic-coverage figure"
     method: formal-verification
-    status: verified
+    status: implemented
     release: v0.7.0
     description: >
       Verus and Kani proofs over the Health-Monitor/failsafe state machine
@@ -355,6 +355,19 @@ artifacts:
       per-deployment input. `cargo run --bin gust_hm_probe` OK; regression
       `gust_switch_probe` OK; no change to src/health_monitor.rs or plain/
       (the verified core from #189 is unmodified).
+      STATUS implemented, NOT yet verified (honest coherence): REQ-OS-HM-001
+      lists CROSS-SENSOR VOTING among its required value-domain detectors,
+      and the merged core implements the other five detector classes
+      (freshness, range/plausibility, innovation/divergence, budget,
+      deadline, liveness) but NOT voting — so the requirement's detector set
+      is not fully closed and this verification cannot claim `verified`
+      against it. The escalation/failsafe FSM and all five NAMED mission-loss
+      causes are proven + demonstrated (above); the single open item is the
+      voting detector. REMAINING for `verified` (a v0.7.x item, surfaced to
+      the user as a scope decision): either implement cross-sensor voting as
+      a sixth value-domain detector (a redundant-input majority/median gate,
+      Verus/Kani in the same style + a probe cause) OR descope voting from
+      REQ-OS-HM-001 to a follow-on requirement — then flip both to verified.
     tags: [gust, os, health-monitor, failsafe, verus, kani, fault-injection, verified]
     links:
       - type: verifies
