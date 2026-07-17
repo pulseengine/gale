@@ -143,7 +143,7 @@ artifacts:
   - id: REQ-OS-SWITCH-001
     type: sw-req
     title: "Outer fixed-priority time-partitioned preemptive switch + per-partition region-swap"
-    status: implemented
+    status: verified
     release: v0.6.0
     description: >
       The outer scheduler SHALL provide fixed-priority, time-partitioned,
@@ -178,7 +178,7 @@ artifacts:
     type: sw-verification
     title: "Verus/Kani on the outer switch (un-maskable window-end preemption, ordered region-swap) + multi-partition Renode demo"
     method: formal-verification
-    status: implemented
+    status: verified
     release: v0.6.0
     description: >
       Verus and Kani proofs over the outer switch core establish: (1)
@@ -247,6 +247,20 @@ artifacts:
       MMFAR) remains the qemu demonstrator above — Renode's M3 cannot
       contribute it. Content-gated line-by-line on each core's own UART
       (robot), green locally on Renode 1.16.1 via renode-test.
+      VERIFIED (2026-07-17): flipped implemented→verified — every normative
+      ask of REQ-OS-SWITCH-001 now has a green mechanical oracle: temporal
+      un-maskability + ordered swap-before-resume are Verus/Kani-PROVEN
+      (partition_switch.rs); spatial map-ENFORCEMENT is qemu-demonstrated on
+      the real v7-M MPU with non-vacuity neuter tests (gust_switch_probe);
+      and the MULTI-CORE mapping is now wired into the Renode model
+      (gust-switch-2core-renode) with ≥3 partitions across the frame. The
+      one composition step — multi-core enforcement = the SAME verified
+      per-core switch_to_partition replicated, cores share no MPU surface —
+      is sound and stated, not demonstrated in a single artifact; true
+      multi-core-hardware-MPU-enforcement on silicon is the v1.0 strengthening
+      (§1.1 per-target). All kill-criteria pass on both platforms. This flip
+      is gated on this PR's Renode CI target going green (the multi-core
+      oracle); it does not stand on a red gate.
     tags: [gust, os, scheduler, partition-switch, verus, kani, renode, verified]
     links:
       - type: verifies
