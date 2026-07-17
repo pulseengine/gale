@@ -1,0 +1,87 @@
+{
+  "schema": "synth-wcet-v1",
+  "module": "loom.wasm",
+  "core_class": "cortex-m3",
+  "wait_states": 0,
+  "memory_assumption": "zero-wait-state instruction memory (flash accelerator / I-cache hit); in-order single-issue pipeline; documented per-instruction worst-case cycles",
+  "functions": [
+    {
+      "status": "bounded",
+      "name": "gust:os/time@0.1.0#deadline",
+      "cycles": 42,
+      "instr_count": 18
+    },
+    {
+      "status": "bounded",
+      "name": "gust:os/time@0.1.0#elapsed",
+      "cycles": 71,
+      "instr_count": 18
+    },
+    {
+      "status": "declined",
+      "name": "gust:os/time@0.1.0#now",
+      "reason": "call",
+      "note": "call (Bl/Blx) — per-function bound is intra-procedural (spar inter-procedural-composition follow-up)"
+    },
+    {
+      "status": "bounded",
+      "name": "cabi_realloc_wit_bindgen_0_52_0",
+      "cycles": 28,
+      "instr_count": 10
+    },
+    {
+      "status": "bounded",
+      "name": "cabi_realloc",
+      "cycles": 28,
+      "instr_count": 10
+    },
+    {
+      "status": "declined",
+      "name": "gust:os/log@0.1.0#line",
+      "reason": "call",
+      "note": "call (Bl/Blx) — per-function bound is intra-procedural (spar inter-procedural-composition follow-up)"
+    },
+    {
+      "status": "declined",
+      "name": "func_16",
+      "reason": "call",
+      "note": "call (Bl/Blx) — per-function bound is intra-procedural (spar inter-procedural-composition follow-up)"
+    },
+    {
+      "status": "declined",
+      "name": "func_17",
+      "reason": "loop",
+      "note": "backward branch (loop) — a sound bound needs a trip count (scry loop-bound-inference follow-up)"
+    },
+    {
+      "status": "declined",
+      "name": "func_18",
+      "reason": "call",
+      "note": "call (Bl/Blx) — per-function bound is intra-procedural (spar inter-procedural-composition follow-up)"
+    },
+    {
+      "status": "declined",
+      "name": "func_20",
+      "reason": "unmodeled-op",
+      "note": "op not classified by the cycle model"
+    },
+    {
+      "status": "declined",
+      "name": "run",
+      "reason": "call",
+      "note": "call (Bl/Blx) — per-function bound is intra-procedural (spar inter-procedural-composition follow-up)"
+    },
+    {
+      "status": "declined",
+      "name": "func_22",
+      "reason": "loop",
+      "note": "backward branch (loop) — a sound bound needs a trip count (scry loop-bound-inference follow-up)"
+    },
+    {
+      "status": "declined",
+      "name": "func_23",
+      "reason": "call",
+      "note": "call (Bl/Blx) — per-function bound is intra-procedural (spar inter-procedural-composition follow-up)"
+    }
+  ]
+}

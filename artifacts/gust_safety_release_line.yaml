@@ -409,7 +409,7 @@ artifacts:
   - id: REQ-OS-WCET-001
     type: sw-req
     title: "T4: sound static-WCET inputs, gale-owned — no partition budget sized from raw DWT high-water-marks"
-    status: proposed
+    status: implemented
     release: v0.6.0
     description: >
       Cross-cutting track T4. The per-function cycle bound feeding the
@@ -426,6 +426,23 @@ artifacts:
       cross-check the static bound — categorically above a raw high-water-
       mark, but not a substitute for the static bound as the primary
       input).
+      IMPLEMENTED (2026-07-17): synth 0.46.0 ships the emission mechanism
+      (synth#778 → `--emit-wcet`, schema synth-wcet-v1) — a sound
+      worst-case-path × per-instruction-timing-table bound per function,
+      cortex-m3 first, with a stated memory assumption and LOUD declines
+      (reason=call: intra-procedural scope, composition is T3/spar's job;
+      reason=loop: needs a trip count, scry inference follow-on) — and gale
+      exercises + gates it on its reproducible dissolve inputs via
+      benches/gust/drivers/emit-wcet.sh: the frozen os-tl node (4 bounded —
+      time#deadline 42cyc, time#elapsed 71cyc, cabi_realloc 28cyc ×2 — 9
+      declined loud; sidecar committed at os-node/repro-757/os-tl.wcet.json;
+      the .o is byte-identical with/without the flag, sidecar purely
+      additive) and the i2c-thin driver (3 leaf protocol fns bounded:
+      ack_byte 37cyc, addr_ack 37cyc, is_complete 19cyc). Remaining for
+      VER-OS-WCET-001 (stays proposed): the EVT statistical cross-check on
+      silicon, inter-procedural composition via T3 (spar#331), and loop
+      trip-count inference — the trusted-core switch/MPU/HM objects get
+      their bounds once those close.
     tags: [gust, os, track-t4, wcet, timing, synth, safety, gale63]
     links:
       - type: derives-from
