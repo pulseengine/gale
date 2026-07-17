@@ -99,3 +99,23 @@ renode_test(
     },
 )
 
+# v0.6.0 MULTI-CORE placement demo for the outer partition switch
+# (REQ-OS-SWITCH-001 / VER-OS-SWITCH-001): TWO Cortex-M3 cores with per-core
+# private flash/SRAM/NVIC/UART. Core 0 = the VERIFIED Switcher driving the
+# 3-partition major frame (flight/mission/payload sharing the core), MPU
+# programmed only via the VERIFIED switch_to_partition; core 1 = the estimator
+# partition concurrently under its own verified-programmed map. Content-gated
+# per line on each core's own UART. Honest scope: Renode's M3 models MPU
+# register STATE but not enforcement (spike src/bin/mpu_spike_renode.rs) —
+# enforcement evidence is the qemu gust_switch_probe.
+renode_test(
+    name = "gust-switch-2core-renode",
+    timeout = "short",
+    robot_test = "gust_switch_2core.robot",
+    variables_with_label = {
+        "ELF0": ":gust_switch_renode.elf",
+        "ELF1": ":gust_estimator_part.elf",
+        "REPL": ":gust_switch_2core.repl",
+    },
+)
+

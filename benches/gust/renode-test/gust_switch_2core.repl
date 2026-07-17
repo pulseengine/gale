@@ -1,0 +1,65 @@
+// TWO Cortex-M3 cores, each a PRIVATE 256K flash @0x0 + 64K SRAM @0x20000000
+// + its own NVIC and its own USART (STM32_UART @0x40013800, per-core bus
+// registration) — the v0.6.0 multi-core PLACEMENT model for the outer
+// partition switch (REQ-OS-SWITCH-001): core0 runs the 3-partition major
+// frame (flight/mission/payload) under the VERIFIED Switcher + verified MPU
+// programmer; core1 runs the estimator partition concurrently under its own
+// verified-programmed MPU map. Per-core registration gives each core its own
+// memory map at identical addresses (each boots its own image at 0x0), the
+// honest model of per-core private partition memory.
+//
+// HONEST platform note (spike-verified, see mpu_spike_renode.rs): Renode's
+// Cortex-M3 holds the v7-M MPU registers as READABLE/WRITABLE STATE (DREGION
+// = 8, RBAR/RASR read back) but does NOT enforce them (no MemManage on a
+// denied store). Map-ENFORCEMENT evidence for the switch lives in the qemu
+// probes (mpu_spike.rs, gust_switch_probe.rs); this platform contributes the
+// multi-core placement + window sequence + register-level swap observability.
+cpu0: CPU.CortexM @ sysbus
+    cpuType: "cortex-m3"
+    nvic: nvic0
+    id: 0
+
+cpu1: CPU.CortexM @ sysbus
+    cpuType: "cortex-m3"
+    nvic: nvic1
+    id: 1
+
+nvic0: IRQControllers.NVIC @ {
+        sysbus new Bus.BusPointRegistration { address: 0xE000E000; cpu: cpu0 }
+    }
+    -> cpu0@0
+
+nvic1: IRQControllers.NVIC @ {
+        sysbus new Bus.BusPointRegistration { address: 0xE000E000; cpu: cpu1 }
+    }
+    -> cpu1@0
+
+flash0: Memory.MappedMemory @ {
+        sysbus new Bus.BusPointRegistration { address: 0x0; cpu: cpu0 }
+    }
+    size: 0x40000
+
+flash1: Memory.MappedMemory @ {
+        sysbus new Bus.BusPointRegistration { address: 0x0; cpu: cpu1 }
+    }
+    size: 0x40000
+
+sram0: Memory.MappedMemory @ {
+        sysbus new Bus.BusPointRegistration { address: 0x20000000; cpu: cpu0 }
+    }
+    size: 0x10000
+
+sram1: Memory.MappedMemory @ {
+        sysbus new Bus.BusPointRegistration { address: 0x20000000; cpu: cpu1 }
+    }
+    size: 0x10000
+
+uart0: UART.STM32_UART @ {
+        sysbus new Bus.BusRangeRegistration { range: <0x40013800, +0x100>; cpu: cpu0 }
+    }
+    IRQ -> nvic0@37
+
+uart1: UART.STM32_UART @ {
+        sysbus new Bus.BusRangeRegistration { range: <0x40013800, +0x100>; cpu: cpu1 }
+    }
+    IRQ -> nvic1@37

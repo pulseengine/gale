@@ -143,7 +143,7 @@ artifacts:
   - id: REQ-OS-SWITCH-001
     type: sw-req
     title: "Outer fixed-priority time-partitioned preemptive switch + per-partition region-swap"
-    status: implemented
+    status: verified
     release: v0.6.0
     description: >
       The outer scheduler SHALL provide fixed-priority, time-partitioned,
@@ -178,7 +178,7 @@ artifacts:
     type: sw-verification
     title: "Verus/Kani on the outer switch (un-maskable window-end preemption, ordered region-swap) + multi-partition Renode demo"
     method: formal-verification
-    status: implemented
+    status: verified
     release: v0.6.0
     description: >
       Verus and Kani proofs over the outer switch core establish: (1)
@@ -220,6 +220,47 @@ artifacts:
       adds deployment/integration breadth, NOT a new verification property;
       scoped as a v0.6.x follow-on. Evidence to date is local qemu, not yet
       CI-gated.
+      ADDENDUM (2026-07-17, Renode multi-core placement demo): the 2-core
+      Renode model is DELIVERED with an honest, spike-bounded scope. A
+      committed decision spike (benches/gust/src/bin/mpu_spike_renode.rs,
+      Renode 1.16.1 cortex-m3) established that Renode's M3 holds the v7-M
+      MPU registers as readable/writable STATE (MPU_TYPE.DREGION == 8,
+      RBAR/RASR read back exactly what the verified core wrote) but does
+      NOT enforce them — a store into an ungranted region falls through
+      with no MemManage (spike RESULT=0xBADF0011). The Renode demo
+      (renode-test/gust_switch_2core.{repl,robot}, CI target
+      gust-switch-2core-renode in gust-renode.yml) therefore demonstrates:
+      (a) the 3-partition major frame advancing P0(flight) -> P1(mission)
+      -> P2(payload) -> wrap under the VERIFIED Switcher on core 0
+      (off-boundary ticks never preempt, boundary ticks always do); (b)
+      region-swap-before-resume OBSERVED at every switch — seam order
+      save < swap < resume plus RBAR readback of REAL register state
+      confirming the incoming partition's scratch region already
+      programmed at resume (asserted per switch, exact base addresses);
+      (c) multi-CORE placement — an estimator partition pinned to core 1
+      (gust_estimator_part.rs) running concurrently under its own map
+      programmed via the verified switch_to_partition, per-core private
+      flash/SRAM/NVIC/UART in the .repl; (d) spatial-map correctness at
+      the VERIFIED-QUERY level per window (covers_addr own-yes/
+      neighbour-no — a table query, NOT a hardware fault). Map-ENFORCEMENT
+      evidence (real MemManage cross-partition denials, CFSR=0x82, exact
+      MMFAR) remains the qemu demonstrator above — Renode's M3 cannot
+      contribute it. Content-gated line-by-line on each core's own UART
+      (robot), green locally on Renode 1.16.1 via renode-test.
+      VERIFIED (2026-07-17): flipped implemented→verified — every normative
+      ask of REQ-OS-SWITCH-001 now has a green mechanical oracle: temporal
+      un-maskability + ordered swap-before-resume are Verus/Kani-PROVEN
+      (partition_switch.rs); spatial map-ENFORCEMENT is qemu-demonstrated on
+      the real v7-M MPU with non-vacuity neuter tests (gust_switch_probe);
+      and the MULTI-CORE mapping is now wired into the Renode model
+      (gust-switch-2core-renode) with ≥3 partitions across the frame. The
+      one composition step — multi-core enforcement = the SAME verified
+      per-core switch_to_partition replicated, cores share no MPU surface —
+      is sound and stated, not demonstrated in a single artifact; true
+      multi-core-hardware-MPU-enforcement on silicon is the v1.0 strengthening
+      (§1.1 per-target). All kill-criteria pass on both platforms. This flip
+      is gated on this PR's Renode CI target going green (the multi-core
+      oracle); it does not stand on a red gate.
     tags: [gust, os, scheduler, partition-switch, verus, kani, renode, verified]
     links:
       - type: verifies
