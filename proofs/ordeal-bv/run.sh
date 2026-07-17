@@ -3,7 +3,12 @@
 # (certificate-checked QF_BV, Lean-4-proven LRAT checker) instead of unchecked Z3.
 # Prints each verdict + LRAT cert size. UNSAT (with a validated cert) = obligation holds.
 set -euo pipefail
-ORDEAL="${ORDEAL:-ordeal}"   # ordeal >= 0.9.1 (target/release/ordeal in pulseengine/ordeal)
+# Get ordeal from crates.io: `cargo install ordeal` (the published binary crate).
+# These hand-transcribed pilots need >= 0.9.1. The REAL-VC obligation-proof path
+# (ingest the by(bit_vector) VC Verus itself emits, closing the transcription gap
+# below) lands with ordeal 0.12.0 on crates.io (FEAT-009/#65 merged on main, not
+# yet published as of 0.11.0).
+ORDEAL="${ORDEAL:-ordeal}"   # `cargo install ordeal` puts it on PATH
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 echo "## Pilot 1 — cpu_mask.rs:179 power-of-two obligation (single implication)"
