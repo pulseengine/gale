@@ -166,3 +166,20 @@ version (0.45.1, 0.49.0), loom, and compile flags tried. This is new friction
 — nothing upstream of this task combined a WIT `u64` parameter with an
 in-body call — and is the first concrete blocker for `gust:os/timer` reaching
 full dissolve; it belongs to the synth backend, not to this crate's source.
+
+## CORRECTION 2026-07-21: sleep DISSOLVES via u32 ticks (u64-param decline worked around)
+
+The initial u64 `ticks` param made synth's ARM backend loud-DECLINE `sleep` (a 64-bit
+param in a frame-backing function that makes a call — synth references the closed #518
+i64-param class; it declines rather than miscompiles, the safe behaviour). Since v1 bounds
+`ticks < 2^31` (fits u32), the seam is `sleep(handle: u32, ticks: u32)`, widened to u64
+internally for the deadline. synth 0.49.0 now compiles BOTH exports:
+
+    Compiling function 'gust:os/timer@0.1.0#sleep' via backend 'arm'...
+    Compiling function 'gust:os/timer@0.1.0#slept' via backend 'arm'...
+    Compiled 5 functions to timer-cm3.o
+
+Dissolved object: 1783 B, exports `gust:os/timer#sleep` + `#slept` (both T symbols).
+UNDEFINED symbols = `read32` ONLY (the mmio now() TCB) — set_deadline/slept_status inline
+from the included executor module, poll_task DCE'd. **TCB = 1 atom (read32)**, same class
+as every thin driver, no new TCB kind.

@@ -34,7 +34,7 @@ interface timer {
     /// `ticks < 2^31`). Returns 0 on success, 0xFFFF_FFFF if invalid/not-Pending/out-of-range.
     /// (User decision 2026-07-21: explicit handle — the cooperative executor has no ambient
     /// current task, so sleep targets the handle the app already holds.)
-    sleep: func(handle: u32, ticks: u64) -> u32;
+    sleep: func(handle: u32, ticks: u32) -> u32;
     /// Poll a timer handle: 0 = pending, 1 = elapsed, 0xFFFF_FFFF = invalid.
     slept: func(handle: u32) -> u32;
 }

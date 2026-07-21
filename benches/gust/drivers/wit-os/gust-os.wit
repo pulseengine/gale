@@ -53,7 +53,7 @@ interface timer {
     /// holds from spawn.start); `ticks < 2^31`. The task goes Pending until the
     /// deadline, then `expire` re-readies it. Returns 0 on success, or
     /// 0xFFFF_FFFF if `handle` is invalid / not Pending or `ticks` is out of range.
-    sleep: func(handle: u32, ticks: u64) -> u32;
+    sleep: func(handle: u32, ticks: u32) -> u32;
     /// Poll a timer handle: 0 = pending, 1 = elapsed, 0xFFFF_FFFF = invalid.
     slept: func(handle: u32) -> u32;
 }

@@ -75,11 +75,14 @@ impl Guest for P {
     /// `set_deadline_sets_only_h`: a Free/Done/out-of-range handle is a
     /// no-op) — so this marshalling layer re-implements no admission
     /// decision, only the wrap-safe arithmetic and the ticks-range guard.
-    fn sleep(handle: u32, ticks: u64) -> u32 {
-        if ticks >= (1u64 << 31) {
+    fn sleep(handle: u32, ticks: u32) -> u32 {
+        // ticks is u32 at the seam (v1 bound < 2^31 fits u32) — a u64 seam param
+        // makes synth's ARM backend loud-decline the frame-backing sleep (u64 param
+        // + a call); widening internally keeps the deadline math full-width.
+        if ticks >= (1u32 << 31) {
             return 0xFFFF_FFFF;
         }
-        let d = now().wrapping_add(ticks);
+        let d = now().wrapping_add(ticks as u64);
         let t = unsafe { tasks() };
         t.set_deadline(handle, d);
         0
