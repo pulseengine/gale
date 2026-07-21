@@ -112,6 +112,11 @@ pub enum Fault {
     DeadlineMiss,
     /// The partition's heartbeat was not observed.
     HeartbeatLoss,
+    /// Cross-sensor voting gate failed: the three redundant sensor replicas do
+    /// not reach a 2-of-3 majority within tolerance (TMR disagreement). A
+    /// value-domain fault — absorbed at `PartitionFailsafe` like the other
+    /// value faults; it is not a liveness fault, so it does not cross-trip.
+    VoteMismatch,
 }
 
 /// One scalar observation frame — everything the HM policy core consumes. The
@@ -142,6 +147,16 @@ pub struct Obs {
     pub lateness_us: u32,
     /// Consecutive heartbeats missed (0 = heartbeat present).
     pub missed_beats: u32,
+    /// Redundant sensor replica 0 (raw units) — the TMR voting input.
+    pub s0: i32,
+    /// Redundant sensor replica 1 (raw units) — the TMR voting input.
+    pub s1: i32,
+    /// Redundant sensor replica 2 (raw units) — the TMR voting input.
+    pub s2: i32,
+    /// Agreement tolerance for the 2-of-3 vote: two replicas "agree" iff their
+    /// absolute difference is within this bound. A negative tolerance makes no
+    /// pair agree (|a−b| ≥ 0), so the vote can never clear — total by design.
+    pub vote_tol: i32,
 }
 
 // ===========================================================================
@@ -192,6 +207,41 @@ pub fn heartbeat_ok(missed_beats: u32) -> (ok: bool)
     missed_beats == 0
 }
 
+/// Ghost: do replicas `a` and `b` agree within `tol`? — `|a − b| ≤ tol`, in
+/// mathematical integers (overflow-free by construction; the exec `vote_ok`
+/// realizes it by widening to i64 so no i32 subtraction/abs can wrap).
+pub open spec fn agree(a: i32, b: i32, tol: i32) -> bool {
+    (if a >= b { a - b } else { b - a }) <= tol
+}
+
+/// Ghost: does the 2-of-3 cross-sensor vote clear? — at least TWO of the three
+/// pairwise agreements `(s0,s1)`, `(s0,s2)`, `(s1,s2)` hold within `tol` (the
+/// canonical TMR majority gate). The exec twin is `vote_ok`.
+pub open spec fn vote_clears(s0: i32, s1: i32, s2: i32, tol: i32) -> bool {
+    let a01 = agree(s0, s1, tol);
+    let a02 = agree(s0, s2, tol);
+    let a12 = agree(s1, s2, tol);
+    (a01 && a02) || (a01 && a12) || (a02 && a12)
+}
+
+/// Cross-sensor voting gate (TMR 2-of-3): the redundant replicas are consistent
+/// iff at least two of the three pairwise absolute differences are within `tol`.
+/// Each `|sᵢ − sⱼ|` is computed by widening to i64, so the subtraction and the
+/// magnitude are exact for EVERY i32 input (including `i32::MIN`) — total, no
+/// overflow UB. Exact integer comparison against `tol` thereafter.
+pub fn vote_ok(s0: i32, s1: i32, s2: i32, tol: i32) -> (ok: bool)
+    ensures ok == vote_clears(s0, s1, s2, tol),
+{
+    let t = tol as i64;
+    let d01 = s0 as i64 - s1 as i64;
+    let d02 = s0 as i64 - s2 as i64;
+    let d12 = s1 as i64 - s2 as i64;
+    let a01 = (if d01 >= 0 { d01 } else { -d01 }) <= t;
+    let a02 = (if d02 >= 0 { d02 } else { -d02 }) <= t;
+    let a12 = (if d12 >= 0 { d12 } else { -d12 }) <= t;
+    (a01 && a02) || (a01 && a12) || (a02 && a12)
+}
+
 /// Ghost: does observation `obs` clear the single gate that corresponds to fault
 /// `cause`? Restart acceptance is gated on `all_gates_clear` (strictly stronger —
 /// H2); this per-cause form remains the vocabulary for the cause-specific lemmas.
@@ -203,6 +253,7 @@ pub open spec fn gate_clears(cause: Fault, obs: Obs) -> bool {
         Fault::BudgetOverrun => obs.used_us <= obs.budget_us,
         Fault::DeadlineMiss => obs.lateness_us == 0,
         Fault::HeartbeatLoss => obs.missed_beats == 0,
+        Fault::VoteMismatch => vote_clears(obs.s0, obs.s1, obs.s2, obs.vote_tol),
     }
 }
 
@@ -217,6 +268,7 @@ pub open spec fn all_gates_clear(obs: Obs) -> bool {
         && obs.used_us <= obs.budget_us
         && obs.lateness_us == 0
         && obs.missed_beats == 0
+        && vote_clears(obs.s0, obs.s1, obs.s2, obs.vote_tol)
 }
 
 /// All-gates-clear implies every per-cause gate clears: acceptance on
