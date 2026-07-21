@@ -114,6 +114,35 @@ artifacts:
       - type: related-to
         target: REQ-DRV-SRAM-001
 
+  - id: REQ-DRV-WDG-001
+    type: sw-req
+    title: "IWDG watchdog is a verified thin-seam driver — the software cannot-un-start hardware backstop"
+    status: implemented
+    release: v0.3.0
+    description: >
+      The STM32F1 independent watchdog (IWDG) key-sequence lifecycle — 0x5555 unlock,
+      PR/RLR prescaler+reload configuration (write-protected until unlocked), 0xCCCC
+      start, 0xAAAA refresh — SHALL be a Component-Model driver whose full protocol
+      logic is verified wasm dissolved to native, importing ONLY the gust:hal mmio
+      capability. No new TCB atom: the driver computes the key writes and the PR/RLR
+      field encoding; the TCB only executes the volatile read/write it is handed.
+      Once started (0xCCCC) the watchdog SHALL be irreversible in software — the
+      driver SHALL expose no disable/stop transition, so only a hardware reset can
+      stop it (cannot-un-start). This is the module-level hardware backstop the
+      partition-scheduler Health Monitor design (gale#63) names: if the verified
+      HM/switch core itself hangs, it stops refreshing the IWDG and the hardware
+      forces a reset — fail-to-safe. The lifecycle FSM SHALL be Kani-proven total
+      over its input domain, including that write-protection and cannot-un-start
+      hold for every reachable state.
+    tags: [gust, driver, wdg, watchdog, iwdg, thin-seam, fail-to-safe, health-monitor]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+      - type: related-to
+        target: REQ-DRV-BREADTH-001
+
   # VER-* verifiers are added by the feature loop WHEN the proof actually passes —
   # that incoming `verifies` link is what drops a req off the `rivet release status`
   # not-ready list, so the burn-down tells the truth. GPIO's is now real (below);
@@ -229,6 +258,28 @@ artifacts:
     links:
       - type: verifies
         target: REQ-DRV-BREADTH-001
+
+  - id: VER-DRV-WDG-001
+    type: sw-verification
+    title: "IWDG watchdog driver — Kani 7/7 (cannot-un-start, write-protection, key-sequence) — demonstrator + Renode content-gate pending"
+    status: proposed
+    release: v0.3.0
+    description: >
+      The wdg-thin driver's lifecycle FSM is Kani-proven (7/7 harnesses, 0 failures:
+      p1_write_protection, p2_cannot_un_start, p3_refresh_only_running, p4_start_once,
+      p5_config_bounds, p6_pack_roundtrip, p7_unlock_gates_config — `cargo kani`, kani
+      0.67.0). Dissolved (loom 1.1.18 inline -> synth 0.40.0 --target cortex-m3
+      --all-exports --relocatable): wdg-thin-cm3.o = text 660 / data 0 / bss 0 -> 0
+      SRAM; imports are exactly env.mmio_read32 / env.mmio_write32. This artifact is
+      OPEN pending the qemu demonstrator (gust_wdg_probe) and the `gust-wdg-renode`
+      register-effect content-gate — dissolves are not verified until an oracle
+      exercises the dissolved .o itself (see docs/safety/verification-honesty.md).
+      Kill-criterion: a Kani harness fails, the probe reports FAIL, or the Renode gate
+      observes a wdg-*-bad line.
+    tags: [gust, wdg, watchdog, iwdg, kani, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-WDG-001
 
   - id: FIND-DRV-RTIO-001
     type: finding
