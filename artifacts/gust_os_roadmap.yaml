@@ -261,22 +261,36 @@ artifacts:
 
   - id: VER-DRV-WDG-001
     type: sw-verification
-    title: "IWDG watchdog driver — Kani 7/7 (cannot-un-start, write-protection, key-sequence) — demonstrator + Renode content-gate pending"
-    status: proposed
+    title: "IWDG watchdog driver — Kani 7/7 (cannot-un-start, write-protection, key-sequence) + Renode register-effect content-gate"
+    status: verified
     release: v0.3.0
     description: >
       The wdg-thin driver's lifecycle FSM is Kani-proven (7/7 harnesses, 0 failures:
       p1_write_protection, p2_cannot_un_start, p3_refresh_only_running, p4_start_once,
       p5_config_bounds, p6_pack_roundtrip, p7_unlock_gates_config — `cargo kani`, kani
-      0.67.0). Dissolved (loom 1.1.18 inline -> synth 0.40.0 --target cortex-m3
-      --all-exports --relocatable): wdg-thin-cm3.o = text 660 / data 0 / bss 0 -> 0
-      SRAM; imports are exactly env.mmio_read32 / env.mmio_write32. This artifact is
-      OPEN pending the qemu demonstrator (gust_wdg_probe) and the `gust-wdg-renode`
-      register-effect content-gate — dissolves are not verified until an oracle
-      exercises the dissolved .o itself (see docs/safety/verification-honesty.md).
-      Kill-criterion: a Kani harness fails, the probe reports FAIL, or the Renode gate
-      observes a wdg-*-bad line.
-    tags: [gust, wdg, watchdog, iwdg, kani, verification]
+      0.67.0) — including the distinctive property that applied to a Running watchdog
+      EVERY provided transition either leaves it Running (refresh) or is rejected
+      without mutating (p2_cannot_un_start): the FSM has no disable transition, so
+      there is no software path out of Running. Dissolved (loom 1.1.18 inline ->
+      synth 0.40.0 --target cortex-m3 --all-exports --relocatable): wdg-thin-cm3.o =
+      text 660 / data 0 / bss 0 -> 0 SRAM; imports are exactly env.mmio_read32 /
+      env.mmio_write32 (0 new TCB atoms). A LOCAL qemu-semihosting probe
+      (gust_wdg_probe, RAM-window register effects) confirmed: config-before-unlock
+      is rejected untouched (write-protection), KR reads back 0x5555/0xCCCC/0xAAAA
+      for unlock/start/refresh in sequence, PR/RLR carry the staged prescaler/reload
+      exactly (0x5 / 0x123), and — cannot-un-start — every unlock/configure/
+      re-lock/restart attempted on a Running watchdog is rejected with no register
+      write and `wdg_is_running` stays 1 across two repeated refreshes. End-to-end
+      the `gust-wdg-renode` gate runs the identical lifecycle on a RAM-mapped IWDG
+      window on a real STM32 model, asserting each step over USART1
+      (wdg-protect-ok / wdg-unlock-ok / wdg-config-ok / wdg-start-ok /
+      wdg-cannot-un-start-ok / wdg-refresh-ok). Source-level proof + native
+      register-effect check; the wasm→native dissolve is differentially trusted, not
+      proven equivalent (see docs/safety/verification-honesty.md). Scope is qemu
+      probe + Renode content-gate (register-level on a real M3 model), not silicon.
+      Kill-criterion: a Kani harness fails, the probe reports FAIL, or the Renode
+      gate observes a wdg-*-bad line.
+    tags: [gust, wdg, watchdog, iwdg, kani, renode, verification]
     links:
       - type: verifies
         target: REQ-DRV-WDG-001

@@ -55,6 +55,7 @@ jobs:
             //:gust-gpio-renode \
             //:gust-timer-renode \
             //:gust-spi-renode \
+            //:gust-wdg-renode \
             //:gust-breadth-renode \
             //:gust-switch-2core-renode \
             --test_output=all
