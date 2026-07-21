@@ -28,7 +28,9 @@ artifacts:
       registering a one-shot wake via the verified core's `set_deadline`,
       `slept(handle)` reporting pending/elapsed/invalid, and wake delivery
       through the executor's proven no-lost-wakeups `expire` (not a periodic
-      tick) — demonstrated end to end on qemu by `gust_timer_probe`. See
+      tick) — demonstrated at the executor-mechanism level on qemu by
+      `gust_timer_probe` (the full app→WIT→provider→executor compose is a v1
+      follow-on; see the honest-scope note below). See
       VER-OS-TIMER-001 for the full evidence and honest scope (v1
       single-partition, `ticks: u32`, qemu not silicon).
     tags: [gust, os, timer, sleep, tickless, executor]
