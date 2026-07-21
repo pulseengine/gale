@@ -49,10 +49,11 @@ interface spawn {
 /// Tickless one-shot timers over the verified executor's deadline table. A
 /// component registers a wake and polls it — no host Future, no busy-poll.
 interface timer {
-    /// Arm a one-shot wake `ticks` from now on the calling task (`ticks < 2^31`).
-    /// Returns the timer token (the calling task's handle), or 0xFFFF_FFFF if not
-    /// called from a live task or `ticks` is out of range.
-    sleep: func(ticks: u64) -> u32;
+    /// Arm a one-shot wake `ticks` from now on task `handle` (the handle the app
+    /// holds from spawn.start); `ticks < 2^31`. The task goes Pending until the
+    /// deadline, then `expire` re-readies it. Returns 0 on success, or
+    /// 0xFFFF_FFFF if `handle` is invalid / not Pending or `ticks` is out of range.
+    sleep: func(handle: u32, ticks: u64) -> u32;
     /// Poll a timer handle: 0 = pending, 1 = elapsed, 0xFFFF_FFFF = invalid.
     slept: func(handle: u32) -> u32;
 }
