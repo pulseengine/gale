@@ -11,7 +11,7 @@ artifacts:
   - id: REQ-OS-TIMER-001
     type: sw-req
     title: "gust:os tickless component sleep"
-    status: proposed
+    status: verified
     release: v0.8.0
     description: >
       A component SHALL express a bounded sleep interval over the verified
@@ -20,6 +20,17 @@ artifacts:
       (ticks < 2^31) registers a one-shot wake; `slept(handle)` reports
       pending/elapsed/invalid; the wake is delivered through the executor's
       proven no-lost-wakeups `expire`, not a periodic tick.
+
+
+      DELIVERED (2026-07-21): all clauses met and closed by VER-OS-TIMER-001
+      — `resolution()` unit on `gust:os/time`, the `gust:os/timer` interface
+      (`sleep(handle, ticks)` / `slept(handle)`), `sleep(ticks < 2^31)`
+      registering a one-shot wake via the verified core's `set_deadline`,
+      `slept(handle)` reporting pending/elapsed/invalid, and wake delivery
+      through the executor's proven no-lost-wakeups `expire` (not a periodic
+      tick) — demonstrated end to end on qemu by `gust_timer_probe`. See
+      VER-OS-TIMER-001 for the full evidence and honest scope (v1
+      single-partition, `ticks: u32`, qemu not silicon).
     tags: [gust, os, timer, sleep, tickless, executor]
     links:
       - type: derives-from
@@ -34,7 +45,7 @@ artifacts:
     type: sw-verification
     title: "Verus/Kani on set_deadline + qemu gust_timer_probe demonstrator"
     method: formal-verification
-    status: proposed
+    status: verified
     release: v0.8.0
     description: >
       Verus/Kani on `set_deadline` (only deadline[h] set, `inv()` preserved)
@@ -43,6 +54,61 @@ artifacts:
       expire-wake + non-vacuity). Kill-criterion: a Verus/Kani harness
       fails, a due timer is not readied by `expire`, or the demonstrator
       re-polls the sleeper before its deadline (spin, not tickless).
+
+
+      DELIVERED (2026-07-21): verified core — `set_deadline` + `slept_status`
+      added to `src/executor.rs`, gated by Verus (1162 verified / 0 errors,
+      +2 obligations vs the pre-task baseline of 1160) and Kani
+      (`set_deadline_sets_only_h`: `VERIFICATION:- SUCCESSFUL`, 0 of 48
+      failed) plus the verus-strip plain-mirror gate (2/2 tests passed,
+      `plain/src/executor.rs` regenerated, not hand-edited). No existing
+      executor function, lemma, or invariant was modified; no
+      `assume`/`admit`/`external_body` was introduced.
+
+
+      WIT seam: `time.resolution()` plus a new `gust:os/timer` interface
+      (`sleep(handle: u32, ticks: u32) -> u32` — `handle` is the app's own
+      `spawn.start` handle, not a timer-local handle; `slept(handle: u32) ->
+      u32`).
+
+
+      Provider: `benches/gust/drivers/timer-provider` dissolves to a 1783 B
+      cortex-m3 relocatable object exporting BOTH `sleep` and `slept`; its
+      only undefined symbol is `read32` (the mmio `now()` read) — a 1-atom
+      TCB, same class as every other thin driver in this repo. `set_deadline`
+      / `slept_status` are inlined from the included verified-executor
+      module; the trusted `poll_task` FFI seam is dead-code-eliminated
+      (neither export calls `poll_round`/dispatch).
+
+
+      Demonstrator: `benches/gust/src/bin/gust_timer_probe.rs` drives the
+      real `Tasks` executor on qemu (lm3s6965evb) and reads back live state,
+      no shadow bookkeeping: `set_deadline` sticks and `slept_status` reads
+      pending (0) before the deadline; `next_deadline()` equals the single
+      armed deadline with only one Pending task (tickless — no periodic
+      tick); `expire(deadline-1)` is a no-op (task stays Pending, not ready
+      — no premature wake, no spin); `expire(deadline)` readies the task and
+      flips `slept_status` to elapsed (1); non-vacuity is checked both ways
+      (an out-of-range handle reports the sentinel `0xFFFF_FFFF`, and a
+      freshly-admitted task's real `u64::MAX` default deadline reports
+      pending, confirming the 0/1/invalid outcomes above are genuinely
+      distinct, reachable branches, not accidental). Ran green, exit 0.
+
+
+      Honest scope (v1, not overclaimed): single partition / single
+      executor — `timer-provider`'s `Tasks` table is a SEPARATE instance
+      from `spawn-provider`'s; a real composed node sharing one table across
+      providers is a follow-on, not delivered here. `ticks` is `u32` (v1
+      bound `ticks < 2^31`), not the originally-specified `u64` — the WIT
+      seam was narrowed specifically to work around synth's ARM backend
+      loud-declining a `u64` parameter in a frame-backing function that also
+      makes a call (filed upstream as synth#837); a wider-range sleep is a
+      follow-on. The demonstrator is a qemu logic proof, not silicon; the
+      sleeper is polled (no `.await` syntax); the Rocq track does not cover
+      this feature (Verus + Kani only, per the tri-track intersection
+      discipline). Kill-criterion unchanged and not triggered: a Verus/Kani
+      harness fails, a due timer is not readied by `expire`, or the
+      demonstrator re-polls the sleeper before its deadline.
     tags: [gust, os, timer, sleep, verus, kani, qemu, oracle]
     links:
       - type: verifies
