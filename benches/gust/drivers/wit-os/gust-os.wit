@@ -15,6 +15,8 @@ interface time {
     deadline: func(now: u64, ticks: u64) -> u64;
     /// Has the deadline been reached? (wrap-safe: elapsed once now has passed it).
     elapsed: func(now: u64, deadline: u64) -> bool;
+    /// ticks per second (timer Hz)
+    resolution: func() -> u64;
 }
 
 /// Structured line/byte log — carries bytes, so this capability needs the node's
@@ -42,6 +44,17 @@ interface spawn {
     start: func(entry: u32) -> u32;
     /// Poll a task handle: 0 = pending, 1 = done, 0xFFFF_FFFF = invalid.
     poll: func(handle: u32) -> u32;
+}
+
+/// Tickless one-shot timers over the verified executor's deadline table. A
+/// component registers a wake and polls it — no host Future, no busy-poll.
+interface timer {
+    /// Arm a one-shot wake `ticks` from now on the calling task (`ticks < 2^31`).
+    /// Returns the timer token (the calling task's handle), or 0xFFFF_FFFF if not
+    /// called from a live task or `ticks` is out of range.
+    sleep: func(ticks: u64) -> u32;
+    /// Poll a timer handle: 0 = pending, 1 = elapsed, 0xFFFF_FFFF = invalid.
+    slept: func(handle: u32) -> u32;
 }
 
 /// Bounded message channel — payloads live in the shared linmem as `own<msg>`.
@@ -82,6 +95,7 @@ world app {
     import spawn;
     import channel;
     import io;
+    import timer;
     export run: func() -> u32;
 }
 
@@ -114,3 +128,10 @@ world log-provider {
 /// dispatch crosses the taskdisp seam, so the composed node imports mmio + taskdisp.
 world app-ts { import time; import spawn; export run: func() -> u32; }
 world spawn-provider { import taskdisp; export spawn; }
+
+/// Step-4 slice: time + timer (tickless one-shot sleep over the verified executor's
+/// deadline table). The timer provider needs the executor dispatch (taskdisp, to know
+/// the calling task) and the hardware timer (mmio, to read/arm), so the composed node
+/// imports both.
+world app-timer { import time; import timer; export run: func() -> u32; }
+world timer-provider { import taskdisp; import gust:hal/mmio@0.1.0; export timer; }
