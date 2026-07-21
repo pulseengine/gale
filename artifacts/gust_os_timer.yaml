@@ -1,0 +1,49 @@
+# gust:os tickless component sleep — a bounded sleep interval expressed over
+# the verified executor's tickless deadline path (REQ-OS-EXEC-001), reached
+# through the v0.4.0 capability/syscall seam (REQ-OS-SYSCALL-001). A
+# component registers a wake and polls it (no busy-poll); the wake is
+# delivered through the executor's proven no-lost-wakeups `expire`, not a
+# periodic tick. This file leads the code: the typed REQ/VER land first,
+# then set_deadline, the WIT timer interface, a provider, and a qemu
+# demonstrator close VER-OS-TIMER-001 to verified.
+artifacts:
+  # ---------------------------------------------------------------- requirements
+  - id: REQ-OS-TIMER-001
+    type: sw-req
+    title: "gust:os tickless component sleep"
+    status: proposed
+    release: v0.8.0
+    description: >
+      A component SHALL express a bounded sleep interval over the verified
+      executor's tickless deadline path — register a wake and poll it, no
+      busy-poll — with a stated time unit (`resolution()`). `sleep(ticks)`
+      (ticks < 2^31) registers a one-shot wake; `slept(handle)` reports
+      pending/elapsed/invalid; the wake is delivered through the executor's
+      proven no-lost-wakeups `expire`, not a periodic tick.
+    tags: [gust, os, timer, sleep, tickless, executor]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-SYSCALL-001
+      - type: related-to
+        target: REQ-OS-EXEC-001
+
+  # ------------------------------------------------------------- verification
+  - id: VER-OS-TIMER-001
+    type: sw-verification
+    title: "Verus/Kani on set_deadline + qemu gust_timer_probe demonstrator"
+    method: formal-verification
+    status: proposed
+    release: v0.8.0
+    description: >
+      Verus/Kani on `set_deadline` (only deadline[h] set, `inv()` preserved)
+      + the reused no-lost-wakeups/bounded-poll proofs compose over timer
+      entries; the qemu `gust_timer_probe` demonstrator (tickless-arm +
+      expire-wake + non-vacuity). Kill-criterion: a Verus/Kani harness
+      fails, a due timer is not readied by `expire`, or the demonstrator
+      re-polls the sleeper before its deadline (spin, not tickless).
+    tags: [gust, os, timer, sleep, verus, kani, qemu, oracle]
+    links:
+      - type: verifies
+        target: REQ-OS-TIMER-001
