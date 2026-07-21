@@ -26,7 +26,7 @@
 //!   transition (`lemma_fault_decreases_measure`), and an always-faulting input reaches
 //!   `CrossCoreTrip` in ≤ `MAX_RESTARTS + 2` steps from any well-formed `Normal`
 //!   (`lemma_escalation_bound`; the exact step count is `phi`).
-//! - **H2 no-silent-clear** — `Degraded → Normal` requires ALL six gates to pass on
+//! - **H2 no-silent-clear** — `Degraded → Normal` requires ALL seven gates to pass on
 //!   the presented restart observation (`all_gates_clear` — strictly stronger than the
 //!   triggering gate alone, `lemma_all_clear_implies_cause_gate`); an observation still
 //!   violating ANY gate is rejected without mutating (`try_restart` ensures).
@@ -50,7 +50,9 @@
 //! stripped plain/ crate): `h1_escalation_terminates`, `h1_trip_bound`,
 //! `h2_no_silent_clear`, `h3_absorbing_failsafe`, `h4_cause_preserved`,
 //! `h5_gates_characterized` (gate definitions), `h6_long_run_restart_bound`
-//! (arbitrary fault/restart/quiet interleavings), `h7_replenish_requires_quiet`.
+//! (arbitrary fault/restart/quiet interleavings), `h7_replenish_requires_quiet`,
+//! and `h8_vote_2of3_characterized` (cross-sensor TMR 2-of-3 vote vs a
+//! hand-computed oracle, all-agree/all-disagree discrimination).
 //!
 //! Track scoping (recorded for VER-OS-HM-001): this module is verified on the
 //! Verus + Kani tracks (the executor.rs two-tool discipline — Verus proves the
@@ -105,6 +107,11 @@ pub enum Fault {
     DeadlineMiss,
     /// The partition's heartbeat was not observed.
     HeartbeatLoss,
+    /// Cross-sensor voting gate failed: the three redundant sensor replicas do
+    /// not reach a 2-of-3 majority within tolerance (TMR disagreement). A
+    /// value-domain fault — absorbed at `PartitionFailsafe` like the other
+    /// value faults; it is not a liveness fault, so it does not cross-trip.
+    VoteMismatch,
 }
 /// One scalar observation frame — everything the HM policy core consumes. The
 /// partition (or the tier-1 monitor) computes these scalars; the HM only gates them.
@@ -134,6 +141,16 @@ pub struct Obs {
     pub lateness_us: u32,
     /// Consecutive heartbeats missed (0 = heartbeat present).
     pub missed_beats: u32,
+    /// Redundant sensor replica 0 (raw units) — the TMR voting input.
+    pub s0: i32,
+    /// Redundant sensor replica 1 (raw units) — the TMR voting input.
+    pub s1: i32,
+    /// Redundant sensor replica 2 (raw units) — the TMR voting input.
+    pub s2: i32,
+    /// Agreement tolerance for the 2-of-3 vote: two replicas "agree" iff their
+    /// absolute difference is within this bound. A negative tolerance makes no
+    /// pair agree (|a−b| ≥ 0), so the vote can never clear — total by design.
+    pub vote_tol: i32,
 }
 /// Staleness gate: the observation is fresh iff its age is within the limit.
 pub fn fresh(age_ms: u32, limit_ms: u32) -> bool {
@@ -161,6 +178,21 @@ pub fn deadline_ok(lateness_us: u32) -> bool {
 pub fn heartbeat_ok(missed_beats: u32) -> bool {
     missed_beats == 0
 }
+/// Cross-sensor voting gate (TMR 2-of-3): the redundant replicas are consistent
+/// iff at least two of the three pairwise absolute differences are within `tol`.
+/// Each `|sᵢ − sⱼ|` is computed by widening to i64, so the subtraction and the
+/// magnitude are exact for EVERY i32 input (including `i32::MIN`) — total, no
+/// overflow UB. Exact integer comparison against `tol` thereafter.
+pub fn vote_ok(s0: i32, s1: i32, s2: i32, tol: i32) -> bool {
+    let t = tol as i64;
+    let d01 = s0 as i64 - s1 as i64;
+    let d02 = s0 as i64 - s2 as i64;
+    let d12 = s1 as i64 - s2 as i64;
+    let a01 = (if d01 >= 0 { d01 } else { -d01 }) <= t;
+    let a02 = (if d02 >= 0 { d02 } else { -d02 }) <= t;
+    let a12 = (if d12 >= 0 { d12 } else { -d12 }) <= t;
+    (a01 && a02) || (a01 && a12) || (a02 && a12)
+}
 /// Evaluate the gate corresponding to `cause` on `obs` — the exec twin of
 /// `gate_clears`, built from the verified pure gates above.
 pub fn gate_eval(cause: Fault, obs: Obs) -> bool {
@@ -171,15 +203,17 @@ pub fn gate_eval(cause: Fault, obs: Obs) -> bool {
         Fault::BudgetOverrun => budget_ok(obs.used_us, obs.budget_us),
         Fault::DeadlineMiss => deadline_ok(obs.lateness_us),
         Fault::HeartbeatLoss => heartbeat_ok(obs.missed_beats),
+        Fault::VoteMismatch => vote_ok(obs.s0, obs.s1, obs.s2, obs.vote_tol),
     }
 }
-/// Evaluate ALL six gates on `obs` — the exec twin of `all_gates_clear`, built
-/// from the verified pure gates above.
+/// Evaluate ALL seven gates on `obs` — the exec twin of `all_gates_clear`, built
+/// from the verified pure gates above (the six scalar gates plus the TMR vote).
 pub fn all_clear(obs: Obs) -> bool {
     fresh(obs.age_ms, obs.limit_ms) && plausible(obs.value, obs.lo, obs.hi)
         && innovation_ok(obs.innov_abs, obs.k_sigma)
         && budget_ok(obs.used_us, obs.budget_us) && deadline_ok(obs.lateness_us)
         && heartbeat_ok(obs.missed_beats)
+        && vote_ok(obs.s0, obs.s1, obs.s2, obs.vote_tol)
 }
 /// The health-monitor policy state: supervision state + recorded cause + the
 /// cooldown-replenished restart budget + the proven-quiet cooldown streak.
@@ -243,7 +277,7 @@ impl Hm {
         }
     }
     /// Attempt a restart: `Degraded → Normal`, permitted ONLY IF a restart credit
-    /// remains AND the observation clears ALL six gates (H2 — cannot clear while
+    /// remains AND the observation clears ALL seven gates (H2 — cannot clear while
     /// the presented evidence shows ANY active violation). An accepted restart
     /// burns one credit that only the cooldown gives back (H5). A rejected restart
     /// mutates NOTHING. From `PartitionFailsafe`/`CrossCoreTrip` a restart is
@@ -302,13 +336,14 @@ pub enum Event {
 mod hm_kani {
     use super::*;
     fn any_fault() -> Fault {
-        match kani::any::<u8>() % 6 {
+        match kani::any::<u8>() % 7 {
             0 => Fault::Stale,
             1 => Fault::Implausible,
             2 => Fault::Diverged,
             3 => Fault::BudgetOverrun,
             4 => Fault::DeadlineMiss,
-            _ => Fault::HeartbeatLoss,
+            5 => Fault::HeartbeatLoss,
+            _ => Fault::VoteMismatch,
         }
     }
     fn any_state() -> HmState {
@@ -332,6 +367,10 @@ mod hm_kani {
             budget_us: kani::any(),
             lateness_us: kani::any(),
             missed_beats: kani::any(),
+            s0: kani::any(),
+            s1: kani::any(),
+            s2: kani::any(),
+            vote_tol: kani::any(),
         }
     }
     /// An arbitrary well-formed Hm: budget bounded, ≥ 1 while Degraded, cooldown
@@ -530,8 +569,36 @@ mod hm_kani {
             all_clear(obs) == (fresh(obs.age_ms, obs.limit_ms) && plausible(obs.value,
             obs.lo, obs.hi) && innovation_ok(obs.innov_abs, obs.k_sigma) && budget_ok(obs
             .used_us, obs.budget_us) && deadline_ok(obs.lateness_us) && heartbeat_ok(obs
-            .missed_beats))
+            .missed_beats) && vote_ok(obs.s0, obs.s1, obs.s2, obs.vote_tol))
         );
+    }
+    /// H8 — cross-sensor voting (TMR 2-of-3): `vote_ok` clears IFF at least two of
+    /// the three pairwise replica agreements hold within tolerance. Checked against a
+    /// hand-computed 2-of-3 oracle over arbitrary i32 replicas and tolerance (widened
+    /// to i64 so the |sᵢ−sⱼ| magnitude is exact for every input, i32::MIN included),
+    /// with explicit all-agree ⇒ true and all-disagree ⇒ false discrimination.
+    #[kani::proof]
+    fn h8_vote_2of3_characterized() {
+        let s0: i32 = kani::any();
+        let s1: i32 = kani::any();
+        let s2: i32 = kani::any();
+        let tol: i32 = kani::any();
+        let t = tol as i64;
+        let d01 = (s0 as i64 - s1 as i64).abs();
+        let d02 = (s0 as i64 - s2 as i64).abs();
+        let d12 = (s1 as i64 - s2 as i64).abs();
+        let a01 = d01 <= t;
+        let a02 = d02 <= t;
+        let a12 = d12 <= t;
+        let oracle = (a01 && a02) || (a01 && a12) || (a02 && a12);
+        assert!(vote_ok(s0, s1, s2, tol) == oracle);
+        if tol >= 0 {
+            let v: i32 = kani::any();
+            assert!(vote_ok(v, v, v, tol));
+        }
+        if a01 == false && a02 == false && a12 == false {
+            assert!(! vote_ok(s0, s1, s2, tol));
+        }
     }
     /// H5a — long-run cooldown bound over ARBITRARY interleavings of fault, restart,
     /// and quiet events from an arbitrary well-formed state (also the combined-input

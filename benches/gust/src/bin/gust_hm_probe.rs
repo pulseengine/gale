@@ -16,6 +16,9 @@
 //!     (REQ-OS-HM-001 names this cause "low-battery/power-budget exhaustion" —
 //!     `used_us`/`budget_us` is a generic consumed-vs-allotted resource gate;
 //!     here it stands for the power budget of the window, not execution time.)
+//!   sensor-disagreement   -> VoteMismatch    (value)     -> terminal PartitionFailsafe
+//!     (three redundant replicas `s0`/`s1`/`s2` fail the TMR 2-of-3 majority
+//!     within `vote_tol` — the cross-sensor voting detector, the last DC gap.)
 //!
 //! WHY TWO DIFFERENT TERMINAL STATES (this is the core's PROVEN, INTENDED
 //! behaviour, not a probe shortcoming — see src/health_monitor.rs `trips_cross_core`
@@ -25,7 +28,7 @@
 //! repetition of the SAME fault kind — the partition's outputs are already held
 //! safe, so a further value-domain trip is a no-op; only a liveness fault (the
 //! partition itself going unresponsive or overrunning its window) escalates to
-//! the physically independent cross-core trip. Each of the 5 causes below
+//! the physically independent cross-core trip. Each of the 6 causes below
 //! reaches exactly the terminal state its OWN detector class implies.
 //!
 //! LATENCY BOUND (derived from the core's own proven constants/lemmas, not
@@ -81,7 +84,9 @@ const STEPS_TO_FAILSAFE: u32 = MAX_RESTARTS + 1;
 /// The proven step bound to `CrossCoreTrip` from `Hm::init()`, liveness faults only.
 const STEPS_TO_TRIP: u32 = MAX_RESTARTS + 2;
 
-/// A fully healthy observation: clears every one of the six gates.
+/// A fully healthy observation: clears every one of the seven gates — including
+/// the TMR vote, whose three redundant replicas (`s0`/`s1`/`s2`) agree exactly
+/// within `vote_tol` (2-of-3 majority holds).
 fn healthy_obs() -> Obs {
     Obs {
         age_ms: 0,
@@ -95,11 +100,16 @@ fn healthy_obs() -> Obs {
         budget_us: 1000,
         lateness_us: 0,
         missed_beats: 0,
+        // three AGREEING replicas within tolerance — the vote gate clears
+        s0: 50,
+        s1: 50,
+        s2: 50,
+        vote_tol: 2,
     }
 }
 
-/// All six fault variants, for the exhaustive CrossCoreTrip absorbing check.
-fn all_faults() -> [Fault; 6] {
+/// All seven fault variants, for the exhaustive CrossCoreTrip absorbing check.
+fn all_faults() -> [Fault; 7] {
     [
         Fault::Stale,
         Fault::Implausible,
@@ -107,6 +117,7 @@ fn all_faults() -> [Fault; 6] {
         Fault::BudgetOverrun,
         Fault::DeadlineMiss,
         Fault::HeartbeatLoss,
+        Fault::VoteMismatch,
     ]
 }
 
@@ -245,12 +256,16 @@ fn main() -> ! {
     let obs_gps_loss = Obs { innov_abs: 50, ..healthy_obs() }; // k_sigma=10
     let obs_geofence = Obs { value: 999, ..healthy_obs() }; // lo=0, hi=100
     let obs_low_battery = Obs { used_us: 2000, ..healthy_obs() }; // budget_us=1000
+    // Sensor-disagreement: three replicas with every pairwise |diff| > vote_tol(2),
+    // so no 2-of-3 majority — the TMR vote gate fails (a value-domain fault).
+    let obs_sensor_disagree = Obs { s0: 0, s1: 1000, s2: 2000, ..healthy_obs() };
 
     drive_cause("RC-loss", Fault::HeartbeatLoss, obs_rc_loss, true);
     drive_cause("datalink-loss", Fault::Stale, obs_datalink_loss, false);
     drive_cause("GPS/estimator-loss", Fault::Diverged, obs_gps_loss, false);
     drive_cause("geofence-breach", Fault::Implausible, obs_geofence, false);
     drive_cause("low-battery", Fault::BudgetOverrun, obs_low_battery, true);
+    drive_cause("sensor-disagreement", Fault::VoteMismatch, obs_sensor_disagree, false);
 
     // ---- (d) NON-VACUITY: a healthy frame never trips failsafe --------------
     let healthy = healthy_obs();
@@ -263,6 +278,7 @@ fn main() -> ! {
         ("GPS/estimator-loss", Fault::Diverged),
         ("geofence-breach", Fault::Implausible),
         ("low-battery", Fault::BudgetOverrun),
+        ("sensor-disagreement", Fault::VoteMismatch),
     ] {
         if !gate_eval(cause, healthy) {
             fail!(
@@ -295,7 +311,7 @@ fn main() -> ! {
             hd.state
         );
     }
-    hprintln!("  non-vacuity: healthy Obs clears all 6 gates + every mapped cause's gate; Normal stays Normal; Degraded restarts to Normal — a good frame does not trip failsafe");
+    hprintln!("  non-vacuity: healthy Obs clears all 7 gates (incl. the TMR vote — three agreeing replicas) + every mapped cause's gate; Normal stays Normal; Degraded restarts to Normal — a good frame does not trip failsafe");
 
     // ---- (e) TERMINATION: CrossCoreTrip absorbs EVERY fault kind ------------
     let mut ct = Hm::init();
@@ -332,10 +348,10 @@ fn main() -> ! {
     if ct != latched {
         fail!("gust-hm-probe FAIL: termination — CrossCoreTrip mutated by a healthy quiet tick");
     }
-    hprintln!("  termination: CrossCoreTrip absorbed all 6 fault kinds + a healthy restart attempt + a healthy quiet tick — no software path out");
+    hprintln!("  termination: CrossCoreTrip absorbed all 7 fault kinds (incl. VoteMismatch) + a healthy restart attempt + a healthy quiet tick — no software path out");
 
     hprintln!(
-        "gust-hm-probe OK: 5/5 named mission-loss causes (RC-loss, datalink-loss, GPS/estimator-loss, geofence-breach, low-battery) each reached their mapped terminal state (2 CrossCoreTrip via HeartbeatLoss/BudgetOverrun, 3 PartitionFailsafe via Stale/Diverged/Implausible) within the proven bound (MAX_RESTARTS+1={} / MAX_RESTARTS+2={} on_fault steps), no silent clear on any still-faulty restart attempt, non-vacuous healthy-frame check passed, CrossCoreTrip confirmed absorbing over all 6 fault kinds",
+        "gust-hm-probe OK: 6/6 named mission-loss causes (RC-loss, datalink-loss, GPS/estimator-loss, geofence-breach, low-battery, sensor-disagreement) each reached their mapped terminal state (2 CrossCoreTrip via HeartbeatLoss/BudgetOverrun, 4 PartitionFailsafe via Stale/Diverged/Implausible/VoteMismatch — the cross-sensor TMR 2-of-3 voting detector is now exercised end to end) within the proven bound (MAX_RESTARTS+1={} / MAX_RESTARTS+2={} on_fault steps), no silent clear on any still-faulty restart attempt, non-vacuous healthy-frame check passed, CrossCoreTrip confirmed absorbing over all 7 fault kinds",
         STEPS_TO_FAILSAFE,
         STEPS_TO_TRIP
     );

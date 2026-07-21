@@ -26,7 +26,7 @@
 //!   transition (`lemma_fault_decreases_measure`), and an always-faulting input reaches
 //!   `CrossCoreTrip` in ≤ `MAX_RESTARTS + 2` steps from any well-formed `Normal`
 //!   (`lemma_escalation_bound`; the exact step count is `phi`).
-//! - **H2 no-silent-clear** — `Degraded → Normal` requires ALL six gates to pass on
+//! - **H2 no-silent-clear** — `Degraded → Normal` requires ALL seven gates to pass on
 //!   the presented restart observation (`all_gates_clear` — strictly stronger than the
 //!   triggering gate alone, `lemma_all_clear_implies_cause_gate`); an observation still
 //!   violating ANY gate is rejected without mutating (`try_restart` ensures).
@@ -50,7 +50,9 @@
 //! stripped plain/ crate): `h1_escalation_terminates`, `h1_trip_bound`,
 //! `h2_no_silent_clear`, `h3_absorbing_failsafe`, `h4_cause_preserved`,
 //! `h5_gates_characterized` (gate definitions), `h6_long_run_restart_bound`
-//! (arbitrary fault/restart/quiet interleavings), `h7_replenish_requires_quiet`.
+//! (arbitrary fault/restart/quiet interleavings), `h7_replenish_requires_quiet`,
+//! and `h8_vote_2of3_characterized` (cross-sensor TMR 2-of-3 vote vs a
+//! hand-computed oracle, all-agree/all-disagree discrimination).
 //!
 //! Track scoping (recorded for VER-OS-HM-001): this module is verified on the
 //! Verus + Kani tracks (the executor.rs two-tool discipline — Verus proves the
@@ -257,7 +259,7 @@ pub open spec fn gate_clears(cause: Fault, obs: Obs) -> bool {
     }
 }
 
-/// Ghost: does observation `obs` clear ALL six gates? THE no-silent-clear pivot
+/// Ghost: does observation `obs` clear ALL seven gates? THE no-silent-clear pivot
 /// (H2) and the proven-quiet criterion of the cooldown (H5): `try_restart` may
 /// return to `Normal`, and `on_quiet` may advance the cooldown streak, only when
 /// this holds — evidence showing ANY active violation can never clear or cool down.
@@ -290,11 +292,12 @@ pub fn gate_eval(cause: Fault, obs: Obs) -> (ok: bool)
         Fault::BudgetOverrun => budget_ok(obs.used_us, obs.budget_us),
         Fault::DeadlineMiss => deadline_ok(obs.lateness_us),
         Fault::HeartbeatLoss => heartbeat_ok(obs.missed_beats),
+        Fault::VoteMismatch => vote_ok(obs.s0, obs.s1, obs.s2, obs.vote_tol),
     }
 }
 
-/// Evaluate ALL six gates on `obs` — the exec twin of `all_gates_clear`, built
-/// from the verified pure gates above.
+/// Evaluate ALL seven gates on `obs` — the exec twin of `all_gates_clear`, built
+/// from the verified pure gates above (the six scalar gates plus the TMR vote).
 pub fn all_clear(obs: Obs) -> (ok: bool)
     ensures ok == all_gates_clear(obs),
 {
@@ -304,6 +307,7 @@ pub fn all_clear(obs: Obs) -> (ok: bool)
         && budget_ok(obs.used_us, obs.budget_us)
         && deadline_ok(obs.lateness_us)
         && heartbeat_ok(obs.missed_beats)
+        && vote_ok(obs.s0, obs.s1, obs.s2, obs.vote_tol)
 }
 
 // ===========================================================================
@@ -415,7 +419,7 @@ pub open spec fn step_fault(hm: Hm, f: Fault) -> Hm {
 }
 
 /// Ghost: is a restart accepted? — Degraded, a credit remains, and the presented
-/// observation clears ALL six gates (H2).
+/// observation clears ALL seven gates (H2).
 pub open spec fn restart_accepted(hm: Hm, obs: Obs) -> bool {
     hm.state === HmState::Degraded
         && hm.restarts_remaining >= 1
@@ -575,7 +579,7 @@ impl Hm {
     }
 
     /// Attempt a restart: `Degraded → Normal`, permitted ONLY IF a restart credit
-    /// remains AND the observation clears ALL six gates (H2 — cannot clear while
+    /// remains AND the observation clears ALL seven gates (H2 — cannot clear while
     /// the presented evidence shows ANY active violation). An accepted restart
     /// burns one credit that only the cooldown gives back (H5). A rejected restart
     /// mutates NOTHING. From `PartitionFailsafe`/`CrossCoreTrip` a restart is
@@ -1028,13 +1032,14 @@ mod hm_kani {
     use super::*;
 
     fn any_fault() -> Fault {
-        match kani::any::<u8>() % 6 {
+        match kani::any::<u8>() % 7 {
             0 => Fault::Stale,
             1 => Fault::Implausible,
             2 => Fault::Diverged,
             3 => Fault::BudgetOverrun,
             4 => Fault::DeadlineMiss,
-            _ => Fault::HeartbeatLoss,
+            5 => Fault::HeartbeatLoss,
+            _ => Fault::VoteMismatch,
         }
     }
 
@@ -1060,6 +1065,10 @@ mod hm_kani {
             budget_us: kani::any(),
             lateness_us: kani::any(),
             missed_beats: kani::any(),
+            s0: kani::any(),
+            s1: kani::any(),
+            s2: kani::any(),
+            vote_tol: kani::any(),
         }
     }
 
@@ -1274,7 +1283,40 @@ mod hm_kani {
                 && innovation_ok(obs.innov_abs, obs.k_sigma)
                 && budget_ok(obs.used_us, obs.budget_us)
                 && deadline_ok(obs.lateness_us)
-                && heartbeat_ok(obs.missed_beats)));
+                && heartbeat_ok(obs.missed_beats)
+                && vote_ok(obs.s0, obs.s1, obs.s2, obs.vote_tol)));
+    }
+
+    /// H8 — cross-sensor voting (TMR 2-of-3): `vote_ok` clears IFF at least two of
+    /// the three pairwise replica agreements hold within tolerance. Checked against a
+    /// hand-computed 2-of-3 oracle over arbitrary i32 replicas and tolerance (widened
+    /// to i64 so the |sᵢ−sⱼ| magnitude is exact for every input, i32::MIN included),
+    /// with explicit all-agree ⇒ true and all-disagree ⇒ false discrimination.
+    #[kani::proof]
+    fn h8_vote_2of3_characterized() {
+        let s0: i32 = kani::any();
+        let s1: i32 = kani::any();
+        let s2: i32 = kani::any();
+        let tol: i32 = kani::any();
+        // hand-computed oracle: pairwise |diff| <= tol in exact (i64) arithmetic
+        let t = tol as i64;
+        let d01 = (s0 as i64 - s1 as i64).abs();
+        let d02 = (s0 as i64 - s2 as i64).abs();
+        let d12 = (s1 as i64 - s2 as i64).abs();
+        let a01 = d01 <= t;
+        let a02 = d02 <= t;
+        let a12 = d12 <= t;
+        let oracle = (a01 && a02) || (a01 && a12) || (a02 && a12);
+        assert!(vote_ok(s0, s1, s2, tol) == oracle);
+        // all-agree discrimination: three identical replicas clear for any tol >= 0
+        if tol >= 0 {
+            let v: i32 = kani::any();
+            assert!(vote_ok(v, v, v, tol));
+        }
+        // all-disagree discrimination: every pair beyond tolerance cannot clear
+        if a01 == false && a02 == false && a12 == false {
+            assert!(!vote_ok(s0, s1, s2, tol));
+        }
     }
 
     /// H5a — long-run cooldown bound over ARBITRARY interleavings of fault, restart,
