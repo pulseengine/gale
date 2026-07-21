@@ -129,6 +129,29 @@ impl Tasks {
         }
         d
     }
+    /// Register (or update) task `h`'s tickless wake deadline, so a later
+    /// `timer` provider can arm a one-shot alarm for it (see `next_deadline`).
+    /// Only a Pending slot's deadline is written — a Free/Done (or out-of-range)
+    /// handle is a no-op, so no non-live slot's deadline is ever disturbed and
+    /// `inv()` (which never mentions `deadline`) is preserved trivially. Frames
+    /// every other slot's deadline, all `state`, and `ready`.
+    pub fn set_deadline(&mut self, h: u32, d: u64) {
+        if h < MAX_TASKS as u32 && matches!(self.state[h as usize], TaskState::Pending) {
+            self.deadline[h as usize] = d;
+        }
+    }
+    /// Sleep status of task `h` at instant `now`, for the `timer` provider seam:
+    /// `0` = pending (its deadline has not yet been reached), `1` = elapsed
+    /// (`now` has reached/passed the deadline), `0xFFFF_FFFF` = invalid handle.
+    /// v1 uses the direct `now >= deadline` predicate (no factored wrap-safe
+    /// `elapsed` helper exists in this module yet; `next_deadline`/`expire`
+    /// use the same direct comparison).
+    pub fn slept_status(&self, h: u32, now: u64) -> u32 {
+        if h >= MAX_TASKS as u32 {
+            return 0xFFFF_FFFFu32;
+        }
+        if now >= self.deadline[h as usize] { 1 } else { 0 }
+    }
     /// Tickless expiry: on the one-shot alarm firing at `now`, mark every Pending
     /// task whose deadline has passed as ready. No periodic tick — this runs only
     /// when `now >= next_deadline()`. Reuses the `wake`/`consume` set-bit lemmas:
@@ -323,5 +346,90 @@ mod exec_kani {
         let calls = poll_round_counted(&mut t);
         assert!(t.ready == 0);
         assert!(calls <= before);
+    }
+    /// An arbitrary well-formed `Tasks` with *unconstrained* `state`, `deadline`,
+    /// `prio` and `ready` — used by the `set_deadline` harness, which (unlike the
+    /// `pick_next`/`poll_round` harnesses) must exercise the Free/Done branches of
+    /// `set_deadline`'s Pending-guard. `inv()` is stripped from the plain executable
+    /// this harness runs against, so it is re-established directly: `ready < 2^MAX_TASKS`
+    /// and every set ready bit lands on a Pending slot (exactly `inv()`'s two clauses).
+    fn arb_state() -> TaskState {
+        match kani::any::<u8>() % 3 {
+            0 => TaskState::Free,
+            1 => TaskState::Pending,
+            _ => TaskState::Done,
+        }
+    }
+    /// Read a slot's discriminant by reference (TaskState is not Copy, so `as u8`
+    /// would move it out of the array).
+    fn disc(s: &TaskState) -> u8 {
+        match s {
+            TaskState::Free => 0,
+            TaskState::Pending => 1,
+            TaskState::Done => 2,
+        }
+    }
+    fn arbitrary_tasks_inv() -> Tasks {
+        let state: [TaskState; MAX_TASKS] = [
+            arb_state(),
+            arb_state(),
+            arb_state(),
+            arb_state(),
+            arb_state(),
+            arb_state(),
+            arb_state(),
+            arb_state(),
+        ];
+        let prio: [u32; MAX_TASKS] = kani::any();
+        let deadline: [u64; MAX_TASKS] = kani::any();
+        let ready: u32 = kani::any();
+        kani::assume(ready < 256u32);
+        let mut i: u32 = 0;
+        while i < MAX_TASKS as u32 {
+            if (ready >> i) & 1u32 == 1u32 {
+                kani::assume(matches!(state[i as usize], TaskState::Pending));
+            }
+            i += 1;
+        }
+        Tasks {
+            state,
+            prio,
+            deadline,
+            ready,
+        }
+    }
+    /// `set_deadline(h, d)` writes ONLY slot `h`'s deadline (and only when `h` is a
+    /// valid Pending slot), leaving all `state`, all `ready`, and every other slot's
+    /// deadline untouched — the framing the timer provider relies on. Independent
+    /// (SAT/CBMC) cross-check of the Verus (SMT/Z3) `ensures` on the exact shipped code.
+    #[kani::proof]
+    #[kani::unwind(9)]
+    fn set_deadline_sets_only_h() {
+        let mut t = arbitrary_tasks_inv();
+        let h: u32 = kani::any();
+        let d: u64 = kani::any();
+        let old_ready = t.ready;
+        let old_deadline = t.deadline;
+        let mut old_state = [0u8; MAX_TASKS];
+        let mut k: usize = 0;
+        while k < MAX_TASKS {
+            old_state[k] = disc(&t.state[k]);
+            k += 1;
+        }
+        let h_pending = (h as usize) < MAX_TASKS
+            && matches!(t.state[h as usize], TaskState::Pending);
+        t.set_deadline(h, d);
+        assert!(t.ready == old_ready);
+        let mut j: usize = 0;
+        while j < MAX_TASKS {
+            assert!(disc(& t.state[j]) == old_state[j]);
+            if j != h as usize {
+                assert!(t.deadline[j] == old_deadline[j]);
+            }
+            j += 1;
+        }
+        if (h as usize) < MAX_TASKS && h_pending {
+            assert!(t.deadline[h as usize] == d);
+        }
     }
 }

@@ -1,0 +1,15 @@
+[workspace]
+[package]
+name = "gust-timer-provider"
+version = "0.1.0"
+edition = "2021"
+description = "gust:os timer provider — backs the gust:os/timer WIT interface (sleep/slept) with the SAME verified async executor deadline table (plain/src/executor.rs, included verbatim, Task 2's set_deadline/slept_status) that spawn-provider/exec-provider dissolve. sleep(handle, ticks) rejects ticks >= 2^31, else computes d = now() + ticks (wrap-safe) and calls set_deadline; slept(handle) delegates to slept_status. now() reads the same TIM2 counter register as time-provider, via gust:hal/mmio."
+[lib]
+crate-type = ["cdylib"]
+[dependencies]
+wit-bindgen = { version = "0.52", default-features = false, features = ["macros"] }
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1
