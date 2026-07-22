@@ -24,7 +24,19 @@ public
       Gust_Target_Props::Rmvf_Bit     => 24;
   end Rcc;
 
-  system Board end Board;
+  system Board
+    annex EMV2 {**
+      error types
+        TaskHang    : type;
+        SystemReset : type;
+      end types;
+      error behavior WatchdogBehavior
+        events   Hang : error event;
+        states   Nominal : initial state; Reset : state;
+        transitions Nominal -[ Hang ]-> Reset;   -- unrefreshed hang -> IWDG resets to safe state
+      end behavior;
+    **};
+  end Board;
   system implementation Board.vldiscovery
     subcomponents
       cpu   : processor Cortex_M::CortexM3;
