@@ -72,7 +72,10 @@ fn unqualified(prop_name: &str) -> &str {
 /// and `Present` properties out of a raw property list.
 fn read_props(properties: &[RawProperty]) -> (Option<u32>, bool, BTreeMap<String, u32>) {
     let mut base = None;
-    let mut present = false;
+    // A declared device subcomponent is present unless explicitly Present => false
+    // (the future "declared in a shared SoC def but absent on this variant" case,
+    // e.g. bxCAN on a value-line part).
+    let mut present = true;
     let mut props = BTreeMap::new();
     for p in properties {
         let key = unqualified(&p.name);

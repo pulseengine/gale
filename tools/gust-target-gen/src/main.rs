@@ -1,4 +1,5 @@
 mod emit_ld;
+mod emit_wit;
 mod emit_rs;
 mod model;
 
