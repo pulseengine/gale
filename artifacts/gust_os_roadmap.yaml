@@ -925,7 +925,8 @@ artifacts:
       gust-target-gen is verified at three levels. (1) GOLDEN: emit_rs/emit_ld/emit_wit
       are golden-tested for both boards (STM32F100 + STM32G474) against committed
       expected files; the generated gust:hal WIT world RESOLVES against the real
-      gust-hal.wit via wasm-tools. (2) KEYSTONE PARITY: a test asserts the generated
+      gust-hal.wit via wasm-tools, CI-gated by
+      benches/gust/targets/check-wit-resolve.sh in the gust-targets workflow. (2) KEYSTONE PARITY: a test asserts the generated
       constants EQUAL the exact values gust_wdg_silicon.rs hand-wrote before the
       retarget (F1 RCC_CSR=0x40021024/RMVF bit 24; G4 RCC_CSR=0x40021094/RMVF bit 23;
       IWDG_BASE=0x40003000 both), so the model-drive cannot silently change what the

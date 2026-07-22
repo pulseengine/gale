@@ -44,3 +44,9 @@ jobs:
             echo "::error::benches/gust/targets/generated/ is stale — run benches/gust/targets/regen.sh and commit the result."
             exit 1
           fi
+
+      - name: Install wasm-tools
+        run: cargo install wasm-tools --version 1.245.1 --locked
+
+      - name: WIT worlds resolve against the gust:hal seam
+        run: bash benches/gust/targets/check-wit-resolve.sh
