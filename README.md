@@ -219,14 +219,14 @@ track alone can no longer silently invalidate the property.
 ASPICE V-model traceability managed by [Rivet](https://github.com/pulseengine/rivet):
 
 ```
-rivet validate    # PASS (333 warnings — see Known Gaps)
-rivet coverage    # per-rule coverage (100% on most rules; see CI for live figures)
-rivet stats       # 1034 artifacts
+rivet validate    # schema + traceability validation (the PASS gate)
+rivet coverage    # per-rule V-model coverage
+rivet stats       # artifact counts
 ```
 
 ## Known Gaps
 
-`rivet validate` produces 333 warnings (lifecycle coverage gaps). All are categorized below.
+`rivet validate` surfaces lifecycle-coverage warnings (run it for the live count). The categories below explain what they are and why each is expected.
 
 **Expected -- KILN Phase 2 (8 warnings)**
 

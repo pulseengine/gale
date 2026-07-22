@@ -87,27 +87,17 @@ first iodev; the `gust:os` I/O capability (v0.4.0) is the RTIO-shaped
 `submit`/`poll-completion` WIT interface. Research + citations:
 `docs/research/driver-framework-rtio-iouring.md`.
 
-**Readiness is the `rivet release status` burn-down, not this table.** The table is
-the *scope map*; whether a milestone is cuttable is a query. Current state (regenerate
-with `rivet release status`; `gh release list` is the tag-of-record):
+**Readiness is a live query, not a hand-maintained table** — a frozen burn-down here
+only rots (it did). The source of truth is the tooling:
 
-```
-v0.1.0  ✅ RELEASED (tag, 2026-07-08)   — semaphore
-v0.2.0  ✅ RELEASED (tag, 2026-07-09)   — DMA ownership
-v0.3.0  ✅ RELEASED (tag, 2026-07-09)   — driver breadth kickoff (the full thin-seam
-          suite + closes landed later on main, unreleased → v0.5.0)
-v0.4.0  ✅ RELEASED (tag, 2026-07-16)   — latest tag
-v0.5.0  ▶ IN PLANNING                   — "The Unblock & Consolidate": bundles the
-          work merged since v0.4.0 but not yet tagged (timer/wdg/HM/target-model +
-          the v0.9-labelled driver closes) PLUS the syscall seam (meld#326 unblocked)
-          + toolchain modernization + F100 silicon breadth. See
-          docs/releases/v0.5.0-unblock.md.
-v1.0.0  ○ FUTURE                        — the signed OS cut
-```
+- `gh release list` — what is actually **tagged** (the record).
+- `rivet release status` — per-milestone **V-closure** (what's cuttable).
 
-> **Note (2026-07-22):** the syscall seam and the full thin-driver suite have LANDED
-> on `main` (see recent commits + `benches/gust/drivers/`); the burn-down below the
-> line is the historical planning snapshot and is superseded by the v0.5.0 plan.
+This file keeps only the durable *scope map* (the milestone themes, above); it is
+deliberately status-free. The one fact worth stating in prose: **v0.1.0–v0.4.0 are
+tagged**, and the work merged *after* v0.4.0 (timer, wdg, Health-Monitor, the full
+thin-driver suite, and the AADL target model) is unreleased and consolidates into
+**v0.5.0** — see [`docs/releases/v0.5.0-unblock.md`](releases/v0.5.0-unblock.md).
 
 A planned milestone deliberately carries **no verification artifacts** — under
 `require: coverage` a req reads "ready" the instant a `verifies` link exists, so
