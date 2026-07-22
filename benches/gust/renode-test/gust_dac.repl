@@ -1,0 +1,22 @@
+// Cortex-M3 + 64 KB SRAM / 512 KB flash, plus a RAM-mapped DAC register window for
+// the thin-seam software-triggered DAC driver content-gate. The gate asserts the
+// exact register effects the DRIVER writes — CR enable word (0x3D), DHR staged code,
+// SWTRIGR trigger bit — and the Kani-proven glitch-free property (DHR write does NOT
+// move DOR until a trigger), on a plain memory region, deterministic, no dependence
+// on Renode's DAC peripheral model.
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m3"
+    nvic: nvic
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    -> cpu@0
+flash: Memory.MappedMemory @ sysbus 0x0
+    size: 0x80000
+sram: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x10000
+// DAC register window (real STM32F1 address, 0x40007400) as plain memory — driver
+// CR/DHR/SWTRIGR/DOR writes read back. Ends at 0x40007800, below USART1 at 0x40013800
+// (no overlap).
+dac: Memory.MappedMemory @ sysbus 0x40007400
+    size: 0x400
+usart1: UART.STM32_UART @ sysbus <0x40013800, +0x100>
+    -> nvic@37
