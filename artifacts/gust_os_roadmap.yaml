@@ -143,6 +143,39 @@ artifacts:
       - type: related-to
         target: REQ-DRV-BREADTH-001
 
+  - id: REQ-DRV-DMA-001
+    type: sw-req
+    title: "DMA-as-own<buffer> ownership driver is CLOSED — demonstrated on-target + register-effect content-gated"
+    status: implemented
+    release: v0.3.0
+    description: >
+      The dma-own driver (REQ-DMA-OWN-001: a DMA transfer modeled as a Component-Model
+      own<buffer> ownership round-trip, its FSM verified wasm dissolved to native)
+      SHALL be CLOSED to the same evidence bar as the thin-seam drivers — proof alone
+      is not a driver. A bare-metal demonstrator SHALL drive the dissolved exports
+      (dma_start / dma_poll_complete / dma_abort) supplying ONLY the gust:hal dma seam
+      (dma_program / dma_barrier / dma_irq_poll — the 3 irreducible trusted atoms, no
+      new TCB atom beyond them), and a Renode register-effect content-gate SHALL assert,
+      on a RAM-mapped DMA descriptor + coherency window on a real STM32 model, the EXACT
+      effects the driver pokes THROUGH that seam at each ownership handoff plus the
+      Kani-proven ownership property: start hands the buffer Wasm→Dma emitting clean+DSB
+      and programming the descriptor; a double-arm while Dma-owned is rejected (exclusive
+      ownership); a completion IRQ hands Dma→Wasm emitting invalidate+DMB (round-trip
+      closes); an unpaired completion is rejected; and abort returns the buffer to Wasm
+      from any state, never ownerless. The barrier SHALL be emitted BY CONSTRUCTION at
+      every handoff (structurally impossible to transfer without it). Honest scope: the
+      demonstrator is a qemu-semihosting probe + a Renode register-level gate on a plain
+      memory window (no Renode DMA-controller model, no silicon) — the register-effect
+      and FSM checks, not a live silicon DMA engine.
+    tags: [gust, driver, dma, ownership, own-buffer, thin-seam, component-model, close-out]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DMA-OWN-001
+      - type: related-to
+        target: REQ-DRV-BREADTH-001
+
   # VER-* verifiers are added by the feature loop WHEN the proof actually passes —
   # that incoming `verifies` link is what drops a req off the `rivet release status`
   # not-ready list, so the burn-down tells the truth. GPIO's is now real (below);
@@ -294,6 +327,48 @@ artifacts:
     links:
       - type: verifies
         target: REQ-DRV-WDG-001
+
+  - id: VER-DRV-DMA-001
+    type: sw-verification
+    title: "DMA-as-own<buffer> driver CLOSED — Kani 6/6 (ownership round-trip, barrier-by-construction, no-ownerless) + qemu probe + Renode register-effect content-gate"
+    status: proposed
+    release: v0.3.0
+    description: >
+      The dma-own driver's ownership FSM is Kani-proven (6/6 harnesses, 0 failures, 73
+      obligations discharged — `cargo kani`): p1_access_iff_wasm_owned (wasm may touch
+      the buffer IFF wasm-owned — hands-off during the DMA window), p2_barrier_pairing
+      (every handoff carries the correct coherency op on EVERY path — clean+DSB on
+      Wasm→Dma, invalidate+DMB on Dma→Wasm — impossible to transfer without the barrier),
+      p3_abort_never_ownerless (abort from any state returns a defined owner),
+      p4_round_trip (start→complete returns to wasm-owned; double-start / unpaired-
+      complete are faults not silent corruption), p5_ring_per_chunk_exclusive and
+      p6_ring_reap_and_abort (streaming/circular: per-chunk exclusive ownership). This
+      CLOSES the driver to the thin-seam evidence bar. Dissolved (synth cortex-m3
+      --all-exports --relocatable): dma-own-cm3.o exports exactly dma_start /
+      dma_poll_complete / dma_abort, 0 .bss/.data → 0 SRAM; imports are exactly the 3
+      trusted seam atoms env.dma_program / env.dma_barrier / env.dma_irq_poll (nm-
+      confirmed: 3 T exports, those 3 U imports; 0 new TCB atoms). A LOCAL qemu-
+      semihosting probe (gust_dma_probe, RAM-window register effects through the seam)
+      is GREEN (`dma-probe ALL OK`, exit 0) and is NON-VACUOUS: a dissolved no-op that
+      returns its input state / skips the seam FAILs it (demonstrated — dma-start FAIL,
+      exit 1). It confirms: start hands Wasm→Dma with clean+DSB and programs the
+      descriptor (ch/len), a double-arm is rejected with no program and no barrier, a
+      poll with no IRQ yields state unchanged, completion hands Dma→Wasm with
+      invalidate+DMB, an unpaired completion is rejected, and abort returns Wasm from
+      both Dma and Wasm states. End-to-end the `gust-dma-renode` gate (wired in
+      renode-test/BUILD.bazel + .github/workflows/gust-renode.yml) runs the identical
+      round-trip on a RAM-mapped DMA descriptor window on a real STM32 model, asserting
+      each step over USART1 (dma-start-ok / dma-exclusive-ok / dma-yield-ok /
+      dma-complete-ok / dma-unpaired-ok / dma-abort-ok). Source-level proof + native
+      register-effect check; the wasm→native dissolve is differentially trusted, not
+      proven equivalent (see docs/safety/verification-honesty.md). Scope is qemu probe +
+      Renode content-gate (register-level on a real M3 model over a plain memory window,
+      no Renode DMA-controller model), not silicon. Kill-criterion: a Kani harness fails,
+      the probe reports FAIL, or the Renode gate observes a dma-*-bad line.
+    tags: [gust, dma, ownership, own-buffer, kani, renode, verification, close-out]
+    links:
+      - type: verifies
+        target: REQ-DRV-DMA-001
 
   - id: FIND-DRV-RTIO-001
     type: finding
