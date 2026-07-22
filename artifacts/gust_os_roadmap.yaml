@@ -260,6 +260,10 @@ artifacts:
         target: REQ-DRV-BREADTH-001
 
   - id: VER-DRV-WDG-001
+    # SILICON-VALIDATED 2026-07-22 on NUCLEO-G474RE: the dissolved wdg-thin driver
+    # armed the REAL IWDG and it fired a hardware reset (RCC_CSR.IWDGRSTF=1). Evidence:
+    # benches/gust/silicon/RESULTS-wdg-g474re.md + gust_wdg_silicon.rs. Strongest tier,
+    # above the qemu probe + Renode gate. (IWDG is F1==G4 register-portable.)
     type: sw-verification
     title: "IWDG watchdog driver — Kani 7/7 (cannot-un-start, write-protection, key-sequence) + Renode register-effect content-gate"
     status: verified

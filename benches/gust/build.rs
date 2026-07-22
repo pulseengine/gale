@@ -218,6 +218,9 @@ fn main() {
     if wobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_wdg={}", wobj.display());
         println!("cargo:rustc-link-arg-bin=gust_wdg_probe={}", wobj.display());
+        // gust_wdg_silicon: the same dissolved .o driving the REAL IWDG on a
+        // NUCLEO-G474RE (thumbv7m ⊂ thumbv7em; IWDG is register-identical F1==G4).
+        println!("cargo:rustc-link-arg-bin=gust_wdg_silicon={}", wobj.display());
         println!("cargo:rerun-if-changed={}", wobj.display());
     }
     // The 4-driver breadth node (REQ-DRV-BREADTH-001): gpio+timer+spi+uart, each a
