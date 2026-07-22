@@ -220,6 +220,19 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_wdg_probe={}", wobj.display());
         println!("cargo:rerun-if-changed={}", wobj.display());
     }
+    // The dissolved thin-seam CAN (bxCAN) driver (drivers/can-thin -> loom -> synth):
+    // the whole STM32F1 bxCAN master path — BTR bit-timing config (write-protected to
+    // Init only), the INRQ/INAK init handshake, and TX-mailbox / RX-FIFO gating, with
+    // the Kani-proven config-only-in-init property — in verified wasm (Kani 7/7, 0 new
+    // TCB atoms — mmio only). gust_can_probe is the LOCAL qemu-semihosting demonstrator
+    // of this SAME dissolved .o (RAM-window register effects + config-only-in-init),
+    // run before the `gust-can-renode` content-gate (renode-test/gust_can.robot).
+    let cobj_can = Path::new(&manifest).join("drivers/can-thin/can-thin-cm3.o");
+    if cobj_can.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_can={}", cobj_can.display());
+        println!("cargo:rustc-link-arg-bin=gust_can_probe={}", cobj_can.display());
+        println!("cargo:rerun-if-changed={}", cobj_can.display());
+    }
     // The 4-driver breadth node (REQ-DRV-BREADTH-001): gpio+timer+spi+uart, each a
     // verified-wasm gust:hal component, wac/meld-fused → ONE dissolved .o exporting
     // all 20 protocol fns (C-renamed), 0 SRAM, no func_N collision. Built by
