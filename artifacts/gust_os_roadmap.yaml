@@ -328,7 +328,7 @@ artifacts:
   - id: VER-DRV-I2C-001
     type: sw-verification
     title: "I2C driver — Kani 7/7 (ACK-all-but-last, exclusive bus, no lost byte) + qemu probe + Renode register-effect content-gate"
-    status: proposed
+    status: verified
     release: v0.3.0
     description: >
       The i2c-thin driver's transaction FSM and config core are Kani-proven (7/7
