@@ -153,6 +153,18 @@ renode_test(
     variables_with_label = {
         "ELF": ":gust_i2c.elf",
         "REPL": ":gust_i2c.repl",
+# Thin-seam CAN (bxCAN) driver content gate — the dissolved driver (verified-wasm
+# bxCAN master path, Kani-proven config-only-in-init) exercised on a RAM-mapped CAN1
+# window on a real STM32 model; asserts the exact MCR/BTR/TIxR/RF0R register effects
+# via Wait For Line On Uart (content, not just no-fault). BTR is written only inside
+# Init and left untouched by a config once Normal — the distinctive safety property.
+renode_test(
+    name = "gust-can-renode",
+    timeout = "short",
+    robot_test = "gust_can.robot",
+    variables_with_label = {
+        "ELF": ":gust_can.elf",
+        "REPL": ":gust_can.repl",
     },
 )
 

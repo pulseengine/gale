@@ -1,0 +1,22 @@
+// Cortex-M3 + 64 KB SRAM / 512 KB flash, plus a RAM-mapped bxCAN register window for
+// the thin-seam CAN driver content-gate. The gate asserts the exact register effects
+// the DRIVER writes — MCR.INRQ init request, the BTR bit-timing value, the TX-mailbox
+// TI0R/TDT0R/TDL0R/TDH0R load + TXRQ, the RX-FIFO RFOM0 release — and the Kani-proven
+// config-only-in-init property (BTR written in Init, rejected+unchanged in Normal), on
+// a plain memory region, deterministic, no dependence on Renode's CAN peripheral model.
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m3"
+    nvic: nvic
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    -> cpu@0
+flash: Memory.MappedMemory @ sysbus 0x0
+    size: 0x80000
+sram: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x10000
+// bxCAN register window (real STM32F1 CAN1 address, 0x40006400, +0x400) as plain
+// memory — driver MCR/MSR/TSR/RF0R/BTR/TIxR writes read back. Ends at 0x40006800,
+// well below USART1 at 0x40013800 (no overlap).
+can1: Memory.MappedMemory @ sysbus 0x40006400
+    size: 0x400
+usart1: UART.STM32_UART @ sysbus <0x40013800, +0x100>
+    -> nvic@37

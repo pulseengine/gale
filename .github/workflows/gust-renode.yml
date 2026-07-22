@@ -60,6 +60,7 @@ jobs:
             //:gust-dac-renode \
             //:gust-pwm-renode \
             //:gust-i2c-renode \
+            //:gust-can-renode \
             //:gust-breadth-renode \
             //:gust-switch-2core-renode \
             --test_output=all

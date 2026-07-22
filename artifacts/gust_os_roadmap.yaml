@@ -547,6 +547,78 @@ artifacts:
     links:
       - type: verifies
         target: REQ-DRV-I2C-001
+  - id: REQ-DRV-CAN-001
+    type: sw-req
+    title: "CAN (bxCAN) is a verified thin-seam driver — config-only-in-init, no stale bit rate on the bus"
+    status: implemented
+    release: v0.3.0
+    description: >
+      The STM32F1 bxCAN master path — the INRQ→INAK init handshake, the BTR
+      bit-timing configuration (BRP/TS1/TS2/SJW), and TX-mailbox / RX-FIFO gating —
+      SHALL be a Component-Model driver whose full protocol logic is verified wasm
+      dissolved to native, importing ONLY the gust:hal mmio capability. No new TCB
+      atom: the driver computes the MCR/BTR/TIxR/RF0R writes and the BTR field
+      encoding (pure bit arithmetic, table-free); the TCB only executes the volatile
+      read/write it is handed. The mode FSM (Sleep/Init/Normal, carried as a packed
+      u32) SHALL guarantee config-only-in-init — the bit-timing register is accepted
+      for write IFF the peripheral is in Init (INRQ set, INAK confirmed); a config
+      write in Sleep or Normal SHALL be rejected without mutating BTR, because the
+      hardware silently ignores BTR outside init and a wrong bit rate corrupts every
+      frame on the bus. Normal SHALL be reachable ONLY through Init (so bit-timing
+      always had a valid configuration window), a transmit SHALL be gated on the
+      mailbox being empty (TME), and a FIFO release SHALL be gated on a pending
+      message (FMP>0) — releasing each received frame exactly once. The lifecycle FSM
+      SHALL be Kani-proven total over its input domain.
+    tags: [gust, driver, can, bxcan, thin-seam, config-only-in-init, health-monitor]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+      - type: related-to
+        target: REQ-DRV-BREADTH-001
+
+  - id: VER-DRV-CAN-001
+    type: sw-verification
+    title: "CAN (bxCAN) driver — Kani 7/7 (config-only-in-init, init-handshake ordering, TX/RX gating) + Renode register-effect content-gate"
+    status: verified
+    release: v0.3.0
+    description: >
+      The can-thin driver's mode FSM is Kani-proven (7/7 harnesses, 0 failures:
+      p1_config_only_in_init, p2_enter_init_total, p3_normal_only_via_init,
+      p4_tx_requires_normal, p5_rx_requires_normal, p6_btr_well_formed,
+      p7_pack_roundtrip — `cargo kani`, kani 0.67.0) — including the distinctive
+      property that the bit-timing register BTR is accepted for write IFF the phase is
+      Init (p1), Normal is reachable only via Init (p3), and TX/RX are both gated on
+      Normal (p4/p5), all over the whole input space. Dissolved (loom 1.2.0 inline ->
+      synth 0.43.0 --target cortex-m3 --all-exports --relocatable): can-thin-cm3.o =
+      text 804 / data 0 / bss 0 -> 0 SRAM; imports are exactly mmio_read32 /
+      mmio_write32 (0 new TCB atoms, nm-confirmed — the six can_* exports are all
+      DEFINED text symbols). A LOCAL qemu-semihosting probe (gust_can_probe, RAM-window
+      register effects) is GREEN (`cargo run --bin gust_can_probe` -> "can-probe ALL
+      OK", exit 0): config-from-Sleep is rejected leaving BTR untouched
+      (write-protection); enter_init writes MCR.INRQ and the FSM reaches Init; a
+      configure in Init writes BTR = 0x025D_000C (the four masked bit-timing fields);
+      leave_init clears MCR.INRQ and reaches Normal; and — the DISTINCTIVE
+      config-only-in-init property — a configure once Normal is rejected and leaves BTR
+      EXACTLY 0x025D_000C (never clobbered with a stale zero rate); TX loads
+      TI0R=0x2460_0001 / DLC=8 / data only on an empty mailbox (TME0) and is rejected
+      off-Normal or when busy; RX sets exactly RFOM0 (0x20) only with a pending message
+      (FMP0>0) and is rejected off-Normal or when empty. End-to-end the
+      `gust-can-renode` gate (renode-test/gust_can.{repl,robot}, wired into
+      .github/workflows/gust-renode.yml; `bazel query //:gust-can-renode` loads) runs
+      the identical lifecycle on a RAM-mapped CAN1 window on a real STM32 model,
+      asserting each step over USART1 (can-protect-ok / can-init-ok / can-config-ok /
+      can-normal-ok / can-tx-ok / can-rx-ok). Source-level proof + native
+      register-effect check; the wasm->native dissolve is differentially trusted, not
+      proven equivalent (see docs/safety/verification-honesty.md). Scope is qemu probe
+      + Renode content-gate (register-level on a real M3 model), not silicon.
+      Kill-criterion: a Kani harness fails, the probe reports FAIL, or the Renode gate
+      observes a can-*-bad line.
+    tags: [gust, can, bxcan, kani, renode, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-CAN-001
 
   - id: FIND-DRV-RTIO-001
     type: finding
