@@ -234,6 +234,19 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_adc={}", aobj.display());
         println!("cargo:rustc-link-arg-bin=gust_adc_probe={}", aobj.display());
         println!("cargo:rerun-if-changed={}", aobj.display());
+    // The dissolved thin-seam DAC driver (drivers/dac-thin -> loom -> synth --target
+    // cortex-m3 --all-exports --relocatable): the whole STM32F1 software-triggered DAC
+    // path — CR channel/trigger config + the enable->load->trigger->output cycle — in
+    // verified wasm (Kani 7/7, 0 new TCB atoms: mmio read32/write32 only), scalar
+    // packed-u32 FSM (phase[31:30]/channel[29]/value[11:0]), table-free. gust_dac_probe
+    // is the LOCAL qemu-semihosting demonstrator of this SAME dissolved .o (RAM-window
+    // register effects + the Kani-proven glitch-free trigger-gated output), run before
+    // the `gust-dac-renode` content-gate (renode-test/gust_dac.robot).
+    let dacobj = Path::new(&manifest).join("drivers/dac-thin/dac-thin-cm3.o");
+    if dacobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_dac={}", dacobj.display());
+        println!("cargo:rustc-link-arg-bin=gust_dac_probe={}", dacobj.display());
+        println!("cargo:rerun-if-changed={}", dacobj.display());
     }
     // The 4-driver breadth node (REQ-DRV-BREADTH-001): gpio+timer+spi+uart, each a
     // verified-wasm gust:hal component, wac/meld-fused → ONE dissolved .o exporting

@@ -115,6 +115,19 @@ renode_test(
     variables_with_label = {
         "ELF": ":gust_adc.elf",
         "REPL": ":gust_adc.repl",
+# Thin-seam software-triggered DAC driver content gate — the dissolved driver
+# (verified-wasm DAC CR/DHR/SWTRIGR/DOR protocol, Kani-proven glitch-free
+# trigger-gated output) exercised on a RAM-mapped DAC window on a real STM32 model;
+# asserts the exact CR/DHR/SWTRIGR register effects AND that a staged DHR code does
+# not move DOR until a trigger fires via Wait For Line On Uart (content, not just
+# no-fault).
+renode_test(
+    name = "gust-dac-renode",
+    timeout = "short",
+    robot_test = "gust_dac.robot",
+    variables_with_label = {
+        "ELF": ":gust_dac.elf",
+        "REPL": ":gust_dac.repl",
     },
 )
 

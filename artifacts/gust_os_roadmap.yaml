@@ -168,6 +168,26 @@ artifacts:
       a proof-carrying single sample per command, never a stale one silently used as a
       control input.
     tags: [gust, driver, adc, analog, thin-seam, read-after-eoc, single-shot, health-monitor]
+  - id: REQ-DRV-DAC-001
+    type: sw-req
+    title: "DAC is a verified thin-seam driver — glitch-free, trigger-gated analog output"
+    status: implemented
+    release: v0.3.0
+    description: >
+      The STM32F1 software-triggered DAC path — CR channel/trigger configuration
+      (EN | TEN | TSEL=software), the data holding register (DHR) staging write, the
+      software trigger (SWTRIGR), and the data output register (DOR) read-back — SHALL
+      be a Component-Model driver whose full protocol logic is verified wasm dissolved
+      to native, importing ONLY the gust:hal mmio capability. No new TCB atom: the
+      driver computes the CR word, the DHR/DOR/SWTRIGR offsets, and the 12-bit code
+      encoding; the TCB only executes the volatile read/write it is handed. The output
+      SHALL be glitch-free and trigger-gated: writing DHR SHALL NOT move the pin (DOR
+      updates only when a trigger fires), so a control loop can stage a new code and
+      publish it atomically, never emitting a half-updated value on an actuator line.
+      Every commanded value SHALL be clamped to a 12-bit code (no overrange), and the
+      lifecycle FSM SHALL be Kani-proven total over its input domain, including that
+      the output equals the last LOADED value and changes ONLY on an explicit trigger.
+    tags: [gust, driver, dac, analog, thin-seam, glitch-free, actuator]
     links:
       - type: derives-from
         target: SYSREQ-BYOOS-001
@@ -365,6 +385,46 @@ artifacts:
     links:
       - type: verifies
         target: REQ-DRV-ADC-001
+  - id: VER-DRV-DAC-001
+    type: sw-verification
+    title: "DAC driver — Kani 7/7 (glitch-free trigger-gated output, range-clamp, phase-gating) + Renode register-effect content-gate"
+    status: verified
+    release: v0.3.0
+    description: >
+      The dac-thin driver's software-triggered output FSM is Kani-proven (7/7
+      harnesses, 0 failures: p1_range_clamp, p2_output_reflects_loaded,
+      p3_glitch_free, p4_phase_gating, p5_disable_total, p6_pack_roundtrip,
+      p7_config_well_formed — `cargo kani`, kani 0.67.0) — including the distinctive
+      property that the output is glitch-free and trigger-gated: `load` always lands
+      Loaded (staged, pin unmoved) and Output is reachable ONLY via `trigger` from
+      Loaded, which preserves the value (p3 + p2), and every commanded value is masked
+      to a 12-bit code (p1). Dissolved (loom 1.1.18 inline -> synth 0.40.0 --target
+      cortex-m3 --all-exports --relocatable): dac-thin-cm3.o = text 686 / data 0 / bss
+      0 -> 0 SRAM; imports are exactly env.mmio_read32 / env.mmio_write32 (0 new TCB
+      atoms), scalar packed-u32 FSM (phase[31:30]/channel[29]/value[11:0]), table-free.
+      A LOCAL qemu-semihosting probe (gust_dac_probe, RAM-window register effects)
+      confirmed (dac-probe ALL OK, exit 0): a load/trigger before enable is rejected
+      untouched (phase-gating), enable writes CR=0x3D, load writes DHR=0xABC while DOR
+      stays 0 (the pin does NOT move on load), the trigger writes SWTRIGR=0x1 and the
+      pin then reads back 0xABC (output-reflects-loaded), and — glitch-free — staging
+      0x555 while 0xABC is published rewrites DHR but DOR still reads 0xABC until the
+      second trigger publishes it atomically; an overrange 0x12FFF is clamped to
+      DHR=0xFFF. End-to-end the `gust-dac-renode` gate runs the identical cycle on a
+      RAM-mapped DAC window on a real STM32 model, asserting each step over USART1
+      (dac-phase-gate-ok / dac-enable-ok / dac-load-ok / dac-trigger-ok /
+      dac-glitch-free-ok / dac-publish2-ok / dac-clamp-ok / dac-disable-ok). A plain
+      RAM window has no DAC peripheral to latch DHR->DOR on the software trigger, so
+      both the probe and the gate emulate that one hardware step (cf. gust_spi
+      pre-seeding SR/DR); every other register effect is the dissolved driver.
+      Source-level proof + native register-effect check; the wasm->native dissolve is
+      differentially trusted, not proven equivalent (see
+      docs/safety/verification-honesty.md). Scope is qemu probe + Renode content-gate
+      (register-level on a real M3 model), not silicon. Kill-criterion: a Kani harness
+      fails, the probe reports FAIL, or the Renode gate observes a dac-*-bad line.
+    tags: [gust, dac, analog, kani, renode, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-DAC-001
 
   - id: FIND-DRV-RTIO-001
     type: finding
