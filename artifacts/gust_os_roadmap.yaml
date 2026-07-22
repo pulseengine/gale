@@ -143,6 +143,34 @@ artifacts:
       - type: related-to
         target: REQ-DRV-BREADTH-001
 
+  - id: REQ-DRV-DAC-001
+    type: sw-req
+    title: "DAC is a verified thin-seam driver — glitch-free, trigger-gated analog output"
+    status: implemented
+    release: v0.3.0
+    description: >
+      The STM32F1 software-triggered DAC path — CR channel/trigger configuration
+      (EN | TEN | TSEL=software), the data holding register (DHR) staging write, the
+      software trigger (SWTRIGR), and the data output register (DOR) read-back — SHALL
+      be a Component-Model driver whose full protocol logic is verified wasm dissolved
+      to native, importing ONLY the gust:hal mmio capability. No new TCB atom: the
+      driver computes the CR word, the DHR/DOR/SWTRIGR offsets, and the 12-bit code
+      encoding; the TCB only executes the volatile read/write it is handed. The output
+      SHALL be glitch-free and trigger-gated: writing DHR SHALL NOT move the pin (DOR
+      updates only when a trigger fires), so a control loop can stage a new code and
+      publish it atomically, never emitting a half-updated value on an actuator line.
+      Every commanded value SHALL be clamped to a 12-bit code (no overrange), and the
+      lifecycle FSM SHALL be Kani-proven total over its input domain, including that
+      the output equals the last LOADED value and changes ONLY on an explicit trigger.
+    tags: [gust, driver, dac, analog, thin-seam, glitch-free, actuator]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+      - type: related-to
+        target: REQ-DRV-BREADTH-001
+
   # VER-* verifiers are added by the feature loop WHEN the proof actually passes —
   # that incoming `verifies` link is what drops a req off the `rivet release status`
   # not-ready list, so the burn-down tells the truth. GPIO's is now real (below);
@@ -294,6 +322,20 @@ artifacts:
     links:
       - type: verifies
         target: REQ-DRV-WDG-001
+
+  - id: VER-DRV-DAC-001
+    type: sw-verification
+    title: "DAC driver — Kani 7/7 (glitch-free trigger-gated output, range-clamp, phase-gating) + Renode register-effect content-gate"
+    status: proposed
+    release: v0.3.0
+    description: >
+      The dac-thin driver's software-triggered output FSM is Kani-proven and exercised
+      end-to-end on a real STM32 model (register-level). PENDING the qemu probe green +
+      the Renode gate wiring before this flips to verified.
+    tags: [gust, dac, analog, kani, renode, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-DAC-001
 
   - id: FIND-DRV-RTIO-001
     type: finding
