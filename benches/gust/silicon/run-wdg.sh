@@ -33,4 +33,4 @@ cargo build --release --bin gust_wdg_silicon --target thumbv7em-none-eabi
 ELF="target/thumbv7em-none-eabi/release/gust_wdg_silicon"
 
 echo "== flash + capture on $CHIP via probe-rs (watch for 'CONFIRMED'; Ctrl-C after) =="
-probe-rs run --chip "$CHIP" --catch-hardfault "$ELF"
+probe-rs run --chip "$CHIP" "$ELF"

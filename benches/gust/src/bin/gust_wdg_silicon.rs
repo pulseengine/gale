@@ -64,7 +64,7 @@ mod target;
 #[path = "../../targets/generated/gust_target_stm32f100.rs"]
 #[allow(dead_code)]
 mod target;
-use target::{IWDG_BASE, IWDGRSTF, RCC_CSR, RMVF};
+use target::{BOARD, IWDG_BASE, IWDGRSTF, RCC_CSR, RMVF};
 
 const KEY_START: u32 = 0xCCCC;
 const WDG_FAULT: u32 = 0xFFFF_FFFF;
@@ -78,10 +78,10 @@ fn main() -> ! {
     if csr & IWDGRSTF != 0 {
         // boot 2: the watchdog fired on real silicon.
         hprintln!(
-            "gust-wdg-silicon OK: IWDG watchdog reset CONFIRMED on real G474RE silicon \
+            "gust-wdg-silicon OK: IWDG watchdog reset CONFIRMED on real {} silicon \
              (RCC_CSR=0x{:08x}, IWDGRSTF=1) — the dissolved wdg-thin driver armed the \
              hardware watchdog and it fired the reset.",
-            csr
+            BOARD, csr
         );
         // clear the reset flags so a re-run starts clean.
         unsafe { write_volatile(RCC_CSR as *mut u32, csr | RMVF) };
@@ -91,9 +91,9 @@ fn main() -> ! {
 
     // boot 1: arm the real IWDG through the dissolved driver, then stop kicking it.
     hprintln!(
-        "gust-wdg-silicon: boot 1 (RCC_CSR=0x{:08x}, no prior WDG reset). Arming the REAL \
+        "gust-wdg-silicon: boot 1 on {} (RCC_CSR=0x{:08x}, no prior WDG reset). Arming the REAL \
          IWDG @0x{:08x} via the dissolved wdg-thin driver (PR={}, RLR=0x{:x} ≈ 1.2 s)...",
-        csr, IWDG_BASE, PRESCALER, RELOAD
+        BOARD, csr, IWDG_BASE, PRESCALER, RELOAD
     );
 
     let s1 = unsafe { wdg_unlock(IWDG_BASE, 0) };

@@ -918,8 +918,8 @@ artifacts:
 
   - id: VER-TARGET-IWDG-001
     type: sw-verification
-    title: "Target-model generator is golden- + parity-tested and drift-gated; IWDG firmware retargets F1<->G4 by model-swap"
-    status: implemented
+    title: "Target-model generator is golden- + parity-tested and drift-gated; IWDG firmware retargets F1<->G4 by model-swap — SILICON-VALIDATED on STM32G474 + STM32F100"
+    status: verified
     release: v0.10.0
     description: >
       gust-target-gen is verified at three levels. (1) GOLDEN: emit_rs/emit_ld/emit_wit
@@ -934,11 +934,16 @@ artifacts:
       fails on any diff. gust_wdg_silicon consumes the generated constants via a
       feature-gated module (target-g474re default / target-f100) and BOTH firmwares build
       (g474 thumbv7em, f100 thumbv7m) from one source — the same verified wdg-thin driver
-      programming both silicon families by model-swap alone. Scope at this release:
-      generator + host tests + firmware build parity; the on-silicon confirmation on real
-      G474RE + F100 is tracked separately and flips this to verified. Kill-criterion: a
-      golden or parity test fails, or the CI drift gate observes a diff between the
-      committed generated/ tree and the generator.
+      programming both silicon families by model-swap alone. SILICON-VALIDATED
+      2026-07-22: the generated-constants firmware was flashed to a real STM32G474
+      (thumbv7em, probe-rs) and a real STM32F100 (thumbv7m, openocd) — each read
+      RCC_CSR at its own family's offset (0x94/0x24) and detected IWDGRSTF=1 after the
+      hardware watchdog reset (RCC_CSR=0x34000000 both), proving the AADL-generated
+      constants are correct on silicon for both families (see
+      benches/gust/targets/RESULTS-target-model.md). Kill-criterion: a golden or parity
+      test fails, the CI drift gate observes a diff between the committed generated/
+      tree and the generator, or the watchdog does not fire on silicon (IWDGRSTF stays
+      0).
     tags: [gust, target-model, generator, golden, parity, drift-gate, wit, verification]
     links:
       - type: verifies
