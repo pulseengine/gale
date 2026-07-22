@@ -888,3 +888,60 @@ artifacts:
       - type: verifies
         target: REQ-DRV-DMA-001
 
+
+  - id: REQ-TARGET-MODEL-001
+    type: sw-req
+    title: "Board/SoC/device facts are defined once in the spar/AADL target model and generated, never hand-written"
+    status: implemented
+    release: v0.10.0
+    description: >
+      The per-target hardware facts a driver needs — peripheral base addresses, the
+      memory map (flash/SRAM origin+length), the RCC reset-flag register offset and bit
+      positions, and peripheral presence — SHALL be defined once in a spar/AADL target
+      model (benches/gust/targets/*.aadl), analyzed by spar (parse + EMV2 fault
+      propagation), and turned into the firmware constants, linker memory map, and
+      gust:hal WIT world by a build-time generator (gust-target-gen). Firmware SHALL NOT
+      hand-write these constants. Retargeting a verified driver across an SoC family
+      (e.g. STM32F1 <-> STM32G4, whose IWDG driver differs ONLY in the RCC_CSR offset
+      0x24/0x94 and the RMVF bit 24/23) SHALL be achieved by selecting a target model,
+      not by editing code. The generated artifacts SHALL be committed and a CI drift
+      gate SHALL fail if they fall out of sync with the model. Zero runtime cost: the
+      constants bake into the dissolved object; nothing here adds a TCB atom or SRAM.
+      This is the scaling mechanism behind driver breadth and multi-board silicon
+      validation (G474RE + F100).
+    tags: [gust, target-model, aadl, spar, codegen, generator, build-time, driver-breadth]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-WDG-001
+
+  - id: VER-TARGET-IWDG-001
+    type: sw-verification
+    title: "Target-model generator is golden- + parity-tested and drift-gated; IWDG firmware retargets F1<->G4 by model-swap"
+    status: implemented
+    release: v0.10.0
+    description: >
+      gust-target-gen is verified at three levels. (1) GOLDEN: emit_rs/emit_ld/emit_wit
+      are golden-tested for both boards (STM32F100 + STM32G474) against committed
+      expected files; the generated gust:hal WIT world RESOLVES against the real
+      gust-hal.wit via wasm-tools. (2) KEYSTONE PARITY: a test asserts the generated
+      constants EQUAL the exact values gust_wdg_silicon.rs hand-wrote before the
+      retarget (F1 RCC_CSR=0x40021024/RMVF bit 24; G4 RCC_CSR=0x40021094/RMVF bit 23;
+      IWDG_BASE=0x40003000 both), so the model-drive cannot silently change what the
+      firmware programs. (3) DRIFT: benches/gust/targets/generated/ is committed and the
+      gust-targets CI workflow regenerates it from the committed spar-items fixture and
+      fails on any diff. gust_wdg_silicon consumes the generated constants via a
+      feature-gated module (target-g474re default / target-f100) and BOTH firmwares build
+      (g474 thumbv7em, f100 thumbv7m) from one source — the same verified wdg-thin driver
+      programming both silicon families by model-swap alone. Scope at this release:
+      generator + host tests + firmware build parity; the on-silicon confirmation on real
+      G474RE + F100 is tracked separately and flips this to verified. Kill-criterion: a
+      golden or parity test fails, or the CI drift gate observes a diff between the
+      committed generated/ tree and the generator.
+    tags: [gust, target-model, generator, golden, parity, drift-gate, wit, verification]
+    links:
+      - type: verifies
+        target: REQ-TARGET-MODEL-001
+      - type: related-to
+        target: VER-DRV-WDG-001
