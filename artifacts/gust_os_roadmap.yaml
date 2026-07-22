@@ -143,6 +143,37 @@ artifacts:
       - type: related-to
         target: REQ-DRV-BREADTH-001
 
+  - id: REQ-DRV-PWM-001
+    type: sw-req
+    title: "PWM actuator output is a verified thin-seam driver — duty can never exceed the period, and the failsafe is total and latching"
+    status: implemented
+    release: v0.3.0
+    description: >
+      The STM32 advanced-timer PWM output path — CCMR1 PWM-mode-1 + output-preload
+      config, PSC/ARR period load, CCR duty load, CCER output-enable and BDTR.MOE
+      main-output-enable gating, EGR.UG latch — SHALL be a Component-Model driver whose
+      full protocol logic is verified wasm dissolved to native, importing ONLY the
+      gust:hal mmio capability. No new TCB atom: PWM is a pure-output path, so the driver
+      imports exactly one atom (mmio_write32) and computes every bit field itself; the
+      TCB only executes the volatile write it is handed. Two safety properties SHALL hold
+      for every reachable state and every commanded value: (1) the commanded duty SHALL
+      be clamped to the period, so the compare value (CCR) can never exceed the
+      auto-reload (ARR) — an unintended 100% output on an ESC/servo is full throttle /
+      hard-over; and (2) the failsafe SHALL be total and latching — `failsafe` forces the
+      outputs off (clears MOE) from ANY state, and cannot be undone by a stray `start`
+      (only an explicit reconfigure re-arms). This is the actuator output stage the
+      cross-core Health Monitor (gale#63) trips as the 4× failsafe-PWM on FMU loss /
+      window overrun. The output FSM SHALL be Kani-proven total over its input domain,
+      including that the duty clamp and the failsafe latch hold for every reachable state.
+    tags: [gust, driver, pwm, actuator, thin-seam, failsafe, duty-clamp, health-monitor]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+      - type: related-to
+        target: REQ-DRV-BREADTH-001
+
   # VER-* verifiers are added by the feature loop WHEN the proof actually passes —
   # that incoming `verifies` link is what drops a req off the `rivet release status`
   # not-ready list, so the burn-down tells the truth. GPIO's is now real (below);
@@ -294,6 +325,45 @@ artifacts:
     links:
       - type: verifies
         target: REQ-DRV-WDG-001
+
+  - id: VER-DRV-PWM-001
+    type: sw-verification
+    title: "PWM driver — Kani 7/7 (duty clamp + total/latching failsafe) + qemu probe + Renode register-effect content-gate"
+    status: proposed
+    release: v0.3.0
+    description: >
+      The pwm-thin driver's PWM output FSM + pure config core is Kani-proven (7/7
+      harnesses, 0 failures: p1_duty_clamp, p2_failsafe_total_off, p3_failsafe_latches,
+      p4_phase_gating, p5_config_well_formed, p6_pack_roundtrip, p7_start_keeps_duty —
+      `cargo kani`, kani 0.67.0) — including the two distinctive properties: the duty
+      clamp (an accepted `set_duty` yields a duty ≤ the period for ANY commanded duty and
+      period, so CCR can never exceed ARR → never an unintended 100% output), and the
+      total + latching failsafe (`failsafe` lands Safe with duty 0 from EVERY state, and
+      from Safe neither `start` nor `set_duty` is accepted — only `configure` re-arms, so
+      a tripped failsafe cannot be casually undone). Dissolved (loom 1.1.18 inline ->
+      synth 0.40.0 --target cortex-m3 --all-exports --relocatable): pwm-thin-cm3.o =
+      text 728 / data 0 / bss 0 -> 0 SRAM; the ONLY import is env.mmio_write32 (PWM is a
+      pure-output path — it never reads a register), 0 new TCB atoms. A LOCAL
+      qemu-semihosting probe (gust_pwm_probe, RAM-window register effects) confirmed:
+      set_duty/start before configure is rejected untouched (phase-gating), PSC/ARR carry
+      the period (0x7 / 0x3E8) and CCMR1 reads back 0x68 (PWM mode 1 + preload) with CCER
+      output-enable / CR1 ARPE / EGR.UG latch, a commanded duty of 0x7D0 above the period
+      clamps to CCR1 = ARR = 0x3E8 (duty clamp), start arms the output (BDTR.MOE = 0x8000,
+      CR1 = 0x81) preserving the clamped duty, and — failsafe total + latching —
+      `pwm_failsafe` clears MOE (BDTR = 0) → Safe and from Safe every start/set_duty is
+      rejected with no register write (BDTR stays 0) until an explicit reconfigure. End-to-end
+      the `gust-pwm-renode` gate runs the identical PWM lifecycle on a RAM-mapped
+      advanced-timer window on a real STM32 model, asserting each step over USART1
+      (pwm-protect-ok / pwm-config-ok / pwm-clamp-ok / pwm-start-ok / pwm-failsafe-ok /
+      pwm-latch-ok). Source-level proof + native register-effect check; the wasm→native
+      dissolve is differentially trusted, not proven equivalent (see
+      docs/safety/verification-honesty.md). Scope is qemu probe + Renode content-gate
+      (register-level on a real M3 model), not silicon. Kill-criterion: a Kani harness
+      fails, the probe reports FAIL, or the Renode gate observes a pwm-*-bad line.
+    tags: [gust, pwm, actuator, kani, renode, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-PWM-001
 
   - id: FIND-DRV-RTIO-001
     type: finding
