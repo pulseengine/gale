@@ -1,3 +1,4 @@
+mod emit_rs;
 mod model;
 
 fn main() {
