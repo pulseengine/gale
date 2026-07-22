@@ -88,17 +88,26 @@ first iodev; the `gust:os` I/O capability (v0.4.0) is the RTIO-shaped
 `docs/research/driver-framework-rtio-iouring.md`.
 
 **Readiness is the `rivet release status` burn-down, not this table.** The table is
-the *scope map*; whether a milestone is cuttable is a query. Live snapshot
-(2026-07-08, `rivet release status`, `require: coverage`):
+the *scope map*; whether a milestone is cuttable is a query. Current state (regenerate
+with `rivet release status`; `gh release list` is the tag-of-record):
 
 ```
-v0.1.0  ✓ Cuttable            (11 artifacts, V closed)         — semaphore, done
-v0.2.0  ✗ NOT cuttable (3)    DD-DMA-ENFORCE/REGION, REQ-DMA-ASYNC — DMA, in progress
-v0.3.0  ✗ NOT cuttable (4)    REQ-DRV-{GPIO,TIMER,SPI,BREADTH}     — driver breadth, not started
-v0.4.0  ✗ NOT cuttable (1)    REQ-OS-SYSCALL                       — syscall seam
-v0.5.0  ✗ NOT cuttable (2)    REQ-OS-{MPU,MULTITENANT}             — isolation
-v1.0.0  ✗ NOT cuttable (1)    REQ-OS-RELEASE                       — the OS cut
+v0.1.0  ✅ RELEASED (tag, 2026-07-08)   — semaphore
+v0.2.0  ✅ RELEASED (tag, 2026-07-09)   — DMA ownership
+v0.3.0  ✅ RELEASED (tag, 2026-07-09)   — driver breadth kickoff (the full thin-seam
+          suite + closes landed later on main, unreleased → v0.5.0)
+v0.4.0  ✅ RELEASED (tag, 2026-07-16)   — latest tag
+v0.5.0  ▶ IN PLANNING                   — "The Unblock & Consolidate": bundles the
+          work merged since v0.4.0 but not yet tagged (timer/wdg/HM/target-model +
+          the v0.9-labelled driver closes) PLUS the syscall seam (meld#326 unblocked)
+          + toolchain modernization + F100 silicon breadth. See
+          docs/releases/v0.5.0-unblock.md.
+v1.0.0  ○ FUTURE                        — the signed OS cut
 ```
+
+> **Note (2026-07-22):** the syscall seam and the full thin-driver suite have LANDED
+> on `main` (see recent commits + `benches/gust/drivers/`); the burn-down below the
+> line is the historical planning snapshot and is superseded by the v0.5.0 plan.
 
 A planned milestone deliberately carries **no verification artifacts** — under
 `require: coverage` a req reads "ready" the instant a `verifies` link exists, so
@@ -118,11 +127,15 @@ byte-identical dissolve — all mechanical, per `oracle-gate-a-change`.
 (synth#494, the 0.45× floor) makes the dissolved OS *faster*; it is not on the
 OS-completeness critical path and does not gate any milestone above.
 
-**Immediate next step (v0.3.0, driver breadth):** start with **GPIO** — the smallest
-verified thin-seam driver — as the pattern-setter: `drivers/gpio-thin/` (wasm pin
-logic + Kani `pin-config` proof), a Renode F100 read-back content-gate, and a
-COMPARE.md row (dissolved size + confirming 0 new TCB atoms). Then timer, then SPI
-(reusing `dma-own`). Ship v0.3.0 when all four `VER-DRV-*` are green.
+**Immediate next step (v0.5.0, "The Unblock & Consolidate"):** the driver-breadth
+pattern-setter is long done — `benches/gust/drivers/` now holds the full thin-seam
+suite (gpio/timer/spi/i2c/adc/dac/pwm/wdg/can/uart + dma-own), each Kani-proven with a
+Renode F100 content-gate, and the AADL target model (silicon-validated on real
+G474RE + F100) has landed. The next release consolidates all of that (merged since
+v0.4.0) and takes the now-unblocked leap: the **syscall seam** (log/channel/io/spawn,
+freed by `meld#326` closing), **toolchain modernization** (synth 0.49 incl the
+`synth#686` 12 % win, loom 1.2), and **F100 silicon breadth**. Full scope +
+sequence + exit criteria in [`docs/releases/v0.5.0-unblock.md`](releases/v0.5.0-unblock.md).
 
 ## Wasm-module distribution (added 2026-06-11)
 
