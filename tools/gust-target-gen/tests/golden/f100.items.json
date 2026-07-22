@@ -1,0 +1,582 @@
+[
+  {
+    "name": "Cortex_M",
+    "with_clauses": [],
+    "component_types": [
+      {
+        "name": "CortexM3",
+        "category": "processor",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      },
+      {
+        "name": "CortexM4",
+        "category": "processor",
+        "extends": "CortexM3",
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      }
+    ],
+    "component_impls": [],
+    "feature_group_types": []
+  },
+  {
+    "name": "STM32F100",
+    "with_clauses": [
+      "Cortex_M",
+      "Gust_Target_Props"
+    ],
+    "component_types": [
+      {
+        "name": "Flag_Flash",
+        "category": "memory",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      },
+      {
+        "name": "Ram",
+        "category": "memory",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      },
+      {
+        "name": "Iwdg",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#40003000#",
+            "typed_value": {
+              "Integer": [
+                1073754112,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "true",
+            "typed_value": {
+              "Boolean": true
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Rcc",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#40021000#",
+            "typed_value": {
+              "Integer": [
+                1073876992,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Csr_Offset",
+            "value": "16#24#",
+            "typed_value": {
+              "Integer": [
+                36,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Iwdgrstf_Bit",
+            "value": "29",
+            "typed_value": {
+              "Integer": [
+                29,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Rmvf_Bit",
+            "value": "24",
+            "typed_value": {
+              "Integer": [
+                24,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Board",
+        "category": "system",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      }
+    ],
+    "component_impls": [
+      {
+        "name": "Flag_Flash.i",
+        "category": "memory",
+        "type_name": "Flag_Flash",
+        "impl_name": "i",
+        "extends": null,
+        "subcomponents": [],
+        "connections": [],
+        "flows": [],
+        "e2e_flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#08000000#",
+            "typed_value": {
+              "Integer": [
+                134217728,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Length",
+            "value": "131072",
+            "typed_value": {
+              "Integer": [
+                131072,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Ram.i",
+        "category": "memory",
+        "type_name": "Ram",
+        "impl_name": "i",
+        "extends": null,
+        "subcomponents": [],
+        "connections": [],
+        "flows": [],
+        "e2e_flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#20000000#",
+            "typed_value": {
+              "Integer": [
+                536870912,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Length",
+            "value": "8192",
+            "typed_value": {
+              "Integer": [
+                8192,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Board.vldiscovery",
+        "category": "system",
+        "type_name": "Board",
+        "impl_name": "vldiscovery",
+        "extends": null,
+        "subcomponents": [
+          {
+            "name": "cpu",
+            "category": "processor",
+            "classifier": "Cortex_M::CortexM3",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "flash",
+            "category": "memory",
+            "classifier": "Flag_Flash.i",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "sram",
+            "category": "memory",
+            "classifier": "Ram.i",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "iwdg",
+            "category": "device",
+            "classifier": "Iwdg",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "rcc",
+            "category": "device",
+            "classifier": "Rcc",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          }
+        ],
+        "connections": [],
+        "flows": [],
+        "e2e_flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      }
+    ],
+    "feature_group_types": []
+  },
+  {
+    "name": "STM32G474",
+    "with_clauses": [
+      "Cortex_M",
+      "Gust_Target_Props"
+    ],
+    "component_types": [
+      {
+        "name": "Flag_Flash",
+        "category": "memory",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      },
+      {
+        "name": "Ram",
+        "category": "memory",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      },
+      {
+        "name": "Iwdg",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#40003000#",
+            "typed_value": {
+              "Integer": [
+                1073754112,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "true",
+            "typed_value": {
+              "Boolean": true
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Rcc",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#40021000#",
+            "typed_value": {
+              "Integer": [
+                1073876992,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Csr_Offset",
+            "value": "16#94#",
+            "typed_value": {
+              "Integer": [
+                148,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Iwdgrstf_Bit",
+            "value": "29",
+            "typed_value": {
+              "Integer": [
+                29,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Rmvf_Bit",
+            "value": "23",
+            "typed_value": {
+              "Integer": [
+                23,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Board",
+        "category": "system",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      }
+    ],
+    "component_impls": [
+      {
+        "name": "Flag_Flash.i",
+        "category": "memory",
+        "type_name": "Flag_Flash",
+        "impl_name": "i",
+        "extends": null,
+        "subcomponents": [],
+        "connections": [],
+        "flows": [],
+        "e2e_flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#08000000#",
+            "typed_value": {
+              "Integer": [
+                134217728,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Length",
+            "value": "524288",
+            "typed_value": {
+              "Integer": [
+                524288,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Ram.i",
+        "category": "memory",
+        "type_name": "Ram",
+        "impl_name": "i",
+        "extends": null,
+        "subcomponents": [],
+        "connections": [],
+        "flows": [],
+        "e2e_flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#20000000#",
+            "typed_value": {
+              "Integer": [
+                536870912,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Length",
+            "value": "98304",
+            "typed_value": {
+              "Integer": [
+                98304,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Board.nucleo",
+        "category": "system",
+        "type_name": "Board",
+        "impl_name": "nucleo",
+        "extends": null,
+        "subcomponents": [
+          {
+            "name": "cpu",
+            "category": "processor",
+            "classifier": "Cortex_M::CortexM4",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "flash",
+            "category": "memory",
+            "classifier": "Flag_Flash.i",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "sram",
+            "category": "memory",
+            "classifier": "Ram.i",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "iwdg",
+            "category": "device",
+            "classifier": "Iwdg",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "rcc",
+            "category": "device",
+            "classifier": "Rcc",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          }
+        ],
+        "connections": [],
+        "flows": [],
+        "e2e_flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      }
+    ],
+    "feature_group_types": []
+  }
+]
