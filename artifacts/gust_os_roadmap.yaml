@@ -460,3 +460,431 @@ artifacts:
     links:
       - type: verifies
         target: REQ-OS-SYSCALL-001
+  - id: REQ-DRV-ADC-001
+    type: sw-req
+    title: "ADC is a verified thin-seam driver — read-after-EOC exactly-once analog input"
+    status: implemented
+    release: v0.3.0
+    description: >
+      The STM32F1 ADC single-conversion path — the SMPR sample-time and SQR
+      regular-sequence configuration and the enable→start→EOC→read master conversion
+      cycle — SHALL be a Component-Model driver whose full protocol logic is verified
+      wasm dissolved to native, importing ONLY the gust:hal mmio capability. No new TCB
+      atom: the driver computes the SMPR/SQR field encodings (table-free, pure bit
+      arithmetic) and the CR2 ADON/SWSTART writes; the TCB only executes the volatile
+      read/write it is handed. The conversion result register (DR) SHALL be readable
+      ONLY after End-Of-Conversion and consumed exactly once per conversion
+      (read-after-EOC, exactly-once): reading before EOC yields a stale/garbage sample
+      and letting the ADC free-run (CONT=1) or reading twice yields a torn value — both
+      MUST be rejected without mutating the FSM. Single-shot SHALL hold: a completed
+      conversion returns to Ready, never Converting, so the ADC never free-runs, and
+      the only path back to Converting is an explicit start. The lifecycle FSM SHALL be
+      Kani-proven total over its input domain, including channel bounds, phase-gating,
+      the read-after-EOC rule, and a total disable from every reachable state. This is
+      the analog-sensor input the partition-scheduler control loops (gale#63) consume:
+      a proof-carrying single sample per command, never a stale one silently used as a
+      control input.
+    tags: [gust, driver, adc, analog, thin-seam, read-after-eoc, single-shot, health-monitor]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+      - type: related-to
+        target: REQ-DRV-BREADTH-001
+
+  - id: VER-DRV-ADC-001
+    type: sw-verification
+    title: "ADC driver — Kani 7/7 (read-after-EOC, single-shot, channel-bounds) + Renode register-effect content-gate"
+    status: verified
+    release: v0.3.0
+    description: >
+      The adc-thin driver's single-conversion FSM is Kani-proven (7/7 harnesses, 0
+      failures: p1_channel_bounds, p2_read_after_eoc, p3_single_shot, p4_phase_gating,
+      p5_disable_total, p6_pack_roundtrip, p7_config_well_formed — `cargo kani`, kani
+      0.67.0) — including the distinctive property that the data register is read ONLY
+      from Complete (p2_read_after_eoc: reading off-Complete is rejected, no stale
+      sample; on success the sample is 12-bit-masked) and single-shot holds (p3: a
+      completed read lands Ready, never Converting, and `begin` from Ready is the ONLY
+      producer of Converting, so the ADC never free-runs; `sample` changes only on
+      read). Dissolved (loom 1.1.18 inline -> synth 0.40.0 --target cortex-m3
+      --all-exports --relocatable): adc-thin-cm3.o = text 754 / data 0 / bss 0 -> 0
+      SRAM; imports are exactly env.mmio_read32 / env.mmio_write32 (0 new TCB atoms). A
+      LOCAL qemu-semihosting probe (gust_adc_probe, RAM-window register effects)
+      confirmed: an out-of-range channel is rejected untouched (channel bounds), enable
+      writes CR2=ADON, the table-free config lands SMPR2=0x800 / SQR3=0x3 / SQR1=0 /
+      CR2=ADON exactly, start writes CR2=ADON|SWSTART, reading DR before EOC is
+      rejected with no stale sample, poll observes EOC -> Complete, read consumes DR and
+      lands Ready with the 12-bit-masked sample (0x1abc -> 0xabc), reading twice is
+      rejected while re-converting needs an explicit start (single-shot), and disable
+      drives CR2=0 -> Off from any state. End-to-end the `gust-adc-renode` gate runs the
+      identical cycle on a RAM-mapped ADC1 window on a real STM32 model, asserting each
+      step over USART1 (adc-chanbound-ok / adc-enable-ok / adc-config-ok / adc-start-ok
+      / adc-no-stale-ok / adc-poll-ok / adc-read-ok / adc-single-shot-ok /
+      adc-disable-ok). Source-level proof + native register-effect check; the
+      wasm->native dissolve is differentially trusted, not proven equivalent (see
+      docs/safety/verification-honesty.md). Scope is qemu probe + Renode content-gate
+      (register-level on a real M3 model), not silicon. Kill-criterion: a Kani harness
+      fails, the probe reports FAIL, or the Renode gate observes an adc-*-bad line.
+    tags: [gust, adc, analog, kani, renode, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-ADC-001
+
+  - id: REQ-DRV-DAC-001
+    type: sw-req
+    title: "DAC is a verified thin-seam driver — glitch-free, trigger-gated analog output"
+    status: implemented
+    release: v0.3.0
+    description: >
+      The STM32F1 software-triggered DAC path — CR channel/trigger configuration
+      (EN | TEN | TSEL=software), the data holding register (DHR) staging write, the
+      software trigger (SWTRIGR), and the data output register (DOR) read-back — SHALL
+      be a Component-Model driver whose full protocol logic is verified wasm dissolved
+      to native, importing ONLY the gust:hal mmio capability. No new TCB atom: the
+      driver computes the CR word, the DHR/DOR/SWTRIGR offsets, and the 12-bit code
+      encoding; the TCB only executes the volatile read/write it is handed. The output
+      SHALL be glitch-free and trigger-gated: writing DHR SHALL NOT move the pin (DOR
+      updates only when a trigger fires), so a control loop can stage a new code and
+      publish it atomically, never emitting a half-updated value on an actuator line.
+      Every commanded value SHALL be clamped to a 12-bit code (no overrange), and the
+      lifecycle FSM SHALL be Kani-proven total over its input domain, including that
+      the output equals the last LOADED value and changes ONLY on an explicit trigger.
+    tags: [gust, driver, dac, analog, thin-seam, glitch-free, actuator]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+      - type: related-to
+        target: REQ-DRV-BREADTH-001
+
+  - id: VER-DRV-DAC-001
+    type: sw-verification
+    title: "DAC driver — Kani 7/7 (glitch-free trigger-gated output, range-clamp, phase-gating) + Renode register-effect content-gate"
+    status: verified
+    release: v0.3.0
+    description: >
+      The dac-thin driver's software-triggered output FSM is Kani-proven (7/7
+      harnesses, 0 failures: p1_range_clamp, p2_output_reflects_loaded,
+      p3_glitch_free, p4_phase_gating, p5_disable_total, p6_pack_roundtrip,
+      p7_config_well_formed — `cargo kani`, kani 0.67.0) — including the distinctive
+      property that the output is glitch-free and trigger-gated: `load` always lands
+      Loaded (staged, pin unmoved) and Output is reachable ONLY via `trigger` from
+      Loaded, which preserves the value (p3 + p2), and every commanded value is masked
+      to a 12-bit code (p1). Dissolved (loom 1.1.18 inline -> synth 0.40.0 --target
+      cortex-m3 --all-exports --relocatable): dac-thin-cm3.o = text 686 / data 0 / bss
+      0 -> 0 SRAM; imports are exactly env.mmio_read32 / env.mmio_write32 (0 new TCB
+      atoms), scalar packed-u32 FSM (phase[31:30]/channel[29]/value[11:0]), table-free.
+      A LOCAL qemu-semihosting probe (gust_dac_probe, RAM-window register effects)
+      confirmed (dac-probe ALL OK, exit 0): a load/trigger before enable is rejected
+      untouched (phase-gating), enable writes CR=0x3D, load writes DHR=0xABC while DOR
+      stays 0 (the pin does NOT move on load), the trigger writes SWTRIGR=0x1 and the
+      pin then reads back 0xABC (output-reflects-loaded), and — glitch-free — staging
+      0x555 while 0xABC is published rewrites DHR but DOR still reads 0xABC until the
+      second trigger publishes it atomically; an overrange 0x12FFF is clamped to
+      DHR=0xFFF. End-to-end the `gust-dac-renode` gate runs the identical cycle on a
+      RAM-mapped DAC window on a real STM32 model, asserting each step over USART1
+      (dac-phase-gate-ok / dac-enable-ok / dac-load-ok / dac-trigger-ok /
+      dac-glitch-free-ok / dac-publish2-ok / dac-clamp-ok / dac-disable-ok). A plain
+      RAM window has no DAC peripheral to latch DHR->DOR on the software trigger, so
+      both the probe and the gate emulate that one hardware step (cf. gust_spi
+      pre-seeding SR/DR); every other register effect is the dissolved driver.
+      Source-level proof + native register-effect check; the wasm->native dissolve is
+      differentially trusted, not proven equivalent (see
+      docs/safety/verification-honesty.md). Scope is qemu probe + Renode content-gate
+      (register-level on a real M3 model), not silicon. Kill-criterion: a Kani harness
+      fails, the probe reports FAIL, or the Renode gate observes a dac-*-bad line.
+    tags: [gust, dac, analog, kani, renode, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-DAC-001
+
+  - id: REQ-DRV-PWM-001
+    type: sw-req
+    title: "PWM actuator output is a verified thin-seam driver — duty can never exceed the period, and the failsafe is total and latching"
+    status: implemented
+    release: v0.3.0
+    description: >
+      The STM32 advanced-timer PWM output path — CCMR1 PWM-mode-1 + output-preload
+      config, PSC/ARR period load, CCR duty load, CCER output-enable and BDTR.MOE
+      main-output-enable gating, EGR.UG latch — SHALL be a Component-Model driver whose
+      full protocol logic is verified wasm dissolved to native, importing ONLY the
+      gust:hal mmio capability. No new TCB atom: PWM is a pure-output path, so the driver
+      imports exactly one atom (mmio_write32) and computes every bit field itself; the
+      TCB only executes the volatile write it is handed. Two safety properties SHALL hold
+      for every reachable state and every commanded value: (1) the commanded duty SHALL
+      be clamped to the period, so the compare value (CCR) can never exceed the
+      auto-reload (ARR) — an unintended 100% output on an ESC/servo is full throttle /
+      hard-over; and (2) the failsafe SHALL be total and latching — `failsafe` forces the
+      outputs off (clears MOE) from ANY state, and cannot be undone by a stray `start`
+      (only an explicit reconfigure re-arms). This is the actuator output stage the
+      cross-core Health Monitor (gale#63) trips as the 4× failsafe-PWM on FMU loss /
+      window overrun. The output FSM SHALL be Kani-proven total over its input domain,
+      including that the duty clamp and the failsafe latch hold for every reachable state.
+    tags: [gust, driver, pwm, actuator, thin-seam, failsafe, duty-clamp, health-monitor]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+      - type: related-to
+        target: REQ-DRV-BREADTH-001
+
+  - id: VER-DRV-PWM-001
+    type: sw-verification
+    title: "PWM driver — Kani 7/7 (duty clamp + total/latching failsafe) + qemu probe + Renode register-effect content-gate"
+    status: verified
+    release: v0.3.0
+    description: >
+      The pwm-thin driver's PWM output FSM + pure config core is Kani-proven (7/7
+      harnesses, 0 failures: p1_duty_clamp, p2_failsafe_total_off, p3_failsafe_latches,
+      p4_phase_gating, p5_config_well_formed, p6_pack_roundtrip, p7_start_keeps_duty —
+      `cargo kani`, kani 0.67.0) — including the two distinctive properties: the duty
+      clamp (an accepted `set_duty` yields a duty ≤ the period for ANY commanded duty and
+      period, so CCR can never exceed ARR → never an unintended 100% output), and the
+      total + latching failsafe (`failsafe` lands Safe with duty 0 from EVERY state, and
+      from Safe neither `start` nor `set_duty` is accepted — only `configure` re-arms, so
+      a tripped failsafe cannot be casually undone). Dissolved (loom 1.1.18 inline ->
+      synth 0.40.0 --target cortex-m3 --all-exports --relocatable): pwm-thin-cm3.o =
+      text 728 / data 0 / bss 0 -> 0 SRAM; the ONLY import is env.mmio_write32 (PWM is a
+      pure-output path — it never reads a register), 0 new TCB atoms. A LOCAL
+      qemu-semihosting probe (gust_pwm_probe, RAM-window register effects) confirmed:
+      set_duty/start before configure is rejected untouched (phase-gating), PSC/ARR carry
+      the period (0x7 / 0x3E8) and CCMR1 reads back 0x68 (PWM mode 1 + preload) with CCER
+      output-enable / CR1 ARPE / EGR.UG latch, a commanded duty of 0x7D0 above the period
+      clamps to CCR1 = ARR = 0x3E8 (duty clamp), start arms the output (BDTR.MOE = 0x8000,
+      CR1 = 0x81) preserving the clamped duty, and — failsafe total + latching —
+      `pwm_failsafe` clears MOE (BDTR = 0) → Safe and from Safe every start/set_duty is
+      rejected with no register write (BDTR stays 0) until an explicit reconfigure. End-to-end
+      the `gust-pwm-renode` gate runs the identical PWM lifecycle on a RAM-mapped
+      advanced-timer window on a real STM32 model, asserting each step over USART1
+      (pwm-protect-ok / pwm-config-ok / pwm-clamp-ok / pwm-start-ok / pwm-failsafe-ok /
+      pwm-latch-ok). Source-level proof + native register-effect check; the wasm→native
+      dissolve is differentially trusted, not proven equivalent (see
+      docs/safety/verification-honesty.md). Scope is qemu probe + Renode content-gate
+      (register-level on a real M3 model), not silicon. Kill-criterion: a Kani harness
+      fails, the probe reports FAIL, or the Renode gate observes a pwm-*-bad line.
+    tags: [gust, pwm, actuator, kani, renode, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-PWM-001
+
+  - id: REQ-DRV-I2C-001
+    type: sw-req
+    title: "I2C is a verified thin-seam master driver — ACK-all-but-last cannot hang the bus"
+    status: implemented
+    release: v0.3.0
+    description: >
+      The STM32F1 I2C master path — CR2 FREQ + CCR divisor + TRISE timing configuration
+      (write-protected behind CR1.PE enable) and the START→address→data→STOP master
+      transaction — SHALL be a Component-Model driver whose full protocol logic is
+      verified wasm dissolved to native, importing ONLY the gust:hal mmio capability.
+      No new TCB atom: the driver computes the CR1/CR2/CCR/TRISE encodings and the
+      per-byte ACK decision; the TCB only executes the volatile read/write it is handed.
+      The distinctive safety property is ACK-all-but-last: a master reading N bytes SHALL
+      ACK bytes 1..N−1 and NACK byte N — so the slave releases SDA and the master can
+      issue STOP. Getting it wrong hangs the bus (missing NACK) or drops a byte (early
+      NACK); the driver SHALL therefore write CR1.STOP exactly on the last byte of a read
+      and never before, and SHALL keep the bus exclusive (a second START onto an
+      in-flight transaction is rejected). The transaction FSM SHALL be Kani-proven total
+      over its input domain, including exclusive-bus, no-lost-byte, and ACK-all-but-last
+      for every reachable state. I2C is the 5th verified thin-seam iodev after
+      GPIO/timer/SPI/UART, extending the driver-breadth generalization (REQ-DRV-BREADTH-001).
+    tags: [gust, driver, i2c, thin-seam, ack-all-but-last, component-model]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+      - type: related-to
+        target: REQ-DRV-BREADTH-001
+
+  - id: VER-DRV-I2C-001
+    type: sw-verification
+    title: "I2C driver — Kani 7/7 (ACK-all-but-last, exclusive bus, no lost byte) + qemu probe + Renode register-effect content-gate"
+    status: verified
+    release: v0.3.0
+    description: >
+      The i2c-thin driver's transaction FSM and config core are Kani-proven (7/7
+      harnesses, 0 failures: p1_exclusive_bus, p2_no_lost_byte, p3_ack_all_but_last,
+      p4_phase_gating, p5_stop_frees_bus, p6_pack_roundtrip, p7_config_well_formed —
+      `cargo kani`, kani 0.67.0) — including the distinctive property that on an Active
+      master read `ack_byte` is true for every byte except the last (remaining == 1) and
+      never true on a write or off-Active, so the master ACKs bytes 1..N−1 and NACKs
+      byte N (p3_ack_all_but_last). Dissolved (loom 1.1.18 inline -> synth 0.40.0
+      --target cortex-m3 --all-exports --relocatable): i2c-thin-cm3.o = text 992 /
+      data 0 / bss 0 -> 0 SRAM; imports are exactly env.mmio_read32 / env.mmio_write32
+      (0 new TCB atoms). A LOCAL qemu-semihosting probe (gust_i2c_probe, RAM-window
+      register effects) confirmed: i2c_configure writes CR2 FREQ=0x8 / CCR=0x28 /
+      TRISE=0x9 / CR1.PE; a read START writes CR1 = PE|START|ACK = 0x501; over a 3-byte
+      read the ack decision is [1,1,0] and CR1.STOP (0x201) is written EXACTLY on the
+      last byte and never before (ACK-all-but-last, observable at the register level);
+      the transaction is Complete only after N bytes; a second START onto the in-flight
+      bus and an off-phase addr_ack both fault; and i2c_stop returns the bus to Idle
+      writing CR1.STOP. End-to-end the `gust-i2c-renode` gate runs the identical
+      transaction on a RAM-mapped I2C1 window on a real STM32 model, asserting each step
+      over USART1 (i2c-config-ok / i2c-start-ok / i2c-ack-rule-ok / i2c-complete-ok /
+      i2c-fault-ok / i2c-stop-ok). Source-level proof + native register-effect check;
+      the wasm->native dissolve is differentially trusted, not proven equivalent (see
+      docs/safety/verification-honesty.md). Scope is qemu probe + Renode content-gate
+      (register-level on a real M3 model), not silicon. HONEST GAP: the dissolved
+      i2c_step does NOT early-return for a non-Active state the way the pure source
+      `step` returns Err — it polls SR1 unconditionally and would busy-wait — so step's
+      off-Active phase gate is covered by the Kani p4 SOURCE proof only, not the native
+      probe/gate (which exercise the addr_ack off-phase and dup-START reject paths
+      instead). Kill-criterion: a Kani harness fails, the probe reports FAIL, or the
+      Renode gate observes an i2c-*-bad line.
+    tags: [gust, i2c, kani, renode, ack-all-but-last, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-I2C-001
+
+  - id: REQ-DRV-CAN-001
+    type: sw-req
+    title: "CAN (bxCAN) is a verified thin-seam driver — config-only-in-init, no stale bit rate on the bus"
+    status: implemented
+    release: v0.3.0
+    description: >
+      The STM32F1 bxCAN master path — the INRQ→INAK init handshake, the BTR
+      bit-timing configuration (BRP/TS1/TS2/SJW), and TX-mailbox / RX-FIFO gating —
+      SHALL be a Component-Model driver whose full protocol logic is verified wasm
+      dissolved to native, importing ONLY the gust:hal mmio capability. No new TCB
+      atom: the driver computes the MCR/BTR/TIxR/RF0R writes and the BTR field
+      encoding (pure bit arithmetic, table-free); the TCB only executes the volatile
+      read/write it is handed. The mode FSM (Sleep/Init/Normal, carried as a packed
+      u32) SHALL guarantee config-only-in-init — the bit-timing register is accepted
+      for write IFF the peripheral is in Init (INRQ set, INAK confirmed); a config
+      write in Sleep or Normal SHALL be rejected without mutating BTR, because the
+      hardware silently ignores BTR outside init and a wrong bit rate corrupts every
+      frame on the bus. Normal SHALL be reachable ONLY through Init (so bit-timing
+      always had a valid configuration window), a transmit SHALL be gated on the
+      mailbox being empty (TME), and a FIFO release SHALL be gated on a pending
+      message (FMP>0) — releasing each received frame exactly once. The lifecycle FSM
+      SHALL be Kani-proven total over its input domain.
+    tags: [gust, driver, can, bxcan, thin-seam, config-only-in-init, health-monitor]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+      - type: related-to
+        target: REQ-DRV-BREADTH-001
+
+  - id: VER-DRV-CAN-001
+    type: sw-verification
+    title: "CAN (bxCAN) driver — Kani 7/7 (config-only-in-init, init-handshake ordering, TX/RX gating) + Renode register-effect content-gate"
+    status: verified
+    release: v0.3.0
+    description: >
+      The can-thin driver's mode FSM is Kani-proven (7/7 harnesses, 0 failures:
+      p1_config_only_in_init, p2_enter_init_total, p3_normal_only_via_init,
+      p4_tx_requires_normal, p5_rx_requires_normal, p6_btr_well_formed,
+      p7_pack_roundtrip — `cargo kani`, kani 0.67.0) — including the distinctive
+      property that the bit-timing register BTR is accepted for write IFF the phase is
+      Init (p1), Normal is reachable only via Init (p3), and TX/RX are both gated on
+      Normal (p4/p5), all over the whole input space. Dissolved (loom 1.2.0 inline ->
+      synth 0.43.0 --target cortex-m3 --all-exports --relocatable): can-thin-cm3.o =
+      text 804 / data 0 / bss 0 -> 0 SRAM; imports are exactly mmio_read32 /
+      mmio_write32 (0 new TCB atoms, nm-confirmed — the six can_* exports are all
+      DEFINED text symbols). A LOCAL qemu-semihosting probe (gust_can_probe, RAM-window
+      register effects) is GREEN (`cargo run --bin gust_can_probe` -> "can-probe ALL
+      OK", exit 0): config-from-Sleep is rejected leaving BTR untouched
+      (write-protection); enter_init writes MCR.INRQ and the FSM reaches Init; a
+      configure in Init writes BTR = 0x025D_000C (the four masked bit-timing fields);
+      leave_init clears MCR.INRQ and reaches Normal; and — the DISTINCTIVE
+      config-only-in-init property — a configure once Normal is rejected and leaves BTR
+      EXACTLY 0x025D_000C (never clobbered with a stale zero rate); TX loads
+      TI0R=0x2460_0001 / DLC=8 / data only on an empty mailbox (TME0) and is rejected
+      off-Normal or when busy; RX sets exactly RFOM0 (0x20) only with a pending message
+      (FMP0>0) and is rejected off-Normal or when empty. End-to-end the
+      `gust-can-renode` gate (renode-test/gust_can.{repl,robot}, wired into
+      .github/workflows/gust-renode.yml; `bazel query //:gust-can-renode` loads) runs
+      the identical lifecycle on a RAM-mapped CAN1 window on a real STM32 model,
+      asserting each step over USART1 (can-protect-ok / can-init-ok / can-config-ok /
+      can-normal-ok / can-tx-ok / can-rx-ok). Source-level proof + native
+      register-effect check; the wasm->native dissolve is differentially trusted, not
+      proven equivalent (see docs/safety/verification-honesty.md). Scope is qemu probe
+      + Renode content-gate (register-level on a real M3 model), not silicon.
+      Kill-criterion: a Kani harness fails, the probe reports FAIL, or the Renode gate
+      observes a can-*-bad line.
+    tags: [gust, can, bxcan, kani, renode, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-CAN-001
+
+  - id: REQ-DRV-DMA-001
+    type: sw-req
+    title: "DMA-as-own<buffer> ownership driver is CLOSED — demonstrated on-target + register-effect content-gated"
+    status: implemented
+    release: v0.3.0
+    description: >
+      The dma-own driver (REQ-DMA-OWN-001: a DMA transfer modeled as a Component-Model
+      own<buffer> ownership round-trip, its FSM verified wasm dissolved to native)
+      SHALL be CLOSED to the same evidence bar as the thin-seam drivers — proof alone
+      is not a driver. A bare-metal demonstrator SHALL drive the dissolved exports
+      (dma_start / dma_poll_complete / dma_abort) supplying ONLY the gust:hal dma seam
+      (dma_program / dma_barrier / dma_irq_poll — the 3 irreducible trusted atoms, no
+      new TCB atom beyond them), and a Renode register-effect content-gate SHALL assert,
+      on a RAM-mapped DMA descriptor + coherency window on a real STM32 model, the EXACT
+      effects the driver pokes THROUGH that seam at each ownership handoff plus the
+      Kani-proven ownership property: start hands the buffer Wasm→Dma emitting clean+DSB
+      and programming the descriptor; a double-arm while Dma-owned is rejected (exclusive
+      ownership); a completion IRQ hands Dma→Wasm emitting invalidate+DMB (round-trip
+      closes); an unpaired completion is rejected; and abort returns the buffer to Wasm
+      from any state, never ownerless. The barrier SHALL be emitted BY CONSTRUCTION at
+      every handoff (structurally impossible to transfer without it). Honest scope: the
+      demonstrator is a qemu-semihosting probe + a Renode register-level gate on a plain
+      memory window (no Renode DMA-controller model, no silicon) — the register-effect
+      and FSM checks, not a live silicon DMA engine.
+    tags: [gust, driver, dma, ownership, own-buffer, thin-seam, component-model, close-out]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DMA-OWN-001
+      - type: related-to
+        target: REQ-DRV-BREADTH-001
+
+  - id: VER-DRV-DMA-001
+    type: sw-verification
+    title: "DMA-as-own<buffer> driver CLOSED — Kani 6/6 (ownership round-trip, barrier-by-construction, no-ownerless) + qemu probe + Renode register-effect content-gate"
+    status: verified
+    release: v0.3.0
+    description: >
+      The dma-own driver's ownership FSM is Kani-proven (6/6 harnesses, 0 failures, 73
+      obligations discharged — `cargo kani`): p1_access_iff_wasm_owned (wasm may touch
+      the buffer IFF wasm-owned — hands-off during the DMA window), p2_barrier_pairing
+      (every handoff carries the correct coherency op on EVERY path — clean+DSB on
+      Wasm→Dma, invalidate+DMB on Dma→Wasm — impossible to transfer without the barrier),
+      p3_abort_never_ownerless (abort from any state returns a defined owner),
+      p4_round_trip (start→complete returns to wasm-owned; double-start / unpaired-
+      complete are faults not silent corruption), p5_ring_per_chunk_exclusive and
+      p6_ring_reap_and_abort (streaming/circular: per-chunk exclusive ownership). This
+      CLOSES the driver to the thin-seam evidence bar. Dissolved (synth cortex-m3
+      --all-exports --relocatable): dma-own-cm3.o exports exactly dma_start /
+      dma_poll_complete / dma_abort, 0 .bss/.data → 0 SRAM; imports are exactly the 3
+      trusted seam atoms env.dma_program / env.dma_barrier / env.dma_irq_poll (nm-
+      confirmed: 3 T exports, those 3 U imports; 0 new TCB atoms). A LOCAL qemu-
+      semihosting probe (gust_dma_probe, RAM-window register effects through the seam)
+      is GREEN (`dma-probe ALL OK`, exit 0) and is NON-VACUOUS: a dissolved no-op that
+      returns its input state / skips the seam FAILs it (demonstrated — dma-start FAIL,
+      exit 1). It confirms: start hands Wasm→Dma with clean+DSB and programs the
+      descriptor (ch/len), a double-arm is rejected with no program and no barrier, a
+      poll with no IRQ yields state unchanged, completion hands Dma→Wasm with
+      invalidate+DMB, an unpaired completion is rejected, and abort returns Wasm from
+      both Dma and Wasm states. End-to-end the `gust-dma-renode` gate (wired in
+      renode-test/BUILD.bazel + .github/workflows/gust-renode.yml) runs the identical
+      round-trip on a RAM-mapped DMA descriptor window on a real STM32 model, asserting
+      each step over USART1 (dma-start-ok / dma-exclusive-ok / dma-yield-ok /
+      dma-complete-ok / dma-unpaired-ok / dma-abort-ok). Source-level proof + native
+      register-effect check; the wasm→native dissolve is differentially trusted, not
+      proven equivalent (see docs/safety/verification-honesty.md). Scope is qemu probe +
+      Renode content-gate (register-level on a real M3 model over a plain memory window,
+      no Renode DMA-controller model), not silicon. Kill-criterion: a Kani harness fails,
+      the probe reports FAIL, or the Renode gate observes a dma-*-bad line.
+    tags: [gust, dma, ownership, own-buffer, kani, renode, verification, close-out]
+    links:
+      - type: verifies
+        target: REQ-DRV-DMA-001
+

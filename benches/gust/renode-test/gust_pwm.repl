@@ -1,0 +1,23 @@
+// Cortex-M3 + 64 KB SRAM / 512 KB flash, plus a RAM-mapped advanced-timer register
+// window for the thin-seam PWM driver content-gate. The gate asserts the exact PWM-mode
+// config the DRIVER writes (PSC/ARR period, CCMR1 PWM-mode-1 + preload 0x68, CCER
+// output-enable, CR1 ARPE, EGR.UG latch, CCR1 duty, BDTR.MOE main-output enable), and
+// the two Kani-proven properties — the duty clamp (CCR ≤ ARR always) and the total +
+// latching failsafe (MOE cleared from any state, un-clearable by a stray start) — on a
+// plain memory region, deterministic, no dependence on Renode's timer peripheral model.
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m3"
+    nvic: nvic
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    -> cpu@0
+flash: Memory.MappedMemory @ sysbus 0x0
+    size: 0x80000
+sram: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x10000
+// Advanced-timer (TIM1) register window (real STM32F1 address, 0x40012C00, +0x400) as
+// plain memory — driver CR1/PSC/ARR/CCMR1/CCER/CCR1/BDTR writes read back. Ends at
+// 0x40013000, below USART1 at 0x40013800 (no overlap).
+tim1: Memory.MappedMemory @ sysbus 0x40012C00
+    size: 0x400
+usart1: UART.STM32_UART @ sysbus <0x40013800, +0x100>
+    -> nvic@37

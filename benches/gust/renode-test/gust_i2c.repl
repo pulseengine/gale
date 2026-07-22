@@ -1,0 +1,22 @@
+// Cortex-M3 + 64 KB SRAM / 512 KB flash, plus a RAM-mapped I2C1 register window for
+// the thin-seam I2C driver content-gate. The gate asserts the CR2 FREQ / CCR divisor /
+// TRISE / CR1.PE the DRIVER writes, the CR1 = PE|START|ACK a read START issues, and its
+// Kani-proven ACK-all-but-last property (CR1.STOP written EXACTLY on the last byte of a
+// master read) — on a plain memory region, deterministic, no dependence on Renode's
+// I2C peripheral model.
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m3"
+    nvic: nvic
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    -> cpu@0
+flash: Memory.MappedMemory @ sysbus 0x0
+    size: 0x80000
+sram: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x10000
+// I2C1 register window (real STM32F1 address, 0x40005400, +0x400) as plain memory —
+// driver CR1/CR2/CCR/TRISE writes read back. Ends at 0x40005800, below USART1 at
+// 0x40013800 (no overlap).
+i2c1: Memory.MappedMemory @ sysbus 0x40005400
+    size: 0x400
+usart1: UART.STM32_UART @ sysbus <0x40013800, +0x100>
+    -> nvic@37
