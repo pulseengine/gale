@@ -1,0 +1,48 @@
+# Publish gust-target-gen to crates.io on a tool-scoped tag.
+#
+# Trigger: push a tag `gust-target-gen-vX.Y.Z` (tool-scoped so it never collides
+# with gust OS release tags). The job checks the tag version matches Cargo.toml,
+# then `cargo publish`. Needs the org secret CRATES_IO_TOKEN (already used by the
+# synth/loom publish workflows). A single crate needs no dependency-ordering
+# helper. See docs/publishing.md for the npm channel + the gale/gust decision.
+
+name: publish gust-target-gen
+
+on:
+  push:
+    tags: ["gust-target-gen-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish-crate:
+    name: "cargo publish gust-target-gen"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Guard — tag version matches Cargo.toml
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          tag_ver="${TAG#gust-target-gen-v}"
+          toml_ver="$(sed -n 's/^version = "\(.*\)"/\1/p' tools/gust-target-gen/Cargo.toml | head -1)"
+          if [ "$tag_ver" != "$toml_ver" ]; then
+            echo "::error::tag ($tag_ver) != Cargo.toml version ($toml_ver)"
+            exit 1
+          fi
+          echo "version $toml_ver OK"
+
+      - name: cargo publish --dry-run (preflight)
+        run: cargo publish --dry-run --manifest-path tools/gust-target-gen/Cargo.toml
+
+      - name: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --manifest-path tools/gust-target-gen/Cargo.toml

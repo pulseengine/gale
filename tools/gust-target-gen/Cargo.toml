@@ -3,8 +3,13 @@ name = "gust-target-gen"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
-description = "Generate per-target constants, linker memory maps, and WIT worlds from a spar/AADL hardware model"
-publish = false
+description = "Generate per-target constants, linker memory maps, and WIT worlds from an AADL hardware model"
+license = "Apache-2.0"
+repository = "https://github.com/pulseengine/gale"
+homepage = "https://github.com/pulseengine/gale"
+readme = "README.md"
+keywords = ["aadl", "codegen", "embedded", "linker-script", "wit"]
+categories = ["development-tools", "embedded", "no-std"]
 
 [[bin]]
 name = "gust-target-gen"
