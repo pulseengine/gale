@@ -103,6 +103,22 @@ renode_test(
     },
 )
 
+# Thin-seam advanced-timer PWM driver content gate — the dissolved driver (verified-wasm
+# PWM output path, Kani-proven duty clamp + total/latching failsafe) exercised on a
+# RAM-mapped timer window on a real STM32 model; asserts the exact PSC/ARR/CCMR1/CCER/
+# CR1/CCR1/BDTR register effects, that a commanded duty above the period clamps to ARR,
+# and that a tripped failsafe stays off, via Wait For Line On Uart (content, not just
+# no-fault).
+renode_test(
+    name = "gust-pwm-renode",
+    timeout = "short",
+    robot_test = "gust_pwm.robot",
+    variables_with_label = {
+        "ELF": ":gust_pwm.elf",
+        "REPL": ":gust_pwm.repl",
+    },
+)
+
 renode_test(
     name = "gust-breadth-renode",
     timeout = "short",
