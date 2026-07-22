@@ -247,6 +247,21 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_dac={}", dacobj.display());
         println!("cargo:rustc-link-arg-bin=gust_dac_probe={}", dacobj.display());
         println!("cargo:rerun-if-changed={}", dacobj.display());
+    // The dissolved thin-seam PWM driver (drivers/pwm-thin → loom → synth --target
+    // cortex-m3 --all-exports --relocatable): the whole STM32 advanced-timer PWM output
+    // path — CCMR1 PWM-mode-1 + preload config, PSC/ARR period, CCR duty, CCER/BDTR.MOE
+    // output enable — in verified wasm (Kani 7/7, 0 new TCB atoms; PWM is a pure-output
+    // path so the ONLY import is env.mmio_write32). Its distinctive Kani-proven safety
+    // properties are the duty clamp (CCR ≤ ARR always) and a total+latching failsafe
+    // (MOE cleared from any state, un-clearable by a stray start). gust_pwm_probe is the
+    // LOCAL qemu-semihosting demonstrator of this SAME dissolved .o (RAM-window register
+    // effects + clamp + failsafe-latch), run before the `gust-pwm-renode` content-gate
+    // (renode-test/gust_pwm.robot).
+    let pobj = Path::new(&manifest).join("drivers/pwm-thin/pwm-thin-cm3.o");
+    if pobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_pwm={}", pobj.display());
+        println!("cargo:rustc-link-arg-bin=gust_pwm_probe={}", pobj.display());
+        println!("cargo:rerun-if-changed={}", pobj.display());
     }
     // The 4-driver breadth node (REQ-DRV-BREADTH-001): gpio+timer+spi+uart, each a
     // verified-wasm gust:hal component, wac/meld-fused → ONE dissolved .o exporting
