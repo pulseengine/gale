@@ -295,6 +295,61 @@ artifacts:
       - type: verifies
         target: REQ-DRV-WDG-001
 
+  - id: REQ-DRV-CAN-001
+    type: sw-req
+    title: "CAN (bxCAN) is a verified thin-seam driver — config-only-in-init, no stale bit rate on the bus"
+    status: implemented
+    release: v0.3.0
+    description: >
+      The STM32F1 bxCAN master path — the INRQ→INAK init handshake, the BTR
+      bit-timing configuration (BRP/TS1/TS2/SJW), and TX-mailbox / RX-FIFO gating —
+      SHALL be a Component-Model driver whose full protocol logic is verified wasm
+      dissolved to native, importing ONLY the gust:hal mmio capability. No new TCB
+      atom: the driver computes the MCR/BTR/TIxR/RF0R writes and the BTR field
+      encoding (pure bit arithmetic, table-free); the TCB only executes the volatile
+      read/write it is handed. The mode FSM (Sleep/Init/Normal, carried as a packed
+      u32) SHALL guarantee config-only-in-init — the bit-timing register is accepted
+      for write IFF the peripheral is in Init (INRQ set, INAK confirmed); a config
+      write in Sleep or Normal SHALL be rejected without mutating BTR, because the
+      hardware silently ignores BTR outside init and a wrong bit rate corrupts every
+      frame on the bus. Normal SHALL be reachable ONLY through Init (so bit-timing
+      always had a valid configuration window), a transmit SHALL be gated on the
+      mailbox being empty (TME), and a FIFO release SHALL be gated on a pending
+      message (FMP>0) — releasing each received frame exactly once. The lifecycle FSM
+      SHALL be Kani-proven total over its input domain.
+    tags: [gust, driver, can, bxcan, thin-seam, config-only-in-init, health-monitor]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-SEAM-001
+      - type: related-to
+        target: REQ-DRV-BREADTH-001
+
+  - id: VER-DRV-CAN-001
+    type: sw-verification
+    title: "CAN (bxCAN) driver — Kani 7/7 (config-only-in-init, init-handshake ordering, TX/RX gating) + Renode register-effect content-gate"
+    status: proposed
+    release: v0.3.0
+    description: >
+      The can-thin driver's mode FSM is Kani-proven (7/7 harnesses, 0 failures:
+      p1_config_only_in_init, p2_enter_init_total, p3_normal_only_via_init,
+      p4_tx_requires_normal, p5_rx_requires_normal, p6_btr_well_formed,
+      p7_pack_roundtrip — `cargo kani`, kani 0.67.0) — including the distinctive
+      property that the bit-timing register BTR is accepted for write IFF the phase is
+      Init (p1), Normal is reachable only via Init (p3), and TX/RX are both gated on
+      Normal (p4/p5), all over the whole input space. Dissolved (loom 1.2.0 inline ->
+      synth 0.43.0 --target cortex-m3 --all-exports --relocatable): can-thin-cm3.o =
+      text 804 / data 0 / bss 0 -> 0 SRAM; imports are exactly mmio_read32 /
+      mmio_write32 (0 new TCB atoms, nm-confirmed). Pending its demonstrator + Renode
+      content-gate (this verifier holds `proposed` until the probe is green and the
+      gate is wired — dissolved-and-Kani-proven is not yet the register-effect
+      evidence the other closed drivers carry).
+    tags: [gust, can, bxcan, kani, renode, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-CAN-001
+
   - id: FIND-DRV-RTIO-001
     type: finding
     title: "The driver framework adopts the RTIO/io_uring SQ/CQ model — built from gale's verified primitives, not bespoke"
