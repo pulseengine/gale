@@ -165,6 +165,19 @@ renode_test(
     variables_with_label = {
         "ELF": ":gust_can.elf",
         "REPL": ":gust_can.repl",
+# DMA-as-own<buffer> ownership driver content gate — the dissolved dma-own driver
+# (gale#124, Kani 6/6: a DMA transfer modeled as an own<buffer> ownership round-trip,
+# with the cache/barrier op emitted BY CONSTRUCTION at every handoff) exercised on a
+# RAM-mapped DMA descriptor + coherency window on a real STM32 model; asserts the exact
+# program/barrier effects the driver pokes through the gust:hal dma seam and the
+# ownership FSM (Wasm->Dma->Wasm, abort-never-ownerless) via Wait For Line On Uart.
+renode_test(
+    name = "gust-dma-renode",
+    timeout = "short",
+    robot_test = "gust_dma.robot",
+    variables_with_label = {
+        "ELF": ":gust_dma.elf",
+        "REPL": ":gust_dma.repl",
     },
 )
 

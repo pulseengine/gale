@@ -287,6 +287,19 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_can={}", cobj_can.display());
         println!("cargo:rustc-link-arg-bin=gust_can_probe={}", cobj_can.display());
         println!("cargo:rerun-if-changed={}", cobj_can.display());
+    // The dissolved DMA-as-own<buffer> ownership driver (drivers/dma-own → synth
+    // --target cortex-m3 --all-exports --relocatable): the DMA transfer OWNERSHIP
+    // round-trip FSM in verified wasm (gale#124, Kani 6/6 — p1..p6 ownership +
+    // barrier-by-construction), importing only the gust:hal dma seam (dma_program /
+    // dma_barrier / dma_irq_poll — the 3 irreducible trusted atoms). gust_dma_probe
+    // is the LOCAL qemu-semihosting demonstrator of this SAME dissolved .o
+    // (RAM-window register effects through the seam + the ownership round-trip),
+    // run before the `gust-dma-renode` content-gate (renode-test/gust_dma.robot).
+    let dmaobj = Path::new(&manifest).join("drivers/dma-own/dma-own-cm3.o");
+    if dmaobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_dma={}", dmaobj.display());
+        println!("cargo:rustc-link-arg-bin=gust_dma_probe={}", dmaobj.display());
+        println!("cargo:rerun-if-changed={}", dmaobj.display());
     }
     // The 4-driver breadth node (REQ-DRV-BREADTH-001): gpio+timer+spi+uart, each a
     // verified-wasm gust:hal component, wac/meld-fused → ONE dissolved .o exporting
