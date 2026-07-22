@@ -331,7 +331,7 @@ artifacts:
   - id: VER-DRV-DMA-001
     type: sw-verification
     title: "DMA-as-own<buffer> driver CLOSED — Kani 6/6 (ownership round-trip, barrier-by-construction, no-ownerless) + qemu probe + Renode register-effect content-gate"
-    status: proposed
+    status: verified
     release: v0.3.0
     description: >
       The dma-own driver's ownership FSM is Kani-proven (6/6 harnesses, 0 failures, 73
