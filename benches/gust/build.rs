@@ -206,6 +206,20 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_spi_probe={}", spobj.display());
         println!("cargo:rerun-if-changed={}", spobj.display());
     }
+    // The dissolved thin-seam IWDG (independent watchdog) driver (drivers/wdg-thin →
+    // loom → synth): the whole STM32F1 IWDG key-sequence lifecycle — 0x5555 unlock /
+    // PR+RLR config / 0xCCCC start / 0xAAAA refresh, and the Kani-proven
+    // cannot-un-start property (no software disable transition) — in verified wasm
+    // (Kani 7/7, 0 new TCB atoms — mmio only). gust_wdg_probe is the LOCAL
+    // qemu-semihosting demonstrator of this SAME dissolved .o (RAM-window register
+    // effects + cannot-un-start), run before the `gust-wdg-renode` content-gate
+    // (renode-test/gust_wdg.robot).
+    let wobj = Path::new(&manifest).join("drivers/wdg-thin/wdg-thin-cm3.o");
+    if wobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_wdg={}", wobj.display());
+        println!("cargo:rustc-link-arg-bin=gust_wdg_probe={}", wobj.display());
+        println!("cargo:rerun-if-changed={}", wobj.display());
+    }
     // The 4-driver breadth node (REQ-DRV-BREADTH-001): gpio+timer+spi+uart, each a
     // verified-wasm gust:hal component, wac/meld-fused → ONE dissolved .o exporting
     // all 20 protocol fns (C-renamed), 0 SRAM, no func_N collision. Built by

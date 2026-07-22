@@ -89,6 +89,20 @@ renode_test(
     },
 )
 
+# Thin-seam IWDG (independent watchdog) driver content gate — the dissolved driver
+# (verified-wasm key-sequence lifecycle, Kani-proven cannot-un-start) exercised on a
+# RAM-mapped IWDG window on a real STM32 model; asserts the exact KR/PR/RLR register
+# effects via Wait For Line On Uart (content, not just no-fault).
+renode_test(
+    name = "gust-wdg-renode",
+    timeout = "short",
+    robot_test = "gust_wdg.robot",
+    variables_with_label = {
+        "ELF": ":gust_wdg.elf",
+        "REPL": ":gust_wdg.repl",
+    },
+)
+
 renode_test(
     name = "gust-breadth-renode",
     timeout = "short",
