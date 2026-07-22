@@ -1,7 +1,0 @@
-/* STM32VLDISCOVERY — STM32F100RBT6B: Cortex-M3, 128 KB flash @ 0x08000000,
- * 8 KB SRAM @ 0x20000000. The gust / dissolved target proper (8 KB class). */
-MEMORY
-{
-  FLASH : ORIGIN = 0x08000000, LENGTH = 128K
-  RAM   : ORIGIN = 0x20000000, LENGTH = 8K
-}

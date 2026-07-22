@@ -22,7 +22,7 @@ under sudo**, selecting the V1 by serial (two probes may be attached):
 
 ```sh
 # build the F100 image (8 KB memory map)
-cd benches/gust && cp silicon/memory-f100.x memory.x
+cd benches/gust && cp targets/generated/memory-stm32f100.x memory.x
 cargo build --release --bin silicon_bench --target thumbv7m-none-eabi
 cp memory.x.bak memory.x   # restore (run.sh does this automatically)
 

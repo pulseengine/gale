@@ -26,7 +26,7 @@ cd "$BENCH"
 
 cp memory.x /tmp/gust-memory.x.bak
 trap 'cp /tmp/gust-memory.x.bak "$BENCH/memory.x"' EXIT
-cp silicon/memory-g474re.x memory.x
+cp targets/generated/memory-stm32g474.x memory.x
 
 echo "== build gust_wdg_silicon for g474re (thumbv7em) =="
 cargo build --release --bin gust_wdg_silicon --target thumbv7em-none-eabi

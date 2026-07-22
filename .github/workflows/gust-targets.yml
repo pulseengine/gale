@@ -1,0 +1,46 @@
+# gust target-model gate — the AADL board/SoC/device model + its generated
+# artifacts must stay in sync. The generated tree (benches/gust/targets/generated/)
+# is committed; this gate re-runs the generator from the committed spar-items
+# fixture and fails if the committed tree drifts, plus runs the generator's unit
+# tests (golden emit + the keystone parity against the hand-written firmware
+# constants). Cargo-only, no spar needed in CI — `spar` refreshes the fixture
+# locally (see benches/gust/targets/regen.sh); the fixture is the committed
+# spar-output contract.
+
+name: gust target model
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  gust-targets:
+    name: "gust target model (generator + drift gate)"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Generator unit tests (golden emit + keystone parity)
+        run: cargo test --manifest-path tools/gust-target-gen/Cargo.toml
+
+      - name: Regenerate generated/ from the committed fixture
+        run: bash benches/gust/targets/regen.sh
+
+      - name: Drift gate — committed generated/ must match the generator output
+        run: |
+          if ! git diff --exit-code -- benches/gust/targets/generated/; then
+            echo "::error::benches/gust/targets/generated/ is stale — run benches/gust/targets/regen.sh and commit the result."
+            exit 1
+          fi
