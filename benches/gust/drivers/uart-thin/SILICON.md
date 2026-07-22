@@ -21,5 +21,5 @@ driver primitives; the driver TXes over USART1.
 sudo openocd -c "adapter serial <V1-serial>" -f board/stm32vldiscovery.cfg \
   -c "init" -c "halt" -c "program <gust_uart-f100.elf> verify" -c "reset run"
 ```
-Build the ELF with the F100 8 KB map: `cp silicon/memory-f100.x memory.x;
+Build the ELF with the F100 8 KB map: `cp targets/generated/memory-stm32f100.x memory.x;
 cargo build --release --bin gust_uart --target thumbv7m-none-eabi`.

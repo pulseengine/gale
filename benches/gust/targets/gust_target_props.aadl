@@ -1,0 +1,8 @@
+property set Gust_Target_Props is
+  Base         : aadlinteger applies to (memory, device);
+  Length       : aadlinteger applies to (memory);
+  Present      : aadlboolean applies to (device);
+  Csr_Offset   : aadlinteger applies to (device);  -- RCC_CSR offset from RCC base
+  Iwdgrstf_Bit : aadlinteger applies to (device);  -- bit index of the IWDG reset flag
+  Rmvf_Bit     : aadlinteger applies to (device);  -- bit index of the remove-flags bit
+end Gust_Target_Props;

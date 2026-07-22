@@ -16,8 +16,8 @@ BENCH="$(dirname "$HERE")"   # benches/gust
 BOARD="${1:?usage: run.sh g474re or f100}"
 
 case "$BOARD" in
-  g474re) TARGET=thumbv7em-none-eabi; CHIP=STM32G474RETx; MEM=memory-g474re.x; DEFAULT_O=wasm-kernel/gust_mix-cm4.o ;;
-  f100)   TARGET=thumbv7m-none-eabi;  CHIP=STM32F100RBTx; MEM=memory-f100.x;   DEFAULT_O=wasm-kernel/gust_mix-cm3.o ;;
+  g474re) TARGET=thumbv7em-none-eabi; CHIP=STM32G474RETx; MEM=targets/generated/memory-stm32g474.x; DEFAULT_O=wasm-kernel/gust_mix-cm4.o ;;
+  f100)   TARGET=thumbv7m-none-eabi;  CHIP=STM32F100RBTx; MEM=targets/generated/memory-stm32f100.x;   DEFAULT_O=wasm-kernel/gust_mix-cm3.o ;;
   *) echo "unknown board '$BOARD' (want g474re|f100)"; exit 1 ;;
 esac
 
@@ -25,7 +25,7 @@ cd "$BENCH"
 # swap in the board memory map for the build, restore on exit
 cp memory.x /tmp/gust-memory.x.bak
 trap 'cp /tmp/gust-memory.x.bak "$BENCH/memory.x"' EXIT
-cp "silicon/$MEM" memory.x
+cp "$MEM" memory.x
 
 echo "== build silicon_bench for $BOARD ($TARGET, $CHIP) =="
 echo "   dissolved object: ${GUST_MIX_O:-$DEFAULT_O}"

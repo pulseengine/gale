@@ -1,0 +1,7 @@
+package Cortex_M
+public
+  processor CortexM3
+  end CortexM3;
+  processor CortexM4 extends CortexM3   -- thumbv7em ⊃ thumbv7m; M3 objects run here
+  end CortexM4;
+end Cortex_M;
