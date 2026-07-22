@@ -115,6 +115,9 @@ renode_test(
     variables_with_label = {
         "ELF": ":gust_adc.elf",
         "REPL": ":gust_adc.repl",
+    },
+)
+
 # Thin-seam software-triggered DAC driver content gate — the dissolved driver
 # (verified-wasm DAC CR/DHR/SWTRIGR/DOR protocol, Kani-proven glitch-free
 # trigger-gated output) exercised on a RAM-mapped DAC window on a real STM32 model;
@@ -128,6 +131,9 @@ renode_test(
     variables_with_label = {
         "ELF": ":gust_dac.elf",
         "REPL": ":gust_dac.repl",
+    },
+)
+
 # Thin-seam advanced-timer PWM driver content gate — the dissolved driver (verified-wasm
 # PWM output path, Kani-proven duty clamp + total/latching failsafe) exercised on a
 # RAM-mapped timer window on a real STM32 model; asserts the exact PSC/ARR/CCMR1/CCER/
@@ -141,6 +147,9 @@ renode_test(
     variables_with_label = {
         "ELF": ":gust_pwm.elf",
         "REPL": ":gust_pwm.repl",
+    },
+)
+
 # Thin-seam I2C driver content gate — the dissolved driver (verified-wasm STM32F1 I2C
 # master path, Kani-proven ACK-all-but-last) driving a 3-byte master read on a
 # RAM-mapped I2C1 window on a real STM32 model; asserts the exact CR2/CCR/TRISE/CR1
@@ -153,6 +162,9 @@ renode_test(
     variables_with_label = {
         "ELF": ":gust_i2c.elf",
         "REPL": ":gust_i2c.repl",
+    },
+)
+
 # Thin-seam CAN (bxCAN) driver content gate — the dissolved driver (verified-wasm
 # bxCAN master path, Kani-proven config-only-in-init) exercised on a RAM-mapped CAN1
 # window on a real STM32 model; asserts the exact MCR/BTR/TIxR/RF0R register effects
@@ -165,6 +177,9 @@ renode_test(
     variables_with_label = {
         "ELF": ":gust_can.elf",
         "REPL": ":gust_can.repl",
+    },
+)
+
 # DMA-as-own<buffer> ownership driver content gate — the dissolved dma-own driver
 # (gale#124, Kani 6/6: a DMA transfer modeled as an own<buffer> ownership round-trip,
 # with the cache/barrier op emitted BY CONSTRUCTION at every handoff) exercised on a
