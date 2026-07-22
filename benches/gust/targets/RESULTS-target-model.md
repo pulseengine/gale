@@ -70,3 +70,25 @@ gust-wdg-silicon OK: IWDG watchdog reset CONFIRMED on real STM32F100 silicon
   drops (re-run lands on boot 2, since `IWDGRSTF` persists until `RMVF`); openocd's
   semihosting session rides through in one run. Do **not** pass
   `probe-rs --catch-hardfault` — it flags the legitimate reset as a fault.
+
+## Assurance assessment — witness (MC/DC) and sigil (attestation)
+
+Per the feature-loop methodology, these conditional steps are assessed, not
+silently skipped:
+
+- **witness (MC/DC on the wasm component): N/A for this slice.** The target-model
+  work introduces no new decision/branch. The wdg-thin driver FSM is unchanged
+  (Kani-proven, VER-DRV-WDG-001) and the firmware's only branch — boot 1 vs boot 2
+  on `IWDGRSTF` — is untouched; the change moved compile-time constants from
+  hand-written to generated code (identical values, verified by the parity test and
+  on silicon). No new condition means no new truth-table row, so there is nothing
+  for witness to cover here. If a future target adds a *conditionally-present*
+  peripheral that the firmware branches on, that branch gets a witness pass.
+- **sigil (attestation): deferred, tracked as FIND-TARGET-SIGIL-001.** The generator
+  is a new build stage that emits committed artifacts (`benches/gust/targets/
+  generated/`). Signing that tree (so a consumer can verify the generated constants
+  were produced by the trusted generator from the reviewed model, not hand-edited)
+  is a reasonable build-integrity step but is not v1-blocking: the committed tree is
+  already guarded by the CI drift gate (regenerate + `git diff --exit-code`), which
+  gives tamper-evidence within the repo. Recorded as a named follow-on rather than
+  dropped, so a recurring N/A does not hide a real attestation gap.
