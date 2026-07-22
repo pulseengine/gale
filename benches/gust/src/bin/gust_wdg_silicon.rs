@@ -45,16 +45,31 @@ extern "C" {
     fn wdg_is_running(state: u32) -> u32;
 }
 
-const IWDG_BASE: u32 = 0x4000_3000; // universal STM32 IWDG base (F1 == G4)
+// Target constants (IWDG_BASE, RCC_CSR, IWDGRSTF, RMVF, + memory map) are
+// GENERATED from the AADL model (benches/gust/targets/) — see gust-target-gen.
+// The board is selected at build time via a cargo feature; G4 and F1 differ
+// ONLY in these baked values (RCC_CSR offset 0x94/0x24, RMVF bit 23/24) — the
+// same verified driver programs both. Swap the target = swap the generated
+// module, not this code.
+#[cfg(all(feature = "target-g474re", feature = "target-f100"))]
+compile_error!("gust_wdg_silicon: pick exactly one of target-g474re / target-f100");
+#[cfg(not(any(feature = "target-g474re", feature = "target-f100")))]
+compile_error!("gust_wdg_silicon: pick a target: --features target-g474re | target-f100");
+
+#[cfg(feature = "target-g474re")]
+#[path = "../../targets/generated/gust_target_stm32g474.rs"]
+#[allow(dead_code)]
+mod target;
+#[cfg(feature = "target-f100")]
+#[path = "../../targets/generated/gust_target_stm32f100.rs"]
+#[allow(dead_code)]
+mod target;
+use target::{IWDG_BASE, IWDGRSTF, RCC_CSR, RMVF};
+
 const KEY_START: u32 = 0xCCCC;
 const WDG_FAULT: u32 = 0xFFFF_FFFF;
 const PRESCALER: u32 = 5; // ÷128 of the ~32 kHz LSI  → 250 Hz tick
 const RELOAD: u32 = 0x123; // 291 ticks ≈ 1.16 s timeout (same values gust_wdg_probe proves)
-
-// STM32G4 RCC control/status register (differs from F1's 0x4002_1024 offset).
-const RCC_CSR: u32 = 0x4002_1094;
-const IWDGRSTF: u32 = 1 << 29; // independent-watchdog reset flag
-const RMVF: u32 = 1 << 23; // remove/clear reset flags
 
 #[entry]
 fn main() -> ! {

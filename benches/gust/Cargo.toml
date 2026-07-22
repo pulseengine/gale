@@ -18,6 +18,15 @@ cortex-m-semihosting = "0.5"
 panic-halt = "0.2"
 kiln-async = { git = "https://github.com/pulseengine/kiln", rev = "6966abcdeb1c88edaa86facdccf6cba8712640e9" }
 
+[features]
+# Silicon-firmware target selection (gust_wdg_silicon). Exactly one is active;
+# each pulls the matching generated constants module (benches/gust/targets/
+# generated/). G4 is the default (the directly-attached NUCLEO board); F1 is
+# --no-default-features --features target-f100.
+default = ["target-g474re"]
+target-g474re = []
+target-f100 = []
+
 [profile.release]
 panic = "abort"
 opt-level = "z"

@@ -90,4 +90,24 @@ mod tests {
             include_str!("../tests/golden/gust_target_stm32g474.rs.expected")
         );
     }
+
+    /// Keystone parity: the generated constants equal the exact values
+    /// gust_wdg_silicon.rs hardcoded BEFORE the retarget (git-recorded) — so the
+    /// retarget cannot silently change what the firmware programs.
+    ///   G4: IWDG_BASE=0x40003000, RCC_CSR=0x40021094, IWDGRSTF bit 29, RMVF bit 23
+    ///   F1: IWDG_BASE=0x40003000, RCC_CSR=0x40021024, IWDGRSTF bit 29, RMVF bit 24
+    #[test]
+    fn generated_consts_equal_prior_handwritten_firmware_values() {
+        let g = emit_rs(&parse_items(ITEMS, "STM32G474::Board.nucleo"));
+        assert!(g.contains("IWDG_BASE: u32 = 0x4000_3000;"), "g474 IWDG_BASE");
+        assert!(g.contains("RCC_CSR: u32 = 0x4002_1094;"), "g474 RCC_CSR");
+        assert!(g.contains("IWDGRSTF: u32 = 1 << 29;"), "g474 IWDGRSTF");
+        assert!(g.contains("RMVF: u32 = 1 << 23;"), "g474 RMVF");
+
+        let f = emit_rs(&parse_items(ITEMS, "STM32F100::Board.vldiscovery"));
+        assert!(f.contains("IWDG_BASE: u32 = 0x4000_3000;"), "f100 IWDG_BASE");
+        assert!(f.contains("RCC_CSR: u32 = 0x4002_1024;"), "f100 RCC_CSR");
+        assert!(f.contains("IWDGRSTF: u32 = 1 << 29;"), "f100 IWDGRSTF");
+        assert!(f.contains("RMVF: u32 = 1 << 24;"), "f100 RMVF");
+    }
 }
