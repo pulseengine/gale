@@ -331,7 +331,7 @@ artifacts:
   - id: VER-DRV-ADC-001
     type: sw-verification
     title: "ADC driver — Kani 7/7 (read-after-EOC, single-shot, channel-bounds) + Renode register-effect content-gate"
-    status: proposed
+    status: verified
     release: v0.3.0
     description: >
       The adc-thin driver's single-conversion FSM is Kani-proven (7/7 harnesses, 0
