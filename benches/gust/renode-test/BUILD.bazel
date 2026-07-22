@@ -103,6 +103,21 @@ renode_test(
     },
 )
 
+# Thin-seam ADC driver content gate — the dissolved driver (verified-wasm STM32F1
+# single-conversion path, Kani-proven read-after-EOC exactly-once / single-shot)
+# exercised on a RAM-mapped ADC window on a real STM32 model; asserts the exact
+# CR2/SMPR/SQR/DR register effects via Wait For Line On Uart (content, not just
+# no-fault).
+renode_test(
+    name = "gust-adc-renode",
+    timeout = "short",
+    robot_test = "gust_adc.robot",
+    variables_with_label = {
+        "ELF": ":gust_adc.elf",
+        "REPL": ":gust_adc.repl",
+    },
+)
+
 renode_test(
     name = "gust-breadth-renode",
     timeout = "short",

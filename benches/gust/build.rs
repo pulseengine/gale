@@ -220,6 +220,21 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_wdg_probe={}", wobj.display());
         println!("cargo:rerun-if-changed={}", wobj.display());
     }
+    // The dissolved thin-seam ADC driver (drivers/adc-thin -> loom -> synth --target
+    // cortex-m3 --all-exports --relocatable): the whole STM32F1 ADC single-conversion
+    // path — SMPR sample-time + SQR regular-sequence config and the
+    // enable->start->EOC->read cycle — in verified wasm (Kani 7/7, 0 new TCB atoms —
+    // mmio only). The Kani-proven distinctive property is read-after-EOC exactly-once /
+    // single-shot. gust_adc_probe is the LOCAL qemu-semihosting demonstrator of this
+    // SAME dissolved .o (RAM-window register effects + read-after-EOC), run before the
+    // `gust-adc-renode` content-gate (renode-test/gust_adc.robot); gust_adc drives it
+    // on a real STM32 model.
+    let aobj = Path::new(&manifest).join("drivers/adc-thin/adc-thin-cm3.o");
+    if aobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_adc={}", aobj.display());
+        println!("cargo:rustc-link-arg-bin=gust_adc_probe={}", aobj.display());
+        println!("cargo:rerun-if-changed={}", aobj.display());
+    }
     // The 4-driver breadth node (REQ-DRV-BREADTH-001): gpio+timer+spi+uart, each a
     // verified-wasm gust:hal component, wac/meld-fused → ONE dissolved .o exporting
     // all 20 protocol fns (C-renamed), 0 SRAM, no func_N collision. Built by
