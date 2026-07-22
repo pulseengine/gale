@@ -1,0 +1,36 @@
+package STM32G474
+public
+  with Cortex_M; with Gust_Target_Props;
+
+  memory Flag_Flash end Flag_Flash;
+  memory implementation Flag_Flash.i
+    properties Gust_Target_Props::Base => 16#08000000#; Gust_Target_Props::Length => 524288;
+  end Flag_Flash.i;
+
+  memory Ram end Ram;
+  memory implementation Ram.i
+    properties Gust_Target_Props::Base => 16#20000000#; Gust_Target_Props::Length => 98304;
+  end Ram.i;
+
+  device Iwdg
+    properties Gust_Target_Props::Base => 16#40003000#; Gust_Target_Props::Present => true;
+  end Iwdg;
+
+  device Rcc
+    properties
+      Gust_Target_Props::Base         => 16#40021000#;
+      Gust_Target_Props::Csr_Offset   => 16#94#;
+      Gust_Target_Props::Iwdgrstf_Bit => 29;
+      Gust_Target_Props::Rmvf_Bit     => 23;
+  end Rcc;
+
+  system Board end Board;
+  system implementation Board.nucleo
+    subcomponents
+      cpu   : processor Cortex_M::CortexM4;
+      flash : memory Flag_Flash.i;
+      sram  : memory Ram.i;
+      iwdg  : device Iwdg;
+      rcc   : device Rcc;
+  end Board.nucleo;
+end STM32G474;
