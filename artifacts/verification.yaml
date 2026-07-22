@@ -4816,3 +4816,40 @@ artifacts:
         target: SWREQ-PL-PL01
       - type: verifies
         target: SWREQ-PL-PL07
+
+  # ── SWE.6: by(bit_vector) leaf re-discharge via ordeal LRAT (gale#173) ────
+
+  - id: VER-BV-ORDEAL-001
+    type: sw-verification
+    title: by(bit_vector) ASIL-D leaves re-discharged via ordeal LRAT certs
+    status: approved
+    description: >
+      gale#173. The kernel's by(bit_vector) leaf obligations are re-discharged
+      through ordeal (crates.io 0.14.0), a certificate-checked QF_BV solver whose
+      LRAT checker is machine-proven sound in Lean 4 — replacing UNCHECKED Z3 with
+      an independently re-checkable certificate. Two evidence grades, kept distinct:
+
+        OBLIGATION-proof (real VC, `ordeal verus`): the EXACT by(bit_vector) VC
+        Verus/AIR emits to Z3 is ingested by ordeal's Verus-VC bridge (FEAT-009/#65),
+        which slices the QF_BV obligation, solves it, and re-checks the LRAT cert.
+        Upgraded leaves:
+          - src/cpu_mask.rs:171  1u32<<cpu_id power-of-two
+              -> unsat, 28250-byte checked LRAT
+          - src/mpu.rs:98        is_power_of_two biconditional
+              -> unsat, 63664-byte checked LRAT
+        VCs carried verbatim as proofs/ordeal-bv/verus_{cpu_mask,mpu_pow2}_realvc.smt2.
+
+        TRANSCRIPTION-proof (`ordeal check`): hand-transcribed SMT-LIB2 of the leaf
+        (proves the transcription, not the exact Verus VC). Still transcription-only,
+        pending their real Verus logs / the log slicer:
+          - src/spinlock_validate.rs SV4/SV5 owner encode-decode round-trip
+          - src/fault_decode.rs:663 lemma_cfsr_masks_partition (CFSR partition)
+
+      Reproduce: proofs/ordeal-bv/run.sh (Section A = transcription, Section B =
+      real-VC obligation-proof). Certs re-check with zero trust in the solver.
+    tags: [formal-verification, bit-vector, ordeal, lrat, asil-d, swe-6, gale-173]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: SWREQ-FD-FH01
