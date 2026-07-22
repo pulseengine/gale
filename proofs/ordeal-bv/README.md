@@ -100,29 +100,62 @@ attributes the `CFSR=0x00000082` MemManage evidence in the v0.5.0 I-ISO oracle).
 
 **4 of 54** obligation-sites now piloted (cpu_mask, mpu, spinlock_validate, fault_decode).
 
+## Transcription-proof vs obligation-proof
+
+There are **two** grades of evidence here, and the distinction is the whole point:
+
+- **Transcription-proof** (Section A of `run.sh`, `ordeal check`): the `.smt2` is a
+  *hand-transcription* of the leaf into SMT-LIB2. The LRAT cert proves *that transcription*
+  is unsat — it does **not** prove it is the exact VC Verus checked. Pilots 1–4 (cpu_mask,
+  mpu, spinlock_validate, fault_decode) are here.
+- **Obligation-proof** (Section B of `run.sh`, `ordeal verus`): the input is the **exact
+  by(bit_vector) VC Verus/AIR streams to Z3** — Verus's own `cpu_id!`/`mask@` naming,
+  `zero_extend` idioms, and `%%location_label%%` goal. ordeal's **Verus-VC bridge**
+  (FEAT-009 / #65, shipped in ordeal **0.12.0**, verified here on **0.14.0** from crates.io)
+  slices the QF_BV obligation Verus marked for bitvector reasoning, solves it, and
+  **re-checks** the LRAT cert. This closes the transcription gap: the cert now proves the
+  obligation Verus actually emitted.
+
+### Upgraded to obligation-proof (real VC)
+
+ordeal 0.14.0 ships gale's real Verus VCs as test fixtures
+(`tests/fixtures/verus_gale_{cpu_mask,mpu_pow2}_raw.smt2`); they are carried here verbatim
+(with a provenance header) as `verus_*_realvc.smt2`:
+
+| leaf | gale source | `ordeal verus` verdict | checked LRAT |
+|------|-------------|------------------------|--------------|
+| `cpu_mask` `1u32<<cpu_id` power-of-two | `src/cpu_mask.rs:171` | `unsat  src/cpu_mask.rs:171:9: 171:15 (#0)` | **28 250 bytes** |
+| `mpu` `is_power_of_two` biconditional | `src/mpu.rs:98` | `unsat  src/mpu.rs:98:9: 98:15 (#0)` | **63 664 bytes** |
+
+Both are `1 discharged, 0 failed, 0 skipped` and the cert re-checks before `unsat` is
+returned (`cert.recheck()` in the bridge). Note the real-VC LRAT (28 250 B) is *larger*
+than the hand-transcription's (28 210 B) — the extra bytes are Verus's let-bindings and
+extend idioms that the transcription elided; the same obligation, but literally the query
+Verus posed.
+
+### Still transcription-only (await the slicer / a Verus run)
+
+`spinlock_validate` (SV4/SV5) and `fault_decode` (CFSR partition) remain
+**transcription-proof**: their real Verus logs are not shipped as ordeal fixtures, and a
+local Verus is not on PATH in this environment to regenerate them. Upgrading them needs
+either those logs published as fixtures or `verus --log-all` run on gale's tree and fed to
+`ordeal verus`. Until then their `safety_case.yaml` evidence is **not** flipped (below).
+
 ## Reproduce
 
-    cargo install ordeal        # the published binary crate (crates.io)
-    ./run.sh                     # or: ORDEAL=/path/to/ordeal ./run.sh
-
-## Transcription gap → real-VC (obligation-proof)
-
-These pilots hand-transcribe each `by(bit_vector)` leaf into `.smt2`, so today's
-certificates prove **the transcription**, not the exact VC Verus checked. ordeal's
-**Verus-VC bridge** (FEAT-009 / #65) ingests the by(bit_vector) VC Verus itself emits
-to Z3 (let-bindings + Verus's bitvector idioms), closing that gap. It is **merged on
-ordeal `main`** and verified locally to discharge gale's real cpu_mask VC (unsat,
-28 250-byte LRAT), but is **not yet on crates.io** (0.11.0 is the latest publish, one
-commit before #65). When ordeal **0.12.0** publishes, `cargo install ordeal` carries it
-and each pilot upgrades from transcription-proof to obligation-proof. Still open upstream:
-an automatic slicer to lift the BV sub-query out of a Verus log (widening to the ~64 leaves).
+    cargo install ordeal        # 0.14.0 from crates.io (the published binary crate)
+    ./run.sh                    # or: ORDEAL=/path/to/ordeal ./run.sh
+    # Section A = transcription-proof (ordeal check); Section B = obligation-proof (ordeal verus)
 
 ## Scope / next
 
 - Boundary: only the **leaf** `by(bit_vector)` lemmas are QF_BV. The 805 top-level
   `forall/exists` properties need quantifiers and stay on Verus/Rocq/Lean.
-- Full automated sweep of the 54 obligations is gated on the Verus-VC bridge shipping to
-  crates.io (ordeal **0.12.0**) + the log slicer, so the VCs Verus emits are ingested
-  automatically per leaf.
-- On sweep: bind the certs as rivet `VER-BV-ORDEAL-001` + flip the BV-leaf evidence in
-  `artifacts/safety_case.yaml` from "unchecked Z3" to "ordeal LRAT cert (re-checkable)".
+- Full automated sweep of the 54 obligations is gated on the remaining upstream piece: an
+  automatic slicer that lifts each BV sub-query out of a `verus --log-all` dump (the bridge
+  itself now ships in ordeal 0.12.0+/verified on 0.14.0), plus gale publishing / running the
+  Verus logs for the remaining leaves.
+- Evidence binding (done this commit): rivet `VER-BV-ORDEAL-001`; and in
+  `artifacts/safety_case.yaml` the **cpu_mask + mpu** BV leaves are flipped from
+  "unchecked Z3" to "ordeal LRAT cert (re-checkable, obligation-proof)". spinlock_validate
+  and fault_decode stay on their prior evidence until their real VCs are available.
