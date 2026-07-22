@@ -329,7 +329,7 @@ artifacts:
   - id: VER-DRV-PWM-001
     type: sw-verification
     title: "PWM driver — Kani 7/7 (duty clamp + total/latching failsafe) + qemu probe + Renode register-effect content-gate"
-    status: proposed
+    status: verified
     release: v0.3.0
     description: >
       The pwm-thin driver's PWM output FSM + pure config core is Kani-proven (7/7
