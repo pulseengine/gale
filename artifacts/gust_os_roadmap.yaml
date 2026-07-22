@@ -329,7 +329,7 @@ artifacts:
   - id: VER-DRV-CAN-001
     type: sw-verification
     title: "CAN (bxCAN) driver — Kani 7/7 (config-only-in-init, init-handshake ordering, TX/RX gating) + Renode register-effect content-gate"
-    status: proposed
+    status: verified
     release: v0.3.0
     description: >
       The can-thin driver's mode FSM is Kani-proven (7/7 harnesses, 0 failures:
@@ -341,10 +341,28 @@ artifacts:
       Normal (p4/p5), all over the whole input space. Dissolved (loom 1.2.0 inline ->
       synth 0.43.0 --target cortex-m3 --all-exports --relocatable): can-thin-cm3.o =
       text 804 / data 0 / bss 0 -> 0 SRAM; imports are exactly mmio_read32 /
-      mmio_write32 (0 new TCB atoms, nm-confirmed). Pending its demonstrator + Renode
-      content-gate (this verifier holds `proposed` until the probe is green and the
-      gate is wired — dissolved-and-Kani-proven is not yet the register-effect
-      evidence the other closed drivers carry).
+      mmio_write32 (0 new TCB atoms, nm-confirmed — the six can_* exports are all
+      DEFINED text symbols). A LOCAL qemu-semihosting probe (gust_can_probe, RAM-window
+      register effects) is GREEN (`cargo run --bin gust_can_probe` -> "can-probe ALL
+      OK", exit 0): config-from-Sleep is rejected leaving BTR untouched
+      (write-protection); enter_init writes MCR.INRQ and the FSM reaches Init; a
+      configure in Init writes BTR = 0x025D_000C (the four masked bit-timing fields);
+      leave_init clears MCR.INRQ and reaches Normal; and — the DISTINCTIVE
+      config-only-in-init property — a configure once Normal is rejected and leaves BTR
+      EXACTLY 0x025D_000C (never clobbered with a stale zero rate); TX loads
+      TI0R=0x2460_0001 / DLC=8 / data only on an empty mailbox (TME0) and is rejected
+      off-Normal or when busy; RX sets exactly RFOM0 (0x20) only with a pending message
+      (FMP0>0) and is rejected off-Normal or when empty. End-to-end the
+      `gust-can-renode` gate (renode-test/gust_can.{repl,robot}, wired into
+      .github/workflows/gust-renode.yml; `bazel query //:gust-can-renode` loads) runs
+      the identical lifecycle on a RAM-mapped CAN1 window on a real STM32 model,
+      asserting each step over USART1 (can-protect-ok / can-init-ok / can-config-ok /
+      can-normal-ok / can-tx-ok / can-rx-ok). Source-level proof + native
+      register-effect check; the wasm->native dissolve is differentially trusted, not
+      proven equivalent (see docs/safety/verification-honesty.md). Scope is qemu probe
+      + Renode content-gate (register-level on a real M3 model), not silicon.
+      Kill-criterion: a Kani harness fails, the probe reports FAIL, or the Renode gate
+      observes a can-*-bad line.
     tags: [gust, can, bxcan, kani, renode, verification]
     links:
       - type: verifies
