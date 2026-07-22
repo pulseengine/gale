@@ -220,6 +220,20 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_wdg_probe={}", wobj.display());
         println!("cargo:rerun-if-changed={}", wobj.display());
     }
+    // The dissolved thin-seam I2C driver (drivers/i2c-thin → loom → synth): the whole
+    // STM32F1 I2C master path — CR2 FREQ + CCR + TRISE timing config (table-free bit
+    // arithmetic) and the START→address→data→STOP transaction FSM with the Kani-proven
+    // ACK-all-but-last rule — in verified wasm (Kani 7/7, 0 new TCB atoms — mmio only).
+    // gust_i2c_probe is the LOCAL qemu-semihosting demonstrator of this SAME dissolved
+    // .o (RAM-window register effects + ACK-all-but-last), run before the
+    // `gust-i2c-renode` content-gate (renode-test/gust_i2c.robot); gust_i2c is the
+    // Renode gate's ELF, driving the identical transaction over a real USART1.
+    let iobj = Path::new(&manifest).join("drivers/i2c-thin/i2c-thin-cm3.o");
+    if iobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_i2c={}", iobj.display());
+        println!("cargo:rustc-link-arg-bin=gust_i2c_probe={}", iobj.display());
+        println!("cargo:rerun-if-changed={}", iobj.display());
+    }
     // The 4-driver breadth node (REQ-DRV-BREADTH-001): gpio+timer+spi+uart, each a
     // verified-wasm gust:hal component, wac/meld-fused → ONE dissolved .o exporting
     // all 20 protocol fns (C-renamed), 0 SRAM, no func_N collision. Built by

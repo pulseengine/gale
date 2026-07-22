@@ -103,6 +103,21 @@ renode_test(
     },
 )
 
+# Thin-seam I2C driver content gate — the dissolved driver (verified-wasm STM32F1 I2C
+# master path, Kani-proven ACK-all-but-last) driving a 3-byte master read on a
+# RAM-mapped I2C1 window on a real STM32 model; asserts the exact CR2/CCR/TRISE/CR1
+# register effects and that CR1.STOP is written EXACTLY on the last byte via Wait For
+# Line On Uart (content, not just no-fault).
+renode_test(
+    name = "gust-i2c-renode",
+    timeout = "short",
+    robot_test = "gust_i2c.robot",
+    variables_with_label = {
+        "ELF": ":gust_i2c.elf",
+        "REPL": ":gust_i2c.repl",
+    },
+)
+
 renode_test(
     name = "gust-breadth-renode",
     timeout = "short",

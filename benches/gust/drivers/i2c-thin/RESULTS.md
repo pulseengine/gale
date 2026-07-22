@@ -32,8 +32,31 @@ capability externs are emitted as wasm imports via `.cargo/config.toml`
 (`--allow-undefined`). The other thin-seam drivers (spi/gpio/timer/uart) predate this
 and need the same one-line config to rebuild (their committed `.o`s still link fine).
 
-## Follow-on (not in this PR)
+## Close-out (demonstrator + gate + rivet)
 
-A `gust_i2c` demonstrator + Renode content-gate (register-effect assertion over a
-RAM-mapped I2C window, like `gust_spi`) and a rivet `VER-DRV-I2C-001` artifact — the
-same closure the SPI driver got.
+The `gust_i2c` demonstrator + Renode content-gate (register-effect assertion over a
+RAM-mapped I2C1 window, like `gust_spi`) and the rivet `REQ-DRV-I2C-001` /
+`VER-DRV-I2C-001` artifacts are now in place — the same closure the SPI/WDG drivers got:
+
+- **`gust_i2c_probe`** (qemu-semihosting, `benches/gust/src/bin/`) drives the dissolved
+  `i2c-thin-cm3.o` on a `[u32;16]` RAM window: asserts `i2c_configure` writes CR2
+  FREQ=0x8 / CCR=0x28 / TRISE=0x9 / CR1.PE, a read START writes CR1 = PE|START|ACK =
+  0x501, over a 3-byte read the ack decision is [1,1,0] and CR1.STOP (0x201) is written
+  EXACTLY on the last byte (ACK-all-but-last, observable at the register level),
+  completeness only after N bytes, dup-START/off-phase-`addr_ack` reject, and
+  `i2c_stop` → Idle. Emits `i2c-probe ALL OK`, exit 0. Non-vacuous: a dissolved no-op
+  leaves the window 0 → config/start assertions FAIL.
+- **`gust-i2c-renode`** (`renode-test/gust_i2c.{repl,robot}`, wired in `BUILD.bazel` +
+  `.github/workflows/gust-renode.yml`) runs the identical transaction on a real STM32
+  M3 model, content-gated per line on USART1 (i2c-config-ok … i2c-stop-ok).
+
+**Honest dissolve-fidelity finding (step off-Active).** The dissolved `i2c_step` does
+NOT early-return the fault sentinel for a non-Active state the way the pure source
+`step` returns `Err(WrongPhase)` — it enters its SR1 poll unconditionally and, on a
+plain RAM window whose SR1 never advances, busy-waits. So the probe/gate exercise step
+only on genuinely Active states (the ACK-all-but-last read); step's off-Active phase
+gate is covered by the Kani `p4_phase_gating` SOURCE proof, and the native reject paths
+are demonstrated via `i2c_start` (dup-START busy) and `i2c_addr_ack` (off-phase)
+instead. This is a wasm→native divergence in a reject path, consistent with the
+differentially-trusted (not proven-equivalent) dissolve; the safe polled path
+(Active reads/writes with the peripheral advancing SR1) is unaffected.
