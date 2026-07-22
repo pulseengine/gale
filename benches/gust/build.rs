@@ -218,6 +218,9 @@ fn main() {
     if wobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_wdg={}", wobj.display());
         println!("cargo:rustc-link-arg-bin=gust_wdg_probe={}", wobj.display());
+        // gust_wdg_silicon: the same dissolved .o driving the REAL IWDG on a
+        // NUCLEO-G474RE (thumbv7m ⊂ thumbv7em; IWDG is register-identical F1==G4).
+        println!("cargo:rustc-link-arg-bin=gust_wdg_silicon={}", wobj.display());
         println!("cargo:rerun-if-changed={}", wobj.display());
     }
     // The 4-driver breadth node (REQ-DRV-BREADTH-001): gpio+timer+spi+uart, each a
@@ -325,4 +328,96 @@ fn main() {
     }
     println!("cargo:rerun-if-changed=iso_contain.x");
     println!("cargo:rerun-if-changed=build.rs");
+
+    // The dissolved thin-seam ADC driver (drivers/adc-thin -> loom -> synth --target
+    // cortex-m3 --all-exports --relocatable): the whole STM32F1 ADC single-conversion
+    // path — SMPR sample-time + SQR regular-sequence config and the
+    // enable->start->EOC->read cycle — in verified wasm (Kani 7/7, 0 new TCB atoms —
+    // mmio only). The Kani-proven distinctive property is read-after-EOC exactly-once /
+    // single-shot. gust_adc_probe is the LOCAL qemu-semihosting demonstrator of this
+    // SAME dissolved .o (RAM-window register effects + read-after-EOC), run before the
+    // `gust-adc-renode` content-gate (renode-test/gust_adc.robot); gust_adc drives it
+    // on a real STM32 model.
+    let aobj = Path::new(&manifest).join("drivers/adc-thin/adc-thin-cm3.o");
+    if aobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_adc={}", aobj.display());
+        println!("cargo:rustc-link-arg-bin=gust_adc_probe={}", aobj.display());
+        println!("cargo:rerun-if-changed={}", aobj.display());
+    }
+
+    // The dissolved thin-seam DAC driver (drivers/dac-thin -> loom -> synth --target
+    // cortex-m3 --all-exports --relocatable): the whole STM32F1 software-triggered DAC
+    // path — CR channel/trigger config + the enable->load->trigger->output cycle — in
+    // verified wasm (Kani 7/7, 0 new TCB atoms: mmio read32/write32 only), scalar
+    // packed-u32 FSM (phase[31:30]/channel[29]/value[11:0]), table-free. gust_dac_probe
+    // is the LOCAL qemu-semihosting demonstrator of this SAME dissolved .o (RAM-window
+    // register effects + the Kani-proven glitch-free trigger-gated output), run before
+    // the `gust-dac-renode` content-gate (renode-test/gust_dac.robot).
+    let dacobj = Path::new(&manifest).join("drivers/dac-thin/dac-thin-cm3.o");
+    if dacobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_dac={}", dacobj.display());
+        println!("cargo:rustc-link-arg-bin=gust_dac_probe={}", dacobj.display());
+        println!("cargo:rerun-if-changed={}", dacobj.display());
+    }
+
+    // The dissolved thin-seam PWM driver (drivers/pwm-thin → loom → synth --target
+    // cortex-m3 --all-exports --relocatable): the whole STM32 advanced-timer PWM output
+    // path — CCMR1 PWM-mode-1 + preload config, PSC/ARR period, CCR duty, CCER/BDTR.MOE
+    // output enable — in verified wasm (Kani 7/7, 0 new TCB atoms; PWM is a pure-output
+    // path so the ONLY import is env.mmio_write32). Its distinctive Kani-proven safety
+    // properties are the duty clamp (CCR ≤ ARR always) and a total+latching failsafe
+    // (MOE cleared from any state, un-clearable by a stray start). gust_pwm_probe is the
+    // LOCAL qemu-semihosting demonstrator of this SAME dissolved .o (RAM-window register
+    // effects + clamp + failsafe-latch), run before the `gust-pwm-renode` content-gate
+    // (renode-test/gust_pwm.robot).
+    let pobj = Path::new(&manifest).join("drivers/pwm-thin/pwm-thin-cm3.o");
+    if pobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_pwm={}", pobj.display());
+        println!("cargo:rustc-link-arg-bin=gust_pwm_probe={}", pobj.display());
+        println!("cargo:rerun-if-changed={}", pobj.display());
+    }
+
+    // The dissolved thin-seam I2C driver (drivers/i2c-thin → loom → synth): the whole
+    // STM32F1 I2C master path — CR2 FREQ + CCR + TRISE timing config (table-free bit
+    // arithmetic) and the START→address→data→STOP transaction FSM with the Kani-proven
+    // ACK-all-but-last rule — in verified wasm (Kani 7/7, 0 new TCB atoms — mmio only).
+    // gust_i2c_probe is the LOCAL qemu-semihosting demonstrator of this SAME dissolved
+    // .o (RAM-window register effects + ACK-all-but-last), run before the
+    // `gust-i2c-renode` content-gate (renode-test/gust_i2c.robot); gust_i2c is the
+    // Renode gate's ELF, driving the identical transaction over a real USART1.
+    let iobj = Path::new(&manifest).join("drivers/i2c-thin/i2c-thin-cm3.o");
+    if iobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_i2c={}", iobj.display());
+        println!("cargo:rustc-link-arg-bin=gust_i2c_probe={}", iobj.display());
+        println!("cargo:rerun-if-changed={}", iobj.display());
+    }
+
+    // The dissolved thin-seam CAN (bxCAN) driver (drivers/can-thin -> loom -> synth):
+    // the whole STM32F1 bxCAN master path — BTR bit-timing config (write-protected to
+    // Init only), the INRQ/INAK init handshake, and TX-mailbox / RX-FIFO gating, with
+    // the Kani-proven config-only-in-init property — in verified wasm (Kani 7/7, 0 new
+    // TCB atoms — mmio only). gust_can_probe is the LOCAL qemu-semihosting demonstrator
+    // of this SAME dissolved .o (RAM-window register effects + config-only-in-init),
+    // run before the `gust-can-renode` content-gate (renode-test/gust_can.robot).
+    let cobj_can = Path::new(&manifest).join("drivers/can-thin/can-thin-cm3.o");
+    if cobj_can.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_can={}", cobj_can.display());
+        println!("cargo:rustc-link-arg-bin=gust_can_probe={}", cobj_can.display());
+        println!("cargo:rerun-if-changed={}", cobj_can.display());
+    }
+
+    // The dissolved DMA-as-own<buffer> ownership driver (drivers/dma-own → synth
+    // --target cortex-m3 --all-exports --relocatable): the DMA transfer OWNERSHIP
+    // round-trip FSM in verified wasm (gale#124, Kani 6/6 — p1..p6 ownership +
+    // barrier-by-construction), importing only the gust:hal dma seam (dma_program /
+    // dma_barrier / dma_irq_poll — the 3 irreducible trusted atoms). gust_dma_probe
+    // is the LOCAL qemu-semihosting demonstrator of this SAME dissolved .o
+    // (RAM-window register effects through the seam + the ownership round-trip),
+    // run before the `gust-dma-renode` content-gate (renode-test/gust_dma.robot).
+    let dmaobj = Path::new(&manifest).join("drivers/dma-own/dma-own-cm3.o");
+    if dmaobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_dma={}", dmaobj.display());
+        println!("cargo:rustc-link-arg-bin=gust_dma_probe={}", dmaobj.display());
+        println!("cargo:rerun-if-changed={}", dmaobj.display());
+    }
 }

@@ -1,0 +1,23 @@
+// Cortex-M3 + 64 KB SRAM / 512 KB flash, plus a RAM-mapped DMA descriptor +
+// coherency register window for the dma-own ownership driver content-gate. The
+// gate asserts the exact effects the DRIVER pokes THROUGH the trusted gust:hal DMA
+// seam (descriptor program ch/len, coherency barrier op) at each ownership handoff,
+// plus the Kani-proven ownership round-trip (Wasm->Dma->Wasm, barrier-by-
+// construction, abort-never-ownerless) — on a plain memory region, deterministic,
+// no dependence on a Renode DMA-controller peripheral model.
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m3"
+    nvic: nvic
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    -> cpu@0
+flash: Memory.MappedMemory @ sysbus 0x0
+    size: 0x80000
+sram: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x10000
+// DMA descriptor + coherency register window (real STM32F1 DMA1 base, 0x40020000)
+// as plain memory — the driver's program/barrier seam writes read back. Ends at
+// 0x40020400, below RCC (0x40021000) and USART1 (0x40013800) — no overlap.
+dma: Memory.MappedMemory @ sysbus 0x40020000
+    size: 0x400
+usart1: UART.STM32_UART @ sysbus <0x40013800, +0x100>
+    -> nvic@37

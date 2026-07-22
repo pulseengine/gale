@@ -241,7 +241,11 @@ artifacts:
       FV-SEM-001 (semaphore), FV-MUT-001 (mutex), FV-SC-001 (scheduler
       priority arithmetic), FV-TO-001 (timeout tick arithmetic),
       FV-SK-001 (stack index arithmetic).  All proofs check via Z3 as part
-      of the CI pipeline.
+      of the CI pipeline.  NB: Z3 is an UNCHECKED oracle here — its verdict is
+      trusted, not certificate-backed.  The by(bit_vector) LEAF obligations are
+      being re-discharged with certificate-checked evidence (see Sn-5): the
+      cpu_mask + mpu leaves are now obligation-proof via ordeal LRAT certs;
+      the remaining by(bit_vector) leaves stay on unchecked Z3 for now.
     tags: [safety, asil-d, formal-verification, verus]
     fields:
       evidence-type: formal-proof
@@ -308,3 +312,30 @@ artifacts:
     links:
       - type: supports
         target: G-5
+
+  - id: Sn-5
+    type: safety-solution
+    title: ordeal LRAT certs for by(bit_vector) leaves (re-checkable, gale#173)
+    status: approved
+    description: >
+      Certificate-checked re-discharge of by(bit_vector) leaf obligations via
+      ordeal (crates.io 0.14.0) — a QF_BV solver whose LRAT checker is
+      machine-proven sound in Lean 4.  Unlike Sn-1's UNCHECKED Z3, an ordeal
+      unsat carries an LRAT certificate re-validated before the verdict is
+      returned, so the evidence is independently re-checkable with zero trust
+      in the solver.  OBLIGATION-proof (the exact by(bit_vector) VC Verus emits,
+      via ordeal's Verus-VC bridge) is achieved for two leaves:
+      src/cpu_mask.rs:171 (1u32<<cpu_id power-of-two, 28250-byte LRAT) and
+      src/mpu.rs:98 (is_power_of_two, 63664-byte LRAT).  The spinlock_validate
+      and fault_decode by(bit_vector) leaves remain transcription-proof (their
+      real Verus VCs are not yet available) and stay on unchecked Z3.
+      Evidence artifact: VER-BV-ORDEAL-001 (verification.yaml);
+      reproduce via proofs/ordeal-bv/run.sh.
+    tags: [safety, asil-d, formal-verification, bit-vector, ordeal, lrat, gale-173]
+    fields:
+      evidence-type: formal-proof
+      evidence-ref: VER-BV-ORDEAL-001
+      confidence: high
+    links:
+      - type: supports
+        target: G-2

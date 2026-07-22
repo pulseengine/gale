@@ -103,6 +103,99 @@ renode_test(
     },
 )
 
+# Thin-seam ADC driver content gate — the dissolved driver (verified-wasm STM32F1
+# single-conversion path, Kani-proven read-after-EOC exactly-once / single-shot)
+# exercised on a RAM-mapped ADC window on a real STM32 model; asserts the exact
+# CR2/SMPR/SQR/DR register effects via Wait For Line On Uart (content, not just
+# no-fault).
+renode_test(
+    name = "gust-adc-renode",
+    timeout = "short",
+    robot_test = "gust_adc.robot",
+    variables_with_label = {
+        "ELF": ":gust_adc.elf",
+        "REPL": ":gust_adc.repl",
+    },
+)
+
+# Thin-seam software-triggered DAC driver content gate — the dissolved driver
+# (verified-wasm DAC CR/DHR/SWTRIGR/DOR protocol, Kani-proven glitch-free
+# trigger-gated output) exercised on a RAM-mapped DAC window on a real STM32 model;
+# asserts the exact CR/DHR/SWTRIGR register effects AND that a staged DHR code does
+# not move DOR until a trigger fires via Wait For Line On Uart (content, not just
+# no-fault).
+renode_test(
+    name = "gust-dac-renode",
+    timeout = "short",
+    robot_test = "gust_dac.robot",
+    variables_with_label = {
+        "ELF": ":gust_dac.elf",
+        "REPL": ":gust_dac.repl",
+    },
+)
+
+# Thin-seam advanced-timer PWM driver content gate — the dissolved driver (verified-wasm
+# PWM output path, Kani-proven duty clamp + total/latching failsafe) exercised on a
+# RAM-mapped timer window on a real STM32 model; asserts the exact PSC/ARR/CCMR1/CCER/
+# CR1/CCR1/BDTR register effects, that a commanded duty above the period clamps to ARR,
+# and that a tripped failsafe stays off, via Wait For Line On Uart (content, not just
+# no-fault).
+renode_test(
+    name = "gust-pwm-renode",
+    timeout = "short",
+    robot_test = "gust_pwm.robot",
+    variables_with_label = {
+        "ELF": ":gust_pwm.elf",
+        "REPL": ":gust_pwm.repl",
+    },
+)
+
+# Thin-seam I2C driver content gate — the dissolved driver (verified-wasm STM32F1 I2C
+# master path, Kani-proven ACK-all-but-last) driving a 3-byte master read on a
+# RAM-mapped I2C1 window on a real STM32 model; asserts the exact CR2/CCR/TRISE/CR1
+# register effects and that CR1.STOP is written EXACTLY on the last byte via Wait For
+# Line On Uart (content, not just no-fault).
+renode_test(
+    name = "gust-i2c-renode",
+    timeout = "short",
+    robot_test = "gust_i2c.robot",
+    variables_with_label = {
+        "ELF": ":gust_i2c.elf",
+        "REPL": ":gust_i2c.repl",
+    },
+)
+
+# Thin-seam CAN (bxCAN) driver content gate — the dissolved driver (verified-wasm
+# bxCAN master path, Kani-proven config-only-in-init) exercised on a RAM-mapped CAN1
+# window on a real STM32 model; asserts the exact MCR/BTR/TIxR/RF0R register effects
+# via Wait For Line On Uart (content, not just no-fault). BTR is written only inside
+# Init and left untouched by a config once Normal — the distinctive safety property.
+renode_test(
+    name = "gust-can-renode",
+    timeout = "short",
+    robot_test = "gust_can.robot",
+    variables_with_label = {
+        "ELF": ":gust_can.elf",
+        "REPL": ":gust_can.repl",
+    },
+)
+
+# DMA-as-own<buffer> ownership driver content gate — the dissolved dma-own driver
+# (gale#124, Kani 6/6: a DMA transfer modeled as an own<buffer> ownership round-trip,
+# with the cache/barrier op emitted BY CONSTRUCTION at every handoff) exercised on a
+# RAM-mapped DMA descriptor + coherency window on a real STM32 model; asserts the exact
+# program/barrier effects the driver pokes through the gust:hal dma seam and the
+# ownership FSM (Wasm->Dma->Wasm, abort-never-ownerless) via Wait For Line On Uart.
+renode_test(
+    name = "gust-dma-renode",
+    timeout = "short",
+    robot_test = "gust_dma.robot",
+    variables_with_label = {
+        "ELF": ":gust_dma.elf",
+        "REPL": ":gust_dma.repl",
+    },
+)
+
 renode_test(
     name = "gust-breadth-renode",
     timeout = "short",

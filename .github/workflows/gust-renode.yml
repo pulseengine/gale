@@ -56,6 +56,12 @@ jobs:
             //:gust-timer-renode \
             //:gust-spi-renode \
             //:gust-wdg-renode \
+            //:gust-adc-renode \
+            //:gust-dac-renode \
+            //:gust-pwm-renode \
+            //:gust-i2c-renode \
+            //:gust-can-renode \
+            //:gust-dma-renode \
             //:gust-breadth-renode \
             //:gust-switch-2core-renode \
             --test_output=all
