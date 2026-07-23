@@ -55,6 +55,69 @@ artifacts:
       - type: related-to
         target: REQ-OS-RELEASE-001
 
+  - id: DD-OS-DELIVERY-001
+    type: sw-detail-design
+    title: "gale's consumable cut is a cosign-signed OCI wasm COMPONENT that exports gust:os (fused gale-nano subset); residual imports = exactly gust:hal"
+    status: proposed
+    description: >
+      This is the natural externalisation of gust's OS-as-wasm-component-model:
+      gust already treats the OS as a typed CAPABILITY WORLD (gust:os) that apps
+      import and providers export, composed and dissolved per target — so the OS
+      is not a monolithic kernel binary but a set of verified wasm components.
+      This decision makes that distributable: gale's consumable output SHALL be a
+      cosign-signed wasm COMPONENT (exporting gust:os) published as a package, NOT
+      a release tarball of core modules + objects. The consumption is GENERIC and
+      multi-consumer — any downstream that imports gust:os pulls the same signed
+      component and fuses it for its target (jess#167 / jess DD-026 is the FIRST
+      reference consumer via its per-core meld-fuse, not the only one; more
+      consumers follow, exactly as the component-model ecosystem intends). The
+      publish targets match the sibling flight-component precedent (relay's
+      falcon-flight, published to both a cosign-signed OCI registry AND
+      wasm.directory): gale publishes to the SAME two channels. The F100-failsafe
+      half is already the gale-verified VER-OS-HM-001 FSM as of v0.5.0, so this
+      decision is purely the all-cores substrate DELIVERY shape — no urgency, all
+      sides float-gated, pinned now while the contract is fresh. Grounded motivation (verified against the v0.5.0 release assets):
+      the current cut ships two non-consumable shapes — the dissolved decision-core
+      object (`gale-wasm-msgq-*-cortex-m4f.o`, `gale_k_msgq_put_decide`, `nm -u` =
+      0 undefined, but only the decision fragment) and a core-module `.wasm`
+      (`wasm-tools print` shows 9 unresolved `env` scheduler imports:
+      k_spin_lock/unlock, z_ready_thread, z_reschedule, z_unpend_first_thread,
+      gale_w_msgq_pend/thread_swap_data/memcpy, arch_thread_return_value_set) —
+      neither is a self-contained component a per-core `meld fuse` can pull
+      uniformly. THREE-LAYER SEAM SPLIT, each owned by the right party:
+      (1) gust:os — the component-model CAPABILITY world (log/channel/io/spawn/
+      taskdisp/time/timer); flight components IMPORT it, and gale's deliverable
+      PROVIDES/EXPORTS it (executor + capability providers); app-composition happens
+      along this seam (wac plug -> meld fuse --memory shared). (2) the data seams
+      (sensor-sample/actuator-cmd/NavState) — jess-AADL-owned. (3) gust:hal — the
+      thin native mmio residual (runtime <-> silicon), jess-satisfied per core
+      (DD-018). DELIVERY INVARIANT (two-part, the clean-boundary crux): (a) the
+      exported gust:os capability world is STABLE and gale-owned in shape; (b) the
+      only undefined symbols after the app<->providers composition dissolves are
+      EXACTLY the gust:hal mmio seam — the scheduler primitives
+      (z_ready_thread/z_reschedule/gale_w_msgq_pend/...) live BELOW gust:os,
+      resolved inside the fused component by the composed executor, and are NEVER
+      exposed to the flight app or the native host (no leaking scheduler/heap
+      imports). Delivery add is bounded: release.yml already emits cosign-signed
+      .wasm/.wat + SHA256SUMS + keyless SLSA provenance; the increment is a
+      cosign-signed push of the fused gust:os-providers component to BOTH an OCI
+      registry (ghcr) AND wasm.directory (the same two channels the reference
+      flight component uses). The real work
+      is the fused-component TARGET itself (tracked separately) — a self-contained
+      wasm component whose residual is gust:hal only. Bound to the v0.6 delivery cut;
+      the consumer cross-links jess DD-026 <-> this DD so the contract is
+      bilaterally pinned.
+    tags: [gust, os, decision, delivery, oci, wasm-directory, component, gust-os, multi-consumer, gale223, jess167]
+    links:
+      - type: refines
+        target: SAC-BYOOS-LIBOS
+      - type: related-to
+        target: DD-OS-BUILD-001
+      - type: related-to
+        target: REQ-OS-RELEASE-001
+      - type: related-to
+        target: REQ-OS-SYSCALL-001
+
   # ==========================================================================
   # v0.5.0 — I-ISO core: verified MPU/MMU region-swap (THE KEYSTONE)
   # ==========================================================================
