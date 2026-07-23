@@ -39,8 +39,8 @@ jobs:
           # Pinned versions — bump deliberately; the manifest records them.
           # Keep in lockstep with release.yml (synth v0.11.50: #359/#372 +
           # #382/#378/#381 additive hardening; all three modules build clean).
-          cargo install loom-cli --git https://github.com/pulseengine/loom --tag v1.1.14 --locked
-          cargo install synth-cli --git https://github.com/pulseengine/synth --tag v0.11.50 --locked
+          cargo install loom-cli --git https://github.com/pulseengine/loom --tag v1.2.0 --locked
+          cargo install synth-cli --git https://github.com/pulseengine/synth --tag v0.49.0 --locked
 
       - name: Install arm toolchain (objcopy for the import renames)
         run: |
