@@ -261,23 +261,29 @@ fn wr(a: u32, v: u32) {
 /// Configure the ADC at `base` for a single-channel single conversion: sample time
 /// (SMPRx picked by channel), regular sequence (SQR3 channel, SQR1 length 1), and
 /// power on with CONT=0 (single-shot — never free-run). Table-free: every value is
-/// bit arithmetic.
+/// bit arithmetic. `cr2_extra` = caller-supplied CR2 bits OR'd into the managed
+/// CR2 write (e.g. `TSVREFE` (1<<23) to read F1 internal channels Vrefint/temp; also
+/// ALIGN, EXTTRIG). The managed bits (ADON, CONT=0) stay authoritative — gale#216.
 #[no_mangle]
-pub extern "C" fn adc_configure(base: u32, channel: u32, sample_code: u32) {
+pub extern "C" fn adc_configure(base: u32, channel: u32, sample_code: u32, cr2_extra: u32) {
     wr(base + smpr_reg(channel), smpr_bits(channel, sample_code));
     wr(base + SQR3, sqr3_channel(channel));
     wr(base + SQR1, sqr1_length(1));
-    // ADON on, CONT off: exactly one conversion per SWSTART.
-    wr(base + CR2, CR2_ADON);
+    // ADON on, CONT off: exactly one conversion per SWSTART. cr2_extra ORs in
+    // caller-supplied CR2 bits (e.g. TSVREFE) without touching the managed bits.
+    wr(base + CR2, CR2_ADON | cr2_extra);
 }
 
 /// Power on + select `channel`: Off → Ready. Returns the packed Ready state or
-/// `ADC_FAULT` (bad channel / wrong phase). Sets CR2.ADON.
+/// `ADC_FAULT` (bad channel / wrong phase). Sets CR2.ADON. `cr2_extra` = caller-
+/// supplied CR2 bits OR'd into the managed write (e.g. `TSVREFE` (1<<23) to read F1
+/// internal channels Vrefint/temp; also ALIGN, EXTTRIG). The managed bits (ADON,
+/// CONT=0) stay authoritative — gale#216.
 #[no_mangle]
-pub extern "C" fn adc_enable(base: u32, state: u32, channel: u32) -> u32 {
+pub extern "C" fn adc_enable(base: u32, state: u32, channel: u32, cr2_extra: u32) -> u32 {
     match enable(unpack(state), channel) {
         Ok(next) => {
-            wr(base + CR2, CR2_ADON);
+            wr(base + CR2, CR2_ADON | cr2_extra);
             pack(next)
         }
         Err(_) => ADC_FAULT,
@@ -286,11 +292,14 @@ pub extern "C" fn adc_enable(base: u32, state: u32, channel: u32) -> u32 {
 
 /// Start one conversion (SWSTART): Ready → Converting. Returns the packed Converting
 /// state or `ADC_FAULT` if not Ready. Sets CR2.SWSTART (keeps ADON, CONT stays 0).
+/// `cr2_extra` = caller-supplied CR2 bits OR'd into the managed write (e.g.
+/// `TSVREFE` (1<<23) to read F1 internal channels Vrefint/temp; also ALIGN,
+/// EXTTRIG). The managed bits (ADON, SWSTART, CONT=0) stay authoritative — gale#216.
 #[no_mangle]
-pub extern "C" fn adc_start(base: u32, state: u32) -> u32 {
+pub extern "C" fn adc_start(base: u32, state: u32, cr2_extra: u32) -> u32 {
     match begin(unpack(state)) {
         Ok(next) => {
-            wr(base + CR2, CR2_ADON | CR2_SWSTART);
+            wr(base + CR2, CR2_ADON | CR2_SWSTART | cr2_extra);
             pack(next)
         }
         Err(_) => ADC_FAULT,

@@ -28,9 +28,9 @@ pub extern "C" fn mmio_write32(addr: u32, val: u32) {
 }
 
 extern "C" {
-    fn adc_configure(base: u32, channel: u32, sample_code: u32);
-    fn adc_enable(base: u32, state: u32, channel: u32) -> u32;
-    fn adc_start(base: u32, state: u32) -> u32;
+    fn adc_configure(base: u32, channel: u32, sample_code: u32, cr2_extra: u32);
+    fn adc_enable(base: u32, state: u32, channel: u32, cr2_extra: u32) -> u32;
+    fn adc_start(base: u32, state: u32, cr2_extra: u32) -> u32;
     fn adc_poll(base: u32, state: u32) -> u32;
     fn adc_read(base: u32, state: u32) -> u32;
     fn adc_sample(state: u32) -> u32;
@@ -99,7 +99,7 @@ fn main() -> ! {
 
         // 0) channel bounds: enable with a channel above MAX_CHANNEL is rejected, no
         //    CR2 write.
-        let bad = adc_enable(ADC1, 0, MAX_CHANNEL + 1);
+        let bad = adc_enable(ADC1, 0, MAX_CHANNEL + 1, 0);
         let cr2_bad = read_volatile((ADC1 + CR2) as *const u32);
         tx(if bad == ADC_FAULT && cr2_bad == 0 {
             b"adc-chanbound-ok\n"
@@ -108,7 +108,7 @@ fn main() -> ! {
         });
 
         // 1) enable: Off → Ready, the DRIVER writes CR2=ADON.
-        let s1 = adc_enable(ADC1, 0, CH);
+        let s1 = adc_enable(ADC1, 0, CH, 0);
         let cr2_1 = read_volatile((ADC1 + CR2) as *const u32);
         tx(if s1 != ADC_FAULT && phase_of(s1) == PH_READY && cr2_1 == CR2_ADON {
             b"adc-enable-ok\n"
@@ -118,7 +118,7 @@ fn main() -> ! {
 
         // 2) configure: table-free SMPR2/SQR3/SQR1 land exactly.
         //    smpr_bits(3,4)=4<<9=0x800; SQR3 SQ1=3; SQR1 length(1)=0; CR2=ADON.
-        adc_configure(ADC1, CH, SAMPLE_CODE);
+        adc_configure(ADC1, CH, SAMPLE_CODE, 0);
         let smpr2 = read_volatile((ADC1 + SMPR2) as *const u32);
         let sqr3 = read_volatile((ADC1 + SQR3) as *const u32);
         let sqr1 = read_volatile((ADC1 + SQR1) as *const u32);
@@ -130,7 +130,7 @@ fn main() -> ! {
         });
 
         // 3) start: Ready → Converting, the DRIVER writes CR2=ADON|SWSTART.
-        let s3 = adc_start(ADC1, s1);
+        let s3 = adc_start(ADC1, s1, 0);
         let cr2_3 = read_volatile((ADC1 + CR2) as *const u32);
         tx(if s3 != ADC_FAULT && phase_of(s3) == PH_CONVERTING && cr2_3 == (CR2_ADON | CR2_SWSTART) {
             b"adc-start-ok\n"
@@ -172,7 +172,7 @@ fn main() -> ! {
         // 7) single-shot: the read landed Ready (not Converting); reading again is
         //    rejected and re-converting needs an explicit start.
         let twice = adc_read(ADC1, s6);
-        let rearm = adc_start(ADC1, s6);
+        let rearm = adc_start(ADC1, s6, 0);
         tx(if twice == ADC_FAULT && rearm != ADC_FAULT && phase_of(rearm) == PH_CONVERTING {
             b"adc-single-shot-ok\n"
         } else {
