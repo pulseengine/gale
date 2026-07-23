@@ -1,5 +1,21 @@
 # Gale
 
+**Gale is a formally-verified Rust reimplementation of the Zephyr RTOS kernel
+primitives** — semaphores, mutexes, queues, scheduler, and more — aimed at ASIL-D
+safety-critical embedded. The same primitives also compile to WebAssembly and
+*dissolve* to bare-metal native code (no runtime ships): that's **gust**, gale's
+smallest mini-OS, which runs on a tiny trusted native shim (just the mmio + irq
+capability). Verification runs on three independent engines — Verus (SMT/Z3), Rocq,
+and Lean. What "verified" does and does not cover is spelled out in the
+[claims ledger](docs/safety/verification-honesty.md); the honest bounds are below.
+
+<sub><b>House jargon, once:</b> <i>dissolve</i> = statically compile the wasm away
+into native so nothing interprets at runtime · <i>meld → loom → synth</i> = the
+dissolve pipeline (fuse components → inline → AOT-compile to the MCU) ·
+<i>thin-seam driver</i> = a driver whose whole protocol is verified wasm importing
+only a small mmio capability (<code>gust:hal</code>) · <i>TCB</i> = trusted computing
+base, the native code you must trust.</sub>
+
 **Build & test**
 [![Rust CI](https://github.com/pulseengine/gale/actions/workflows/bazel-tests.yml/badge.svg)](https://github.com/pulseengine/gale/actions/workflows/bazel-tests.yml)
 [![Zephyr Tests](https://github.com/pulseengine/gale/actions/workflows/zephyr-tests.yml/badge.svg)](https://github.com/pulseengine/gale/actions/workflows/zephyr-tests.yml)
@@ -203,14 +219,14 @@ track alone can no longer silently invalidate the property.
 ASPICE V-model traceability managed by [Rivet](https://github.com/pulseengine/rivet):
 
 ```
-rivet validate    # PASS (33 warnings — see Known Gaps)
-rivet coverage    # 97.3% weighted coverage
-rivet stats       # 660 artifacts
+rivet validate    # schema + traceability validation (the PASS gate)
+rivet coverage    # per-rule V-model coverage
+rivet stats       # artifact counts
 ```
 
 ## Known Gaps
 
-`rivet validate` produces 33 warnings and 277 lifecycle coverage gaps. All are categorized below.
+`rivet validate` surfaces lifecycle-coverage warnings (run it for the live count). The categories below explain what they are and why each is expected.
 
 **Expected -- KILN Phase 2 (8 warnings)**
 

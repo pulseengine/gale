@@ -1,7 +1,6 @@
 # Shipping gale's WebAssembly modules — release artifacts + Zephyr integration
 
-**Status:** design + first implementation (sem). **Drives:** release v0.1.0 (sem) per
-`docs/release-plan.md`. **Proven on:** NUCLEO-G474RE silicon (engine_control bench),
+**Status:** design + first implementation (sem). **Drives:** release v0.1.0 (sem, released). **Proven on:** NUCLEO-G474RE silicon (engine_control bench),
 qemu_riscv32 (icount lane).
 
 ## Why ship the wasm modules
