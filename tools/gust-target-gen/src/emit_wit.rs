@@ -20,6 +20,7 @@ fn model_stem(target_name: &str) -> String {
 /// never silently import nothing.
 fn interfaces_for(device_class: &str) -> &'static [&'static str] {
     match device_class {
+        "adc" => &["mmio"],
         "iwdg" => &["mmio"],
         "rcc" => &["mmio"],
         other => panic!(

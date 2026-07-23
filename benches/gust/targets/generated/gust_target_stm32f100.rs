@@ -9,3 +9,5 @@ pub const FLASH_BASE: u32 = 0x0800_0000;
 pub const FLASH_LEN: u32 = 131072;
 pub const SRAM_BASE: u32 = 0x2000_0000;
 pub const SRAM_LEN: u32 = 8192;
+pub const ADC_BASE: u32 = 0x4001_2400;
+pub const VREFINT_CH: u32 = 17;

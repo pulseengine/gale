@@ -152,6 +152,53 @@
         ]
       },
       {
+        "name": "Adc",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#40012400#",
+            "typed_value": {
+              "Integer": [
+                1073816576,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Vrefint_Ch",
+            "value": "17",
+            "typed_value": {
+              "Integer": [
+                17,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "true",
+            "typed_value": {
+              "Boolean": true
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
         "name": "Board",
         "category": "system",
         "extends": null,
@@ -288,6 +335,14 @@
             "name": "rcc",
             "category": "device",
             "classifier": "Rcc",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "adc",
+            "category": "device",
+            "classifier": "Adc",
             "is_refined": false,
             "in_modes": [],
             "properties": []
