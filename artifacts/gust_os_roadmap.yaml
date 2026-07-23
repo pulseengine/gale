@@ -460,6 +460,33 @@ artifacts:
     links:
       - type: verifies
         target: REQ-OS-SYSCALL-001
+  - id: VER-OS-TIME-MATH-001
+    type: sw-verification
+    title: "gust:os time seam — wrap-safe deadline/elapsed math Kani-proven (5/5)"
+    status: verified
+    release: v0.5.1
+    description: >
+      Additional formal evidence hardening the gust:os `time` capability (over the
+      test-level VER-OS-SYSCALL-001). The `time` interface documents its
+      deadline/elapsed helpers as wrap-safe over the counter domain widened to u64;
+      that arithmetic is now a single verified core, `drivers/os-time-math`, that the
+      time-provider binds to instead of carrying the math inline. Kani-proven (5/5
+      harnesses, 0 failures, `cargo kani`): deadline is total and `deadline(now,0)==now`
+      (deadline_total_and_zero_is_now); a fresh deadline is not yet elapsed for any
+      real half-domain-bounded non-zero delay (fresh_deadline_not_elapsed); a deadline
+      is elapsed exactly at itself (at_deadline_is_elapsed) and once now has advanced by
+      the full delay, wrap-safe across the domain (advanced_to_deadline_is_elapsed); and
+      the wrap-safe form agrees with a plain `>=` compare in the non-wrapping regime, so
+      it is a strict superset not a behavior change (matches_plain_compare_without_wrap).
+      This also corrects a latent gap: the prior inline `elapsed = now >= deadline` was
+      only correct in the non-wrapping window despite the WIT's wrap-safe wording; the
+      verified core uses the wrapping-difference half-range test that is genuinely
+      wrap-safe. Proof is source-level over the pure math; the wasm->native dissolve of
+      the provider remains differentially trusted (docs/safety/verification-honesty.md).
+    tags: [gust, os, time, syscall, kani, wrap-safe, verified]
+    links:
+      - type: verifies
+        target: REQ-OS-SYSCALL-001
   - id: REQ-DRV-ADC-001
     type: sw-req
     title: "ADC is a verified thin-seam driver — read-after-EOC exactly-once analog input"
