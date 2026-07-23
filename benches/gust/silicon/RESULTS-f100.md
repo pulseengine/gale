@@ -38,3 +38,9 @@ baked in), not the `.bin`+offset (openocd 0.12 `program` arg quirk). For a more
 ergonomic setup, drive the F100 via the G474's **ST-LINK/V3 as an external SWD
 probe** (remove the VLDISCOVERY CN3 jumpers, wire SWD) — then probe-rs / run.sh
 work unchanged.
+
+---
+
+_Toolchain note: current pins are synth 0.49.0 / loom 1.2.0 (#208), not the synth
+0.15.0 dissolve measured above. `gust_mix` has not been re-measured on real F100
+silicon under 0.49; the ratio above is historical until that re-run happens._

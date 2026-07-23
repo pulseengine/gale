@@ -80,3 +80,10 @@ cat /dev/cu.usbmodem<N>          # the app re-prints the ratio in a loop
 
 Regenerate the dissolved object:
 `synth compile <stripped gust_mix>.wasm -b riscv --target esp32c3 --all-exports --relocatable -o gust_mix-esp32c3.o`
+
+---
+
+_Toolchain note: current pins are synth 0.49.0 / loom 1.2.0 (#208), not the synth
+0.40.0 dissolve measured above. `gust_mix` has not been re-measured on real
+ESP32-C3 silicon under 0.49; the ratios above are historical until that re-run
+happens._

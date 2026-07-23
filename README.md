@@ -190,8 +190,8 @@ track alone can no longer silently invalidate the property.
 
 ### Functional testing (CI-enforced on every commit):
 
-- **cargo test:** ~1015 runtime tests on stripped (non-Verus) code
-- **Zephyr integration:** 36 upstream test suites on QEMU (M3 + MPS2/AN385 with MPU)
+- **cargo test:** runtime tests on stripped (non-Verus) code — current pass/fail via the Rust CI badge above (`cargo test --workspace`)
+- **Zephyr integration:** the upstream kernel test suites on QEMU (M3 + MPS2/AN385 with MPU) — current pass/fail via the Zephyr Tests badge above
 - **Renode emulation:** 3 boards (Cortex-M4F, M33, R5)
 - **Coverage:** Rust + Zephyr C line coverage → Codecov
 
@@ -210,8 +210,8 @@ track alone can no longer silently invalidate the property.
 
 | Workflow | Scope | Status |
 |----------|-------|--------|
-| Rust CI | cargo test, clippy, verus-strip gate | 995 tests |
-| Zephyr Kernel Tests | 20 upstream test suites on qemu_cortex_m3 | 20/20 pass |
+| Rust CI | cargo test, clippy, verus-strip gate | see Rust CI badge above |
+| Zephyr Kernel Tests | upstream kernel test suites on qemu_cortex_m3 | see Zephyr Tests badge above |
 | Renode Emulation Tests | Cortex-M4F (STM32F4) + Cortex-M33 (STM32L552) + Cortex-R5 (ZynqMP) | 3 boards |
 
 ## Traceability
@@ -247,7 +247,7 @@ The 277 lifecycle gaps break down as:
 ## Build
 
 ```bash
-# Rust tests (995 tests)
+# Rust tests
 cargo test
 
 # Verus verification

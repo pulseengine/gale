@@ -44,3 +44,9 @@ wasm-tools print target/.../gust_timer_thin.wasm | grep -c 'i32.load offset='   
 loom optimize <wasm> --passes inline --attestation false -o t.wasm
 synth compile t.wasm --target cortex-m3 --all-exports --relocatable -o timer-thin-cm3.o  # 212 B, 0 SRAM
 ```
+
+---
+
+_Toolchain note: current pins are synth 0.49.0 / loom 1.2.0 (#208). The 0.49 regen
+confirmed this driver's dissolved size is unchanged from the synth 0.33.0 measurement
+above; register effects unchanged, 0-SRAM preserved._

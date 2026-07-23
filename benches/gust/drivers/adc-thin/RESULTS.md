@@ -41,3 +41,9 @@ capability externs are emitted as wasm imports via `.cargo/config.toml`
 A `gust_adc` demonstrator + Renode content-gate (assert the CR2 ADON/SWSTART writes
 and the DR-read-after-EOC ordering over a RAM-mapped ADC window, like `gust_spi`) and
 a rivet `VER-DRV-ADC-001` artifact — the same closure the SPI driver got.
+
+---
+
+_Toolchain note: current pins are synth 0.49.0 / loom 1.2.0 (#208). The 0.49 regen
+measured this driver's dissolved `.text` at **740 B** (was 754 B on synth 0.40.0,
+above); register effects unchanged, 0-SRAM preserved._
