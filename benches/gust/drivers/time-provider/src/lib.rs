@@ -24,8 +24,10 @@ const RESOLUTION_HZ: u64 = 1_000_000;
 struct P;
 impl Guest for P {
     fn now() -> u64 { read32(TIM2_CNT) as u64 }
-    fn deadline(now: u64, ticks: u64) -> u64 { now.wrapping_add(ticks) }
-    fn elapsed(now: u64, deadline: u64) -> bool { now >= deadline }
+    // deadline/elapsed delegate to the Kani-proven wrap-safe core (os-time-math),
+    // so the seam's documented wrap-safety is backed by a proof, not asserted inline.
+    fn deadline(now: u64, ticks: u64) -> u64 { gust_os_time_math::deadline(now, ticks) }
+    fn elapsed(now: u64, deadline: u64) -> bool { gust_os_time_math::elapsed(now, deadline) }
     fn resolution() -> u64 { RESOLUTION_HZ }
 }
 export!(P);

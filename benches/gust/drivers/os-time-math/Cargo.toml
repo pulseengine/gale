@@ -1,0 +1,14 @@
+[package]
+name = "gust-os-time-math"
+version = "0.1.0"
+edition = "2021"
+description = "Verified wrap-safe time math for the gust:os time seam (deadline/elapsed). Kani-proven; shared by time-provider."
+
+[workspace]
+
+[lib]
+crate-type = ["rlib"]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
