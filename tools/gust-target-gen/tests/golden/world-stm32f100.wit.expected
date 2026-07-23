@@ -2,5 +2,5 @@
 package gust:target-stm32f100@0.1.0;
 world stm32f100 {
     import gust:hal/mmio@0.1.0;
-    // devices present: iwdg, rcc
+    // devices present: adc, iwdg, rcc
 }

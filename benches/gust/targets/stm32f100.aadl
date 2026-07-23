@@ -24,6 +24,13 @@ public
       Gust_Target_Props::Rmvf_Bit     => 24;
   end Rcc;
 
+  device Adc
+    properties
+      Gust_Target_Props::Base       => 16#40012400#;
+      Gust_Target_Props::Vrefint_Ch => 17;
+      Gust_Target_Props::Present    => true;
+  end Adc;
+
   system Board
     annex EMV2 {**
       error types
@@ -44,5 +51,6 @@ public
       sram  : memory Ram.i;
       iwdg  : device Iwdg;
       rcc   : device Rcc;
+      adc   : device Adc;
   end Board.vldiscovery;
 end STM32F100;
