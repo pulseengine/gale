@@ -342,6 +342,9 @@ fn main() {
     if aobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_adc={}", aobj.display());
         println!("cargo:rustc-link-arg-bin=gust_adc_probe={}", aobj.display());
+        // gust_adc_silicon points the SAME dissolved .o at the real F100 ADC1 to read
+        // Vrefint (ch17) on hardware — the silicon anchor for the adc-thin driver.
+        println!("cargo:rustc-link-arg-bin=gust_adc_silicon={}", aobj.display());
         println!("cargo:rerun-if-changed={}", aobj.display());
     }
 

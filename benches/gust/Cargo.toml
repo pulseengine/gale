@@ -27,6 +27,13 @@ default = ["target-g474re"]
 target-g474re = []
 target-f100 = []
 
+# gust_adc_silicon reads Vrefint (an F1 internal channel, ch17) — F100-only, so it
+# is built ONLY under target-f100 (otherwise the default target-g474re build would
+# hit its compile_error). All other bins auto-discover from src/bin/ as usual.
+[[bin]]
+name = "gust_adc_silicon"
+required-features = ["target-f100"]
+
 [profile.release]
 panic = "abort"
 opt-level = "z"
