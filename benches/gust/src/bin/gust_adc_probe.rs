@@ -30,7 +30,7 @@ pub extern "C" fn mmio_write32(addr: u32, val: u32) {
 }
 
 extern "C" {
-    fn adc_configure(base: u32, channel: u32, sample_code: u32, cr2_extra: u32);
+    fn adc_configure(base: u32, channel: u32, sample_code: u32);
     fn adc_enable(base: u32, state: u32, channel: u32, cr2_extra: u32) -> u32;
     fn adc_start(base: u32, state: u32, cr2_extra: u32) -> u32;
     fn adc_poll(base: u32, state: u32) -> u32;
@@ -109,8 +109,9 @@ fn main() -> ! {
 
     // 2) configure: table-free bit arithmetic lands in SMPR2/SQR3/SQR1 exactly.
     //    smpr_bits(3,4) = 4 << ((3%10)*3) = 4 << 9 = 0x800 in SMPR2; SQR3 SQ1 = 3;
-    //    SQR1 length(1) = 0; CR2 = ADON (single-shot, CONT=0).
-    unsafe { adc_configure(base, CH, SAMPLE_CODE, 0) };
+    //    SQR1 length(1) = 0. configure no longer touches CR2 (gale#216) — CR2 stays
+    //    ADON from adc_enable above (single-shot, CONT=0).
+    unsafe { adc_configure(base, CH, SAMPLE_CODE) };
     let smpr2 = rw(SMPR2);
     let sqr3 = rw(SQR3);
     let sqr1 = rw(SQR1);

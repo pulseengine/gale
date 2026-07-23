@@ -28,7 +28,7 @@ pub extern "C" fn mmio_write32(addr: u32, val: u32) {
 }
 
 extern "C" {
-    fn adc_configure(base: u32, channel: u32, sample_code: u32, cr2_extra: u32);
+    fn adc_configure(base: u32, channel: u32, sample_code: u32);
     fn adc_enable(base: u32, state: u32, channel: u32, cr2_extra: u32) -> u32;
     fn adc_start(base: u32, state: u32, cr2_extra: u32) -> u32;
     fn adc_poll(base: u32, state: u32) -> u32;
@@ -118,7 +118,7 @@ fn main() -> ! {
 
         // 2) configure: table-free SMPR2/SQR3/SQR1 land exactly.
         //    smpr_bits(3,4)=4<<9=0x800; SQR3 SQ1=3; SQR1 length(1)=0; CR2=ADON.
-        adc_configure(ADC1, CH, SAMPLE_CODE, 0);
+        adc_configure(ADC1, CH, SAMPLE_CODE);
         let smpr2 = read_volatile((ADC1 + SMPR2) as *const u32);
         let sqr3 = read_volatile((ADC1 + SQR3) as *const u32);
         let sqr1 = read_volatile((ADC1 + SQR1) as *const u32);

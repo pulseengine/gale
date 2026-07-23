@@ -259,19 +259,19 @@ fn wr(a: u32, v: u32) {
 // ---- exported protocol primitives (the driver's gust:hal-facing surface) ----
 
 /// Configure the ADC at `base` for a single-channel single conversion: sample time
-/// (SMPRx picked by channel), regular sequence (SQR3 channel, SQR1 length 1), and
-/// power on with CONT=0 (single-shot — never free-run). Table-free: every value is
-/// bit arithmetic. `cr2_extra` = caller-supplied CR2 bits OR'd into the managed
-/// CR2 write (e.g. `TSVREFE` (1<<23) to read F1 internal channels Vrefint/temp; also
-/// ALIGN, EXTTRIG). The managed bits (ADON, CONT=0) stay authoritative — gale#216.
+/// (SMPRx picked by channel) and regular sequence (SQR3 channel, SQR1 length 1).
+/// Table-free: every value is bit arithmetic.
 #[no_mangle]
-pub extern "C" fn adc_configure(base: u32, channel: u32, sample_code: u32, cr2_extra: u32) {
+pub extern "C" fn adc_configure(base: u32, channel: u32, sample_code: u32) {
     wr(base + smpr_reg(channel), smpr_bits(channel, sample_code));
     wr(base + SQR3, sqr3_channel(channel));
     wr(base + SQR1, sqr1_length(1));
-    // ADON on, CONT off: exactly one conversion per SWSTART. cr2_extra ORs in
-    // caller-supplied CR2 bits (e.g. TSVREFE) without touching the managed bits.
-    wr(base + CR2, CR2_ADON | cr2_extra);
+    // Register config ONLY — does NOT touch CR2. ADON was set by `adc_enable`
+    // (and stays set), so `adc_configure` writing ADON again would, on real F1,
+    // trigger a spurious conversion (a repeated ADON-write-while-on starts a
+    // conversion). Leaving CR2 alone here makes the conversion a strict
+    // single-shot: exactly one SWSTART in `adc_start`. CONT stays 0 throughout
+    // (never set by enable/configure/start), so single-shot is preserved. gale#216.
 }
 
 /// Power on + select `channel`: Off → Ready. Returns the packed Ready state or

@@ -15,16 +15,16 @@
 //!
 //! Reading an F1 internal channel needs `CR2.TSVREFE` (bit 23) set *during* the
 //! conversion — which the driver's absolute CR2 writes used to drop (gale#216). Fixed
-//! by threading `cr2_extra = TSVREFE` through adc_enable/adc_configure/adc_start so the
-//! dissolved driver keeps TSVREFE on every managed CR2 write.
+//! by threading `cr2_extra = TSVREFE` through adc_enable/adc_start so the dissolved
+//! driver keeps TSVREFE on every managed CR2 write.
 //!
-//! Silicon-vs-model note: the driver writes CR2=ADON in BOTH adc_enable (wake) and
-//! adc_configure (config). On the RAM-window probe a repeated ADON write is inert; on
-//! real F1 a `1`-written-while-ADON=1 can kick a conversion. Both such conversions
-//! select ch17 (SQR3 is set before the configure CR2 write), so the DR holds a Vrefint
-//! sample regardless — this anchor's job is to confirm that empirically. A future
-//! refinement (separate power-on from register config in the FSM) would make it a
-//! strict single-shot on F1; tracked with gale#216.
+//! Silicon-vs-model note (RESOLVED, gale#216): the driver used to write CR2=ADON in
+//! BOTH adc_enable (wake) and adc_configure (config). On the RAM-window probe a
+//! repeated ADON write was inert, but on real F1 a `1`-written-while-ADON=1 can kick a
+//! spurious conversion. Fixed by dropping `adc_configure`'s CR2 write entirely —
+//! ADON stays set from `adc_enable` and `adc_configure` now only touches
+//! SMPR/SQR3/SQR1, so the F1 read is a strict single-shot: exactly one SWSTART in
+//! `adc_start`.
 //!
 //! F1 ADC bring-up the FSM does NOT model (done here in firmware): enable the ADC1
 //! clock (RCC APB2ENR), wake + tSTAB, and RSTCAL/CAL self-calibration — all one-time,
@@ -50,7 +50,7 @@ pub extern "C" fn mmio_write32(addr: u32, val: u32) {
 // The dissolved adc-thin driver (state-threaded FSM; cr2_extra carries TSVREFE).
 extern "C" {
     fn adc_enable(base: u32, state: u32, channel: u32, cr2_extra: u32) -> u32;
-    fn adc_configure(base: u32, channel: u32, sample_code: u32, cr2_extra: u32);
+    fn adc_configure(base: u32, channel: u32, sample_code: u32);
     fn adc_start(base: u32, state: u32, cr2_extra: u32) -> u32;
     fn adc_poll(base: u32, state: u32) -> u32;
     fn adc_read(base: u32, state: u32) -> u32;
@@ -138,8 +138,9 @@ fn main() -> ! {
     while rd(ADC_BASE + CR2) & CR2_CAL != 0 {}
 
     // --- dissolved conversion lifecycle: configure -> start -> poll -> read ---
-    // configure: SMPR1 ch17 = 239.5 cyc, SQR3 = 17, SQR1 len = 1, CR2 = ADON|TSVREFE.
-    unsafe { adc_configure(ADC_BASE, VREFINT_CH, SAMPLE_CODE, CR2_TSVREFE) };
+    // configure: SMPR1 ch17 = 239.5 cyc, SQR3 = 17, SQR1 len = 1. Does NOT touch CR2
+    // (gale#216) — CR2 stays ADON|TSVREFE from adc_enable above.
+    unsafe { adc_configure(ADC_BASE, VREFINT_CH, SAMPLE_CODE) };
     // start: CR2 = ADON | SWSTART | TSVREFE -> conversion of ch17.
     let s2 = unsafe { adc_start(ADC_BASE, s1, CR2_TSVREFE) };
     if s2 == ADC_FAULT {
