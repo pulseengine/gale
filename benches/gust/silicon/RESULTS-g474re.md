@@ -59,3 +59,9 @@ baseline-subtracted. Same harness as the 0.12.0 row above; only the dissolved
 - **Fixed** a latent `run.sh` arg-parse bug (`${1:?... {g474re|f100}}` appended a
   literal `}` to `$BOARD`). Two probes present (board ST-LINK + an ESP-JTAG); pass
   `--probe <STLink VID:PID:serial>` explicitly.
+
+---
+
+_Toolchain note: current pins are synth 0.49.0 / loom 1.2.0 (#208), not the synth
+0.40.0 "current pin" above. `gust_mix` has not been re-measured on real M4 silicon
+under 0.49; the ratios above are historical until that re-run happens._

@@ -41,3 +41,9 @@ A `gust_pwm` demonstrator + Renode content-gate (assert CCR ≤ ARR always, and 
 `pwm_failsafe` clears MOE and no subsequent write re-enables output without a reconfigure)
 + rivet `VER-DRV-PWM-001`. Wires into the gale#63 Health Monitor as the actuator failsafe
 output stage.
+
+---
+
+_Toolchain note: current pins are synth 0.49.0 / loom 1.2.0 (#208). The 0.49 regen
+measured this driver's dissolved `.text` at **706 B** (was 728 B on synth 0.40.0,
+above); register effects unchanged, 0-SRAM preserved._

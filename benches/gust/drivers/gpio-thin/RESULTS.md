@@ -51,3 +51,10 @@ arm-zephyr-eabi-nm -u gpio-thin-cm3.o                  # only mmio_read32/write3
   STM32VLDISCOVERY model (the mechanical oracle, mirroring `gust_uart`'s USART
   gate). This is the last gate; when it's green, `VER-DRV-GPIO-001` is added to
   rivet and `rivet release status v0.3.0` drops from `NOT cuttable (4)` → `(3)`.
+
+---
+
+_Toolchain note: current pins are synth 0.49.0 / loom 1.2.0 (#208). The 0.49 regen
+measured this driver's dissolved `.text` at **534 B** (was 490 B on synth 0.31.0,
+above) — a +9% regression, the one outlier in the 10-driver byte-check; filed as a
+synth note. Register effects unchanged, 0-SRAM preserved._

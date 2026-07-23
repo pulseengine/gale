@@ -60,3 +60,9 @@ are demonstrated via `i2c_start` (dup-START busy) and `i2c_addr_ack` (off-phase)
 instead. This is a wasm→native divergence in a reject path, consistent with the
 differentially-trusted (not proven-equivalent) dissolve; the safe polled path
 (Active reads/writes with the peripheral advancing SR1) is unaffected.
+
+---
+
+_Toolchain note: current pins are synth 0.49.0 / loom 1.2.0 (#208). The 0.49 regen
+measured this driver's dissolved `.text` at **974 B** (was 992 B on synth 0.40.0,
+above); register effects unchanged, 0-SRAM preserved._

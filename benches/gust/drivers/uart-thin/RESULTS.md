@@ -95,3 +95,10 @@ correctness gate works locally *and* in CI.
 | exports | uart_init, uart_tx_byte, uart_rx, uart_rx_fired |
 | TCB (import relocations) | mmio_read32, mmio_write32, irq_poll |
 | verified | usart_rx_decide — Kani SUCCESSFUL (error-priority, all 2³² SR) |
+
+---
+
+_Toolchain note: current pins are synth 0.49.0 / loom 1.2.0 (#208), not the synth
+0.15.0 used for the measurements above. The 0.49 regen (10-driver byte-check)
+confirmed this driver's dissolved size is unchanged; register effects unchanged,
+0-SRAM preserved._

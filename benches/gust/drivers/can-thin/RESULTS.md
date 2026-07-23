@@ -46,3 +46,9 @@ A `gust_can` demonstrator + Renode content-gate (assert BTR is written only insi
 INRQ/INAK window, and that TXRQ/RFOM0 are only ever set live-gated on TME0/FMP0) —
 the same closure the other thin-seam drivers got. Discharges rivet `VER-DRV-CAN-001`
 (artifacts/gust_can_driver.yaml).
+
+---
+
+_Toolchain note: current pins are synth 0.49.0 / loom 1.2.0 (#208). The 0.49 regen
+measured this driver's dissolved `.text` at **796 B** (was 804 B on synth 0.43.0,
+above); register effects unchanged, 0-SRAM preserved._

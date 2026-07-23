@@ -50,3 +50,9 @@ no-op.
 
 Source-level proof + native register-effect check; the wasm→native dissolve is
 differentially trusted, not proven equivalent (docs/safety/verification-honesty.md).
+
+---
+
+_Toolchain note: current pins are synth 0.49.0 / loom 1.2.0 (#208). The 0.49 regen
+measured this driver's dissolved `.text` at **454 B** (was 494 B on synth 0.33.1,
+above); register effects unchanged, 0-SRAM preserved._
