@@ -104,8 +104,8 @@ jobs:
           # synth v0.11.50 ships #372 (arm i64) + #359 (native-pointer .bss) +
           # #382 (large offset materialization) + #378/#381 (fail-honestly);
           # additive hardening over v0.11.48, all three modules build clean.
-          cargo install loom-cli --git https://github.com/pulseengine/loom --tag v1.1.14 --locked
-          cargo install synth-cli --git https://github.com/pulseengine/synth --tag v0.11.50 --locked
+          cargo install loom-cli --git https://github.com/pulseengine/loom --tag v1.2.0 --locked
+          cargo install synth-cli --git https://github.com/pulseengine/synth --tag v0.49.0 --locked
           # wasm-tools produces the .wat evidence files (build-wasm-dist.sh); ci-base
           # has neither loom/synth nor wasm-tools. Without it `wasm-tools print` fails
           # silently → 0-byte .wat → GitHub rejects the asset upload (HTTP 400 Bad
