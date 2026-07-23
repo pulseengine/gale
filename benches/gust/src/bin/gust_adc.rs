@@ -28,7 +28,7 @@ pub extern "C" fn mmio_write32(addr: u32, val: u32) {
 }
 
 extern "C" {
-    fn adc_configure(base: u32, channel: u32, sample_code: u32, cr2_extra: u32);
+    fn adc_configure(base: u32, channel: u32, sample_code: u32);
     fn adc_enable(base: u32, state: u32, channel: u32, cr2_extra: u32) -> u32;
     fn adc_start(base: u32, state: u32, cr2_extra: u32) -> u32;
     fn adc_poll(base: u32, state: u32) -> u32;
@@ -49,6 +49,9 @@ const DR: u32 = 0x4C;
 const SR_EOC: u32 = 1 << 1;
 const CR2_ADON: u32 = 1 << 0;
 const CR2_SWSTART: u32 = 1 << 22;
+// F1 software-trigger enable bits adc_start now sets so SWSTART actually fires (gale#216).
+const CR2_EXTTRIG: u32 = 1 << 20;
+const CR2_EXTSEL_SWSTART: u32 = 0x7 << 17;
 const ADC_FAULT: u32 = 0xFFFF_FFFF;
 
 const PHASE_SHIFT: u32 = 30;
@@ -118,7 +121,7 @@ fn main() -> ! {
 
         // 2) configure: table-free SMPR2/SQR3/SQR1 land exactly.
         //    smpr_bits(3,4)=4<<9=0x800; SQR3 SQ1=3; SQR1 length(1)=0; CR2=ADON.
-        adc_configure(ADC1, CH, SAMPLE_CODE, 0);
+        adc_configure(ADC1, CH, SAMPLE_CODE);
         let smpr2 = read_volatile((ADC1 + SMPR2) as *const u32);
         let sqr3 = read_volatile((ADC1 + SQR3) as *const u32);
         let sqr1 = read_volatile((ADC1 + SQR1) as *const u32);
@@ -129,10 +132,12 @@ fn main() -> ! {
             b"adc-config-bad\n"
         });
 
-        // 3) start: Ready → Converting, the DRIVER writes CR2=ADON|SWSTART.
+        // 3) start: Ready → Converting, the DRIVER writes CR2=ADON|EXTTRIG|EXTSEL(SWSTART)|SWSTART
+        //    (the F1 software-trigger setup so SWSTART actually fires — gale#216).
         let s3 = adc_start(ADC1, s1, 0);
         let cr2_3 = read_volatile((ADC1 + CR2) as *const u32);
-        tx(if s3 != ADC_FAULT && phase_of(s3) == PH_CONVERTING && cr2_3 == (CR2_ADON | CR2_SWSTART) {
+        tx(if s3 != ADC_FAULT && phase_of(s3) == PH_CONVERTING
+            && cr2_3 == (CR2_ADON | CR2_EXTTRIG | CR2_EXTSEL_SWSTART | CR2_SWSTART) {
             b"adc-start-ok\n"
         } else {
             b"adc-start-bad\n"

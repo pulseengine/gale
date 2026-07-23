@@ -30,7 +30,7 @@ pub extern "C" fn mmio_write32(addr: u32, val: u32) {
 }
 
 extern "C" {
-    fn adc_configure(base: u32, channel: u32, sample_code: u32, cr2_extra: u32);
+    fn adc_configure(base: u32, channel: u32, sample_code: u32);
     fn adc_enable(base: u32, state: u32, channel: u32, cr2_extra: u32) -> u32;
     fn adc_start(base: u32, state: u32, cr2_extra: u32) -> u32;
     fn adc_poll(base: u32, state: u32) -> u32;
@@ -54,6 +54,9 @@ const DR: u32 = 0x4C;
 const SR_EOC: u32 = 1 << 1;
 const CR2_ADON: u32 = 1 << 0;
 const CR2_SWSTART: u32 = 1 << 22;
+// F1 software-trigger enable bits adc_start now sets so SWSTART actually fires (gale#216).
+const CR2_EXTTRIG: u32 = 1 << 20;
+const CR2_EXTSEL_SWSTART: u32 = 0x7 << 17;
 const ADC_FAULT: u32 = 0xFFFF_FFFF;
 
 // Packed-state field layout (must match the driver's dissolve ABI).
@@ -109,8 +112,9 @@ fn main() -> ! {
 
     // 2) configure: table-free bit arithmetic lands in SMPR2/SQR3/SQR1 exactly.
     //    smpr_bits(3,4) = 4 << ((3%10)*3) = 4 << 9 = 0x800 in SMPR2; SQR3 SQ1 = 3;
-    //    SQR1 length(1) = 0; CR2 = ADON (single-shot, CONT=0).
-    unsafe { adc_configure(base, CH, SAMPLE_CODE, 0) };
+    //    SQR1 length(1) = 0. configure no longer touches CR2 (gale#216) — CR2 stays
+    //    ADON from adc_enable above (single-shot, CONT=0).
+    unsafe { adc_configure(base, CH, SAMPLE_CODE) };
     let smpr2 = rw(SMPR2);
     let sqr3 = rw(SQR3);
     let sqr1 = rw(SQR1);
@@ -128,11 +132,12 @@ fn main() -> ! {
     // 3) start: Ready → Converting, driver WRITES CR2=ADON|SWSTART (keeps CONT=0).
     let s3 = unsafe { adc_start(base, s1, 0) };
     let cr2_3 = rw(CR2);
-    if s3 == ADC_FAULT || phase_of(s3) != PH_CONVERTING || cr2_3 != (CR2_ADON | CR2_SWSTART) {
-        hprintln!("adc-start FAIL: s3={:#x} phase={} CR2={:#x}", s3, phase_of(s3), cr2_3);
+    let cr2_start_want = CR2_ADON | CR2_EXTTRIG | CR2_EXTSEL_SWSTART | CR2_SWSTART;
+    if s3 == ADC_FAULT || phase_of(s3) != PH_CONVERTING || cr2_3 != cr2_start_want {
+        hprintln!("adc-start FAIL: s3={:#x} phase={} CR2={:#x} want {:#x}", s3, phase_of(s3), cr2_3, cr2_start_want);
         ok = false;
     } else {
-        hprintln!("adc-start ok: Converting, CR2=ADON|SWSTART={:#x}", cr2_3);
+        hprintln!("adc-start ok: Converting, CR2=ADON|EXTTRIG|EXTSEL(SWSTART)|SWSTART={:#x}", cr2_3);
     }
 
     // 4) read-after-EOC (distinctive): reading DR WHILE Converting — before EOC — is

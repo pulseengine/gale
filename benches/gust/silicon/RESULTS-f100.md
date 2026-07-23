@@ -82,10 +82,15 @@ gust-adc-silicon OK: Vrefint = 1646 raw on real STM32F100 silicon — the dissol
   above its 1.24 V spec max — impossible — which independently confirms the 3.0 V rail
   and that the code really is Vrefint.
 
-**Silicon-vs-model note (tracked, gale#216):** the driver writes `CR2=ADON` in both
-`adc_enable` and `adc_configure`; on F1 a `1`-written-while-ADON=1 can kick a
-conversion, so on hardware `adc_configure` may trigger an extra ch17 conversion before
-`adc_start`. Both convert ch17/Vrefint, so the DR holds a valid sample either way (the
-1646 read confirms it) — but a strict single-shot on F1 would want the FSM to separate
-power-on from register config. Harmless for this single-channel read; noted for a
-follow-on refinement.
+**Strict single-shot fix (gale#216, silicon-driven — 2026-07-23).** The original read
+(1646) worked by accident: `adc_configure` re-wrote `CR2=ADON`, and on F1 an
+ADON-write-while-ADON=1 restarts a conversion — so *that* write was the de-facto
+trigger, while `adc_start`'s `SWSTART` bit was inert. A diagnostic build confirmed it on
+the board: right after `adc_start`, `SR = 0x0` (STRT=0, EOC=0) — the conversion never
+started — because on F1 `SWSTART` is ignored unless `EXTTRIG=1` + `EXTSEL=111` (SWSTART
+source) are also set, which the driver didn't do. Fixed in two parts: `adc_configure`
+no longer touches CR2 (no stray restart), and `adc_start` now writes
+`ADON|EXTTRIG|EXTSEL(SWSTART)|SWSTART` so the software trigger actually fires. Re-flashed
+→ **Vrefint = 1645 raw, VDDA ≈ 2987 mV, EOC cleared** — a true single conversion via one
+SWSTART. adc-thin Kani 7/7 preserved; qemu probe + Renode gate updated to the new start
+register value (`CR2 = 0x5E0001`).
