@@ -16,3 +16,4 @@ MODULE.bazel.lock
 # Agent working state (per-package; not source — see issue-hunt skill)
 .claude/pulseengine/
 **/.claude/pulseengine/
+benches/gust/drivers/gustos-components/
