@@ -49,6 +49,13 @@ const SR_EOC: u32 = 1 << 1; // end of conversion
 const CR2_ADON: u32 = 1 << 0; // A/D on
 const CR2_CONT: u32 = 1 << 1; // continuous conversion (MUST be 0 for single-shot)
 const CR2_SWSTART: u32 = 1 << 22; // start conversion of regular channels
+// On STM32F1 the SWSTART bit is IGNORED unless the regular-group external trigger is
+// enabled AND its source is the software trigger: EXTTRIG=1 (bit 20) + EXTSEL=111
+// (bits 19:17). Without these, writing SWSTART does nothing (silicon-confirmed on the
+// F100 Vrefint anchor: SR.STRT stayed 0). The driver sets them in `adc_start` so the
+// software trigger actually fires — the true single-shot path (gale#216).
+const CR2_EXTTRIG: u32 = 1 << 20; // enable external/software trigger for regular group
+const CR2_EXTSEL_SWSTART: u32 = 0x7 << 17; // EXTSEL = 111 → SWSTART as the trigger source
 
 const DR_MASK: u32 = 0x0FFF; // 12-bit right-aligned result
 
@@ -299,7 +306,13 @@ pub extern "C" fn adc_enable(base: u32, state: u32, channel: u32, cr2_extra: u32
 pub extern "C" fn adc_start(base: u32, state: u32, cr2_extra: u32) -> u32 {
     match begin(unpack(state)) {
         Ok(next) => {
-            wr(base + CR2, CR2_ADON | CR2_SWSTART | cr2_extra);
+            // ADON (kept on) + the software-trigger setup (EXTTRIG + EXTSEL=SWSTART) so
+            // the SWSTART bit actually starts the conversion on F1; CONT stays 0
+            // (single-shot). cr2_extra carries e.g. TSVREFE for internal channels.
+            wr(
+                base + CR2,
+                CR2_ADON | CR2_EXTTRIG | CR2_EXTSEL_SWSTART | CR2_SWSTART | cr2_extra,
+            );
             pack(next)
         }
         Err(_) => ADC_FAULT,

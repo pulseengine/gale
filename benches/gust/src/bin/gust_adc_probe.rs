@@ -54,6 +54,9 @@ const DR: u32 = 0x4C;
 const SR_EOC: u32 = 1 << 1;
 const CR2_ADON: u32 = 1 << 0;
 const CR2_SWSTART: u32 = 1 << 22;
+// F1 software-trigger enable bits adc_start now sets so SWSTART actually fires (gale#216).
+const CR2_EXTTRIG: u32 = 1 << 20;
+const CR2_EXTSEL_SWSTART: u32 = 0x7 << 17;
 const ADC_FAULT: u32 = 0xFFFF_FFFF;
 
 // Packed-state field layout (must match the driver's dissolve ABI).
@@ -129,11 +132,12 @@ fn main() -> ! {
     // 3) start: Ready → Converting, driver WRITES CR2=ADON|SWSTART (keeps CONT=0).
     let s3 = unsafe { adc_start(base, s1, 0) };
     let cr2_3 = rw(CR2);
-    if s3 == ADC_FAULT || phase_of(s3) != PH_CONVERTING || cr2_3 != (CR2_ADON | CR2_SWSTART) {
-        hprintln!("adc-start FAIL: s3={:#x} phase={} CR2={:#x}", s3, phase_of(s3), cr2_3);
+    let cr2_start_want = CR2_ADON | CR2_EXTTRIG | CR2_EXTSEL_SWSTART | CR2_SWSTART;
+    if s3 == ADC_FAULT || phase_of(s3) != PH_CONVERTING || cr2_3 != cr2_start_want {
+        hprintln!("adc-start FAIL: s3={:#x} phase={} CR2={:#x} want {:#x}", s3, phase_of(s3), cr2_3, cr2_start_want);
         ok = false;
     } else {
-        hprintln!("adc-start ok: Converting, CR2=ADON|SWSTART={:#x}", cr2_3);
+        hprintln!("adc-start ok: Converting, CR2=ADON|EXTTRIG|EXTSEL(SWSTART)|SWSTART={:#x}", cr2_3);
     }
 
     // 4) read-after-EOC (distinctive): reading DR WHILE Converting — before EOC — is

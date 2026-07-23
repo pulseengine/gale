@@ -18,13 +18,14 @@
 //! by threading `cr2_extra = TSVREFE` through adc_enable/adc_start so the dissolved
 //! driver keeps TSVREFE on every managed CR2 write.
 //!
-//! Silicon-vs-model note (RESOLVED, gale#216): the driver used to write CR2=ADON in
-//! BOTH adc_enable (wake) and adc_configure (config). On the RAM-window probe a
-//! repeated ADON write was inert, but on real F1 a `1`-written-while-ADON=1 can kick a
-//! spurious conversion. Fixed by dropping `adc_configure`'s CR2 write entirely —
-//! ADON stays set from `adc_enable` and `adc_configure` now only touches
-//! SMPR/SQR3/SQR1, so the F1 read is a strict single-shot: exactly one SWSTART in
-//! `adc_start`.
+//! Strict single-shot on F1 (RESOLVED, gale#216, silicon-driven): the driver used to
+//! rely on `adc_configure` re-writing CR2=ADON — on F1 an ADON-write-while-ADON=1
+//! restarts a conversion, so that write was the *de facto* trigger, and `adc_start`'s
+//! SWSTART bit was actually inert (the F100 diagnostic showed SR.STRT=0 after start:
+//! on F1 SWSTART is ignored unless EXTTRIG=1 + EXTSEL=111 are also set). Fixed in two
+//! parts: (1) `adc_configure` no longer touches CR2 (no stray ADON-restart), and
+//! (2) `adc_start` now sets EXTTRIG|EXTSEL(SWSTART)|SWSTART so the software trigger
+//! actually fires — exactly one conversion. Confirmed on real F100: Vrefint = 1645.
 //!
 //! F1 ADC bring-up the FSM does NOT model (done here in firmware): enable the ADC1
 //! clock (RCC APB2ENR), wake + tSTAB, and RSTCAL/CAL self-calibration — all one-time,

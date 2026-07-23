@@ -49,6 +49,9 @@ const DR: u32 = 0x4C;
 const SR_EOC: u32 = 1 << 1;
 const CR2_ADON: u32 = 1 << 0;
 const CR2_SWSTART: u32 = 1 << 22;
+// F1 software-trigger enable bits adc_start now sets so SWSTART actually fires (gale#216).
+const CR2_EXTTRIG: u32 = 1 << 20;
+const CR2_EXTSEL_SWSTART: u32 = 0x7 << 17;
 const ADC_FAULT: u32 = 0xFFFF_FFFF;
 
 const PHASE_SHIFT: u32 = 30;
@@ -129,10 +132,12 @@ fn main() -> ! {
             b"adc-config-bad\n"
         });
 
-        // 3) start: Ready → Converting, the DRIVER writes CR2=ADON|SWSTART.
+        // 3) start: Ready → Converting, the DRIVER writes CR2=ADON|EXTTRIG|EXTSEL(SWSTART)|SWSTART
+        //    (the F1 software-trigger setup so SWSTART actually fires — gale#216).
         let s3 = adc_start(ADC1, s1, 0);
         let cr2_3 = read_volatile((ADC1 + CR2) as *const u32);
-        tx(if s3 != ADC_FAULT && phase_of(s3) == PH_CONVERTING && cr2_3 == (CR2_ADON | CR2_SWSTART) {
+        tx(if s3 != ADC_FAULT && phase_of(s3) == PH_CONVERTING
+            && cr2_3 == (CR2_ADON | CR2_EXTTRIG | CR2_EXTSEL_SWSTART | CR2_SWSTART) {
             b"adc-start-ok\n"
         } else {
             b"adc-start-bad\n"
