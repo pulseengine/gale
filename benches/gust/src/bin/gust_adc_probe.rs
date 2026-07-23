@@ -30,9 +30,9 @@ pub extern "C" fn mmio_write32(addr: u32, val: u32) {
 }
 
 extern "C" {
-    fn adc_configure(base: u32, channel: u32, sample_code: u32);
-    fn adc_enable(base: u32, state: u32, channel: u32) -> u32;
-    fn adc_start(base: u32, state: u32) -> u32;
+    fn adc_configure(base: u32, channel: u32, sample_code: u32, cr2_extra: u32);
+    fn adc_enable(base: u32, state: u32, channel: u32, cr2_extra: u32) -> u32;
+    fn adc_start(base: u32, state: u32, cr2_extra: u32) -> u32;
     fn adc_poll(base: u32, state: u32) -> u32;
     fn adc_read(base: u32, state: u32) -> u32;
     fn adc_sample(state: u32) -> u32;
@@ -88,7 +88,7 @@ fn main() -> ! {
     // 0) channel bounds: enable with a channel above MAX_CHANNEL (18) MUST be rejected
     //    — ADC_FAULT, no CR2 write. A dissolve that silently no-ops the bound check
     //    would latch an out-of-range mux input.
-    let bad = unsafe { adc_enable(base, 0, MAX_CHANNEL + 1) };
+    let bad = unsafe { adc_enable(base, 0, MAX_CHANNEL + 1, 0) };
     let cr2_after_bad = rw(CR2);
     if bad != ADC_FAULT || cr2_after_bad != 0 {
         hprintln!("adc-chanbound FAIL: enable(18)={:#x} CR2={:#x}", bad, cr2_after_bad);
@@ -98,7 +98,7 @@ fn main() -> ! {
     }
 
     // 1) enable: Off(state=0) → Ready, driver WRITES CR2=ADON (a no-op leaves it 0).
-    let s1 = unsafe { adc_enable(base, 0, CH) };
+    let s1 = unsafe { adc_enable(base, 0, CH, 0) };
     let cr2_1 = rw(CR2);
     if s1 == ADC_FAULT || phase_of(s1) != PH_READY || cr2_1 != CR2_ADON {
         hprintln!("adc-enable FAIL: s1={:#x} phase={} CR2={:#x}", s1, phase_of(s1), cr2_1);
@@ -110,7 +110,7 @@ fn main() -> ! {
     // 2) configure: table-free bit arithmetic lands in SMPR2/SQR3/SQR1 exactly.
     //    smpr_bits(3,4) = 4 << ((3%10)*3) = 4 << 9 = 0x800 in SMPR2; SQR3 SQ1 = 3;
     //    SQR1 length(1) = 0; CR2 = ADON (single-shot, CONT=0).
-    unsafe { adc_configure(base, CH, SAMPLE_CODE) };
+    unsafe { adc_configure(base, CH, SAMPLE_CODE, 0) };
     let smpr2 = rw(SMPR2);
     let sqr3 = rw(SQR3);
     let sqr1 = rw(SQR1);
@@ -126,7 +126,7 @@ fn main() -> ! {
     }
 
     // 3) start: Ready → Converting, driver WRITES CR2=ADON|SWSTART (keeps CONT=0).
-    let s3 = unsafe { adc_start(base, s1) };
+    let s3 = unsafe { adc_start(base, s1, 0) };
     let cr2_3 = rw(CR2);
     if s3 == ADC_FAULT || phase_of(s3) != PH_CONVERTING || cr2_3 != (CR2_ADON | CR2_SWSTART) {
         hprintln!("adc-start FAIL: s3={:#x} phase={} CR2={:#x}", s3, phase_of(s3), cr2_3);
@@ -175,7 +175,7 @@ fn main() -> ! {
     //    free-runs. Reading AGAIN from Ready is rejected (exactly-once), and the only
     //    way back to Converting is an explicit start — not an implicit re-arm.
     let twice = unsafe { adc_read(base, s6) };
-    let rearm = unsafe { adc_start(base, s6) };
+    let rearm = unsafe { adc_start(base, s6, 0) };
     if twice != ADC_FAULT || rearm == ADC_FAULT || phase_of(rearm) != PH_CONVERTING {
         hprintln!("adc-single-shot FAIL: read-twice={:#x} restart={:#x} phase={}", twice, rearm, phase_of(rearm));
         ok = false;
