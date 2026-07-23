@@ -12,10 +12,20 @@ use exports::gust::os::time::Guest;
 
 const TIM2_CNT: u32 = 0x4000_0024; // timer count register (via gust:hal/mmio)
 
+// Ticks/sec (REQ-OS-TIMER-001, wit-os/gust-os.wit `time.resolution`). TIM2_CNT is a
+// raw free-running counter with no PSC/ARR config crossing this seam (unlike
+// timer-thin, which owns the real prescaler), so there is no clock-tree-derived Hz
+// to report here yet — 1 MHz (1 tick = 1 us) is a documented placeholder, matching
+// the ONE_SEC=1_000_000 tick convention gust_timer_probe.rs already uses for the
+// executor-backed `timer` interface. Revisit once a node wires a configured PSC/ARR
+// timer (e.g. timer-thin) into this seam instead of the mock counter.
+const RESOLUTION_HZ: u64 = 1_000_000;
+
 struct P;
 impl Guest for P {
     fn now() -> u64 { read32(TIM2_CNT) as u64 }
     fn deadline(now: u64, ticks: u64) -> u64 { now.wrapping_add(ticks) }
     fn elapsed(now: u64, deadline: u64) -> bool { now >= deadline }
+    fn resolution() -> u64 { RESOLUTION_HZ }
 }
 export!(P);
