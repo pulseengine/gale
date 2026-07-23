@@ -1,0 +1,118 @@
+# Build, verify, sign + publish gale's gust:os provider components
+# (DD-OS-DELIVERY-001, gale#223/#224).
+#
+# gust's OS-as-wasm-component-model made distributable: each gust:os provider is a
+# wasm COMPONENT that exports a gust:os capability interface and imports only
+# gust:hal. The `verify` job gates that invariant on every PR (export gust:os,
+# import only gust:hal — no leaking scheduler/env/heap). On a release tag the
+# `publish` job additionally cosign-signs (keyless OIDC) and publishes to BOTH
+# channels a consumer pulls from — a cosign-signed OCI registry (ghcr) and
+# wasm.directory — so ANY downstream that imports gust:os pulls the same signed
+# component and fuses it for its target.
+#
+# First demonstrator: the time provider (exports gust:os/time, residual = gust:hal).
+# The full fused gale-nano runtime component is gale#224.
+name: gustos publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "benches/gust/drivers/*-provider/**"
+      - "benches/gust/drivers/wit-os/**"
+      - "benches/gust/drivers/build-gustos-components.sh"
+      - ".github/workflows/gustos-publish.yml"
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+    paths:
+      - "benches/gust/drivers/*-provider/**"
+      - "benches/gust/drivers/wit-os/**"
+      - "benches/gust/drivers/build-gustos-components.sh"
+      - ".github/workflows/gustos-publish.yml"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "component version tag (e.g. 0.5.1)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    name: "gust:os component invariant (export gust:os, import only gust:hal)"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install wasm-tools
+        run: cargo install wasm-tools --version 1.245.1 --locked
+      - name: Build + verify the gust:os provider components
+        run: bash benches/gust/drivers/build-gustos-components.sh
+
+  publish:
+    name: "sign + publish gust:os components (OCI + wasm.directory)"
+    # Only on a release tag or an explicit dispatch — never on PR.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: verify
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write     # ghcr OCI push
+      id-token: write     # cosign keyless OIDC
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install wasm-tools + wkg
+        run: |
+          cargo install wasm-tools --version 1.245.1 --locked
+          cargo install wkg --locked
+      - uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
+      - name: Build + verify components
+        run: bash benches/gust/drivers/build-gustos-components.sh
+      - name: Resolve version
+        id: v
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          REF: ${{ github.ref }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then V="$INPUT_VERSION"; else V="${REF#refs/tags/v}"; fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+      - name: Publish signed to ghcr OCI + wasm.directory
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WASM_DIRECTORY_TOKEN: ${{ secrets.WASM_DIRECTORY_TOKEN }}
+          VERSION: ${{ steps.v.outputs.version }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | wkg oci login ghcr.io -u "$OWNER" --password-stdin
+          for comp in benches/gust/drivers/gustos-components/*.component.wasm; do
+            base="$(basename "$comp" .component.wasm)"     # time-provider
+            pkg="gale-nano-${base%-provider}"               # gale-nano-time
+            ref="ghcr.io/${OWNER}/${pkg}:${VERSION}"
+            echo "== $pkg → $ref =="
+            wkg oci push "$ref" "$comp"
+            cosign sign --yes "$ref"
+            echo "::notice::published + signed $ref"
+            if [ -n "${WASM_DIRECTORY_TOKEN:-}" ]; then
+              WKG_REGISTRY_TOKEN="$WASM_DIRECTORY_TOKEN" \
+                wkg publish "$comp" --package "pulseengine:${pkg}@${VERSION}" --registry wasm.directory \
+                || echo "::warning::wasm.directory publish failed for $pkg"
+            else
+              echo "::warning::WASM_DIRECTORY_TOKEN unset — skipping wasm.directory publish for $pkg"
+            fi
+          done
