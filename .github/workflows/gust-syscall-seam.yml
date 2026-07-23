@@ -1,0 +1,50 @@
+# gust:os syscall-seam drift gate (gale#214).
+#
+# The gust:os providers implement WIT Guest traits generated from
+# benches/gust/drivers/wit-os/gust-os.wit. A WIT method added without its Guest
+# impl fails to compile (E0046) — but no workflow built these crates, so #202
+# added time.resolution() to the WIT without the time-provider impl and shipped
+# GREEN, silently breaking the gust_os_tl/ts dissolve until #213 caught it by
+# hand. This gate builds every provider/app crate for wasm32 so that drift fails
+# RED. Cargo-only; the compile is the oracle (wit-bindgen generates the trait).
+name: gust syscall seam
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "benches/gust/drivers/wit-os/**"
+      - "benches/gust/drivers/app-*/**"
+      - "benches/gust/drivers/*-provider/**"
+      - "benches/gust/drivers/check-providers.sh"
+      - ".github/workflows/gust-syscall-seam.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "benches/gust/drivers/wit-os/**"
+      - "benches/gust/drivers/app-*/**"
+      - "benches/gust/drivers/*-provider/**"
+      - "benches/gust/drivers/check-providers.sh"
+      - ".github/workflows/gust-syscall-seam.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  syscall-seam-drift:
+    name: "gust:os provider drift gate (WIT ↔ Guest impl)"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build every gust:os provider/app crate for wasm32 (WIT drift gate)
+        run: bash benches/gust/drivers/check-providers.sh
