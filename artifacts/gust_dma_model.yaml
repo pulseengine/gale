@@ -99,7 +99,7 @@ artifacts:
   - id: REQ-DMA-ASYNC-001
     type: sw-req
     title: "DMA completion is a kiln waitable; no host Future crosses the wasm boundary"
-    status: proposed
+    status: verified
     release: v0.2.1
     description: >
       A transfer SHALL resolve via the existing split-phase pattern: the completion
