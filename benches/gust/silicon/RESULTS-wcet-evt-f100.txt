@@ -1,0 +1,115 @@
+Open On-Chip Debugger 0.12.0+dev-snapshot (2026-02-16-16:07)
+Licensed under GNU GPL v2
+For bug reports, read
+	http://openocd.org/doc/doxygen/bugs.html
+DEPRECATED: OpenOCD support for ST-Link HLA transport will be dropped soon!
+Consider updating your ST-Link firmware to a version >= V2J24 (2015)
+Warn : DEPRECATED: auto-selecting transport "swd (hla)". Use 'transport select swd' to suppress this message.
+Info : The selected transport took over low-level target control. The results might differ compared to plain JTAG/SWD
+Info : clock speed 1000 kHz
+Info : STLINK V1J13S0 (API v2) VID:PID 0483:3744
+Error: SRST error
+Info : [stm32f1x.cpu] Cortex-M3 r1p1 processor detected
+Info : [stm32f1x.cpu] target has 6 breakpoints, 4 watchpoints
+Info : [stm32f1x.cpu] Examination succeed
+Info : [stm32f1x.cpu] starting gdb server on 3333
+Info : Listening on port 3333 for gdb connections
+[stm32f1x.cpu] halted due to debug-request, current mode: Thread 
+xPSR: 0x01000000 pc: 0x08000400 msp: 0x20002000
+semihosting is enabled
+[stm32f1x.cpu] halted due to debug-request, current mode: Thread 
+xPSR: 0x01000000 pc: 0x08000400 msp: 0x20002000, semihosting
+** Programming Started **
+Info : device id = 0x10016420
+Info : flash size = 128 KiB
+Warn : Adding extra erase range, 0x08002478 .. 0x080027ff
+** Programming Finished **
+** Verify Started **
+** Verified OK **
+gust-wcet-evt: DWT cycle sampling of the DISSOLVED gust:os/time exports on real STM32F100 silicon (VER-OS-WCET-001 measurement half; static bounds come from drivers/os-node/repro-757/os-tl.wcet.json, checked by drivers/check-wcet-evt.py)
+# correctness: deadline==now+ticks, elapsed==now>=deadline over 20 pairs — IDENTICAL ok
+# worst-path: once-init guard __synth_wasm_seg_2+12 @ 0x20000024 — store path REACHABLE (decode proven)
+WCET-EVT CAL read_read=1 call_shim=5 path_variants=cold+warm
+WCET-EVT-SAMPLE deadline i=0 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=1 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=2 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=3 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=4 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=5 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=6 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=7 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=8 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=9 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=10 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=11 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=12 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=13 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=14 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=15 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=16 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=17 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=18 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=19 cyc=40 path=cold
+WCET-EVT-SAMPLE deadline i=20 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=21 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=22 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=23 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=24 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=25 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=26 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=27 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=28 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=29 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=30 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=31 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=32 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=33 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=34 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=35 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=36 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=37 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=38 cyc=34 path=warm
+WCET-EVT-SAMPLE deadline i=39 cyc=34 path=warm
+WCET-EVT deadline n=40 min=34 max=40 mean=37 overhead=1
+WCET-EVT-SAMPLE elapsed i=0 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=1 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=2 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=3 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=4 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=5 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=6 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=7 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=8 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=9 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=10 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=11 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=12 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=13 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=14 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=15 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=16 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=17 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=18 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=19 cyc=45 path=cold
+WCET-EVT-SAMPLE elapsed i=20 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=21 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=22 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=23 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=24 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=25 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=26 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=27 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=28 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=29 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=30 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=31 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=32 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=33 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=34 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=35 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=36 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=37 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=38 cyc=39 path=warm
+WCET-EVT-SAMPLE elapsed i=39 cyc=39 path=warm
+WCET-EVT elapsed n=40 min=39 max=45 mean=42 overhead=1
+WCET-EVT DONE
