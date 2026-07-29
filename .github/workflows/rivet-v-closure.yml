@@ -1,0 +1,43 @@
+# Traceability-completeness gate (v0.6.0 / D3).
+#
+# The release-completeness gate asks "does every approved/implemented artifact have its
+# V closed?" — a question that is only answerable if requirement statuses track their
+# verification artifacts. They drifted: 16 requirements carried a `verified` VER-* while
+# still reading `implemented`/`proposed` themselves (the verified driver suite, gpio,
+# timer, the syscall seam, I-ISO, tri-track). The gate misreported them as not-done — it
+# erred safe, but it lied, and nothing stopped it recurring. This gate is that stop.
+name: rivet V-closure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "artifacts/**"
+      - "tools/check-v-closure.py"
+      - ".github/workflows/rivet-v-closure.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "artifacts/**"
+      - "tools/check-v-closure.py"
+      - ".github/workflows/rivet-v-closure.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  v-closure:
+    name: "no requirement lags its closed V"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Traceability-completeness gate
+        run: python3 tools/check-v-closure.py

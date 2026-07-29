@@ -11,7 +11,7 @@ artifacts:
   - id: REQ-OS-EXEC-001
     type: sw-req
     title: "gust:os cooperative async executor (v1, static single-partition)"
-    status: implemented
+    status: verified
     release: v0.4.0
     description: >
       The gust:os inner async layer SHALL schedule a static set of up to

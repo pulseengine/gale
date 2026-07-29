@@ -29,7 +29,7 @@ artifacts:
   - id: REQ-DRV-GPIO-001
     type: sw-req
     title: "GPIO is a verified thin-seam driver — pin logic in wasm, TCB = mmio only"
-    status: proposed
+    status: verified
     release: v0.3.0
     description: >
       Digital I/O (pin mode, read, write, toggle, and the port-bank bit math) SHALL
@@ -50,7 +50,7 @@ artifacts:
   - id: REQ-DRV-TIMER-001
     type: sw-req
     title: "Hardware timer is a verified thin-seam driver; the tick source becomes a capability"
-    status: proposed
+    status: verified
     release: v0.3.0
     description: >
       A general-purpose hardware timer (compare/period/prescaler programming and the
@@ -70,7 +70,7 @@ artifacts:
   - id: REQ-DRV-SPI-001
     type: sw-req
     title: "SPI is a verified thin-seam driver, DMA-capable via the own<buffer> handoff"
-    status: implemented
+    status: verified
     release: v0.3.0
     description: >
       SPI master (mode/clock config, the transfer state machine, and CS framing)
@@ -96,7 +96,7 @@ artifacts:
   - id: REQ-DRV-BREADTH-001
     type: sw-req
     title: "The seam generalizes: a multi-driver node composes within the SRAM/TCB budget"
-    status: implemented
+    status: verified
     release: v0.3.0
     description: >
       A single per-node image composing GPIO + timer + SPI + UART drivers SHALL fit
@@ -117,7 +117,7 @@ artifacts:
   - id: REQ-DRV-WDG-001
     type: sw-req
     title: "IWDG watchdog is a verified thin-seam driver — the software cannot-un-start hardware backstop"
-    status: implemented
+    status: verified
     release: v0.3.0
     description: >
       The STM32F1 independent watchdog (IWDG) key-sequence lifecycle — 0x5555 unlock,
@@ -339,7 +339,7 @@ artifacts:
   - id: REQ-OS-SYSCALL-001
     type: sw-req
     title: "gust:os — a typed capability world is the OS ABI (not ad-hoc imports)"
-    status: implemented
+    status: verified
     release: v0.4.0
     description: >
       The OS surface an app sees SHALL be a single WIT world `gust:os` exposing
@@ -490,7 +490,7 @@ artifacts:
   - id: REQ-DRV-ADC-001
     type: sw-req
     title: "ADC is a verified thin-seam driver — read-after-EOC exactly-once analog input"
-    status: implemented
+    status: verified
     release: v0.3.0
     description: >
       The STM32F1 ADC single-conversion path — the SMPR sample-time and SQR
@@ -561,7 +561,7 @@ artifacts:
   - id: REQ-DRV-DAC-001
     type: sw-req
     title: "DAC is a verified thin-seam driver — glitch-free, trigger-gated analog output"
-    status: implemented
+    status: verified
     release: v0.3.0
     description: >
       The STM32F1 software-triggered DAC path — CR channel/trigger configuration
@@ -630,7 +630,7 @@ artifacts:
   - id: REQ-DRV-PWM-001
     type: sw-req
     title: "PWM actuator output is a verified thin-seam driver — duty can never exceed the period, and the failsafe is total and latching"
-    status: implemented
+    status: verified
     release: v0.3.0
     description: >
       The STM32 advanced-timer PWM output path — CCMR1 PWM-mode-1 + output-preload
@@ -700,7 +700,7 @@ artifacts:
   - id: REQ-DRV-I2C-001
     type: sw-req
     title: "I2C is a verified thin-seam master driver — ACK-all-but-last cannot hang the bus"
-    status: implemented
+    status: verified
     release: v0.3.0
     description: >
       The STM32F1 I2C master path — CR2 FREQ + CCR divisor + TRISE timing configuration
@@ -770,7 +770,7 @@ artifacts:
   - id: REQ-DRV-CAN-001
     type: sw-req
     title: "CAN (bxCAN) is a verified thin-seam driver — config-only-in-init, no stale bit rate on the bus"
-    status: implemented
+    status: verified
     release: v0.3.0
     description: >
       The STM32F1 bxCAN master path — the INRQ→INAK init handshake, the BTR
@@ -843,7 +843,7 @@ artifacts:
   - id: REQ-DRV-DMA-001
     type: sw-req
     title: "DMA-as-own<buffer> ownership driver is CLOSED — demonstrated on-target + register-effect content-gated"
-    status: implemented
+    status: verified
     release: v0.3.0
     description: >
       The dma-own driver (REQ-DMA-OWN-001: a DMA transfer modeled as a Component-Model
