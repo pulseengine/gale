@@ -32,10 +32,23 @@ reset source. A silently-no-op'd start (KR=0xCCCC) would never reset, so the tes
 cannot false-pass.
 
 ## Scope / honesty
-- This validates the wdg driver's IWDG programming + the cannot-un-start effect
-  **on real silicon** — the strongest evidence tier (above the qemu probe + Renode
-  content-gate). The Kani proofs (7/7) remain the source-level guarantee; this shows
-  the *dissolved object* drives real hardware to the real effect.
+- This validates the wdg driver's IWDG **unlock → configure → lock → start** key
+  sequence **on real silicon** — the strongest evidence tier (above the qemu probe +
+  Renode content-gate). The Kani proofs (7/7) remain the source-level guarantee; this
+  shows the *dissolved object* drives real hardware to the real effect.
+- **NOT evidenced here: cannot-un-start.** An earlier revision of this file claimed
+  this run validated "the cannot-un-start effect on real silicon". It does not, and the
+  claim has been withdrawn. `gust_wdg_silicon.rs` arms the watchdog and then simply
+  stops refreshing it; it never *attempts* an un-start, so nothing on silicon exercised
+  a rejection path. `p2_cannot_un_start` is a source-level Kani property over the pure
+  FSM and stays exactly that. What this run evidences is one happy path, once, on one
+  die: the dissolved object emitted a key sequence the real IWDG accepted, and the
+  hardware fired. (n=1; `RESULTS` also records a second session at
+  `RCC_CSR=0x14000000 → 0x34000000`, so the effect has reproduced across runs.)
+- The stated **~1.2 s** is the *configured* timeout computed from PR=5 / RLR=0x123
+  against a nominal ~32 kHz LSI — it is not a measured interval, and the LSI is spec'd
+  loose. The captured probe-rs log shows a much longer wall-clock gap before the
+  session drops (host detection latency), so no timing claim should be read off it.
 - Only the **IWDG** is register-portable F1→G4. adc/dac/i2c/can/pwm use F1-specific
   register maps → faithful silicon needs an STM32F1 board (VLDISCOVERY) or a G4
   re-target; those remain qemu/Renode-validated for now.
