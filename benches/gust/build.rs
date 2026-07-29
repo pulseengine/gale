@@ -329,6 +329,25 @@ fn main() {
     println!("cargo:rerun-if-changed=iso_contain.x");
     println!("cargo:rerun-if-changed=build.rs");
 
+    // VER-OS-WCET-001 measurement half (v0.6.0 T4/D1): gust_wcet_evt DWT-samples the
+    // two `status: bounded` exports of the SAME frozen os-tl node whose static cycle
+    // bounds live in repro-757/os-tl.wcet.json (emitted by drivers/emit-wcet.sh via
+    // synth --emit-wcet). Linked UNPLACED (no .data rename / no iso_contain.x) — this
+    // bin is about timing, not the I-ISO straddle. The .o is a synth --target cortex-m3
+    // object, so the bin is thumbv7m/target-f100 only (see Cargo.toml required-features).
+    let wcet_obj = Path::new(&manifest).join("drivers/os-node/repro-757/os-tl-fixed.o");
+    if wcet_obj.exists() {
+        // synth#746-class guard: the two functions being timed must actually be
+        // DEFINED text symbols — a silently-dropped export would otherwise surface as
+        // a link error at best, or a bound with nothing behind it at worst.
+        check_defined_text_symbols(
+            &wcet_obj,
+            &["gust:os/time@0.1.0#deadline", "gust:os/time@0.1.0#elapsed"],
+        );
+        println!("cargo:rustc-link-arg-bin=gust_wcet_evt={}", wcet_obj.display());
+        println!("cargo:rerun-if-changed={}", wcet_obj.display());
+    }
+
     // The dissolved thin-seam ADC driver (drivers/adc-thin -> loom -> synth --target
     // cortex-m3 --all-exports --relocatable): the whole STM32F1 ADC single-conversion
     // path — SMPR sample-time + SQR regular-sequence config and the

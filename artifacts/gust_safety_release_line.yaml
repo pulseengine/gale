@@ -591,6 +591,60 @@ artifacts:
       - type: related-to
         target: DD-OS-BUILD-001
 
+  - id: VER-OS-WCET-EVT-001
+    type: sw-verification
+    title: "EVT cross-check of synth's static WCET against real STM32F100 DWT samples — bounds dominate on the two bounded gust:os/time functions"
+    method: test
+    status: verified
+    release: v0.6.0
+    description: >
+      Partial evidence for REQ-OS-WCET-001 (track T4), covering the MEASUREMENT
+      half of the cross-check on the functions that actually carry a static bound
+      today. This artifact deliberately does NOT close VER-OS-WCET-001, whose
+      acceptance is stated over every function of the trusted switch/MPU/HM object
+      and the inner executor core — those functions still have no static bound
+      (synth declines them loudly: reason=call needs T3/spar inter-procedural
+      composition, reason=loop needs trip-count inference). Narrowing that artifact
+      to match what was achieved would be moving the goalposts; it stays proposed.
+      WHAT IS ESTABLISHED. The dissolved, frozen os-tl node
+      (drivers/os-node/repro-757/os-tl-fixed.o) exports two functions with sound
+      static bounds from synth `--emit-wcet` (schema synth-wcet-v1, cortex-m3,
+      zero-wait-state instruction-memory model): `gust:os/time@0.1.0#deadline` =
+      42 cyc and `#elapsed` = 71 cyc. gust_wcet_evt links that exact object into an
+      STM32F100 image and samples both through the DWT cycle counter on REAL
+      silicon (n=40 each, inputs spanning the u64 wrap boundary: 0, 1, u64::MAX,
+      2^63, 2^63-1 and mixed magnitudes), calibrating and subtracting the
+      read-to-read overhead (1 cyc) while deliberately NOT subtracting the caller's
+      bl/bx shim (5 cyc), so samples stay conservative. MEASURED (2026-07-28,
+      STM32VLDISCOVERY, openocd/ST-LINK-V1 over the Pi):
+      deadline n=40 min=34 max=40 mean=37 — static 42 dominates, margin 2 cyc;
+      elapsed  n=40 min=39 max=45 mean=42 — static 71 dominates, margin 26 cyc.
+      The EVT block-maxima statistical bound (6 blocks) equals the observed max for
+      both (40 / 45): these are straight-line branch-free functions, so the sample
+      distribution is near-degenerate and the statistical bound is tight BY
+      CONSTRUCTION — it is a cross-check of the static model, not an independent
+      bound, and is reported as such. WORST-PATH HONESTY. Both functions open with a
+      once-init guard whose byte is non-zero in the frozen .data image, so a stock
+      call never executes the store block the static bound covers (11 of 18
+      instructions execute). The harness therefore zeroes that byte for half the
+      samples, PROVES the decode at runtime before relying on it, and reports
+      path_variants=cold+warm; measuring only the default path would have left the
+      bounded path unmeasured. NOTED, NOT GATED: for deadline the naive tail
+      projection max(block)+dispersion = 46 cyc sits ABOVE the 42 cyc static bound —
+      the margin is thin (2 cyc) and the checker prints this rather than hiding it.
+      MECHANIZED. drivers/check-wcet-evt.py reads the bounds from the committed
+      sidecar (never hardcoded), refuses to gate a `declined` entry rather than
+      inventing a bound, and EXITS 1 when an observed or statistical value exceeds
+      the static bound — REQ-OS-WCET-001's kill-criterion made executable. Its red
+      state is demonstrable without hardware (`--self-test`). Kill-criterion for
+      THIS artifact: a DWT sample or statistical bound exceeds the static bound for
+      a gated function, or the runtime path-decode proof fails (harness then reports
+      warm-only rather than claiming worst-path coverage).
+    tags: [gust, os, track-t4, wcet, evt, dwt, silicon, f100, verified]
+    links:
+      - type: verifies
+        target: REQ-OS-WCET-001
+
   - id: VER-OS-WCET-001
     type: sw-verification
     title: "Sound per-function static-WCET emission cross-checked against a statistical (EVT) bound, on the trusted object's functions"
