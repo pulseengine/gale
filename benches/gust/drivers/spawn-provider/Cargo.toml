@@ -3,7 +3,7 @@
 name = "gust-spawn-provider"
 version = "0.1.0"
 edition = "2021"
-description = "gust:os spawn provider — backs the gust:os/spawn WIT interface (start/poll) with the SAME verified async executor (plain/src/executor.rs, included verbatim) that Task 6's exec-provider dissolves. start() = admit + wake (spawn is ready-now; this WIT ABI carries no deadline); poll() drives one poll_round and reports the handle's state."
+description = "gust:os spawn provider — backs the gust:os/spawn WIT interface (start/poll) with the node's ONE verified async executor, reached over the gust:sched/tasks import that exec-provider (its owner) exports. Stateless: no task table, no embedded executor, no handle mapping — the handle start() returns is the executor's own, so it means the same task to gust:os/timer and gust:os/exec. start() = admit + wake (spawn is ready-now; this WIT ABI carries no deadline); poll() drives one poll-round and reports the handle's state."
 [lib]
 crate-type = ["cdylib"]
 [dependencies]

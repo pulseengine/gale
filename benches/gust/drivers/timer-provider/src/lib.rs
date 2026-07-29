@@ -1,12 +1,15 @@
 //! gust:os `timer` provider (world `timer-provider`, wit-os/gust-os.wit) — Task 4.
-//! Backs `sleep`/`slept` with the SAME verified executor deadline table
-//! (`plain/src/executor.rs`, included verbatim — Task 2's `set_deadline`/
-//! `slept_status` methods on `Tasks`) that `spawn-provider`/`exec-provider`
-//! dissolve, not a hand-written placeholder. Unlike `spawn-provider`'s
-//! `poll`, neither export here drives `poll_round`/`dispatch_one`, so this
-//! crate never crosses the trusted `taskdisp`/`poll_task` FFI seam at all —
-//! its only externs are the `gust:hal/mmio` reads `now()` needs (the same
-//! seam `time-provider` uses).
+//! STATELESS by construction, and clockless: it owns neither the deadline table nor
+//! the clock. `sleep`/`slept` operate on the app's handle UNCHANGED against the
+//! node's single executor instance via `gust:sched/tasks`, and read time through
+//! `gust:os/time` — so this crate has no `gust:hal` import at all.
+//!
+//! Both halves used to be local copies: an embedded `plain/src/executor.rs` with its
+//! own `static mut TASKS` (a deadline table no other provider could see, so
+//! `timer.sleep(h)` armed a wake on a task `spawn.start` had never created), and a
+//! hardcoded `TIM2_CNT` read that agreed with `time.now()` only because the two
+//! constants happened to match. Importing both capabilities makes one scheduler and
+//! one clock structural rather than coincidental.
 #![no_std]
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -24,57 +27,22 @@ unsafe impl GlobalAlloc for NoAlloc {
 static A: NoAlloc = NoAlloc;
 
 wit_bindgen::generate!({ world: "timer-provider", path: "../wit-os", generate_all });
-use crate::gust::hal::mmio::read32;
+use crate::gust::os::time;
+use crate::gust::sched::tasks;
 use exports::gust::os::timer::Guest;
-
-#[path = "../../../../../plain/src/executor.rs"]
-mod executor;
-use executor::Tasks;
-
-/// Timer count register (via `gust:hal/mmio`) — same register `time-provider`
-/// reads for `gust:os/time.now`, so `sleep`'s deadline math and `time.now`
-/// observe the identical monotonic source.
-const TIM2_CNT: u32 = 0x4000_0024;
-
-fn now() -> u64 {
-    read32(TIM2_CNT) as u64
-}
-
-// Lazily-initialized executor deadline-table state. NOT `Option<Tasks>`: see
-// spawn-provider/src/lib.rs for the .bss-vs-.data straddle rationale (the
-// niche-encoded `None` discriminant is one initialized byte inside an
-// otherwise-zero struct, which wasm-ld splits across the .data end / .bss
-// tail — exactly the straddling-static geometry synth's --shadow-stack-size
-// shrink refuses, VCR-MEM-001/#678, when this module is meld-fused into a
-// node). A `MaybeUninit` table + separate flag is all-zero at init, so the
-// whole table lands in .bss and the node's data segment stays clean.
-//
-// NOTE: this is a SEPARATE `Tasks` instance from spawn-provider's — v1 does
-// not share the deadline table across providers (see RESULTS.md "Known
-// limitation").
-static mut TASKS_INIT: u32 = 0;
-static mut TASKS: core::mem::MaybeUninit<Tasks> = core::mem::MaybeUninit::uninit();
-
-#[allow(static_mut_refs)]
-unsafe fn tasks() -> &'static mut Tasks {
-    if TASKS_INIT == 0 {
-        TASKS.write(Tasks::new());
-        TASKS_INIT = 1;
-    }
-    TASKS.assume_init_mut()
-}
 
 struct P;
 impl Guest for P {
     /// Arm a one-shot wake `ticks` from now on task `handle` — the RESOLVED
     /// SEAM (v0.4.0 timer-sleep spec, task-4 brief): reject out-of-range
-    /// `ticks` (`>= 2^31`) up front; otherwise compute `d = now() + ticks`
-    /// (wrap-safe u64 add, mirroring `time.deadline`'s `wrapping_add`) and
-    /// hand it to the verified `Tasks::set_deadline`, which itself only
-    /// writes a valid Pending slot's deadline (Kani-framed by
-    /// `set_deadline_sets_only_h`: a Free/Done/out-of-range handle is a
-    /// no-op) — so this marshalling layer re-implements no admission
-    /// decision, only the wrap-safe arithmetic and the ticks-range guard.
+    /// `ticks` (`>= 2^31`) up front; otherwise compute the deadline with
+    /// `time.deadline` (the Kani-proven wrap-safe add this node already
+    /// publishes, rather than a second `wrapping_add` written here) and hand it
+    /// to the verified `Tasks::set_deadline`, which itself only writes a valid
+    /// Pending slot's deadline (Kani-framed by `set_deadline_sets_only_h`: a
+    /// Free/Done/out-of-range handle is a no-op) — so this marshalling layer
+    /// re-implements no admission decision and no arithmetic, only the
+    /// ticks-range guard and the u64 lo/hi split the seam carries.
     fn sleep(handle: u32, ticks: u32) -> u32 {
         // ticks is u32 at the seam (v1 bound < 2^31 fits u32) — a u64 seam param
         // makes synth's ARM backend loud-decline the frame-backing sleep (u64 param
@@ -82,9 +50,8 @@ impl Guest for P {
         if ticks >= (1u32 << 31) {
             return 0xFFFF_FFFF;
         }
-        let d = now().wrapping_add(ticks as u64);
-        let t = unsafe { tasks() };
-        t.set_deadline(handle, d);
+        let d = time::deadline(time::now(), ticks as u64);
+        tasks::set_deadline(handle, d as u32, (d >> 32) as u32);
         0
     }
 
@@ -92,8 +59,8 @@ impl Guest for P {
     /// `slept_status(handle, now())` — 0 pending / 1 elapsed / 0xFFFF_FFFF
     /// invalid, unchanged.
     fn slept(handle: u32) -> u32 {
-        let t = unsafe { tasks() };
-        t.slept_status(handle, now())
+        let now = time::now();
+        tasks::slept_status(handle, now as u32, (now >> 32) as u32)
     }
 }
 export!(P);

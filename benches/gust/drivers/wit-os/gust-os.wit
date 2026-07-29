@@ -143,19 +143,26 @@ world log-provider {
 }
 
 /// Step-3 slice: time + spawn (the first EXECUTOR-BACKED capability). The spawn
-/// provider marshals start/poll onto the verified executor; its trusted `poll_task`
-/// dispatch crosses the taskdisp seam, so the composed node imports mmio + taskdisp.
+/// provider OWNS NOTHING: `start`/`poll` marshal onto the one executor instance
+/// through `gust:sched/tasks`, so a handle it returns is the executor's own handle
+/// and means the same thing to `timer.sleep` and `exec.state`. It holds no state and
+/// never touches the trusted dispatch seam — that belongs to the executor's owner.
 world app-ts { import time; import spawn; export run: func() -> u32; }
-world spawn-provider { import taskdisp; export spawn; }
+world spawn-provider { import gust:sched/tasks@0.1.0; export spawn; }
 
 /// Step-4 slice: time + timer (tickless one-shot sleep over the verified executor's
-/// deadline table). The timer provider needs the executor dispatch (taskdisp, to know
-/// the calling task) and the hardware timer (mmio, to read/arm), so the composed node
-/// imports both.
+/// deadline table). Also stateless: the deadline table is the executor's, reached via
+/// `gust:sched/tasks`, and the clock is `time`'s — so this world has NO gust:hal
+/// import. Two providers reading the same timer register through a shared constant
+/// was one clock only by coincidence; importing `time` makes it one clock by
+/// construction.
 world app-timer { import time; import timer; export run: func() -> u32; }
-world timer-provider { import taskdisp; import gust:hal/mmio@0.1.0; export timer; }
+world timer-provider { import gust:sched/tasks@0.1.0; import time; export timer; }
 
-/// The executor node itself as a provider. `exec` is not in `world app` — apps reach
-/// the scheduler through spawn/timer — so this world's only import is the trusted
-/// dispatch seam, which is what lets it fuse with the others (gale#224).
-world exec-provider { import taskdisp; export exec; }
+/// The executor node itself as a provider, and the node's SINGLE owner of scheduler
+/// state. It imports only the trusted dispatch seam and exports two views of the one
+/// task table: the app-facing `exec` (not in `world app` — apps reach the scheduler
+/// through spawn/timer) and the internal `gust:sched/tasks` that its stateless
+/// siblings bind to. Composition satisfies the latter in place, so it never leaks
+/// out of the fused component (gale#224).
+world exec-provider { import taskdisp; export exec; export gust:sched/tasks@0.1.0; }

@@ -1,0 +1,44 @@
+// gust:sched — the node's INTERNAL scheduler seam. Deliberately a package of its
+// own rather than another interface in gust:os: `world app` (gust-os.wit) is the
+// published surface, and a tenant that imports gust:os must NOT be able to reach
+// scheduler mutation. Keeping `tasks` outside gust:os makes that structural — the
+// composite satisfies this import in place (exec-provider exports it), so it never
+// appears among the fused component's residual imports and a downstream has no
+// name to bind to.
+//
+// Existence rationale: exactly ONE component instance may own scheduler state.
+// `spawn`, `timer` and `exec` are three views of the SAME task table, so the two
+// that do not own it (spawn, timer) import this seam instead of embedding a second
+// copy of plain/src/executor.rs.
+package gust:sched@0.1.0;
+
+/// The verified executor's task table (plain/src/executor.rs — Verus/Kani-proven
+/// `Tasks`), exposed to the sibling providers that marshal onto it. Every function
+/// here is a direct 1:1 forward to a `Tasks` method: no scheduling decision is
+/// re-implemented on either side of this seam.
+///
+/// 64-bit values cross as lo/hi u32 halves for the same reason `gust:os/exec` does
+/// (synth's ARM backend drops a frame-backing export carrying an i64 param —
+/// drivers/exec-provider/RESULTS.md); the halves are recombined before they reach
+/// any verified method.
+interface tasks {
+    /// `Tasks::admit` — take the first Free slot at `prio` (lower = higher
+    /// priority), leaving it Pending with its ready bit clear. Returns the handle,
+    /// or 0xFFFF_FFFF if the MAX_TASKS=8 table is full.
+    admit: func(prio: u32) -> u32;
+    /// `Tasks::wake` — the no-lost-wakeups primitive. Waking a non-Pending or
+    /// out-of-range handle is a no-op.
+    wake: func(h: u32);
+    /// `Tasks::poll_round` — drain every currently-ready task exactly once through
+    /// the owner's `poll-task` dispatch. No `now` argument: this is the drain half
+    /// only; firing the tickless alarm is `gust:os/exec.poll-round`.
+    poll-round: func();
+    /// Task `h`'s state: 0 = free, 1 = pending, 2 = done, 0xFFFF_FFFF = invalid.
+    /// Identical encoding to `gust:os/exec.state`.
+    state: func(h: u32) -> u32;
+    /// `Tasks::set_deadline` — register task `h`'s tickless wake instant. Writes
+    /// only a Pending slot; a Free/Done/out-of-range handle is a no-op.
+    set-deadline: func(h: u32, d-lo: u32, d-hi: u32);
+    /// `Tasks::slept_status` — 0 = pending, 1 = elapsed, 0xFFFF_FFFF = invalid.
+    slept-status: func(h: u32, now-lo: u32, now-hi: u32) -> u32;
+}

@@ -1,9 +1,14 @@
 //! gust:os `spawn` provider (world `spawn-provider`, wit-os/gust-os.wit) — Task 6
-//! Step 5. Backs `start`/`poll` with the SAME verified async executor Task 6's
-//! exec-provider dissolves, not a hand-written placeholder: `plain/src/executor.rs`
-//! (verus-strip's output of the Verus+Kani-proven src/executor.rs) is included
-//! verbatim below, exactly as in drivers/exec-provider/src/lib.rs. `start`/`poll`
-//! keep the byte-identical `func(u32) -> u32` WIT ABI; only marshalling lives here.
+//! Step 5. STATELESS by construction: it owns no task table and includes no
+//! executor. `start`/`poll` marshal onto the node's single executor instance
+//! through the `gust:sched/tasks` import (exported by exec-provider, which holds
+//! the one `Tasks`), so the handle this provider returns IS the executor's handle
+//! and means the same task to `timer.sleep` and `exec.state`.
+//!
+//! It previously `#[path]`-included `plain/src/executor.rs` and kept its own
+//! `static mut TASKS`. Composed, that was a second scheduler: `spawn.start`'s
+//! handle indexed a table nothing else could see. The include is gone rather than
+//! shared — a provider must import every capability it does not own.
 #![no_std]
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -21,42 +26,14 @@ unsafe impl GlobalAlloc for NoAlloc {
 static A: NoAlloc = NoAlloc;
 
 wit_bindgen::generate!({ world: "spawn-provider", path: "../wit-os", generate_all });
+use crate::gust::sched::tasks;
 use exports::gust::os::spawn::Guest;
 
-#[path = "../../../../../plain/src/executor.rs"]
-mod executor;
-use executor::{TaskState, Tasks, MAX_TASKS};
-
-/// Resolve the executor's trusted `extern "C" poll_task` seam INSIDE the module by
-/// forwarding it to the WIT-typed `gust:os/taskdisp.poll-task` import. This is the
-/// "WIT-typed task-dispatch seam" RESULTS.md deferred: with it, no raw
-/// `env::poll_task` core import survives, so `wasm-tools component new` accepts the
-/// module and the ts-node composes like step-1/2. The contract is unchanged
-/// (dispatch task `id` once; 1 = completed) — only the import's TYPE moved from raw
-/// C-ABI to WIT.
-#[no_mangle]
-pub extern "C" fn poll_task(id: u32) -> u32 {
-    crate::gust::os::taskdisp::poll_task(id)
-}
-
-// Lazily-initialized executor state. NOT `Option<Tasks>`: the niche-encoded
-// `None` discriminant is one initialized byte inside an otherwise-zero struct,
-// which wasm-ld splits across the .data end / .bss tail — exactly the
-// straddling-static geometry synth's --shadow-stack-size shrink refuses
-// (VCR-MEM-001/#678) when this module is meld-fused into the ts-node. A
-// MaybeUninit table + separate flag is all-zero at init, so the whole table
-// lands in .bss and the node's data segment stays clean.
-static mut TASKS_INIT: u32 = 0;
-static mut TASKS: core::mem::MaybeUninit<Tasks> = core::mem::MaybeUninit::uninit();
-
-#[allow(static_mut_refs)]
-unsafe fn tasks() -> &'static mut Tasks {
-    if TASKS_INIT == 0 {
-        TASKS.write(Tasks::new());
-        TASKS_INIT = 1;
-    }
-    TASKS.assume_init_mut()
-}
+/// `tasks::state`'s encoding (= `gust:os/exec.state`'s). `spawn.poll` reports a
+/// different one, documented in the WIT, so the mapping is explicit here.
+const ST_FREE: u32 = 0;
+const ST_DONE: u32 = 2;
+const INVALID: u32 = 0xFFFF_FFFF;
 
 struct P;
 impl Guest for P {
@@ -65,33 +42,35 @@ impl Guest for P {
     /// surface), so v1 admits at a fixed neutral priority and `wake`s it right
     /// away — `spawn` semantics are "ready now", not tickless-deadline-driven
     /// (that half of the executor is exercised by gust_exec_probe instead).
-    /// `admit`/`wake` perform the ENTIRE decision; `entry` is not otherwise
-    /// interpreted here (v1 has no per-entry dispatch table — `poll_task(h)`,
-    /// inside the included `executor` module, is the dispatch point).
+    /// `admit`/`wake` perform the ENTIRE decision, now in the owning instance;
+    /// `entry` is not otherwise interpreted here (v1 has no per-entry dispatch
+    /// table — the owner's `poll-task` seam is the dispatch point). The returned
+    /// handle is returned UNCHANGED: no mapping table, so nothing here can
+    /// desynchronise from the executor's own numbering.
     fn start(entry: u32) -> u32 {
         let _ = entry;
-        let t = unsafe { tasks() };
-        let h = t.admit(0);
-        if h < MAX_TASKS as u32 {
-            t.wake(h);
-        }
+        let h = tasks::admit(0);
+        tasks::wake(h);
         h
     }
 
-    /// Poll task `handle`: drives one full `poll_round` (cooperative, so any
+    /// Poll task `handle`: drives one full `poll-round` (cooperative, so any
     /// poll call drains every currently-ready task, not only `handle`) and
     /// reports `handle`'s resulting state as the WIT-documented code: `0` =
-    /// pending, `1` = done, `0xFFFF_FFFF` = invalid handle.
+    /// pending, `1` = done, `0xFFFF_FFFF` = invalid handle. The state query
+    /// comes first so an invalid handle is rejected without driving a round,
+    /// as before.
     fn poll(handle: u32) -> u32 {
-        let t = unsafe { tasks() };
-        if handle >= MAX_TASKS as u32 {
-            return 0xFFFF_FFFF;
-        }
-        t.poll_round();
-        match t.state[handle as usize] {
-            TaskState::Done => 1,
-            TaskState::Pending => 0,
-            TaskState::Free => 0xFFFF_FFFF,
+        match tasks::state(handle) {
+            ST_FREE | INVALID => INVALID,
+            _ => {
+                tasks::poll_round();
+                match tasks::state(handle) {
+                    ST_DONE => 1,
+                    ST_FREE | INVALID => INVALID,
+                    _ => 0,
+                }
+            }
         }
     }
 }

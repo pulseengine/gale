@@ -20,7 +20,8 @@ decision is re-implemented at the wasm boundary.
 This crate used to be core-module-only: its trusted dispatch seam was a raw
 `(import "env" "poll_task")`, which `wasm-tools component new` rejects outright
 ("module requires an import interface named `env`"). It now generates against
-`world exec-provider { import taskdisp; export exec; }` and resolves the
+`world exec-provider { import taskdisp; export exec; export gust:sched/tasks; }`
+and resolves the
 executor's `extern "C" poll_task` through a forwarder into the WIT-typed
 `gust:os/taskdisp.poll-task` import — the same shim spawn-provider uses. Result:
 
@@ -28,9 +29,22 @@ executor's `extern "C" poll_task` through a forwarder into the WIT-typed
     wasm-tools component wit exec.component.wasm
       import gust:os/taskdisp@0.1.0;
       export gust:os/exec@0.1.0;
+      export gust:sched/tasks@0.1.0;
 
-7097 B, one import, nothing outside `gust:os/*` — the delivery invariant
-build-gustos-components.sh checks, so exec can join the fuse (gale#224).
+10246 B, one import — the delivery invariant build-gustos-components.sh checks, so
+exec can join the fuse (gale#224).
+
+The second export is the node's INTERNAL scheduler seam (`wit-os/deps/sched/
+gust-sched.wit`). This crate is the single owner of scheduler state: spawn-provider
+and timer-provider used to embed their own copies of `plain/src/executor.rs` with
+their own `static mut TASKS`, which made a `spawn.start` handle meaningless to
+`timer.sleep` and `exec.state`. They are now stateless and bind to this export, so
+there is exactly one task table in a composed node. `gust:sched` is deliberately a
+package of its own, outside `gust:os`: composition satisfies the import in place, it
+never appears among the fused component's residual imports, and a tenant that imports
+`gust:os` has no name to bind scheduler mutation to. `build-fused-gustos.sh` gates
+both halves of that (residual imports; exactly one core module embedding the
+executor).
 
 The `exec_admit`/`exec_poll_round`/`exec_state` C-ABI exports are unchanged and
 still emitted (benches/gust/build.rs asserts they are defined text symbols in the
