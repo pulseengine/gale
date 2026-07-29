@@ -47,6 +47,6 @@ synth compile t.wasm --target cortex-m3 --all-exports --relocatable -o timer-thi
 
 ---
 
-_Toolchain note: current pins are synth 0.49.0 / loom 1.2.0 (#208). The 0.49 regen
+_Toolchain note: current pins are synth 0.52.0 / loom 1.2.0 (#208, re-pinned from 0.49.0). The 0.49 regen
 confirmed this driver's dissolved size is unchanged from the synth 0.33.0 measurement
 above; register effects unchanged, 0-SRAM preserved._
