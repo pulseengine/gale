@@ -98,7 +98,7 @@ correctness gate works locally *and* in CI.
 
 ---
 
-_Toolchain note: current pins are synth 0.49.0 / loom 1.2.0 (#208), not the synth
+_Toolchain note: current pins are synth 0.52.0 / loom 1.2.0 (#208, re-pinned from 0.49.0), not the synth
 0.15.0 used for the measurements above. The 0.49 regen (10-driver byte-check)
 confirmed this driver's dissolved size is unchanged; register effects unchanged,
 0-SRAM preserved._

@@ -54,3 +54,16 @@ cannot false-pass.
 - Only the **IWDG** is register-portable F1→G4. adc/dac/i2c/can/pwm use F1-specific
   register maps → faithful silicon needs an STM32F1 board (VLDISCOVERY) or a G4
   re-target; those remain qemu/Renode-validated for now.
+
+## Re-validated under synth 0.52.0 (2026-07-29)
+
+The committed `wdg-thin-cm3.o` was regenerated on synth 0.52.0 (648 -> 638 B text,
+symbol shape byte-identical) and the run above was repeated on the same board:
+
+    gust-wdg-silicon: boot 1 on STM32G474 (RCC_CSR=0x14000000, no prior WDG reset)...
+    gust-wdg-silicon: armed (is_running=1). NOT refreshing...
+    [session drops — the watchdog resets the chip]
+    gust-wdg-silicon OK: IWDG watchdog reset CONFIRMED on real STM32G474 silicon
+    (RCC_CSR=0x34000000, IWDGRSTF=1)
+
+Same effect, same flag, smaller object. The re-pin does not disturb this result.
