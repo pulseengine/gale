@@ -57,6 +57,8 @@ jobs:
         run: cargo install wasm-tools --version 1.245.1 --locked
       - name: Build + verify the gust:os provider components
         run: bash benches/gust/drivers/build-gustos-components.sh
+      - name: Compose + verify the fused gust:os component (gale#224)
+        run: bash benches/gust/drivers/build-fused-gustos.sh
 
   publish:
     name: "sign + publish gust:os components (OCI + wasm.directory)"
@@ -82,7 +84,9 @@ jobs:
         with:
           cosign-release: 'v2.4.1'
       - name: Build + verify components
-        run: bash benches/gust/drivers/build-gustos-components.sh
+        run: |
+          bash benches/gust/drivers/build-gustos-components.sh
+          bash benches/gust/drivers/build-fused-gustos.sh
       - name: Resolve version
         id: v
         env:
@@ -102,7 +106,13 @@ jobs:
           echo "$GH_TOKEN" | wkg oci login ghcr.io -u "$OWNER" --password-stdin
           for comp in benches/gust/drivers/gustos-components/*.component.wasm; do
             base="$(basename "$comp" .component.wasm)"     # time-provider
-            pkg="gale-nano-${base%-provider}"               # gale-nano-time
+            if [ "$base" = "fused-gustos" ]; then
+              # The deliverable of DD-OS-DELIVERY-001: the whole gust:os world in one
+              # component. It is not a provider, so it does not take the -provider strip.
+              pkg="gale-nano"
+            else
+              pkg="gale-nano-${base%-provider}"             # gale-nano-time
+            fi
             ref="ghcr.io/${OWNER}/${pkg}:${VERSION}"
             echo "== $pkg → $ref =="
             wkg oci push "$ref" "$comp"
