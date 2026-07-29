@@ -43,8 +43,10 @@ cannot false-pass.
   a rejection path. `p2_cannot_un_start` is a source-level Kani property over the pure
   FSM and stays exactly that. What this run evidences is one happy path, once, on one
   die: the dissolved object emitted a key sequence the real IWDG accepted, and the
-  hardware fired. (n=1; `RESULTS` also records a second session at
-  `RCC_CSR=0x14000000 → 0x34000000`, so the effect has reproduced across runs.)
+  hardware fired. (`RESULTS` also records a second session at
+  `RCC_CSR=0x14000000 → 0x34000000`, so the effect has reproduced across runs. It has
+  since also reproduced on a **second die of a different family** — the same `.o` on an
+  STM32F100/Cortex-M3, twice, in one unspliced session: see `RESULTS-wdg-f100.md`.)
 - The stated **~1.2 s** is the *configured* timeout computed from PR=5 / RLR=0x123
   against a nominal ~32 kHz LSI — it is not a measured interval, and the LSI is spec'd
   loose. The captured probe-rs log shows a much longer wall-clock gap before the
