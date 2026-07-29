@@ -5,6 +5,17 @@
 //! next_deadline/expire; Kani-cross-checked) to a SINGLE native Cortex-M3
 //! object — no wac plug, no meld fuse, so not synth#739-blocked.
 //!
+//! ## Two entry points, one body
+//!
+//! This crate now serves both consumers of the executor: the WIT world
+//! `exec-provider` (exports `gust:os/exec`, imports `gust:os/taskdisp`), so it
+//! componentizes and can be fused with the other gust:os providers (gale#224);
+//! and the raw `exec_admit`/`exec_poll_round`/`exec_state` C-ABI symbols, which
+//! gust_exec_probe declares `extern "C"` and benches/gust/build.rs asserts are
+//! defined text symbols in the dissolved object. The `Guest` impl is a pure
+//! forward to those same three functions rather than a second copy of the
+//! marshalling, so the two surfaces cannot drift apart.
+//!
 //! ## Provenance (the load-bearing part of this file)
 //!
 //! `plain/src/executor.rs` is verus-strip's output of `src/executor.rs` — the
@@ -28,10 +39,38 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
+use core::alloc::{GlobalAlloc, Layout};
+struct NoAlloc;
+unsafe impl GlobalAlloc for NoAlloc {
+    unsafe fn alloc(&self, _: Layout) -> *mut u8 {
+        core::ptr::null_mut()
+    }
+    unsafe fn dealloc(&self, _: *mut u8, _: Layout) {}
+}
+#[global_allocator]
+static A: NoAlloc = NoAlloc;
+
+wit_bindgen::generate!({ world: "exec-provider", path: "../wit-os", generate_all });
+use exports::gust::os::exec::Guest;
+
 #[path = "../../../../../plain/src/executor.rs"]
 mod executor;
 
 use executor::{TaskState, Tasks, MAX_TASKS};
+
+/// Resolve the executor's trusted `extern "C" poll_task` seam INSIDE the module
+/// by forwarding it to the WIT-typed `gust:os/taskdisp.poll-task` import — the
+/// same shim spawn-provider uses, and the reason this crate componentizes at
+/// all: with it there is no raw `env::poll_task` core import left for
+/// `wasm-tools component new` to reject. The contract is unchanged (dispatch
+/// task `id` once; 1 = completed); only the import's TYPE moved from raw C-ABI
+/// to WIT. A native dissolve still leaves `poll-task` as the object's single
+/// undefined symbol, resolved by the probe/bridge at final link exactly as
+/// before.
+#[no_mangle]
+pub extern "C" fn poll_task(id: u32) -> u32 {
+    crate::gust::os::taskdisp::poll_task(id)
+}
 
 /// Footgun guard: `src/executor.rs`'s `by(bit_vector)` lemmas
 /// (`lemma_set_bit_bounded`, `lemma_zero_when_no_low_bits_and_bounded`) and
@@ -90,7 +129,8 @@ unsafe fn tasks() -> &'static mut Tasks {
 /// dissolved without a synth warning, but the resulting object read garbage
 /// for `deadline`, which the qemu probe caught as a liveness FAIL — the
 /// deadline never compared `<=now` inside `expire`, so the admitted tasks
-/// never became ready and the round drained nothing).
+/// never became ready and the round drained nothing). `gust:os/exec.admit`
+/// carries the identical split for the same reason.
 #[no_mangle]
 pub extern "C" fn exec_admit(prio: u32, deadline_lo: u32, deadline_hi: u32) -> u32 {
     let deadline = (u64::from(deadline_hi) << 32) | u64::from(deadline_lo);
@@ -106,7 +146,8 @@ pub extern "C" fn exec_admit(prio: u32, deadline_lo: u32, deadline_hi: u32) -> u
 /// (`expire`, marking any Pending task whose deadline has passed ready), then
 /// drain every ready task exactly once (`poll_round`) via the trusted
 /// `poll_task` FFI seam (declared inside the included `executor` module,
-/// resolved at dissolve-link by the qemu probe's own `poll_task` export).
+/// resolved above by this crate's `gust:os/taskdisp` forwarder — or, in a
+/// native dissolve, by the qemu probe's own `poll_task` export).
 ///
 /// ABI note (synth#518 workaround): a wasm export that both takes a 64-bit
 /// param AND (post loom-inline) contains a call hits a synth codegen gap
@@ -145,3 +186,19 @@ pub extern "C" fn exec_state(h: u32) -> u32 {
     }
 }
 
+// The WIT surface is a forward, not a reimplementation: `gust:os/exec` and the
+// C-ABI symbols above are the same three bodies reached two ways, so a component
+// instance and the natively-dissolved object cannot diverge in behaviour.
+struct P;
+impl Guest for P {
+    fn admit(prio: u32, deadline_lo: u32, deadline_hi: u32) -> u32 {
+        exec_admit(prio, deadline_lo, deadline_hi)
+    }
+    fn poll_round(now_lo: u32, now_hi: u32) {
+        exec_poll_round(now_lo, now_hi)
+    }
+    fn state(h: u32) -> u32 {
+        exec_state(h)
+    }
+}
+export!(P);

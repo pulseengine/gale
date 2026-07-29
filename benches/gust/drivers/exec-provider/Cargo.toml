@@ -12,6 +12,9 @@ description = "gust:os executor node — the SAME plain-mirror executor.rs (veru
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[dependencies]
+wit-bindgen = { version = "0.52", default-features = false, features = ["macros"] }
+
 [profile.release]
 panic = "abort"
 opt-level = "s"
