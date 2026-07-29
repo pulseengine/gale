@@ -13,9 +13,14 @@
 #   OUT=/some/dir bash .../build-gustos-components.sh             # choose output dir
 #
 # Verifies (the oracle for the DD invariant): every built component EXPORTS at least
-# one gust:os/* interface and imports NOTHING outside gust:hal/* and gust:os/*. A
-# leaking scheduler / env / heap / WASI import (the core-module shape the release
-# tarball ships) fails here.
+# one gust:os/* interface and imports NOTHING outside gust:hal/*, gust:os/* and the
+# node-internal gust:sched/* seam. A leaking scheduler / env / heap / WASI import
+# (the core-module shape the release tarball ships) fails here.
+#
+# Also verifies OWNERSHIP: exactly ONE provider crate compiles the verified executor,
+# i.e. exactly one provider can hold scheduler state. spawn/timer reach it over
+# gust:sched/tasks instead of each carrying a private copy (which is what made a
+# spawn handle meaningless to timer/exec before).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="${OUT:-$HERE/gustos-components}"
@@ -32,6 +37,16 @@ PROVIDERS=(
   "timer-provider:gust_timer_provider"
 )
 
+# Checked at SOURCE, not in the binary. A `Tasks` table lives in wasm .bss, which a
+# module never declares, so no reliable binary signal says "this module holds one" —
+# see build-fused-gustos.sh's gate 4 for the signal that was tried and rejected.
+# Compiling plain/src/executor.rs is how a provider comes to hold scheduler state,
+# and that IS exactly decidable here.
+# Matches the `#[path = ".../executor.rs"] mod executor;` directive itself, not any
+# mention of the file — spawn/timer both DISCUSS it in comments now.
+EXEC_INCLUDE='#\[path *= *"[^"]*executor\.rs"'
+owners=""
+
 fail=""
 for entry in "${PROVIDERS[@]}"; do
   crate="${entry%%:*}"; wasm_name="${entry##*:}"
@@ -44,11 +59,17 @@ for entry in "${PROVIDERS[@]}"; do
   wit="$("$WT" component wit "$comp")"
   exports_gustos="$(printf '%s' "$wit" | grep -cE '^\s*export gust:os/' || true)"
   # The leak check: any `import X` whose target is neither the hardware seam
-  # (gust:hal/*) nor a gust:os/* capability. gust:os/taskdisp is the one import the
-  # providers legitimately carry — it is the trusted dispatch the APPLICATION
-  # supplies, not another provider, so it survives composition by design.
+  # (gust:hal/*) nor a gust:os/* capability nor the node-internal scheduler seam
+  # (gust:sched/*). gust:os/taskdisp is the one import that legitimately survives
+  # composition — it is the trusted dispatch the APPLICATION supplies. gust:sched/*
+  # must NOT survive it; build-fused-gustos.sh gates that on the composite.
   imports="$(printf '%s' "$wit" | grep -E '^\s*import ' | sed 's/^ *//;s/;$//' || true)"
-  bad_imports="$(printf '%s' "$imports" | grep -vE '^import (gust:hal|gust:os)/' || true)"
+  bad_imports="$(printf '%s' "$imports" | grep -vE '^import (gust:hal|gust:os|gust:sched)/' || true)"
+
+  # `|| true` inside the group: grep exits 1 on no-match, which under `pipefail`
+  # would abort the whole script at the first provider that (correctly) has none.
+  n_inc="$({ grep -rlE "$EXEC_INCLUDE" "$HERE/$crate/src" 2>/dev/null || true; } | wc -l | tr -d ' ')"
+  if [ "$n_inc" -gt 0 ]; then owners="$owners $crate"; fi
 
   if [ "$exports_gustos" -lt 1 ]; then
     echo "  FAIL: exports no gust:os/* interface"; fail="$fail $crate"
@@ -60,8 +81,18 @@ for entry in "${PROVIDERS[@]}"; do
   fi
 done
 
+echo ""
+echo "== executor ownership =="
+echo "  provider crates with a #[path] include of the executor:$owners"
+if [ "$owners" != " exec-provider" ]; then
+  echo "  FAIL: exactly one provider (exec-provider) may compile the executor"
+  fail="$fail executor-ownership"
+else
+  echo "  ok: exec-provider owns the scheduler; the others import gust:sched/tasks"
+fi
+
 if [ -n "$fail" ]; then
   echo ""; echo "gust:os component invariant FAILED:$fail"; exit 1
 fi
 echo ""
-echo "gust:os provider components built + invariant held (export gust:os, import only gust:hal/gust:os). Output: $OUT"
+echo "gust:os provider components built + invariant held (export gust:os, import only gust:hal/gust:os/gust:sched, one executor owner). Output: $OUT"

@@ -51,7 +51,8 @@ unsafe impl GlobalAlloc for NoAlloc {
 static A: NoAlloc = NoAlloc;
 
 wit_bindgen::generate!({ world: "exec-provider", path: "../wit-os", generate_all });
-use exports::gust::os::exec::Guest;
+use exports::gust::os::exec::Guest as ExecGuest;
+use exports::gust::sched::tasks::Guest as SchedGuest;
 
 #[path = "../../../../../plain/src/executor.rs"]
 mod executor;
@@ -88,7 +89,12 @@ const _: () = assert!(
     "executor bit_vector lemmas + ready_popcount hardcode width 8"
 );
 
-/// One instance's worth of scheduler state. A dissolved component (like a wasm
+/// The node's ONLY scheduler state. Not "one instance's worth": spawn-provider
+/// and timer-provider used to `#[path]`-include this same executor and keep
+/// their own `TASKS`, so a handle from `spawn.start` named a different task in
+/// every instance. They are now stateless and reach THIS table through the
+/// `gust:sched/tasks` export below, which is what makes the composite's shared
+/// handle space real rather than asserted. A dissolved component (like a wasm
 /// component instance) owns its state for its lifetime — this is the executor
 /// node's only static data, and it is exactly `size_of::<Tasks>()`, which is
 /// what makes `exec-cm3.o`'s `.bss` small and bounded (a fixed MAX_TASKS=8
@@ -190,7 +196,7 @@ pub extern "C" fn exec_state(h: u32) -> u32 {
 // C-ABI symbols above are the same three bodies reached two ways, so a component
 // instance and the natively-dissolved object cannot diverge in behaviour.
 struct P;
-impl Guest for P {
+impl ExecGuest for P {
     fn admit(prio: u32, deadline_lo: u32, deadline_hi: u32) -> u32 {
         exec_admit(prio, deadline_lo, deadline_hi)
     }
@@ -199,6 +205,34 @@ impl Guest for P {
     }
     fn state(h: u32) -> u32 {
         exec_state(h)
+    }
+}
+
+// `gust:sched/tasks` — the internal seam the stateless spawn/timer providers bind
+// to. Every method is a 1:1 forward to the SAME `tasks()` singleton the `exec`
+// exports above use, so "one scheduler" needs no argument beyond this file: there
+// is one `TASKS`, and both seams are views of it. The composite satisfies this
+// import internally, so it is unreachable from a tenant that imports gust:os.
+impl SchedGuest for P {
+    fn admit(prio: u32) -> u32 {
+        unsafe { tasks() }.admit(prio)
+    }
+    fn wake(h: u32) {
+        unsafe { tasks() }.wake(h)
+    }
+    fn poll_round() {
+        unsafe { tasks() }.poll_round()
+    }
+    fn state(h: u32) -> u32 {
+        exec_state(h)
+    }
+    fn set_deadline(h: u32, d_lo: u32, d_hi: u32) {
+        let d = (u64::from(d_hi) << 32) | u64::from(d_lo);
+        unsafe { tasks() }.set_deadline(h, d)
+    }
+    fn slept_status(h: u32, now_lo: u32, now_hi: u32) -> u32 {
+        let now = (u64::from(now_hi) << 32) | u64::from(now_lo);
+        unsafe { tasks() }.slept_status(h, now)
     }
 }
 export!(P);
