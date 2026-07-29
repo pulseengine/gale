@@ -59,3 +59,15 @@ Two consecutive runs, `wdg-f100-run{1,2}.log`, identical in outcome:
 ## Reproduce
 
     benches/gust/silicon/run-wdg-f100.sh          # needs an ST-LINK + openocd
+
+## Re-validated under synth 0.52.0 (2026-07-29)
+
+Repeated with the 0.52.0-regenerated object (638 B, symbol shape unchanged), again as
+one unspliced openocd session across the reset:
+
+    gust-wdg-silicon: boot 1 on STM32F100 (RCC_CSR=0x14000000, no prior WDG reset)...
+    gust-wdg-silicon: armed (is_running=1). NOT refreshing...
+    gust-wdg-silicon OK: IWDG watchdog reset CONFIRMED on real STM32F100 silicon
+    (RCC_CSR=0x34000000, IWDGRSTF=1)
+
+Both dies therefore hold under the new pin.
