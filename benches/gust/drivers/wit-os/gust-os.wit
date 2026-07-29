@@ -37,6 +37,24 @@ interface taskdisp {
     poll-task: func(id: u32) -> u32;
 }
 
+/// The executor's other half: direct admit/drive/inspect of the verified scheduler
+/// (plain/src/executor.rs), under the app-facing `spawn`/`timer` capabilities. Both
+/// 64-bit values cross as lo/hi u32 halves — synth's ARM backend silently drops an
+/// exported function carrying an i64 param (drivers/exec-provider/RESULTS.md), and
+/// keeping the WIT identical to the dissolved object's C-ABI means the qemu probe
+/// and a composed node call the same shape.
+interface exec {
+    /// Admit a task at `prio` (lower = higher priority) with wake-by deadline
+    /// `deadline-lo`/`deadline-hi` (tick units; u64 max = no timer). Returns the
+    /// handle, or 0xFFFF_FFFF if the MAX_TASKS=8 table is full.
+    admit: func(prio: u32, deadline-lo: u32, deadline-hi: u32) -> u32;
+    /// Drive one round at time `now`: fire the tickless alarm, then drain every
+    /// ready task exactly once through `taskdisp.poll-task`.
+    poll-round: func(now-lo: u32, now-hi: u32);
+    /// Task `h`'s state: 0 = free, 1 = pending, 2 = done, 0xFFFF_FFFF = invalid.
+    state: func(h: u32) -> u32;
+}
+
 /// Cooperative task spawn — a scalar handle into the kiln executor; the app polls it
 /// (no host Future crosses the seam). Backed by kiln.
 interface spawn {
@@ -136,3 +154,8 @@ world spawn-provider { import taskdisp; export spawn; }
 /// imports both.
 world app-timer { import time; import timer; export run: func() -> u32; }
 world timer-provider { import taskdisp; import gust:hal/mmio@0.1.0; export timer; }
+
+/// The executor node itself as a provider. `exec` is not in `world app` — apps reach
+/// the scheduler through spawn/timer — so this world's only import is the trusted
+/// dispatch seam, which is what lets it fuse with the others (gale#224).
+world exec-provider { import taskdisp; export exec; }

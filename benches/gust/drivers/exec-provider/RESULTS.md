@@ -15,6 +15,39 @@ else in this crate is scalar C-ABI marshalling only (`exec_admit`/
 `exec_poll_round`/`exec_state`): no admit/wake/pick_next/poll_round/expire
 decision is re-implemented at the wasm boundary.
 
+## Componentization (world `exec-provider`, exports `gust:os/exec`)
+
+This crate used to be core-module-only: its trusted dispatch seam was a raw
+`(import "env" "poll_task")`, which `wasm-tools component new` rejects outright
+("module requires an import interface named `env`"). It now generates against
+`world exec-provider { import taskdisp; export exec; }` and resolves the
+executor's `extern "C" poll_task` through a forwarder into the WIT-typed
+`gust:os/taskdisp.poll-task` import — the same shim spawn-provider uses. Result:
+
+    wasm-tools component new .../gust_exec_provider.wasm -o exec.component.wasm
+    wasm-tools component wit exec.component.wasm
+      import gust:os/taskdisp@0.1.0;
+      export gust:os/exec@0.1.0;
+
+7097 B, one import, nothing outside `gust:os/*` — the delivery invariant
+build-gustos-components.sh checks, so exec can join the fuse (gale#224).
+
+The `exec_admit`/`exec_poll_round`/`exec_state` C-ABI exports are unchanged and
+still emitted (benches/gust/build.rs asserts they are defined text symbols in the
+dissolved object); the `Guest` impl forwards to those same three bodies rather
+than duplicating the marshalling, so the component and the native object cannot
+diverge in behaviour.
+
+**Regenerating `exec-cm3.o` requires a one-line probe change.** The dissolved
+object's single undefined symbol moves from `poll_task` to `poll-task` (the WIT
+field name, dash included — `poll_task` becomes a *defined* forwarder), so
+`gust_exec_probe`'s stub must switch to `#[export_name = "poll-task"]`, as
+gust_os_ts_probe already has. Confirmed on a scratch re-dissolve (loom 1.2.0 +
+synth 0.49.0): with the current stub the link fails on `duplicate symbol:
+poll_task`; with the renamed stub the probe passes unchanged
+("gust-exec-probe OK: both tasks Done, hi-prio first"). The object checked in
+here is still the pre-WIT one, so today's build is green either way.
+
 ## Build
 
     cargo build --release --target wasm32-unknown-unknown
