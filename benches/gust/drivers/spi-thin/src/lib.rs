@@ -11,7 +11,13 @@
 //! **zero new TCB atoms**. No host SPI driver exists; this *is* the driver,
 //! dissolved to native.
 //!
+//! REQ-DRV-COMPONENT-001: this is a wasm **component** — `world spi-driver`
+//! (`../wit/gust-hal.wit`), importing `gust:hal/mmio` and exporting `gust:hal/spi`.
+//! The capability is therefore checked against a typed contract at composition time,
+//! instead of being an untyped `env` extern that only had to match by name at link.
+//!
 //! Build:   cargo build --release --target wasm32-unknown-unknown
+//!          wasm-tools component new <wasm> -o spi.component.wasm
 //! Dissolve: loom optimize --passes inline | synth compile --target cortex-m3
 //!           --all-exports --relocatable
 //! Verify:  cargo kani   (the pure transfer FSM: exclusive bus + no lost byte)
@@ -23,13 +29,41 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-// gust:hal mmio capability — becomes import-call relocations resolved at link by
-// the SAME ~10-line TCB bridge gpio-thin/uart-thin use (mmio.{read32,write32}).
-// No irq/dma atom: a thin-seam polled SPI needs only register reads/writes.
-extern "C" {
-    fn mmio_read32(addr: u32) -> u32;
-    fn mmio_write32(addr: u32, val: u32);
+// wit-bindgen's canonical-ABI glue must LINK against a global allocator; this world
+// is scalar-only (u32 in, u32 out), so nothing ever calls it and a zero-state
+// trapping allocator keeps the driver's 0-SRAM property intact.
+#[cfg(not(kani))]
+use core::alloc::{GlobalAlloc, Layout};
+#[cfg(not(kani))]
+struct NoAlloc;
+#[cfg(not(kani))]
+unsafe impl GlobalAlloc for NoAlloc {
+    unsafe fn alloc(&self, _: Layout) -> *mut u8 {
+        core::ptr::null_mut()
+    }
+    unsafe fn dealloc(&self, _: *mut u8, _: Layout) {}
 }
+#[cfg(not(kani))]
+#[global_allocator]
+static ALLOC: NoAlloc = NoAlloc;
+
+// gust:hal mmio capability — now a WIT-typed component import (still the SAME two
+// primitives the ~10-line TCB bridge gpio-thin/uart-thin use). No irq/dma atom: a
+// thin-seam polled SPI needs only register reads/writes.
+#[cfg(not(kani))]
+wit_bindgen::generate!({ world: "spi-driver", path: "../wit", generate_all });
+#[cfg(not(kani))]
+use crate::gust::hal::mmio::{read32, write32};
+
+// Kani model-checks the pure FSM/config core on the host, where no wasm bindings
+// exist. No harness reaches an mmio call (they were undefined `extern` symbols
+// before this seam change, equally unreachable), so a stub stands in for the import.
+#[cfg(kani)]
+fn read32(_addr: u32) -> u32 {
+    0
+}
+#[cfg(kani)]
+fn write32(_addr: u32, _val: u32) {}
 
 // STM32F1 SPI register map (offsets from the peripheral base, e.g. SPI1=0x4001_3000).
 // Device knowledge as *data* (offsets/bit math), not trusted code.
@@ -209,11 +243,11 @@ fn unpack(s: u32) -> Xfer {
 
 #[inline(always)]
 fn rd(a: u32) -> u32 {
-    unsafe { mmio_read32(a) }
+    read32(a)
 }
 #[inline(always)]
 fn wr(a: u32, v: u32) {
-    unsafe { mmio_write32(a, v) }
+    write32(a, v)
 }
 
 // ---- exported protocol primitives (the driver's gust:hal-facing surface) ----
@@ -267,6 +301,36 @@ pub extern "C" fn spi_is_complete(state: u32) -> u32 {
 pub extern "C" fn spi_abort(state: u32) -> u32 {
     pack(abort(unpack(state)))
 }
+
+// `gust:hal/spi` exported over the SAME bodies as the C-ABI symbols above, not a
+// second implementation: the component's exports and the dissolved object's `spi_*`
+// entry points (benches/gust/build.rs, gust_spi/gust_spi_probe) then cannot diverge
+// in behaviour. Same shape gpio-thin used.
+#[cfg(not(kani))]
+struct Driver;
+#[cfg(not(kani))]
+impl exports::gust::hal::spi::Guest for Driver {
+    fn configure(base: u32, mode: u32, br_idx: u32) {
+        spi_configure(base, mode, br_idx)
+    }
+    fn xfer_byte(base: u32, out: u32) -> u32 {
+        spi_xfer_byte(base, out)
+    }
+    fn begin(state: u32, count: u32) -> u32 {
+        spi_begin(state, count)
+    }
+    fn step(state: u32) -> u32 {
+        spi_step(state)
+    }
+    fn is_complete(state: u32) -> u32 {
+        spi_is_complete(state)
+    }
+    fn abort(state: u32) -> u32 {
+        spi_abort(state)
+    }
+}
+#[cfg(not(kani))]
+export!(Driver);
 
 // ─────────────────────────────── Kani proofs ────────────────────────────────
 //

@@ -96,6 +96,70 @@ correctness gate works locally *and* in CI.
 | TCB (import relocations) | mmio_read32, mmio_write32, irq_poll |
 | verified | usart_rx_decide — Kani SUCCESSFUL (error-priority, all 2³² SR) |
 
+## Componentization (world `uart-driver`, REQ-DRV-COMPONENT-001)
+
+The driver no longer reaches the bridge through raw `env.mmio_read32` /
+`env.mmio_write32` / `env.irq_poll` externs but through `wit_bindgen::generate!`
+against `world uart-driver { import mmio; import irq; export uart; }`
+(`../wit/gust-hal.wit` — the contract predates this change and is used unedited).
+This is the first thin driver to carry **two** typed imports. The four exported
+primitives already matched `interface uart` field-for-field, so the `Guest` impl just
+forwards to the same bodies the `#[no_mangle] extern "C"` symbols export. No register
+logic, bitmask or decision changed; Kani is still 1/1.
+
+    cargo build --release --target wasm32-unknown-unknown   # 2958 B core module
+    wasm-tools component new .../gust_uart_thin.wasm -o uart.component.wasm
+    wasm-tools validate uart.component.wasm                 # OK
+    wasm-tools component wit uart.component.wasm            # 3984 B component
+      import gust:hal/mmio@0.1.0;
+      import gust:hal/irq@0.1.0;
+      export gust:hal/uart@0.1.0;
+
+`.cargo/config.toml` is **gone**: `-C link-arg=--allow-undefined` existed only
+because the raw externs were undefined wasm symbols; a WIT-typed import is a real
+wasm import, so rust-lld needs no override (verified by a clean rebuild after
+`rm -rf target/wasm32-unknown-unknown`).
+
+**One value-domain narrowing, forced by the contract:** `gust:hal/irq.poll` is
+declared `-> bool`, so `uart_rx_fired` now returns 0/1 where it previously forwarded
+the bridge's raw `u32` verbatim. Every in-tree bridge already answers 0 or 1
+(`gust_uart.rs` returns 0, `gust_breadth_probe.rs` returns 1) and the interface doc
+has always read "nonzero if the line fired", so no caller observes the difference —
+but it is a contract-imposed narrowing, not a silent one.
+
+### Re-pinned symbol contract — the dissolved object changes shape
+
+Both objects below were dissolved to a scratch path with the SAME toolchain (loom
+1.2.0 + synth 0.49.0) and the same `--native-pointer-abi --all-exports
+--relocatable` recipe, so the delta is the seam change alone. (`--shadow-stack-size
+1024` had to be dropped from the pre-change run: synth 0.49 refuses it when no
+relocation reaches the native-pointer region, which was the case before
+componentization.)
+
+| | pre-change (`env` externs) | componentized |
+|---|---|---|
+| `.text` | 254 B | **986 B** (+732) |
+| `.data` | 0 B | **20 B** |
+| `.bss` | 0 B | **1048576 B** (1048 B with `--shadow-stack-size 1024`) |
+| undefined | `mmio_read32`, `mmio_write32`, `irq_poll` | **`read32`, `write32`, `poll`** |
+| defined | `uart_{init,tx_byte,rx,rx_fired}` | the same four, **plus** `gust:hal/uart@0.1.0#{init,tx-byte,rx,rx-fired}`, `cabi_realloc{,_wit_bindgen_0_52_0}` and `__synth_{wasm_data,globals,wasm_seg_0}` |
+
+**The 0-SRAM property does not survive this driver's `--native-pointer-abi` recipe.**
+wit-bindgen emits a 16-byte `.rodata` segment (the `cabi_realloc` alignment
+constants), and `--native-pointer-abi` materialises the linear-memory region that
+segment lives in. The segment is never read (`i32.load offset=` is still **0** — the
+driver stays table-free), so dissolving *without* `--native-pointer-abi` gives 1014 B
+`.text` / **0 SRAM**; timer-thin and spi-thin, which never used the flag, keep 0 SRAM
+unchanged. Recorded, not optimised (loom#303 covers the `.text` half); which recipe a
+regenerated object should use is a follow-up decision.
+
+**`uart-thin-cm3.o` is deliberately NOT regenerated**, so today's `gust_uart` link
+and the Renode content-gate are untouched. Whoever regenerates it must, in the same
+change, rename the bridge exports in `benches/gust/src/bin/gust_uart.rs` to
+`#[export_name = "read32"]` / `#[export_name = "write32"]` / `#[export_name =
+"poll"]`; otherwise the link fails on undefined `read32`/`write32`/`poll`. There is
+no duplicate-symbol hazard — the new object does not mention the old names at all.
+
 ---
 
 _Toolchain note: current pins are synth 0.52.0 / loom 1.2.0 (#208, re-pinned from 0.49.0), not the synth

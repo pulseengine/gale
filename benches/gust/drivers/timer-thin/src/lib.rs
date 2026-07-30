@@ -9,7 +9,13 @@
 //! `match`/array → no `.rodata` linmem lookup; see gpio-thin's lesson): all logic is
 //! arithmetic, so it dissolves `--relocatable` with 0 SRAM / 0 linmem.
 //!
+//! REQ-DRV-COMPONENT-001: this is a wasm **component** — `world timer-driver`
+//! (`../wit/gust-hal.wit`), importing `gust:hal/mmio` and exporting `gust:hal/timer`.
+//! The capability is therefore checked against a typed contract at composition time,
+//! instead of being an untyped `env` extern that only had to match by name at link.
+//!
 //! Build:   cargo build --release --target wasm32-unknown-unknown
+//!          wasm-tools component new <wasm> -o timer.component.wasm
 //! Dissolve: loom optimize --passes inline | synth compile --target cortex-m3
 //!           --all-exports --relocatable
 //! Verify:  cargo kani   (the wrap-safe deadline core)
@@ -21,10 +27,40 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-extern "C" {
-    fn mmio_read32(addr: u32) -> u32;
-    fn mmio_write32(addr: u32, val: u32);
+// wit-bindgen's canonical-ABI glue must LINK against a global allocator; this world
+// is scalar-only (u32 in, u32 out), so nothing ever calls it and a zero-state
+// trapping allocator keeps the driver's 0-SRAM property intact.
+#[cfg(not(kani))]
+use core::alloc::{GlobalAlloc, Layout};
+#[cfg(not(kani))]
+struct NoAlloc;
+#[cfg(not(kani))]
+unsafe impl GlobalAlloc for NoAlloc {
+    unsafe fn alloc(&self, _: Layout) -> *mut u8 {
+        core::ptr::null_mut()
+    }
+    unsafe fn dealloc(&self, _: *mut u8, _: Layout) {}
 }
+#[cfg(not(kani))]
+#[global_allocator]
+static ALLOC: NoAlloc = NoAlloc;
+
+// gust:hal mmio capability — now a WIT-typed component import (still the SAME two
+// primitives the ~10-line TCB bridge gpio-thin/uart-thin use; no irq atom).
+#[cfg(not(kani))]
+wit_bindgen::generate!({ world: "timer-driver", path: "../wit", generate_all });
+#[cfg(not(kani))]
+use crate::gust::hal::mmio::{read32, write32};
+
+// Kani model-checks the pure deadline core on the host, where no wasm bindings
+// exist. No harness reaches an mmio call (they were undefined `extern` symbols
+// before this seam change, equally unreachable), so a stub stands in for the import.
+#[cfg(kani)]
+fn read32(_addr: u32) -> u32 {
+    0
+}
+#[cfg(kani)]
+fn write32(_addr: u32, _val: u32) {}
 
 // STM32 general-purpose timer register map (offsets from a TIM base, e.g.
 // TIM2 = 0x4000_0000). Device knowledge as *data*, not trusted code.
@@ -51,11 +87,11 @@ pub fn has_elapsed(now: u32, deadline: u32) -> bool {
 
 #[inline(always)]
 fn rd(a: u32) -> u32 {
-    unsafe { mmio_read32(a) }
+    read32(a)
 }
 #[inline(always)]
 fn wr(a: u32, v: u32) {
-    unsafe { mmio_write32(a, v) }
+    write32(a, v)
 }
 
 // ---- exported protocol primitives (scalar ABI, 0 SRAM, 0 linmem) ----
@@ -92,6 +128,33 @@ pub extern "C" fn timer_elapsed(now: u32, deadline: u32) -> u32 {
 pub extern "C" fn timer_ack(base: u32) {
     wr(base + SR, !UIF);
 }
+
+// `gust:hal/timer` exported over the SAME bodies as the C-ABI symbols above, not a
+// second implementation: the component's exports and the dissolved object's
+// `timer_*` entry points (benches/gust/build.rs, gust_timer probe) then cannot
+// diverge in behaviour. Same shape gpio-thin used.
+#[cfg(not(kani))]
+struct Driver;
+#[cfg(not(kani))]
+impl exports::gust::hal::timer::Guest for Driver {
+    fn init(base: u32, psc: u32, arr: u32) {
+        timer_init(base, psc, arr)
+    }
+    fn now(base: u32) -> u32 {
+        timer_now(base)
+    }
+    fn deadline(now: u32, ticks: u32) -> u32 {
+        timer_deadline(now, ticks)
+    }
+    fn elapsed(now: u32, deadline: u32) -> u32 {
+        timer_elapsed(now, deadline)
+    }
+    fn ack(base: u32) {
+        timer_ack(base)
+    }
+}
+#[cfg(not(kani))]
+export!(Driver);
 
 /// Kani proofs for the verifiable core (`cargo kani`): the deadline test is wrap-safe.
 #[cfg(kani)]
