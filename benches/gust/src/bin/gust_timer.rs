@@ -21,6 +21,20 @@ pub extern "C" fn mmio_write32(addr: u32, val: u32) {
     unsafe { write_volatile(addr as *mut u32, val) }
 }
 
+// WIT-typed alias of the same bridge. timer-thin is componentized, so this bin links objects that name the
+// seam differently — a componentized driver imports `read32`/`write32`, a raw one still
+// imports `mmio_read32`/`mmio_write32`. Both point at one implementation; the aliases go
+// away when every linked object is componentized.
+#[export_name = "read32"]
+pub extern "C" fn wit_read32(addr: u32) -> u32 {
+    unsafe { read_volatile(addr as *const u32) }
+}
+#[export_name = "write32"]
+pub extern "C" fn wit_write32(addr: u32, val: u32) {
+    unsafe { write_volatile(addr as *mut u32, val) }
+}
+
+
 extern "C" {
     fn timer_init(base: u32, psc: u32, arr: u32);
     fn timer_deadline(now: u32, ticks: u32) -> u32;
