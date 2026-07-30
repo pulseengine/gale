@@ -788,28 +788,6 @@ artifacts:
   # v0.7.0 — three axes. Typed here BEFORE any code, so traceability leads.
   # ==========================================================================
 
-  - id: DD-OS-TARGET-GEN-001
-    type: sw-detail-design
-    title: "A new hardware target family enters through AADL + spar, never as hand-written target files"
-    status: approved
-    release: v0.7.0
-    tags: [gust, os, target, spar, aadl]
-    links:
-      - type: refines
-        target: SAC-BYOOS-SCAFFOLD
-    description: >
-      benches/gust/targets/regen.sh derives gust_target_<mcu>.rs, memory-<mcu>.x and
-      world-<mcu>.wit from the .aadl models via spar; the generated tree is committed,
-      carries a DO NOT EDIT banner, and is drift-gated in CI. Adding the third target
-      family (RV32) SHALL therefore begin with a new .aadl model — not hand-written
-      constants, a hand-written memory map, or a hand-written world. Recorded as a
-      decision because the tempting shortcut (hand-write three small files, get on to the
-      interesting silicon work) would quietly take the platform description out of the
-      model that the fault-tree, partitioning and scheduling analyses read.
-      The capability seams (gust:os, gust:hal, gust:sched) stay hand-authored contracts
-      and are deliberately NOT in scope: AADL owns which chip exists and what it has, WIT
-      owns what the software promises.
-
   - id: REQ-DRV-COMPONENT-001
     type: sw-req
     title: "Every thin-seam driver SHALL be a wasm COMPONENT importing gust:hal — no raw env import may survive in the graph"
@@ -912,13 +890,13 @@ artifacts:
       - type: derives-from
         target: SYSREQ-BYOOS-001
       - type: refines
-        target: DD-OS-TARGET-GEN-001
+        target: REQ-TARGET-MODEL-001
     description: >
       Two of three hardware families are validated for drivers: Cortex-M4 (STM32G474) and
       Cortex-M3 (STM32F100), the same unrebuilt object arming the real watchdog on both.
       The third SHALL be RV32 on ESP32-C3. synth 0.53 removed the compiler obstacle — all
       eight thin drivers lower to RV32 with defined-function and seam counts identical to
-      ARM — so what remains is ours: a target model generated per DD-OS-TARGET-GEN-001, and
+      ARM — so what remains is ours: a target model generated per REQ-TARGET-MODEL-001, and
       at least one driver written against ACTUAL ESP32-C3 registers.
       The existing eight carry STM32 register maps: lowering them for RV32 evidences that
       the toolchain crosses and would be meaningless to execute. Import-free gust_mix
