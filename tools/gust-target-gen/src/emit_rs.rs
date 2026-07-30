@@ -43,6 +43,45 @@ fn rcc_prop(rcc: &Device, key: &str) -> u32 {
         .unwrap_or_else(|| panic!("gust-target-gen: Rcc device missing `{key}` property"))
 }
 
+/// Optional peripheral devices and the constants each contributes:
+/// `(AADL device type, const prefix, [(offset property, register const suffix)])`.
+///
+/// A peripheral enters this table DELIBERATELY, like `emit_wit::interfaces_for`.
+/// A device in a board's model with no entry here emits nothing, and an entry
+/// whose offset property that board's model omits emits nothing for that
+/// register — so a board only ever gets constants its OWN model carries, and a
+/// board without the peripheral (e.g. the G4 model, which has no proven bases)
+/// keeps byte-identical output.
+///
+/// `<PREFIX>_BASE` is the device `Base`; each register const is `Base + offset`,
+/// which is where the base-vs-offset distinction is enforced: `USART1_DR` is
+/// derived, never modelled as a device of its own.
+type Regs = &'static [(&'static str, &'static str)];
+
+const USART_REGS: Regs = &[
+    ("Sr_Offset", "SR"),
+    ("Dr_Offset", "DR"),
+    ("Brr_Offset", "BRR"),
+    ("Cr1_Offset", "CR1"),
+];
+// One F1 GPIO port register map, shared by every port device — which offsets a
+// given port actually emits is the board model's call, not this table's.
+const GPIO_REGS: Regs = &[("Crh_Offset", "CRH"), ("Bsrr_Offset", "BSRR")];
+const TIM_REGS: Regs = &[("Cnt_Offset", "CNT")];
+const SPI_REGS: Regs = &[
+    ("Cr1_Offset", "CR1"),
+    ("Sr_Offset", "SR"),
+    ("Dr_Offset", "DR"),
+];
+
+const PERIPHERALS: &[(&str, &str, Regs)] = &[
+    ("Usart1", "USART1", USART_REGS),
+    ("Gpioa", "GPIOA", GPIO_REGS),
+    ("Gpioc", "GPIOC", GPIO_REGS),
+    ("Tim2", "TIM2", TIM_REGS),
+    ("Spi1", "SPI1", SPI_REGS),
+];
+
 /// Emit the per-target constants module (IWDG/RCC/memory) as Rust source.
 pub fn emit_rs(t: &Target) -> String {
     let iwdg = device(t, "Iwdg");
@@ -72,6 +111,16 @@ pub fn emit_rs(t: &Target) -> String {
         sram_len = t.sram.len,
     );
 
+    // RCC_APB2ENR — the APB2 peripheral-clock-enable register. Only modelled
+    // where it is proven (the F1 model, silicon-anchored by gust_adc_silicon);
+    // a board whose model omits the offset emits nothing.
+    if let Some(&apb2enr_off) = rcc.props.get("Apb2enr_Offset") {
+        out.push_str(&format!(
+            "pub const RCC_APB2ENR: u32 = {};\n",
+            hex(rcc.base + apb2enr_off)
+        ));
+    }
+
     // ADC is not present on every board (e.g. G4 has no Adc device in its
     // model) — emit its consts only when the model actually carries them,
     // so boards without an ADC get byte-identical output to before.
@@ -82,6 +131,24 @@ pub fn emit_rs(t: &Target) -> String {
                  pub const VREFINT_CH: u32 = {vrefint_ch};\n",
                 adc_base = hex(adc.base),
             ));
+        }
+    }
+
+    // Peripherals whose bases the board's model carries (see PERIPHERALS).
+    for (dev, prefix, regs) in PERIPHERALS {
+        if let Some(d) = device_opt(t, dev) {
+            out.push_str(&format!(
+                "pub const {prefix}_BASE: u32 = {base};\n",
+                base = hex(d.base)
+            ));
+            for (key, suffix) in *regs {
+                if let Some(&off) = d.props.get(*key) {
+                    out.push_str(&format!(
+                        "pub const {prefix}_{suffix}: u32 = {addr};\n",
+                        addr = hex(d.base + off)
+                    ));
+                }
+            }
         }
     }
 
@@ -133,5 +200,60 @@ mod tests {
         assert!(f.contains("RCC_CSR: u32 = 0x4002_1024;"), "f100 RCC_CSR");
         assert!(f.contains("IWDGRSTF: u32 = 1 << 29;"), "f100 IWDGRSTF");
         assert!(f.contains("RMVF: u32 = 1 << 24;"), "f100 RMVF");
+    }
+
+    /// Keystone parity for the F100 peripheral devices: every emitted constant
+    /// equals the value the in-tree firmware/driver ALREADY hardcodes, so
+    /// modelling a peripheral cannot silently move it. Each right-hand side is
+    /// lifted from a specific in-tree use:
+    ///   RCC_APB2ENR 0x40021018  gust_adc_silicon.rs (real F100 silicon)
+    ///   USART1_*    0x40013800  drivers/uart-thin/src/lib.rs (+SR/DR/BRR/CR1)
+    ///   GPIOA_CRH   0x40010804  gust_uart.rs PA9 alternate-function setup
+    ///   GPIOC_*     0x40011000  gust_gpio.rs / drivers/gpio-thin (CRH, BSRR)
+    ///   TIM2_CNT    0x40000024  drivers/time-provider/src/lib.rs
+    ///   SPI1_*      0x40013000  gust_spi.rs / drivers/spi-thin (CR1, SR, DR)
+    #[test]
+    fn f100_peripheral_consts_equal_the_intree_hardcoded_addresses() {
+        let f = emit_rs(&parse_items(ITEMS, "STM32F100::Board.vldiscovery"));
+        for expected in [
+            "pub const RCC_APB2ENR: u32 = 0x4002_1018;",
+            "pub const USART1_BASE: u32 = 0x4001_3800;",
+            "pub const USART1_SR: u32 = 0x4001_3800;",
+            "pub const USART1_DR: u32 = 0x4001_3804;",
+            "pub const USART1_BRR: u32 = 0x4001_3808;",
+            "pub const USART1_CR1: u32 = 0x4001_380C;",
+            "pub const GPIOA_BASE: u32 = 0x4001_0800;",
+            "pub const GPIOA_CRH: u32 = 0x4001_0804;",
+            "pub const GPIOC_BASE: u32 = 0x4001_1000;",
+            "pub const GPIOC_CRH: u32 = 0x4001_1004;",
+            "pub const GPIOC_BSRR: u32 = 0x4001_1010;",
+            "pub const TIM2_BASE: u32 = 0x4000_0000;",
+            "pub const TIM2_CNT: u32 = 0x4000_0024;",
+            "pub const SPI1_BASE: u32 = 0x4001_3000;",
+            "pub const SPI1_CR1: u32 = 0x4001_3000;",
+            "pub const SPI1_SR: u32 = 0x4001_3008;",
+            "pub const SPI1_DR: u32 = 0x4001_300C;",
+        ] {
+            assert!(f.contains(expected), "f100 missing `{expected}`");
+        }
+    }
+
+    /// The G4 memory map is NOT the F1 memory map: no F100 peripheral base may
+    /// leak into the G474 output. Only Iwdg/Rcc are proven on that part, so the
+    /// G4 module must carry no peripheral constants at all.
+    #[test]
+    fn g474_gets_no_unproven_peripheral_consts() {
+        let g = emit_rs(&parse_items(ITEMS, "STM32G474::Board.nucleo"));
+        for absent in [
+            "RCC_APB2ENR",
+            "USART1_",
+            "GPIOA_",
+            "GPIOC_",
+            "TIM2_",
+            "SPI1_",
+            "ADC_BASE",
+        ] {
+            assert!(!g.contains(absent), "g474 must not emit `{absent}`");
+        }
     }
 }

@@ -16,12 +16,17 @@ public
     properties Gust_Target_Props::Base => 16#40003000#; Gust_Target_Props::Present => true;
   end Iwdg;
 
+  -- Apb2enr_Offset (RCC_APB2ENR = 16#40021018#) is SILICON-proven on this part:
+  -- gust_adc_silicon.rs sets ADC1EN through it before every Vrefint read, and the
+  -- real STM32VLDISCOVERY returned 1645/1646 raw (silicon/RESULTS-f100.md) — an
+  -- unclocked ADC cannot convert, so a wrong offset could not have produced it.
   device Rcc
     properties
-      Gust_Target_Props::Base         => 16#40021000#;
-      Gust_Target_Props::Csr_Offset   => 16#24#;
-      Gust_Target_Props::Iwdgrstf_Bit => 29;
-      Gust_Target_Props::Rmvf_Bit     => 24;
+      Gust_Target_Props::Base           => 16#40021000#;
+      Gust_Target_Props::Csr_Offset     => 16#24#;
+      Gust_Target_Props::Apb2enr_Offset => 16#18#;
+      Gust_Target_Props::Iwdgrstf_Bit   => 29;
+      Gust_Target_Props::Rmvf_Bit       => 24;
   end Rcc;
 
   device Adc
@@ -30,6 +35,69 @@ public
       Gust_Target_Props::Vrefint_Ch => 17;
       Gust_Target_Props::Present    => true;
   end Adc;
+
+  -- USART1 — the uart-thin driver's peripheral and every driver gate's report
+  -- channel. The only peripheral here checked against a REAL Renode register
+  -- model (UART.STM32_UART @ <0x40013800,+0x100> in renode-test/m3_64k.repl and
+  -- stm32f100.repl), content-gated by //:gust-uart-renode; the F100-linked image
+  -- also flashed + ran to completion on the physical VLDISCOVERY
+  -- (drivers/uart-thin/SILICON.md). Offsets per drivers/uart-thin/src/lib.rs.
+  device Usart1
+    properties
+      Gust_Target_Props::Base       => 16#40013800#;
+      Gust_Target_Props::Sr_Offset  => 16#00#;
+      Gust_Target_Props::Dr_Offset  => 16#04#;
+      Gust_Target_Props::Brr_Offset => 16#08#;
+      Gust_Target_Props::Cr1_Offset => 16#0C#;
+      Gust_Target_Props::Present    => true;
+  end Usart1;
+
+  -- GPIOA — the board bring-up port: PA9 is USART1 TX, configured through
+  -- GPIOA + Crh_Offset (16#40010804#) by every gate demonstrator and by the
+  -- F100 image that ran on real silicon. Modelled in renode-test/f100_silicon.repl
+  -- as gpioa @ 0x40010800.
+  device Gpioa
+    properties
+      Gust_Target_Props::Base       => 16#40010800#;
+      Gust_Target_Props::Crh_Offset => 16#04#;
+      Gust_Target_Props::Present    => true;
+  end Gpioa;
+
+  -- GPIOC — the port the dissolved gpio-thin driver drives (PC8). Exercised by
+  -- //:gust-gpio-renode and //:gust-breadth-renode against a register window at
+  -- this base; offsets per drivers/gpio-thin/src/lib.rs. NOTE: those gates map
+  -- the window as plain memory, so they pin the base the firmware uses but do
+  -- not independently confirm it against silicon (unlike Usart1/Rcc/Adc).
+  device Gpioc
+    properties
+      Gust_Target_Props::Base        => 16#40011000#;
+      Gust_Target_Props::Crh_Offset  => 16#04#;
+      Gust_Target_Props::Bsrr_Offset => 16#10#;
+      Gust_Target_Props::Present     => true;
+  end Gpioc;
+
+  -- TIM2 — the dissolved timer-thin driver's timer, and the counter the
+  -- os time-provider reads (TIM2 + Cnt_Offset = 16#40000024#). Exercised by
+  -- //:gust-timer-renode and //:gust-breadth-renode; same plain-memory-window
+  -- caveat as Gpioc.
+  device Tim2
+    properties
+      Gust_Target_Props::Base       => 16#40000000#;
+      Gust_Target_Props::Cnt_Offset => 16#24#;
+      Gust_Target_Props::Present    => true;
+  end Tim2;
+
+  -- SPI1 — the dissolved spi-thin driver's peripheral. Exercised by
+  -- //:gust-spi-renode and //:gust-breadth-renode; offsets per
+  -- drivers/spi-thin/src/lib.rs. Same plain-memory-window caveat as Gpioc.
+  device Spi1
+    properties
+      Gust_Target_Props::Base       => 16#40013000#;
+      Gust_Target_Props::Cr1_Offset => 16#00#;
+      Gust_Target_Props::Sr_Offset  => 16#08#;
+      Gust_Target_Props::Dr_Offset  => 16#0C#;
+      Gust_Target_Props::Present    => true;
+  end Spi1;
 
   system Board
     annex EMV2 {**
@@ -46,11 +114,16 @@ public
   end Board;
   system implementation Board.vldiscovery
     subcomponents
-      cpu   : processor Cortex_M::CortexM3;
-      flash : memory Flag_Flash.i;
-      sram  : memory Ram.i;
-      iwdg  : device Iwdg;
-      rcc   : device Rcc;
-      adc   : device Adc;
+      cpu    : processor Cortex_M::CortexM3;
+      flash  : memory Flag_Flash.i;
+      sram   : memory Ram.i;
+      iwdg   : device Iwdg;
+      rcc    : device Rcc;
+      adc    : device Adc;
+      usart1 : device Usart1;
+      gpioa  : device Gpioa;
+      gpioc  : device Gpioc;
+      tim2   : device Tim2;
+      spi1   : device Spi1;
   end Board.vldiscovery;
 end STM32F100;

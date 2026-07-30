@@ -24,6 +24,18 @@ public
       Gust_Target_Props::Rmvf_Bit     => 23;
   end Rcc;
 
+  -- DELIBERATELY EMPTY of peripherals beyond Iwdg/Rcc. NONE of the F100 peripheral
+  -- bases in stm32f100.aadl may be copied here: the F1 and G4 memory maps differ,
+  -- and this model already records a case in point — the SAME register (RCC_CSR)
+  -- sits at a different offset on each family (16#24# vs 16#94#). Iwdg and the Rcc
+  -- base happen to coincide across the two families, and EACH is separately
+  -- silicon-validated on a real G474RE (targets/RESULTS-target-model.md) — that is
+  -- why they, and only they, are modelled. Every gust driver gate runs on
+  -- Cortex-M3/STM32F1-class platforms, so the tree holds NO G4 evidence for
+  -- USART/GPIO/TIM/SPI/ADC bases, nor for an APB2ENR offset. Adding any of them
+  -- needs an RM0440 datasheet source plus a G474 gate or silicon run; a guessed
+  -- base would silently write to the wrong peripheral.
+
   system Board
     annex EMV2 {**
       error types
