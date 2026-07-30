@@ -829,3 +829,188 @@ artifacts:
     links:
       - type: verifies
         target: REQ-OS-TRITRACK-001
+
+  # ==========================================================================
+  # v0.7.0 — three axes. Typed here BEFORE any code, so traceability leads.
+  # ==========================================================================
+
+  - id: REQ-DRV-COMPONENT-001
+    type: sw-req
+    title: "Every thin-seam driver SHALL be a wasm COMPONENT importing gust:hal — no raw env import may survive in the graph"
+    status: proposed
+    release: v0.7.0
+    tags: [gust, driver, component-model, seam]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+    description: >
+      As of v0.6.0 the composition is typed from application through OS and then stops:
+      all eight thin-seam drivers are core modules importing env.mmio_read32 /
+      env.mmio_write32 directly, while gust:hal already declares nine interfaces (mmio,
+      irq, gpio, spi, timer, dma, uart, uart-byte, uart-block) that nothing speaks. Each
+      driver SHALL instead be a component whose imports are gust:hal interfaces, so the
+      graph is typed all the way to the hardware seam: app -> OS -> drivers -> gust:hal.
+      After composition the residual SHALL still be exactly the gust:hal mmio seam, and no
+      `env` import SHALL survive in any core module of the graph.
+      Precondition for REQ-OS-PARTITION-TENANT-001: a driver cannot be a partition's
+      component tenant while it is not a component.
+
+  - id: VER-DRV-COMPONENT-001
+    type: sw-verification
+    title: "Per-driver componentization gate + whole-graph no-env-import sweep, both negative-tested"
+    method: test
+    status: proposed
+    release: v0.7.0
+    tags: [gust, driver, component-model, gate]
+    links:
+      - type: verifies
+        target: REQ-DRV-COMPONENT-001
+    description: >
+      Planned evidence for REQ-DRV-COMPONENT-001. A componentized driver is NOT done when
+      it composes; it is done when the object built from it has been OBSERVED driving
+      hardware. The first four through this axis (gpio, timer, spi, uart) were chosen for
+      having pre-existing WIT contracts, which turned out to be exactly the four with NO
+      silicon runner — so the migration was validating its output nowhere, and the probes
+      cited as passing link the COMMITTED pre-change objects. Silicon runners exist for wdg
+      (STM32G474 + STM32F100) and adc (F100); those SHALL be componentized and re-run on
+      hardware, with the observed effect compared against the pre-change baseline in
+      silicon/RESULTS-wdg-*.md. A driver whose only gate is Renode or qemu SHALL say so
+      rather than count as hardware-validated.
+      Per driver: wasm-tools component new
+      succeeds, component wit decodes, imports are gust:hal only. Across the composed
+      graph: a sweep asserting no core module imports `env`, negative-tested against a
+      pre-change driver so the sweep is OBSERVED to fail. WIT-typing a driver changes its
+      dissolved object's undefined-symbol shape (mmio_read32 -> the WIT-typed name), as
+      exec-provider demonstrated in v0.6.0; each driver's symbol contract SHALL be re-pinned
+      and the change recorded, not absorbed silently.
+      Kill-criterion: a driver that componentizes but whose composed residual gains an
+      import outside gust:hal, or a dissolved object whose undefined set no longer matches
+      its recorded contract.
+
+  - id: REQ-OS-COMPOSITE-EXEC-001
+    type: sw-req
+    title: "The composed OS SHALL be EXECUTED and its one-scheduler / one-clock properties observed, not only structurally asserted"
+    status: proposed
+    release: v0.7.0
+    tags: [gust, os, component-model, execution]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+    description: >
+      v0.6.0 established by import routing and source ownership that exactly one component
+      instance owns the scheduler, and that one clock backs both time.now and the timer's
+      deadlines. Nobody has called spawn.start() and observed the returned handle accepted
+      by timer.sleep() and by exec.state() through the composed component, so those are
+      STRUCTURAL claims. A handle SHALL be observed crossing spawn -> timer -> exec in an
+      executed composite.
+      Scheduled first deliberately: it is the cheapest rung and the only one that can
+      REFUTE a claim v0.6.0 already shipped. If it refutes, that is the release's headline,
+      as the triplication finding was in v0.6.0.
+
+  - id: VER-OS-COMPOSITE-EXEC-001
+    type: sw-verification
+    title: "Handle observed crossing spawn -> timer -> exec in the executed composite, gated in CI"
+    method: test
+    status: proposed
+    release: v0.7.0
+    tags: [gust, os, execution, gate]
+    links:
+      - type: verifies
+        target: REQ-OS-COMPOSITE-EXEC-001
+    description: >
+      Planned evidence for REQ-OS-COMPOSITE-EXEC-001: a test that starts a task through
+      gust:os/spawn, arms it through gust:os/timer using the handle spawn returned, and
+      asserts gust:os/exec agrees on that handle's state — on a host engine first, then on
+      the dissolved image. Run in CI on every change to any provider so the property cannot
+      silently stop holding.
+      Kill-criterion: the handle is rejected, or resolves to different task state across
+      the three interfaces.
+
+  - id: REQ-OS-TARGET-RV32-001
+    type: sw-req
+    title: "A third target family (RV32 / ESP32-C3) SHALL be model-generated, and one driver against its REAL registers silicon-validated"
+    status: proposed
+    release: v0.7.0
+    tags: [gust, os, target, riscv, silicon]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: refines
+        target: REQ-TARGET-MODEL-001
+    description: >
+      Two of three hardware families are validated for drivers: Cortex-M4 (STM32G474) and
+      Cortex-M3 (STM32F100), the same unrebuilt object arming the real watchdog on both.
+      The third SHALL be RV32 on ESP32-C3. synth 0.53 removed the compiler obstacle — all
+      eight thin drivers lower to RV32 with defined-function and seam counts identical to
+      ARM — so what remains is ours: a target model generated per REQ-TARGET-MODEL-001, and
+      at least one driver written against ACTUAL ESP32-C3 registers.
+      The existing eight carry STM32 register maps: lowering them for RV32 evidences that
+      the toolchain crosses and would be meaningless to execute. Import-free gust_mix
+      already has real ESP32-C3 silicon numbers; that is execution evidence for pure logic
+      and SHALL NOT be cited as driver evidence.
+
+  - id: VER-OS-TARGET-RV32-001
+    type: sw-verification
+    title: "Generated RV32 target (spar drift gate green) + one real-register ESP32-C3 driver observed acting on hardware"
+    method: test
+    status: proposed
+    release: v0.7.0
+    tags: [gust, os, target, riscv, silicon, gate]
+    links:
+      - type: verifies
+        target: REQ-OS-TARGET-RV32-001
+    description: >
+      Planned evidence for REQ-OS-TARGET-RV32-001: the new .aadl model regenerates
+      gust_target_esp32c3.rs / memory-esp32c3.x / world-esp32c3.wit with the CI drift gate
+      green (tree reproducible from the model, no hand edits), and one driver against real
+      ESP32-C3 registers produces an effect the hardware confirms — captured with its n and
+      unspliced-capture status stated, in the style of silicon/RESULTS-wdg-f100.md.
+      Kill-criterion: the generated tree drifts from the model, or the driver's observed
+      effect cannot be distinguished from a no-op.
+
+  - id: REQ-OS-PARTITION-TENANT-001
+    type: sw-req
+    title: "ARINC-653 partitions SHALL host component tenants, and the outer switch SHALL be validated on silicon rather than only in emulation"
+    status: proposed
+    release: v0.7.0
+    tags: [gust, os, arinc653, partition, component-model, silicon]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-SWITCH-001
+      - type: related-to
+        target: REQ-DRV-COMPONENT-001
+    description: >
+      The outer switch is NOT the gap: REQ-OS-SWITCH-001 / VER-OS-SWITCH-001 are verified,
+      with Verus 1095/0 and Kani 4/4 establishing un-maskable window-end preemption and a
+      region-swap strictly ordered before the entering partition resumes. Two things remain.
+      First, that end-to-end evidence is a three-partition major frame on the Renode
+      multi-core model — good evidence, and not silicon. Second, the partitions host native
+      code; a partition SHALL be able to host a COMPONENT tenant, i.e. a signed
+      gust:os-importing component whose own drivers are components, with spatial isolation
+      supplied by the already-proven ordered region-swap. Depends on REQ-DRV-COMPONENT-001.
+      The interaction that makes this sharp: meld fuse --memory shared flattens the
+      component graph's shared-nothing memories before lowering, so a component tenant's
+      isolation argument CANNOT rest on the component model — it must rest on the
+      region-swap. That is the open question taken to Wasm Research Day 2026-08-06, and this
+      requirement is what makes it urgent rather than academic.
+
+  - id: VER-OS-PARTITION-TENANT-001
+    type: sw-verification
+    title: "Component tenant confined to its partition on real silicon — window respected, region-swap ordered, no cross-partition reach"
+    method: test
+    status: proposed
+    release: v0.7.0
+    tags: [gust, os, arinc653, partition, silicon, gate]
+    links:
+      - type: verifies
+        target: REQ-OS-PARTITION-TENANT-001
+    description: >
+      Planned evidence for REQ-OS-PARTITION-TENANT-001: a major frame executed on real
+      silicon in which at least one partition hosts a component tenant, showing each
+      partition executing only inside its own window and only under its own memory map.
+      Kill-criterion, any one of which falsifies the requirement: a partition observed
+      running past its planned window boundary on hardware; a region-swap observed applied
+      after the entering partition has already resumed; or a component tenant able to reach
+      another partition's memory or another partition's scheduler state.
