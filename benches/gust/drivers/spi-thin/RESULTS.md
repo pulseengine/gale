@@ -38,6 +38,53 @@ bit arithmetic (`mode & 0b11`, `(br & 0b111) << 3`), not a `match`/array — so 
 `.rodata` lookup that a `--relocatable` dissolve would read as 0 and silently
 no-op.
 
+## Componentization (world `spi-driver`, REQ-DRV-COMPONENT-001)
+
+The driver no longer reaches the bridge through raw `env.mmio_read32`/
+`env.mmio_write32` externs but through `wit_bindgen::generate!` against
+`world spi-driver { import mmio; export spi; }` (`../wit/gust-hal.wit` — the contract
+predates this change and is used unedited). The six exported primitives already
+matched `interface spi` field-for-field, so the `Guest` impl just forwards to the
+same bodies the `#[no_mangle] extern "C"` symbols export — component and dissolved
+object cannot diverge. No register logic, FSM transition or constant changed; Kani is
+still 6/6.
+
+    cargo build --release --target wasm32-unknown-unknown   # 3618 B core module
+    wasm-tools component new .../gust_spi_thin.wasm -o spi.component.wasm
+    wasm-tools validate spi.component.wasm                  # OK
+    wasm-tools component wit spi.component.wasm             # 4887 B component
+      import gust:hal/mmio@0.1.0;
+      export gust:hal/spi@0.1.0;
+
+`.cargo/config.toml` is **gone**: `-C link-arg=--allow-undefined` existed only
+because the raw externs were undefined wasm symbols; a WIT-typed import is a real
+wasm import, so rust-lld needs no override (verified by a clean rebuild after
+`rm -rf target/wasm32-unknown-unknown`).
+
+### Re-pinned symbol contract — the dissolved object changes shape
+
+Both objects below were dissolved to a scratch path with the SAME toolchain (loom
+1.2.0 + synth 0.49.0), so the delta is the seam change alone:
+
+| | pre-change (`env` externs) | componentized |
+|---|---|---|
+| `.text` | 454 B | **1450 B** (+996) |
+| `.data`+`.bss` | 0 B | **0 B** (0-SRAM preserved) |
+| undefined | `mmio_read32`, `mmio_write32` | **`read32`, `write32`** |
+| defined | `spi_{configure,xfer_byte,begin,step,is_complete,abort}` | the same six, **plus** `gust:hal/spi@0.1.0#{configure,xfer-byte,begin,step,is-complete,abort}` and `cabi_realloc{,_wit_bindgen_0_52_0}` |
+
+The `.text` growth is canonical-ABI export glue plus an unreachable `cabi_realloc`
+emitted twice — the native path never enters it (it calls `spi_*` directly). Known
+and filed as loom#303; not optimised here.
+
+**`spi-thin-cm3.o` is deliberately NOT regenerated**, so today's `gust_spi` /
+`gust_spi_probe` links and the Renode content-gate are untouched. Whoever regenerates
+it must, in the same change, rename the bridge exports in BOTH
+`benches/gust/src/bin/gust_spi.rs` and `benches/gust/src/bin/gust_spi_probe.rs` to
+`#[export_name = "read32"]` / `#[export_name = "write32"]`; otherwise the link fails
+on undefined `read32`/`write32`. There is no duplicate-symbol hazard — the new object
+does not mention `mmio_read32`/`mmio_write32` at all.
+
 ## End-to-end gates
 
 - **Local qemu-semihosting probe** (`cargo run --bin gust_spi_probe`) of the

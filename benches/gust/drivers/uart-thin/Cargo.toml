@@ -12,6 +12,12 @@ description = "gust:hal thin-seam UART driver — the entire STM32 USART protoco
 # decision logic (cargo kani) — the driver's verifiable core, gale-style.
 crate-type = ["cdylib", "rlib"]
 
+[dependencies]
+# REQ-DRV-COMPONENT-001: the gust:hal/mmio + gust:hal/irq capabilities arrive as
+# WIT-typed component imports instead of raw `env` externs. `macros` only — the
+# default features pull in `std`.
+wit-bindgen = { version = "0.52", default-features = false, features = ["macros"] }
+
 [profile.release]
 panic = "abort"
 opt-level = "s"
