@@ -67,3 +67,24 @@ symbol shape byte-identical) and the run above was repeated on the same board:
     (RCC_CSR=0x34000000, IWDGRSTF=1)
 
 Same effect, same flag, smaller object. The re-pin does not disturb this result.
+
+## Re-validated as a COMPONENT (2026-07-30)
+
+`wdg-thin` is now a wasm component — `import gust:hal/mmio@0.1.0`, `export
+gust:hal/wdg@0.1.0` — rather than a core module with raw `env` externs. Its dissolved
+object's undefined seam changed accordingly (`mmio_read32`/`mmio_write32` ->
+`read32`/`write32`) and the firmware's bridge exports were renamed to match. Re-run on
+the same board:
+
+    gust-wdg-silicon: boot 1 on STM32G474 (RCC_CSR=0x14000000, no prior WDG reset)...
+    gust-wdg-silicon: armed (is_running=1). NOT refreshing...
+    [session drops — the watchdog resets the chip]
+    gust-wdg-silicon OK: IWDG watchdog reset CONFIRMED on real STM32G474 silicon
+    (RCC_CSR=0x34000000, IWDGRSTF=1)
+
+Same effect, same flag, through a typed interface. The object costs 638 -> 1718 B of
+text for the canonical-ABI glue (loom#303); `.data`/`.bss` stay 0.
+
+This is the first componentized driver OBSERVED on hardware. The four migrated before it
+(gpio, timer, spi, uart) have no silicon runner, so their componentized objects remain
+un-executed — stated in VER-DRV-COMPONENT-001 rather than implied away.

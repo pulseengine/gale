@@ -123,6 +123,20 @@ interface uart {
     rx-fired: func() -> u32;
 }
 
+/// STM32 IWDG key-sequence + lifecycle FSM (mirrors wdg-thin's exports). `state`
+/// is the packed FSM scalar threaded by the caller (phase + prescaler + reload);
+/// every transition returns the next state, or the all-ones fault sentinel if it
+/// was rejected. There is deliberately no `stop`/`disable`: the absence IS the
+/// cannot-un-start safety property, so the contract cannot express one.
+interface wdg {
+    unlock: func(base: u32, state: u32) -> u32;
+    configure: func(base: u32, state: u32, prescaler: u32, reload: u32) -> u32;
+    lock: func(state: u32) -> u32;
+    start: func(base: u32, state: u32) -> u32;
+    refresh: func(base: u32, state: u32) -> u32;
+    is-running: func(state: u32) -> u32;
+}
+
 /// Per-driver component worlds — each imports only the generic mmio capability
 /// (uart also irq) and exports its protocol interface. `wasm-tools component new`
 /// wraps the wit-bindgen core module into a component targeting one of these.
@@ -130,6 +144,7 @@ world gpio-driver { import mmio; export gpio; }
 world timer-driver { import mmio; export timer; }
 world spi-driver { import mmio; export spi; }
 world uart-driver { import mmio; import irq; export uart; }
+world wdg-driver { import mmio; export wdg; }
 
 /// Thin-seam driver world — imports only generic MMIO + IRQ; exports one step.
 world driver-thin {
