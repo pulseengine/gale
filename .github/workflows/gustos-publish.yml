@@ -110,6 +110,12 @@ jobs:
           WKG_OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          pushed=""
+          # wkg takes WKG_OCI_* from the env; cosign does NOT — it reads the docker
+          # config. Removing the old (invalid) `wkg oci login` removed the only thing
+          # giving cosign credentials, so signing failed UNAUTHORIZED after the push had
+          # already succeeded, leaving an unsigned artifact in the registry.
+          cosign login ghcr.io -u "$OWNER" -p "$GH_TOKEN"
           for comp in benches/gust/drivers/gustos-components/*.component.wasm; do
             base="$(basename "$comp" .component.wasm)"     # time-provider
             if [ "$base" = "fused-gustos" ]; then
@@ -122,7 +128,14 @@ jobs:
             ref="ghcr.io/${OWNER}/${pkg}:${VERSION}"
             echo "== $pkg → $ref =="
             wkg oci push "$ref" "$comp"
-            cosign sign --yes "$ref"
+            pushed="$pushed $ref"
+            if ! cosign sign --yes "$ref"; then
+              echo "::error::signing FAILED for $ref — it is PUBLISHED BUT UNSIGNED."
+              echo "::error::pushed so far this run:$pushed"
+              echo "::error::an unsigned artifact in the registry is worse than none;"
+              echo "::error::re-run once signing works — the same digest gets signed in place."
+              exit 1
+            fi
             echo "::notice::published + signed $ref"
           done
           # wasm.directory is a META-registry: its entries are TOML pointers at an OCI
