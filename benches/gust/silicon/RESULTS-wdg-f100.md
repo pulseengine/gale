@@ -71,3 +71,15 @@ one unspliced openocd session across the reset:
     (RCC_CSR=0x34000000, IWDGRSTF=1)
 
 Both dies therefore hold under the new pin.
+
+## Re-validated as a COMPONENT (2026-07-30)
+
+Repeated on the second die with the componentized driver (`export gust:hal/wdg@0.1.0`,
+seam now `read32`/`write32`), again as one unspliced openocd session across the reset:
+
+    gust-wdg-silicon: boot 1 on STM32F100 (RCC_CSR=0x14000000, no prior WDG reset)...
+    gust-wdg-silicon: armed (is_running=1). NOT refreshing...
+    gust-wdg-silicon OK: IWDG watchdog reset CONFIRMED on real STM32F100 silicon
+    (RCC_CSR=0x34000000, IWDGRSTF=1)
+
+Both dies therefore hold with the driver behind a typed WIT interface.
