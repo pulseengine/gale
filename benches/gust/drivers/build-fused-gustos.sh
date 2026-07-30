@@ -161,6 +161,20 @@ done
 [ "$n_timer" -eq 1 ] || note "expected exactly 1 module routing timer's set-deadline/slept-status over gust:sched, got $n_timer"
 [ "$disp_has_sched" -eq 0 ] || note "the dispatching module also imports gust:sched — it should OWN the table, not call one"
 [ "$n_disp" -eq 1 ] && [ "$n_spawn" -eq 1 ] && [ "$n_timer" -eq 1 ] && [ "$disp_has_sched" -eq 0 ] \
+# A count over MODULES cannot see a count over INSTANCES. Composing the SAME
+# exec-provider twice — once for spawn, once for timer — yields a composite with
+# byte-identical WIT, the same five core modules and the same import routing, and two
+# private task tables. Every check above accepts it. The instantiation count is what
+# separates them: the split composite instantiates module 0 twice.
+dup="$("$WT" print "$FUSED" 2>/dev/null | grep -oE '\(instantiate [0-9]+' | awk '{print $2}' \
+      | sort -n | uniq -c | awk '$1 > 1 {printf "module %s instantiated %s times; ", $2, $1}')"
+if [ -n "$dup" ]; then
+    echo "  FAIL: a core module is instantiated more than once — $dup"
+    echo "        two instances of one provider means two private task tables behind one"
+    echo "        facade, which the module-count and routing checks above cannot detect."
+    exit 1
+fi
+echo "  ok: every core module is instantiated exactly once (no duplicated provider state)"
   && echo "  ok: one dispatcher, and both spawn's and timer's scheduler operations route to it — one task table"
 
 if [ -z "$fail" ]; then
