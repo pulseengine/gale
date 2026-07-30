@@ -58,7 +58,7 @@ artifacts:
   - id: DD-OS-DELIVERY-001
     type: sw-detail-design
     title: "gale's consumable cut is a cosign-signed OCI wasm COMPONENT that exports gust:os (fused gale-nano subset); residual imports = exactly gust:hal"
-    status: implemented
+    status: verified
     description: >
       This is the natural externalisation of gust's OS-as-wasm-component-model:
       gust already treats the OS as a typed CAPABILITY WORLD (gust:os) that apps
@@ -644,6 +644,52 @@ artifacts:
     links:
       - type: verifies
         target: REQ-OS-WCET-001
+
+  - id: REQ-OS-PUBLISH-001
+    type: sw-req
+    title: "The consumable cut SHALL be published cosign-signed to an OCI registry and be verifiable by a third party without our involvement"
+    status: verified
+    release: v0.6.0
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: refines
+        target: DD-OS-DELIVERY-001
+    description: >
+      The DELIVERY half of DD-OS-DELIVERY-001, kept separate from the artifact half
+      (REQ-OS-DELIVERY-001) because until v0.6.0 shipped it had no evidence at all and a
+      requirement marked verified must not carry an unevidenced half. The published
+      component SHALL be signed (keyless OIDC, certificate chaining to this repository's
+      workflow), and an outside party SHALL be able to pull it and check both the
+      signature and the delivery invariant using only public tooling.
+
+  - id: VER-OS-PUBLISH-001
+    type: sw-verification
+    title: "v0.6.0's gale-nano pulled from ghcr, signature verified, and the delivery invariant re-checked against the PUBLISHED bytes"
+    method: test
+    status: verified
+    release: v0.6.0
+    links:
+      - type: verifies
+        target: REQ-OS-PUBLISH-001
+    description: >
+      Evidence for REQ-OS-PUBLISH-001, produced by tools/verify-published-component.sh
+      run outside any gale checkout against ghcr.io/pulseengine/gale-nano:0.6.0. cosign
+      validated the claims, confirmed the entry in the transparency log, and verified the
+      code-signing certificate against trusted CAs. The pulled bytes are a valid
+      component whose residual imports are exactly gust:hal/mmio and gust:os/taskdisp,
+      with gust:sched absent and five gust:os interfaces exported — the same invariant
+      the build-time gate asserts, re-checked on what was actually delivered rather than
+      on a local build. All six published packages (the fused gale-nano plus the five
+      providers) verify signed.
+      Getting here took three failed publish attempts, each a defect in a path no PR
+      gate could reach because the job is tag-gated: a missing wac in CI, a `wkg oci
+      login` subcommand that does not exist, and cosign having no registry credentials
+      once that login was removed. The third failure pushed gale-nano-exec and then
+      failed to sign it, leaving an unsigned artifact in the registry until the
+      successful run signed the same digest in place. The workflow now names any
+      pushed-but-unsigned ref instead of failing silently, and a workflow_dispatch
+      rehearsal before tagging is the standing remedy for the tag-gated blind spot.
 
   - id: REQ-OS-DELIVERY-001
     type: sw-req
