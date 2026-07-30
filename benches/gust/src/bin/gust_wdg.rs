@@ -17,11 +17,15 @@ use cortex_m_rt::entry;
 use cortex_m_semihosting::debug;
 use panic_halt as _;
 
-#[no_mangle]
+// The mmio seam the dissolved driver imports. wdg-thin is a wasm COMPONENT (world
+// `wdg-driver`), so the import is WIT-typed and the dissolved object's undefined
+// symbols are the `gust:hal/mmio` FIELD names — `read32`/`write32`, not the old
+// `mmio_*` extern names. Same bridge, re-pinned.
+#[export_name = "read32"]
 pub extern "C" fn mmio_read32(addr: u32) -> u32 {
     unsafe { read_volatile(addr as *const u32) }
 }
-#[no_mangle]
+#[export_name = "write32"]
 pub extern "C" fn mmio_write32(addr: u32, val: u32) {
     unsafe { write_volatile(addr as *mut u32, val) }
 }

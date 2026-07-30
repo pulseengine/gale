@@ -15,7 +15,17 @@
 //! Companion invariants: the config registers (PR/RLR) are **write-protected** until the
 //! 0x5555 key unlocks them, and a refresh only has effect once Running.
 //!
+//! REQ-DRV-COMPONENT-001: this is a wasm **component** — `world wdg-driver`
+//! (`../wit/gust-hal.wit`), importing `gust:hal/mmio` and exporting `gust:hal/wdg`.
+//! The capability is therefore checked against a typed contract at composition time,
+//! instead of being an untyped `env` extern that only had to match by name at native
+//! link. `interface wdg` was authored for this driver (the first in the axis that had
+//! no pre-existing contract); it mirrors these exports field-for-field, and notably
+//! provides NO disable/stop function — the contract itself cannot express the one
+//! transition the FSM proves impossible.
+//!
 //! Build:   cargo build --release --target wasm32-unknown-unknown
+//!          wasm-tools component new <wasm> -o wdg.component.wasm
 //! Dissolve: loom optimize --passes inline | synth compile --target cortex-m3
 //!           --all-exports --relocatable          (scalar in/out → 0 SRAM)
 //! Verify:  cargo kani   (write-protection · cannot-un-start · refresh-only-running ·
@@ -28,12 +38,40 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-// gust:hal mmio capability — resolved at link by the SAME ~10-line TCB bridge the
-// other thin-seam drivers use. The IWDG is a pure register-poke peripheral.
-extern "C" {
-    fn mmio_read32(addr: u32) -> u32;
-    fn mmio_write32(addr: u32, val: u32);
+// wit-bindgen's canonical-ABI glue must LINK against a global allocator; this world
+// is scalar-only (u32 in, u32 out), so nothing ever calls it and a zero-state
+// trapping allocator keeps the driver's 0-SRAM property intact.
+#[cfg(not(kani))]
+use core::alloc::{GlobalAlloc, Layout};
+#[cfg(not(kani))]
+struct NoAlloc;
+#[cfg(not(kani))]
+unsafe impl GlobalAlloc for NoAlloc {
+    unsafe fn alloc(&self, _: Layout) -> *mut u8 {
+        core::ptr::null_mut()
+    }
+    unsafe fn dealloc(&self, _: *mut u8, _: Layout) {}
 }
+#[cfg(not(kani))]
+#[global_allocator]
+static ALLOC: NoAlloc = NoAlloc;
+
+// gust:hal mmio capability — now a WIT-typed component import (still the SAME two
+// primitives the ~10-line TCB bridge the other thin-seam drivers use; no irq atom).
+#[cfg(not(kani))]
+wit_bindgen::generate!({ world: "wdg-driver", path: "../wit", generate_all });
+#[cfg(not(kani))]
+use crate::gust::hal::mmio::{read32, write32};
+
+// Kani model-checks the pure lifecycle FSM on the host, where no wasm bindings
+// exist. No harness reaches an mmio call (they were undefined `extern` symbols
+// before this seam change, equally unreachable), so a stub stands in for the import.
+#[cfg(kani)]
+fn read32(_addr: u32) -> u32 {
+    0
+}
+#[cfg(kani)]
+fn write32(_addr: u32, _val: u32) {}
 
 // STM32F1 IWDG register map (offsets from the peripheral base, IWDG=0x4000_3000).
 // Device knowledge as *data* (offsets/bit math), not trusted code.
@@ -230,11 +268,11 @@ fn unpack(s: u32) -> Iwdg {
 
 #[inline(always)]
 fn rd(a: u32) -> u32 {
-    unsafe { mmio_read32(a) }
+    read32(a)
 }
 #[inline(always)]
 fn wr(a: u32, v: u32) {
-    unsafe { mmio_write32(a, v) }
+    write32(a, v)
 }
 
 // ---- exported protocol primitives (the driver's gust:hal-facing surface) ----
@@ -311,6 +349,37 @@ pub extern "C" fn wdg_refresh(base: u32, state: u32) -> u32 {
 pub extern "C" fn wdg_is_running(state: u32) -> u32 {
     matches!(unpack(state).phase, Phase::Running) as u32
 }
+
+// `gust:hal/wdg` exported over the SAME bodies as the C-ABI symbols above, not a
+// second implementation: the component's exports and the dissolved object's `wdg_*`
+// entry points (benches/gust/build.rs, the gust_wdg / gust_wdg_probe /
+// gust_wdg_silicon firmwares) then cannot diverge in behaviour. Same shape
+// gpio-thin used.
+#[cfg(not(kani))]
+struct Driver;
+#[cfg(not(kani))]
+impl exports::gust::hal::wdg::Guest for Driver {
+    fn unlock(base: u32, state: u32) -> u32 {
+        wdg_unlock(base, state)
+    }
+    fn configure(base: u32, state: u32, prescaler: u32, reload: u32) -> u32 {
+        wdg_configure(base, state, prescaler, reload)
+    }
+    fn lock(state: u32) -> u32 {
+        wdg_lock(state)
+    }
+    fn start(base: u32, state: u32) -> u32 {
+        wdg_start(base, state)
+    }
+    fn refresh(base: u32, state: u32) -> u32 {
+        wdg_refresh(base, state)
+    }
+    fn is_running(state: u32) -> u32 {
+        wdg_is_running(state)
+    }
+}
+#[cfg(not(kani))]
+export!(Driver);
 
 // ─────────────────────────────── Kani proofs ────────────────────────────────
 //
