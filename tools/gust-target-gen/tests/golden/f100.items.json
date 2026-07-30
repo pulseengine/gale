@@ -124,6 +124,19 @@
             "in_modes": []
           },
           {
+            "name": "Gust_Target_Props::Apb2enr_Offset",
+            "value": "16#18#",
+            "typed_value": {
+              "Integer": [
+                24,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
             "name": "Gust_Target_Props::Iwdgrstf_Bit",
             "value": "29",
             "typed_value": {
@@ -179,6 +192,319 @@
             "typed_value": {
               "Integer": [
                 17,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "true",
+            "typed_value": {
+              "Boolean": true
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Usart1",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#40013800#",
+            "typed_value": {
+              "Integer": [
+                1073821696,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Sr_Offset",
+            "value": "16#00#",
+            "typed_value": {
+              "Integer": [
+                0,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Dr_Offset",
+            "value": "16#04#",
+            "typed_value": {
+              "Integer": [
+                4,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Brr_Offset",
+            "value": "16#08#",
+            "typed_value": {
+              "Integer": [
+                8,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Cr1_Offset",
+            "value": "16#0C#",
+            "typed_value": {
+              "Integer": [
+                12,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "true",
+            "typed_value": {
+              "Boolean": true
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Gpioa",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#40010800#",
+            "typed_value": {
+              "Integer": [
+                1073809408,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Crh_Offset",
+            "value": "16#04#",
+            "typed_value": {
+              "Integer": [
+                4,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "true",
+            "typed_value": {
+              "Boolean": true
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Gpioc",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#40011000#",
+            "typed_value": {
+              "Integer": [
+                1073811456,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Crh_Offset",
+            "value": "16#04#",
+            "typed_value": {
+              "Integer": [
+                4,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Bsrr_Offset",
+            "value": "16#10#",
+            "typed_value": {
+              "Integer": [
+                16,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "true",
+            "typed_value": {
+              "Boolean": true
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Tim2",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#40000000#",
+            "typed_value": {
+              "Integer": [
+                1073741824,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Cnt_Offset",
+            "value": "16#24#",
+            "typed_value": {
+              "Integer": [
+                36,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "true",
+            "typed_value": {
+              "Boolean": true
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Spi1",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#40013000#",
+            "typed_value": {
+              "Integer": [
+                1073819648,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Cr1_Offset",
+            "value": "16#00#",
+            "typed_value": {
+              "Integer": [
+                0,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Sr_Offset",
+            "value": "16#08#",
+            "typed_value": {
+              "Integer": [
+                8,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Dr_Offset",
+            "value": "16#0C#",
+            "typed_value": {
+              "Integer": [
+                12,
                 null
               ]
             },
@@ -343,6 +669,46 @@
             "name": "adc",
             "category": "device",
             "classifier": "Adc",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "usart1",
+            "category": "device",
+            "classifier": "Usart1",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "gpioa",
+            "category": "device",
+            "classifier": "Gpioa",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "gpioc",
+            "category": "device",
+            "classifier": "Gpioc",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "tim2",
+            "category": "device",
+            "classifier": "Tim2",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "spi1",
+            "category": "device",
+            "classifier": "Spi1",
             "is_refined": false,
             "in_modes": [],
             "properties": []

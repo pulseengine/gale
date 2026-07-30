@@ -23,6 +23,15 @@ fn interfaces_for(device_class: &str) -> &'static [&'static str] {
         "adc" => &["mmio"],
         "iwdg" => &["mmio"],
         "rcc" => &["mmio"],
+        // Peripherals with a dissolved thin-seam driver: the driver itself reaches
+        // the registers through `mmio`, and the capability it offers the rest of the
+        // system is the named gust:hal interface. Both are real interfaces in
+        // drivers/wit/gust-hal.wit — check-wit-resolve.sh proves the emitted world
+        // still resolves against it.
+        "gpioa" | "gpioc" => &["gpio", "mmio"],
+        "tim2" => &["mmio", "timer"],
+        "spi1" => &["mmio", "spi"],
+        "usart1" => &["mmio", "uart"],
         other => panic!(
             "gust-target-gen: no gust:hal interface mapping for device class `{other}` \
              — add it to interfaces_for()"

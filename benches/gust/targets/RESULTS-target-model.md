@@ -71,6 +71,68 @@ gust-wdg-silicon OK: IWDG watchdog reset CONFIRMED on real STM32F100 silicon
   semihosting session rides through in one run. Do **not** pass
   `probe-rs --catch-hardfault` — it flags the legitimate reset as a fault.
 
+## Peripheral breadth — where every modelled base address comes from
+
+The F100 model was grown from `Iwdg`/`Rcc`/`Adc` to cover the peripherals gale
+already has drivers for. Every base was **lifted from an existing in-tree use**,
+never sourced from a datasheet by hand — the model became the single source of
+truth for values the tree was already asserting. The evidence is tiered, and the
+tier matters: a gate that maps a *plain memory window* at an address pins the
+address the firmware uses, but does not independently confirm it against silicon.
+
+| Device | Base | Evidence | Tier |
+|---|---|---|---|
+| `Rcc` `Apb2enr_Offset` | `0x40021018` | `src/bin/gust_adc_silicon.rs:83` sets ADC1EN here before each Vrefint read; real STM32VLDISCOVERY returned 1645/1646 raw (`silicon/RESULTS-f100.md`). An unclocked ADC cannot convert. | **silicon** |
+| `Adc` | `0x40012400` | same silicon run (`gust-adc-silicon OK … ADC1 @0x40012400`) | **silicon** |
+| `Iwdg` | `0x40003000` | hardware watchdog reset on this board (above) | **silicon** |
+| `Usart1` | `0x40013800` | `drivers/uart-thin/src/lib.rs:33`; `//:gust-uart-renode` drives Renode's **real** `UART.STM32_UART @ <0x40013800,+0x100>` register model and content-gates the emitted bytes. F100-linked image also flashed + ran to completion on the physical board (`drivers/uart-thin/SILICON.md`); on-wire byte capture still pending an external USB-serial on PA9. | real peripheral model + silicon execution |
+| `Gpioa` | `0x40010800` | `GPIOA_CRH = 0x40010804` (base + `Crh_Offset`) configures PA9 as USART1 TX in `src/bin/gust_uart.rs:51` and every gate demonstrator; `renode-test/f100_silicon.repl` maps `gpioa @ 0x40010800`. Executed by the image that ran on real silicon. | silicon execution (no observable readback) |
+| `Gpioc` | `0x40011000` | `src/bin/gust_gpio.rs:46`, `src/bin/gust_breadth.rs:37`, `drivers/gpio-thin/src/lib.rs:30`; gated by `//:gust-gpio-renode` + `//:gust-breadth-renode` | RAM-window gate |
+| `Tim2` | `0x40000000` | `src/bin/gust_timer.rs:30`, `src/bin/gust_breadth.rs:38`, `drivers/timer-thin/src/lib.rs:30`; `TIM2_CNT = 0x40000024` in `drivers/time-provider/src/lib.rs:13`; gated by `//:gust-timer-renode` + `//:gust-breadth-renode` | RAM-window gate |
+| `Spi1` | `0x40013000` | `src/bin/gust_spi.rs:35`, `src/bin/gust_breadth.rs:39`, `drivers/spi-thin/src/lib.rs:34`; gated by `//:gust-spi-renode` + `//:gust-breadth-renode` | RAM-window gate |
+
+Register offsets are **properties of a device, never devices**: `0x40013804` is
+`Usart1` + `Dr_Offset`, and the generator derives `USART1_DR` as `Base + offset`.
+
+### Found in-tree but deliberately NOT modelled
+
+These addresses are exercised by passing Renode gates, but those gates run on a
+**generic Cortex-M3 / STM32F103RE-class** platform, not on `Board.vldiscovery`.
+Putting them on the F100 board would assert board facts the tree does not
+establish, so they wait for a datasheet source (RM0041) plus an F100 gate or
+silicon run:
+
+| Address | Peripheral | In-tree use | Why not modelled |
+|---|---|---|---|
+| `0x40006400` | bxCAN1 | `src/bin/gust_can.rs:38`, `//:gust-can-renode` | Strongest reason to stay out: the generator's own model already treats "bxCAN on a value-line part" as the canonical **absent** peripheral (`tools/gust-target-gen/src/model.rs`, the `Present => false` comment), and this board *is* the value line (`device id = 0x10016420`, above). Presence needs an RM0041 source; if it is confirmed absent it belongs in the model as `Present => false` with **no** `Base`, not as a base address. |
+| `0x40012C00` | TIM1 (advanced timer) | `src/bin/gust_pwm.rs:40`, `//:gust-pwm-renode` | Gate platform is not the F100 board; no F100 evidence. |
+| `0x40007400` | DAC | `src/bin/gust_dac.rs:42`, `//:gust-dac-renode` | idem |
+| `0x40005400` | I2C1 | `src/bin/gust_i2c.rs:37`, `//:gust-i2c-renode` | idem |
+| `0x40020000` | DMA1 | `src/bin/gust_dma.rs:27`, `//:gust-dma-renode` | idem |
+
+### STM32G474 — still deliberately empty beyond `Iwdg`/`Rcc`
+
+**No F100 peripheral base may be copied to the G474.** This very model already
+holds the counter-example: the *same* register, `RCC_CSR`, sits at offset `0x24`
+on the F1 and `0x94` on the G4 — the two maps are not interchangeable, and the
+watchdog only retargeted because `Iwdg` and the `Rcc` base happen to coincide,
+each independently silicon-validated on a real G474RE (above).
+
+Every gust driver gate runs on Cortex-M3 / STM32F1-class Renode platforms and the
+only G4 silicon run in the tree is the IWDG one, so the tree holds **zero** G4
+evidence for USART/GPIO/TIM/SPI/ADC bases — nor for an `Apb2enr_Offset` (the F1
+value `0x18` is anchored only by an F100 silicon run and must not be assumed to
+hold on the G4). What the G474 model needs, and what this task could not supply:
+
+1. An **RM0440** peripheral memory-map source for each base to be added.
+2. A **G474 gate or silicon run** exercising it — a `.repl` for the G4 map plus a
+   `renode_test` target, or a `benches/gust/silicon/` run on the NUCLEO-G474RE in
+   the shape of `gust_adc_silicon` (self-checking, no external wiring).
+3. Then the same `emit_wit::interfaces_for` / `emit_rs::PERIPHERALS` entries the
+   F100 devices already use — the generator side needs no further work.
+
+An empty G474 peripheral set is the honest state, not an oversight.
+
 ## Assurance assessment — witness (MC/DC) and sigil (attestation)
 
 Per the feature-loop methodology, these conditional steps are assessed, not
