@@ -13,6 +13,12 @@ description = "gust:hal thin-seam GPIO driver — STM32F1 pin config/read/write 
 # pin-config decision logic (cargo kani) — the driver's verifiable core.
 crate-type = ["cdylib", "rlib"]
 
+[dependencies]
+# REQ-DRV-COMPONENT-001: the gust:hal/mmio capability arrives as a WIT-typed
+# component import instead of a raw `env` extern. `macros` only — the default
+# features pull in `std`.
+wit-bindgen = { version = "0.52", default-features = false, features = ["macros"] }
+
 [profile.release]
 panic = "abort"
 opt-level = "s"

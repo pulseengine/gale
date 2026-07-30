@@ -8,7 +8,14 @@
 //! **zero new TCB atoms**. No host GPIO driver exists; this *is* the driver,
 //! dissolved to native.
 //!
+//! REQ-DRV-COMPONENT-001: this is a wasm **component** — `world gpio-driver`
+//! (`../wit/gust-hal.wit`), importing `gust:hal/mmio` and exporting `gust:hal/gpio`.
+//! The capability is therefore checked against a typed contract at composition
+//! time, instead of being an untyped `env` extern that only had to match by name
+//! at native link.
+//!
 //! Build:   cargo build --release --target wasm32-unknown-unknown
+//!          wasm-tools component new <wasm> -o gpio.component.wasm
 //! Dissolve: loom optimize --passes inline | synth compile --target cortex-m3
 //!           --all-exports --relocatable
 //! Verify:  cargo kani   (the pure pin-config core: total, injective, in-range)
@@ -20,12 +27,40 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-// gust:hal mmio capability — becomes import-call relocations resolved at link by
-// the SAME ~10-line TCB bridge uart-thin uses (mmio.{read32,write32}). No irq atom.
-extern "C" {
-    fn mmio_read32(addr: u32) -> u32;
-    fn mmio_write32(addr: u32, val: u32);
+// wit-bindgen's canonical-ABI glue must LINK against a global allocator; this world
+// is scalar-only (u32 in, u32 out), so nothing ever calls it and a zero-state
+// trapping allocator keeps the driver's 0-SRAM property intact.
+#[cfg(not(kani))]
+use core::alloc::{GlobalAlloc, Layout};
+#[cfg(not(kani))]
+struct NoAlloc;
+#[cfg(not(kani))]
+unsafe impl GlobalAlloc for NoAlloc {
+    unsafe fn alloc(&self, _: Layout) -> *mut u8 {
+        core::ptr::null_mut()
+    }
+    unsafe fn dealloc(&self, _: *mut u8, _: Layout) {}
 }
+#[cfg(not(kani))]
+#[global_allocator]
+static ALLOC: NoAlloc = NoAlloc;
+
+// gust:hal mmio capability — now a WIT-typed component import (still the SAME two
+// primitives the ~10-line TCB bridge uart-thin uses; no irq atom).
+#[cfg(not(kani))]
+wit_bindgen::generate!({ world: "gpio-driver", path: "../wit", generate_all });
+#[cfg(not(kani))]
+use crate::gust::hal::mmio::{read32, write32};
+
+// Kani model-checks the pure pin-config core on the host, where no wasm bindings
+// exist. No harness reaches an mmio call (they were undefined `extern` symbols
+// before this seam change, equally unreachable), so a stub stands in for the import.
+#[cfg(kani)]
+fn read32(_addr: u32) -> u32 {
+    0
+}
+#[cfg(kani)]
+fn write32(_addr: u32, _val: u32) {}
 
 // STM32F1 GPIO port register map (offsets from a port base, e.g. GPIOC=0x4001_1000).
 // Device knowledge as *data* (offsets/bit math), not trusted code.
@@ -82,11 +117,11 @@ pub fn pin_slot(pin: u32) -> (u32, u32) {
 
 #[inline(always)]
 fn rd(a: u32) -> u32 {
-    unsafe { mmio_read32(a) }
+    read32(a)
 }
 #[inline(always)]
 fn wr(a: u32, v: u32) {
-    unsafe { mmio_write32(a, v) }
+    write32(a, v)
 }
 
 // ---- exported protocol primitives (the driver's gust:hal-facing surface) ----
@@ -133,6 +168,33 @@ pub extern "C" fn gpio_toggle(port_base: u32, pin: u32) {
         wr(port_base + BSRR, 1 << p);
     }
 }
+
+// `gust:hal/gpio` exported over the SAME bodies as the C-ABI symbols above, not a
+// second implementation: the component's exports and the dissolved object's
+// `gpio_*` entry points (benches/gust/build.rs, gust_gpio probe) then cannot
+// diverge in behaviour. Same shape exec-provider used in v0.6.0.
+#[cfg(not(kani))]
+struct Driver;
+#[cfg(not(kani))]
+impl exports::gust::hal::gpio::Guest for Driver {
+    fn configure(port_base: u32, pin: u32, mode_idx: u32) {
+        gpio_configure(port_base, pin, mode_idx)
+    }
+    fn set(port_base: u32, pin: u32) {
+        gpio_set(port_base, pin)
+    }
+    fn clear(port_base: u32, pin: u32) {
+        gpio_clear(port_base, pin)
+    }
+    fn read(port_base: u32, pin: u32) -> u32 {
+        gpio_read(port_base, pin)
+    }
+    fn toggle(port_base: u32, pin: u32) {
+        gpio_toggle(port_base, pin)
+    }
+}
+#[cfg(not(kani))]
+export!(Driver);
 
 /// Kani proofs for the verifiable core (`cargo kani`): the pin-config encoding is
 /// total, bounded, injective, mode-consistent, and always placed in range.

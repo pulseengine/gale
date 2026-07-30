@@ -14,6 +14,54 @@ IDR read — is verified wasm dissolved to native; the driver imports only
 | TCB | **2 relocations — `mmio_read32`, `mmio_write32`** — a **subset** of the existing 4-item TCB, so **0 new atoms** |
 | verified | Kani **4/4 harnesses, 0 failures** — pin-config encode is total + bounded (≤0xF) + mode-consistent (`is_output` ⇔ MODE≠00), **injective** (no two modes alias), slot placement always in range (shift∈{0,4,…,28}, field ⊂ 32-bit reg), and unknown mode-index is safe (never an output) |
 
+## Componentization (world `gpio-driver`, REQ-DRV-COMPONENT-001)
+
+This driver is the **axis-A pilot**: it no longer reaches the bridge through raw
+`env.mmio_read32`/`env.mmio_write32` externs but through `wit_bindgen::generate!`
+against `world gpio-driver { import mmio; export gpio; }` (`../wit/gust-hal.wit` —
+the contract predates this change and is used unedited). The five exported
+primitives already matched `interface gpio` field-for-field, so the `Guest` impl
+just forwards to the same bodies the `#[no_mangle] extern "C"` symbols export —
+component and dissolved object cannot diverge.
+
+    cargo build --release --target wasm32-unknown-unknown   # 3174 B core module
+    wasm-tools component new .../gust_gpio_thin.wasm -o gpio.component.wasm
+    wasm-tools validate gpio.component.wasm                 # OK
+    wasm-tools component wit gpio.component.wasm            # 4273 B component
+      import gust:hal/mmio@0.1.0;
+      export gust:hal/gpio@0.1.0;
+
+One import, one export — what `drivers/check-driver-components.sh` gates.
+`.cargo/config.toml` is **gone**: `-C link-arg=--allow-undefined` existed only
+because the raw externs were undefined wasm symbols; a WIT-typed import is a real
+wasm import, so rust-lld needs no override (verified by a clean rebuild without it,
+byte-identical output).
+
+### Re-pinned symbol contract — the dissolved object changes shape
+
+WIT-typing the seam renames the undefined symbols to the WIT field names, exactly as
+exec-provider found in v0.6.0. Both objects below were dissolved with the SAME
+toolchain (loom 1.2.0 + synth 0.49.0) so the delta is the seam change alone:
+
+| | pre-change (`env` externs) | componentized |
+|---|---|---|
+| `.text` | 534 B | **1410 B** (+876) |
+| `.data`+`.bss` | 0 B | **0 B** (0-SRAM preserved) |
+| undefined | `mmio_read32`, `mmio_write32` | **`read32`, `write32`** |
+| defined | `gpio_{configure,set,clear,read,toggle}` | the same five, **plus** `gust:hal/gpio@0.1.0#{configure,set,clear,read,toggle}` and `cabi_realloc{,_wit_bindgen_0_52_0}` |
+
+The `.text` growth is the canonical-ABI export glue + `cabi_realloc`, which the
+native path never enters (it calls `gpio_*` directly) — dead weight in the dissolved
+object, worth pruning before eight drivers pay it.
+
+**`gpio-thin-cm3.o` is deliberately NOT regenerated here**, so today's
+`gust_gpio` link and the Renode content-gate are untouched. Whoever regenerates it
+must, in the same change, rename the probe's bridge exports in
+`benches/gust/src/bin/gust_gpio.rs` to `#[export_name = "read32"]` /
+`#[export_name = "write32"]`; otherwise the link fails on undefined `read32`/
+`write32`. Unlike exec-provider there is no duplicate-symbol hazard — the new object
+does not mention `mmio_read32`/`mmio_write32` at all.
+
 ## The verifiable core (`cargo kani`)
 
 The driver's pure decision logic — the pin-config encoder and the pin→(register,
