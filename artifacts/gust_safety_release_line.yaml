@@ -842,7 +842,17 @@ artifacts:
       - type: verifies
         target: REQ-DRV-COMPONENT-001
     description: >
-      Planned evidence for REQ-DRV-COMPONENT-001. Per driver: wasm-tools component new
+      Planned evidence for REQ-DRV-COMPONENT-001. A componentized driver is NOT done when
+      it composes; it is done when the object built from it has been OBSERVED driving
+      hardware. The first four through this axis (gpio, timer, spi, uart) were chosen for
+      having pre-existing WIT contracts, which turned out to be exactly the four with NO
+      silicon runner — so the migration was validating its output nowhere, and the probes
+      cited as passing link the COMMITTED pre-change objects. Silicon runners exist for wdg
+      (STM32G474 + STM32F100) and adc (F100); those SHALL be componentized and re-run on
+      hardware, with the observed effect compared against the pre-change baseline in
+      silicon/RESULTS-wdg-*.md. A driver whose only gate is Renode or qemu SHALL say so
+      rather than count as hardware-validated.
+      Per driver: wasm-tools component new
       succeeds, component wit decodes, imports are gust:hal only. Across the composed
       graph: a sweep asserting no core module imports `env`, negative-tested against a
       pre-change driver so the sweep is OBSERVED to fail. WIT-typing a driver changes its
