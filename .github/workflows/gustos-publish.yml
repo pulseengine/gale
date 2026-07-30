@@ -105,9 +105,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.v.outputs.version }}
           OWNER: ${{ github.repository_owner }}
+          # wkg authenticates per-push from these; there is no `wkg oci login`.
+          WKG_OCI_USERNAME: ${{ github.repository_owner }}
+          WKG_OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          echo "$GH_TOKEN" | wkg oci login ghcr.io -u "$OWNER" --password-stdin
           for comp in benches/gust/drivers/gustos-components/*.component.wasm; do
             base="$(basename "$comp" .component.wasm)"     # time-provider
             if [ "$base" = "fused-gustos" ]; then
