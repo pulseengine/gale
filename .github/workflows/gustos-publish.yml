@@ -5,10 +5,12 @@
 # wasm COMPONENT that exports a gust:os capability interface and imports only
 # gust:hal. The `verify` job gates that invariant on every PR (export gust:os,
 # import only gust:hal — no leaking scheduler/env/heap). On a release tag the
-# `publish` job additionally cosign-signs (keyless OIDC) and publishes to BOTH
-# channels a consumer pulls from — a cosign-signed OCI registry (ghcr) and
-# wasm.directory — so ANY downstream that imports gust:os pulls the same signed
-# component and fuses it for its target.
+# `publish` job additionally cosign-signs (keyless OIDC) and pushes to ghcr, so ANY
+# downstream that imports gust:os pulls the same signed component and fuses it for its
+# target. Discoverability via wasm.directory is a separate, ONE-TIME step per package:
+# that site is a meta-registry whose entries are TOML pointers at an OCI registry, not
+# a push target, so a package is listed by filing its registry-entry issue once — not
+# on every release.
 #
 # First demonstrator: the time provider (exports gust:os/time, residual = gust:hal).
 # The full fused gale-nano runtime component is gale#224.
@@ -53,10 +55,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-      - name: Install wasm-tools
-        run: cargo install wasm-tools --version 1.245.1 --locked
+      - name: Install wasm-tools + wac
+        run: |
+          cargo install wasm-tools --version 1.245.1 --locked
+          cargo install wac-cli --version 0.10.1 --locked
       - name: Build + verify the gust:os provider components
         run: bash benches/gust/drivers/build-gustos-components.sh
+      - name: Compose + verify the fused gust:os component (gale#224)
+        run: bash benches/gust/drivers/build-fused-gustos.sh
 
   publish:
     name: "sign + publish gust:os components (OCI + wasm.directory)"
@@ -77,12 +83,15 @@ jobs:
       - name: Install wasm-tools + wkg
         run: |
           cargo install wasm-tools --version 1.245.1 --locked
+          cargo install wac-cli --version 0.10.1 --locked
           cargo install wkg --locked
       - uses: sigstore/cosign-installer@v3
         with:
           cosign-release: 'v2.4.1'
       - name: Build + verify components
-        run: bash benches/gust/drivers/build-gustos-components.sh
+        run: |
+          bash benches/gust/drivers/build-gustos-components.sh
+          bash benches/gust/drivers/build-fused-gustos.sh
       - name: Resolve version
         id: v
         env:
@@ -94,7 +103,6 @@ jobs:
       - name: Publish signed to ghcr OCI + wasm.directory
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WASM_DIRECTORY_TOKEN: ${{ secrets.WASM_DIRECTORY_TOKEN }}
           VERSION: ${{ steps.v.outputs.version }}
           OWNER: ${{ github.repository_owner }}
         run: |
@@ -102,17 +110,24 @@ jobs:
           echo "$GH_TOKEN" | wkg oci login ghcr.io -u "$OWNER" --password-stdin
           for comp in benches/gust/drivers/gustos-components/*.component.wasm; do
             base="$(basename "$comp" .component.wasm)"     # time-provider
-            pkg="gale-nano-${base%-provider}"               # gale-nano-time
+            if [ "$base" = "fused-gustos" ]; then
+              # The deliverable of DD-OS-DELIVERY-001: the whole gust:os world in one
+              # component. It is not a provider, so it does not take the -provider strip.
+              pkg="gale-nano"
+            else
+              pkg="gale-nano-${base%-provider}"             # gale-nano-time
+            fi
             ref="ghcr.io/${OWNER}/${pkg}:${VERSION}"
             echo "== $pkg → $ref =="
             wkg oci push "$ref" "$comp"
             cosign sign --yes "$ref"
             echo "::notice::published + signed $ref"
-            if [ -n "${WASM_DIRECTORY_TOKEN:-}" ]; then
-              WKG_REGISTRY_TOKEN="$WASM_DIRECTORY_TOKEN" \
-                wkg publish "$comp" --package "pulseengine:${pkg}@${VERSION}" --registry wasm.directory \
-                || echo "::warning::wasm.directory publish failed for $pkg"
-            else
-              echo "::warning::WASM_DIRECTORY_TOKEN unset — skipping wasm.directory publish for $pkg"
-            fi
           done
+          # wasm.directory is a META-registry: its entries are TOML pointers at an OCI
+          # registry (see registry/pulseengine.toml -> ghcr.io/pulseengine), NOT a push
+          # target. Listing a package there is a ONE-TIME registry-entry issue against
+          # yoshuawuyts/wasm.directory, which opens a PR adding the entry — not a
+          # per-release step. The earlier `wkg publish --registry wasm.directory` here
+          # could only ever fail into a warning while the job stayed green, which would
+          # have let the release notes claim a publication that never happened.
+

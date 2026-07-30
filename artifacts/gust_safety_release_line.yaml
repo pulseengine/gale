@@ -58,7 +58,7 @@ artifacts:
   - id: DD-OS-DELIVERY-001
     type: sw-detail-design
     title: "gale's consumable cut is a cosign-signed OCI wasm COMPONENT that exports gust:os (fused gale-nano subset); residual imports = exactly gust:hal"
-    status: proposed
+    status: implemented
     description: >
       This is the natural externalisation of gust's OS-as-wasm-component-model:
       gust already treats the OS as a typed CAPABILITY WORLD (gust:os) that apps
@@ -645,6 +645,64 @@ artifacts:
       - type: verifies
         target: REQ-OS-WCET-001
 
+  - id: REQ-OS-DELIVERY-001
+    type: sw-req
+    title: "The consumable cut SHALL be ONE wasm component exporting the whole gust:os world, whose residual imports are exactly gust:hal plus the app-supplied task seam"
+    status: verified
+    release: v0.6.0
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: refines
+        target: DD-OS-DELIVERY-001
+    description: >
+      The artifact half of DD-OS-DELIVERY-001, scoped deliberately narrowly so that
+      it states only what is actually checkable today. gale's consumable output SHALL
+      be a single wasm COMPONENT (not a core module, not a tarball of objects) that
+      exports the gust:os capability world, and whose residual imports after
+      composition are exactly the gust:hal mmio seam plus the app-supplied
+      gust:os/taskdisp. Any internal wiring between providers — notably the
+      gust:sched scheduler seam — SHALL be satisfied inside the composite and SHALL
+      NOT appear in its imports, so that a downstream importing gust:os cannot reach
+      scheduler mutation. Exactly one component instance SHALL own the scheduler.
+      The PUBLISH half of DD-OS-DELIVERY-001 — cosign-signed OCI plus wasm.directory,
+      and an outside party pulling the artifact and verifying its signature — is
+      deliberately NOT part of this requirement, because it has not happened yet and
+      a requirement marked verified must not carry an unevidenced half. It remains
+      tracked by DD-OS-DELIVERY-001 (implemented) and gale#224.
+
+  - id: VER-OS-DELIVERY-001
+    type: sw-verification
+    title: "The fused gust:os component exists, exports the whole world, and its residual is sealed to gust:hal + the app seam — gated, with the gate negative-tested"
+    method: test
+    status: verified
+    release: v0.6.0
+    links:
+      - type: verifies
+        target: REQ-OS-DELIVERY-001
+    description: >
+      Evidence for REQ-OS-DELIVERY-001 — the ARTIFACT half of DD-OS-DELIVERY-001,
+      and deliberately not its DELIVERY half. What is gated, by
+      benches/gust/drivers/build-fused-gustos.sh on every invocation: the composite
+      is a component (wasm-tools validate + component wit decode); it exports the
+      five gust:os interfaces the providers supply; its residual imports are exactly
+      gust:hal/mmio plus the app-supplied gust:os/taskdisp, with gust:sched sealed
+      inside; no env / WASI / heap / scheduler symbol appears in any core import;
+      and exactly one component instance owns the scheduler, checked by import
+      routing across the unbundled core modules rather than by a source string.
+      Both the residual-import gate and the one-scheduler gate are negative-tested —
+      the former in-band on every run against a deliberately unwired composition,
+      the latter against the pre-change providers, where it fires on all three
+      signals. A gate that has not been observed to fail is not evidence.
+      NOT covered here, and NOT to be read as covered: the component has never been
+      EXECUTED — no wasm runtime, no dissolve of the composite, no hardware — so
+      "one scheduler, one clock" is a structural property, not an observed one; the
+      composite is not lowered to native, so its 20741 bytes are a wasm figure and
+      imply nothing about code size, SRAM or cycles; and the publish half of
+      DD-OS-DELIVERY-001 (cosign-signed OCI + wasm.directory, and a third party
+      pulling the artifact and verifying its signature from a clean machine) has not
+      happened at the time of writing. That step closes at tag; until an outside
+      party can check the signature without us, the delivery claim is unevidenced.
   - id: VER-OS-WCET-001
     type: sw-verification
     title: "Sound per-function static-WCET emission cross-checked against a statistical (EVT) bound, on the trusted object's functions"
