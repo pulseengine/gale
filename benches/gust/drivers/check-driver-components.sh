@@ -14,7 +14,15 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WT="${WASM_TOOLS:-wasm-tools}"
 
-DRIVERS=(wdg-thin gpio-thin i2c-thin timer-thin adc-thin dac-thin pwm-thin uart-thin)
+# DISCOVERED, not enumerated. A hardcoded list is how spi-thin, can-thin and dma-own
+# were silently skipped by the first version of this gate — a driver nobody checks is
+# indistinguishable from a driver that passes.
+DRIVERS=()
+for _d in "$HERE"/*-thin "$HERE"/dma-own; do
+    [ -f "$_d/Cargo.toml" ] || continue
+    DRIVERS+=("$(basename "$_d")")
+done
+[ "${#DRIVERS[@]}" -gt 0 ] || { echo "no drivers discovered under $HERE — the gate is not looking where it thinks"; exit 1; }
 
 fail=""
 printf '%-12s | %-11s | %s\n' "driver" "shape" "imports"
