@@ -58,3 +58,38 @@ GUST_MIX_O=/tmp/gust_mix-cm4-on.o silicon/run.sh g474re
 
 Compare the `ratio_x1000` flag-off vs flag-on on the G474RE — that's the on-silicon
 DWT signal the synth default-on flip is gated on.
+
+## Driver silicon anchors (self-checking, no external wiring)
+
+Beyond the cycle bench, `benches/gust/silicon/` holds one firmware per driver that
+points its **dissolved object** at the corresponding **real** peripheral and reports a
+verdict over semihosting. Each is written against the **generated** target constants
+(`benches/gust/targets/generated/gust_target_stm32f100.rs`), so retargeting is a
+model change, not an edit to firmware.
+
+| anchor | driver | peripheral | runner | run recorded |
+|---|---|---|---|---|
+| `gust_wdg_silicon` | `wdg-thin` | IWDG | `run-wdg-f100.sh`, `run-wdg.sh` | `RESULTS-wdg-f100.md`, `RESULTS-wdg-g474re.md` |
+| `gust_adc_silicon` | `adc-thin` | ADC1 / Vrefint | `run-adc.sh` | `RESULTS-f100.md` |
+| `gust_gpio_silicon` | `gpio-thin` | GPIOC (PC8/PC9 LEDs) | `run-gpio-f100.sh` | **not yet run** |
+| `gust_timer_silicon` | `timer-thin` | TIM2 | `run-timer-f100.sh` | **not yet run** |
+
+The gpio and timer anchors exist because every GPIO/timer evidence in the tree is a
+**RAM-window** Renode gate: those pin the register writes the driver makes, but a
+plain memory window cannot show that a BSRR write moved a pin, nor tell a live
+counter from a frozen one. Both anchors read back through the *effect* (GPIO: IDR;
+timer: an advancing CNT) and treat a no-change readback as a FAILURE, so neither can
+false-pass.
+
+**They have not been run on hardware.** Nothing here claims a result until a
+`RESULTS-*.md` records one in the shape of `RESULTS-wdg-f100.md` (state `n`, whether
+the capture was spliced, and what the run does *not* evidence).
+
+**qemu cannot exercise either.** The local runner is `qemu-system-arm -machine
+lm3s6965evb`, which models no STM32 GPIOC @0x40011000 or TIM2 @0x40000000 — both read
+back 0, and both anchors correctly report FAIL there (that is the guard working, not
+a regression). Only real silicon can pass them.
+
+Both firmwares print a **MODEL GAP** line naming a constant the AADL model does not
+yet provide (the GPIOC port-clock bit; `RCC_APB1ENR`/`TIM2EN`). Keep that line in any
+capture — it is the input for what to model next.

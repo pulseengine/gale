@@ -185,11 +185,19 @@ fn main() {
     let gobj = Path::new(&manifest).join("drivers/gpio-thin/gpio-thin-cm3.o");
     if gobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_gpio={}", gobj.display());
+        // gust_gpio_silicon points the SAME dissolved .o at the REAL F100 GPIOC and
+        // reads every level back from the PIN (IDR) — the electrical anchor the
+        // RAM-window Renode gate cannot provide (silicon/run-gpio-f100.sh).
+        println!("cargo:rustc-link-arg-bin=gust_gpio_silicon={}", gobj.display());
         println!("cargo:rerun-if-changed={}", gobj.display());
     }
     let tobj = Path::new(&manifest).join("drivers/timer-thin/timer-thin-cm3.o");
     if tobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_timer={}", tobj.display());
+        // gust_timer_silicon points the SAME dissolved .o at the REAL F100 TIM2 and
+        // requires the counter to ADVANCE — a RAM-window gate cannot tell a live
+        // counter from a frozen one (silicon/run-timer-f100.sh).
+        println!("cargo:rustc-link-arg-bin=gust_timer_silicon={}", tobj.display());
         println!("cargo:rerun-if-changed={}", tobj.display());
     }
     // The dissolved thin-seam SPI driver (drivers/spi-thin → loom → synth): the

@@ -34,6 +34,18 @@ target-f100 = []
 name = "gust_adc_silicon"
 required-features = ["target-f100"]
 
+# gust_gpio_silicon / gust_timer_silicon drive the REAL STM32F1 GPIOC and TIM2
+# register maps (CRL/CRH/BSRR/IDR; PSC/ARR/CNT/SR + the APB1 clock tree) — both are
+# F1-family-specific, so like gust_adc_silicon they are F100-only and the default
+# target-g474re build must skip them rather than hit their compile_error.
+[[bin]]
+name = "gust_gpio_silicon"
+required-features = ["target-f100"]
+
+[[bin]]
+name = "gust_timer_silicon"
+required-features = ["target-f100"]
+
 # gust_wcet_evt links the frozen os-tl-fixed.o, a synth `--target cortex-m3`
 # relocatable object: linking it into a thumbv7em (M4/G474RE) image silently yields
 # an empty ELF, so the bin is F100/thumbv7m-only and the default target-g474re build
