@@ -17,3 +17,8 @@ MODULE.bazel.lock
 .claude/pulseengine/
 **/.claude/pulseengine/
 benches/gust/drivers/gustos-components/
+
+# jco output + the pulled artifact — regenerate with browser-nano/build.sh
+benches/gust/browser-nano/web/gen/
+benches/gust/browser-nano/web/gale-nano.wasm
+.playwright-mcp/
