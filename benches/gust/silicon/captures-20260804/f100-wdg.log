@@ -1,0 +1,8 @@
+==> building for F100 (only memory.x and the target feature differ; the driver .o does not)
+==> flashing
+Error: SRST error
+==> arming (flags cleared first, so IWDGRSTF at boot 2 cannot be stale)
+gust-wdg-silicon: boot 1 on STM32F100 (RCC_CSR=0x14000000, no prior WDG reset). Arming the REAL IWDG @0x40003000 via the dissolved wdg-thin driver (PR=5, RLR=0x123 ≈ 1.2 s)...
+gust-wdg-silicon: armed (last KR write=0x0000, is_running=1). NOT refreshing — expect a HARDWARE reset in ~1.2 s, after which boot 2 reads IWDGRSTF=1.
+gust-wdg-silicon OK: IWDG watchdog reset CONFIRMED on real STM32F100 silicon (RCC_CSR=0x34000000, IWDGRSTF=1) — the dissolved wdg-thin driver armed the hardware watchdog and it fired the reset.
+==> expected: RCC_CSR 0x14000000 -> 0x34000000, IWDGRSTF=1
