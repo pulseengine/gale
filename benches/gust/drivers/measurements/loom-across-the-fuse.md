@@ -14,7 +14,24 @@ All three arms end with the identical
 | `loom optimize --passes inline` **per component**, then fuse | **4642 B** |
 | fuse, then `loom optimize --passes inline` (**the shipped order**) | **4812 B** |
 
-And on the wasm itself, loom on the fused core goes **9874 B → 10832 B (+9.7%)**.
+On the wasm itself the honest figure is the **code section**, not the file:
+
+| section | fused core | after loom |
+|---|---|---|
+| **code** | **4194 B** | **4612 B**  (+418 B, +10.0%) |
+| `wsc.transformation.attestation` | — | 1498 + 881 B |
+| `component-provenance` | — | 1931 B |
+| `wsc.facts` | absent | **still absent** |
+
+**Do not quote the file size.** 9874 → 10832 B (+958 B) is what `wc -c` reports,
+and it conflates a 418 B code increase with ~4.3 KB of newly-added attestation and
+provenance metadata (offset by dropped `producers` and `.debug_*` sections). The
+code section is the axis that propagates to the native object, and it is the one
+that grew.
+
+Note also that loom emitted **no `wsc.facts` section at all** on this input —
+consistent with the fact producer not being wired. So none of this size change is
+the proof channel; it is inlining plus bookkeeping.
 
 ## Reading it
 
