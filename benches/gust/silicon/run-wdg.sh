@@ -32,5 +32,15 @@ echo "== build gust_wdg_silicon for g474re (thumbv7em) =="
 cargo build --release --bin gust_wdg_silicon --target thumbv7em-none-eabi
 ELF="target/thumbv7em-none-eabi/release/gust_wdg_silicon"
 
-echo "== flash + capture on $CHIP via probe-rs (watch for 'CONFIRMED'; Ctrl-C after) =="
-probe-rs run --chip "$CHIP" "$ELF"
+# Pick the ST-LINK explicitly when more than one probe is attached. With the
+# ESP32-C3 also plugged in (an EspJtag probe), a bare `probe-rs run` goes
+# interactive and dies with "Failed to parse probe index" under any non-tty
+# harness — so the three-dies-at-once session is exactly when this breaks.
+# Auto-select the first ST-LINK; override with PROBE=VID:PID:SERIAL.
+PROBE="${PROBE:-$(probe-rs list 2>/dev/null \
+    | sed -n 's/.*-- \([0-9a-fA-F]*:[0-9a-fA-F]*:[^ ]*\) (ST-LINK).*/\1/p' | head -1)}"
+PROBE_ARG=()
+[ -n "$PROBE" ] && PROBE_ARG=(--probe "$PROBE")
+
+echo "== flash + capture on $CHIP via probe-rs${PROBE:+ (probe $PROBE)} (watch for 'CONFIRMED'; Ctrl-C after) =="
+probe-rs run --chip "$CHIP" "${PROBE_ARG[@]}" "$ELF"
