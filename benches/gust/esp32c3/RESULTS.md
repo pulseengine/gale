@@ -87,3 +87,38 @@ _Toolchain note: current pins are synth 0.49.0 / loom 1.2.0 (#208), not the synt
 0.40.0 dissolve measured above. `gust_mix` has not been re-measured on real
 ESP32-C3 silicon under 0.49; the ratios above are historical until that re-run
 happens._
+
+## Reproduced on the board (2026-08-04)
+
+Re-flashed the **same committed object** (`gust_mix-esp32c3.o`, md5
+`d3526178…` — still the synth 0.40.0 dissolve) to the same ESP32-C3 rev v0.4 and
+captured a full boot-to-result run: `esp32c3-run-20260804.log`.
+
+    gust-esp32c3: RISC-V (ESP32-C3, systimer) — native (LLVM) vs dissolved (synth) gust_mix
+    # correctness: IDENTICAL ok over [0,2047]
+    gust-esp32c3,gust_mix_native,milliticks_per_call,271
+    gust-esp32c3,gust_mix_dissolved,milliticks_per_call,499
+    gust-esp32c3,ratio_x1000,,1839 (mismatch=0)
+
+271 / 499–500 milliticks → **1.839×**, correctness IDENTICAL, `mismatch=0`, and the
+app re-prints it in a loop so the figure is stable across repeats within one
+session, not a single sample. This **reproduces** the 2026-07-11 row; it is not a
+new measurement and it does **not** close the 0.49 caveat above.
+
+**Why the 0.49 re-run is still open — and it is not the board.** Only the
+*dissolved object* is checked in here. The `gust_mix` **wasm input is not in this
+repo**: `compare-codegen.sh` sources it from `SCOUT=/tmp/gust-wasm-scout`, an
+out-of-tree scratch crate, which is absent on this machine. So the dissolve cannot
+be re-run at the current pin from anything the repository contains, and the
+byte-reproducible `synth compile …` line in *Reproduce* above is only reproducible
+for whoever still has that `/tmp` directory. **A bench whose input is not committed
+is not reproducible**, however precisely its output is recorded. Committing the
+`gust_mix` wasm (or the crate that emits it) is the prerequisite for closing the
+0.49 re-measure — filed as the blocker, not the re-run itself.
+
+_Tooling trap, confirmed the hard way:_ the *Reproduce* note's "espflash 3.x"
+caveat is real and bites through `PATH`, not through install. `cargo install
+espflash --version "^3"` can exit **0** while printing "Ignored package … already
+installed", leaving a Homebrew **4.4.0** first on `PATH` that rejects the image
+with "ESP-IDF App Descriptor missing". Invoke `~/.cargo/bin/espflash` by absolute
+path, and check `which -a espflash` before believing a version.
