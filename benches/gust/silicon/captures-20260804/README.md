@@ -41,3 +41,31 @@ shown; they are not presented as one take.
   `Failed to parse probe index`. It now auto-selects the ST-LINK (override with
   `PROBE=VID:PID:SERIAL`). The all-three-dies-at-once case is precisely the one
   that broke it.
+
+## Whole-image footprint on the smallest part (2026-08-04)
+
+The F100 is the part that sets the constraints, and its geometry is generated
+from `targets/stm32f100.aadl` rather than hand-written:
+
+    FLASH : ORIGIN = 0x08000000, LENGTH = 128K
+    RAM   : ORIGIN = 0x20000000, LENGTH = 8K
+
+`gust_wdg_silicon` — the firmware flashed for leg 2 above, i.e. the dissolved
+`wdg-thin` object plus its TCB bridge, vector table and harness — measures:
+
+| | used | of | |
+|---|---|---|---|
+| flash | **6 028 B** | 131 072 | 4.6% |
+| SRAM | **8 B** | 8 192 | 0.1% — 8 184 free |
+
+**Scope.** This is the watchdog silicon test image, not gust with tenants. It is
+one dissolved driver plus the minimum to boot and report, so it is a floor rather
+than a system footprint: it does not include a scheduler, a task set, or any
+application. What it does establish is that the *dissolved-object* half of the
+design costs essentially no SRAM on a real part — the 8 B is harness state, and
+the driver's own `.data`/`.bss` are 0, by construction (scalar in, scalar out,
+state carried by the caller).
+
+Reproduce:
+
+    arm-zephyr-eabi-size benches/gust/target/thumbv7m-none-eabi/release/gust_wdg_silicon
