@@ -1,0 +1,47 @@
+Chip type:         esp32c3 (revision v0.4)
+Crystal frequency: 40 MHz
+Flash size:        4MB
+Features:          WiFi, BLE
+MAC address:       34:85:18:01:d7:10
+App/part. size:    74,064/4,128,768 bytes, 1.79%
+ESP-ROM:esp32c3-api1-20210207
+Build:Feb  7 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0xc (SPI_FAST_FLASH_BOOT)
+Saved PC:0x40380572
+0x40380572 - esp_hal::gpio::handle_pin_interrupts
+    at ??:??
+SPIWP:0xee
+mode:DIO, clock div:2
+load:0x3fcd5820,len:0x1714
+load:0x403cc710,len:0x968
+load:0x403ce710,len:0x2f9c
+entry 0x403cc710
+I (24) boot: ESP-IDF v5.1.2-342-gbcf1645e44 2nd stage bootloader
+I (24) boot: compile time Dec 12 2023 10:50:58
+I (25) boot: chip revision: v0.4
+I (29) boot.esp32c3: SPI Speed      : 40MHz
+I (34) boot.esp32c3: SPI Mode       : DIO
+I (38) boot.esp32c3: SPI Flash Size : 4MB
+I (43) boot: Enabling RNG early entropy source...
+I (48) boot: Partition Table:
+I (52) boot: ## Label            Usage          Type ST Offset   Length
+I (59) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (67) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (74) boot:  2 factory          factory app      00 00 00010000 003f0000
+I (82) boot: End of partition table
+I (86) esp_image: segment 0: paddr=00010020 vaddr=3c010020 size=00db8h (  3512) map
+I (95) esp_image: segment 1: paddr=00010de0 vaddr=3fc807d0 size=00108h (   264) load
+I (103) esp_image: segment 2: paddr=00010ef0 vaddr=40380000 size=007d0h (  2000) load
+I (112) esp_image: segment 3: paddr=000116c8 vaddr=00000000 size=0e950h ( 59728) 
+I (132) esp_image: segment 4: paddr=00020020 vaddr=42000020 size=02104h (  8452) map
+I (135) boot: Loaded app from partition at offset 0x10000
+I (136) boot: Disabling RNG early entropy source...
+gust-esp32c3: RISC-V (ESP32-C3, systimer) — native (LLVM) vs dissolved (synth) gust_mix
+# correctness: IDENTICAL ok over [0,2047]
+gust-esp32c3,gust_mix_native,milliticks_per_call,271
+gust-esp32c3,gust_mix_dissolved,milliticks_per_call,499
+gust-esp32c3,ratio_x1000,,1839 (mismatch=0)
+gust-esp32c3: done
+gust-esp32c3,gust_mix_native,milliticks_per_call,271
+gust-esp32c3,gust_mix_dissolved,milliticks_per_call,500
+gust-esp32c3,ratio_x1000,,1839 (mismatch=0)
