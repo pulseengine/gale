@@ -433,7 +433,7 @@ artifacts:
     type: sw-req
     title: "T2: zero-coverage-gap object-code verification of the trusted switch/MPU/HM object"
     status: proposed
-    release: v0.6.0
+    release: v0.7.0
     description: >
       Cross-cutting track T2. The compiled object implementing the trusted
       switch, MPU/MMU region-program, and Health-Monitor core (the
@@ -463,7 +463,7 @@ artifacts:
     title: "RULE-VERIFY (per-rule) + BIN-VERIFY (binary-translation) zero-gap coverage report on the trusted object"
     method: formal-verification
     status: proposed
-    release: v0.6.0
+    release: v0.7.0
     description: >
       Evidence for REQ-OS-OBJVERIFY-001: a coverage report over the
       compiled switch/MPU/HM object showing every applied codegen rule
@@ -489,7 +489,7 @@ artifacts:
     type: sw-req
     title: "T3: machine-checked compositional schedulability — inner response time bounded against the outer supply"
     status: proposed
-    release: v0.6.0
+    release: v0.7.0
     description: >
       Cross-cutting track T3. The inner tickless cooperative executor's
       worst-case response time, running under the outer partition's
@@ -521,7 +521,7 @@ artifacts:
     title: "Lean-verified jittered WCRT recurrence + cooperative blocking term + demand-vs-supply cap, on the shipped executor"
     method: formal-verification
     status: proposed
-    release: v0.6.0
+    release: v0.7.0
     description: >
       Evidence for REQ-OS-SCHED-001: the Lean-verified worst-case-response-
       time recurrence, instantiated with (1) the derived release-jitter
@@ -549,7 +549,7 @@ artifacts:
     type: sw-req
     title: "T4: sound static-WCET inputs, gale-owned — no partition budget sized from raw DWT high-water-marks"
     status: implemented
-    release: v0.6.0
+    release: v0.7.0
     description: >
       Cross-cutting track T4. The per-function cycle bound feeding the
       track-T3 schedulability analysis SHALL be a SOUND static bound, and
@@ -754,7 +754,7 @@ artifacts:
     title: "Sound per-function static-WCET emission cross-checked against a statistical (EVT) bound, on the trusted object's functions"
     method: formal-verification
     status: proposed
-    release: v0.6.0
+    release: v0.7.0
     description: >
       Evidence for REQ-OS-WCET-001: for every function in the trusted
       switch/MPU/HM object and the inner executor core, the compiler-
@@ -838,7 +838,7 @@ artifacts:
     type: sw-req
     title: "Every thin-seam driver SHALL be a wasm COMPONENT importing gust:hal — no raw env import may survive in the graph"
     status: proposed
-    release: v0.7.0
+    release: v0.7.1
     tags: [gust, driver, component-model, seam]
     links:
       - type: derives-from
@@ -860,7 +860,7 @@ artifacts:
     title: "Per-driver componentization gate + whole-graph no-env-import sweep, both negative-tested"
     method: test
     status: proposed
-    release: v0.7.0
+    release: v0.7.1
     tags: [gust, driver, component-model, gate]
     links:
       - type: verifies
@@ -926,11 +926,52 @@ artifacts:
       Kill-criterion: the handle is rejected, or resolves to different task state across
       the three interfaces.
 
+  - id: REQ-OS-COMPOSITE-DISSOLVE-001
+    type: sw-req
+    title: "The composed OS SHALL be dissolved to a native object, and its footprint measured rather than inferred from wasm"
+    status: proposed
+    release: v0.7.0
+    tags: [gust, os, component-model, dissolve, footprint]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+    description: >
+      v0.6.0 reports the composed OS as 20 741 bytes. That is a WASM figure and implies
+      nothing about code size, SRAM or cycles; no native object for the whole OS exists.
+      The composite SHALL be put through the same chain each provider already goes through
+      (meld fuse --memory shared -> loom optimize -> synth compile --target cortex-m3
+      --all-exports --relocatable) to yield the first real .text/.bss for the OS as a whole.
+      This is E2 of the v0.7.0 ladder, and it is the PREREQUISITE for the timing triad:
+      object-code verification (REQ-OS-OBJVERIFY-001) has no object to verify without it,
+      and per-function WCET emission (REQ-OS-WCET-001) has nothing to bound.
+      The failure mode to watch is a SMALLER object with no undefined symbols, which means
+      the gust:hal seam was swallowed rather than preserved.
+
+  - id: VER-OS-COMPOSITE-DISSOLVE-001
+    type: sw-verification
+    title: "Dissolved composite measured, with undefined symbols gated to exactly the gust:hal seam"
+    method: automated-test
+    status: proposed
+    release: v0.7.0
+    tags: [gust, os, dissolve, gate]
+    links:
+      - type: verifies
+        target: REQ-OS-COMPOSITE-DISSOLVE-001
+    description: >
+      Planned evidence for REQ-OS-COMPOSITE-DISSOLVE-001: the dissolved composite's
+      .text/.data/.bss recorded by arm-zephyr-eabi-size, and its undefined-symbol set
+      asserted to be exactly the gust:hal seam, gated in CI the way build-cross-arch.sh
+      already gates the per-driver objects. The measurement is reported against the
+      F100's 8 KB SRAM budget, since that is the part that sets the constraint.
+      Kill-criterion: the undefined set is not exactly the gust:hal seam — an empty set
+      means the seam was inlined away and the OS is no longer swappable; a larger set
+      means it depends on something we have not declared.
+
   - id: REQ-OS-TARGET-RV32-001
     type: sw-req
     title: "A third target family (RV32 / ESP32-C3) SHALL be model-generated, and one driver against its REAL registers silicon-validated"
     status: proposed
-    release: v0.7.0
+    release: v0.7.1
     tags: [gust, os, target, riscv, silicon]
     links:
       - type: derives-from
@@ -954,7 +995,7 @@ artifacts:
     title: "Generated RV32 target (spar drift gate green) + one real-register ESP32-C3 driver observed acting on hardware"
     method: test
     status: proposed
-    release: v0.7.0
+    release: v0.7.1
     tags: [gust, os, target, riscv, silicon, gate]
     links:
       - type: verifies
@@ -972,7 +1013,7 @@ artifacts:
     type: sw-req
     title: "ARINC-653 partitions SHALL host component tenants, and the outer switch SHALL be validated on silicon rather than only in emulation"
     status: proposed
-    release: v0.7.0
+    release: v0.7.1
     tags: [gust, os, arinc653, partition, component-model, silicon]
     links:
       - type: derives-from
@@ -1001,7 +1042,7 @@ artifacts:
     title: "Component tenant confined to its partition on real silicon — window respected, region-swap ordered, no cross-partition reach"
     method: test
     status: proposed
-    release: v0.7.0
+    release: v0.7.1
     tags: [gust, os, arinc653, partition, silicon, gate]
     links:
       - type: verifies
