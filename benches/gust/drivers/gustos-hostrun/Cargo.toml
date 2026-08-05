@@ -1,0 +1,17 @@
+[workspace]
+[package]
+name = "gust-gustos-hostrun"
+version = "0.1.0"
+edition = "2021"
+description = "Executes the fused gust:os component on a host engine and observes the one-scheduler / one-clock properties (REQ-OS-COMPOSITE-EXEC-001)."
+
+[[bin]]
+name = "gustos-hostrun"
+path = "src/main.rs"
+
+[dependencies]
+# The host engine. Pinned to a component-model-capable wasmtime; the composite is a
+# COMPONENT (5 core modules behind a component shell), so a core-wasm embedder or the
+# `wasmtime run` CLI cannot supply its two custom imports.
+wasmtime = "42"
+anyhow = "1"
