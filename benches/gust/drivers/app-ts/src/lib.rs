@@ -24,7 +24,7 @@ unsafe impl GlobalAlloc for Bump {
 }
 #[global_allocator] static A: Bump = Bump;
 
-wit_bindgen::generate!({ world: "app-ts", path: "../wit-os", generate_all });
+wit_bindgen::generate!({ world: "gust:os/app-ts@0.1.0", path: ["../wit", "../wit-os"], generate_all });
 use crate::gust::os::time::now;
 use crate::gust::os::spawn::{poll, start};
 

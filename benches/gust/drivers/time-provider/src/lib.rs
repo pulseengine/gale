@@ -6,7 +6,7 @@ struct NoAlloc;
 unsafe impl GlobalAlloc for NoAlloc { unsafe fn alloc(&self,_:Layout)->*mut u8{core::ptr::null_mut()} unsafe fn dealloc(&self,_:*mut u8,_:Layout){} }
 #[global_allocator] static A: NoAlloc = NoAlloc;
 
-wit_bindgen::generate!({ world: "time-provider", path: "../wit-os", generate_all });
+wit_bindgen::generate!({ world: "gust:os/time-provider@0.1.0", path: ["../wit", "../wit-os"], generate_all });
 use crate::gust::hal::mmio::read32;
 use exports::gust::os::time::Guest;
 

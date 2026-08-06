@@ -17,7 +17,7 @@ unsafe impl GlobalAlloc for Bump {
 }
 #[global_allocator] static A: Bump = Bump;
 
-wit_bindgen::generate!({ world: "app-tl", path: "../wit-os", generate_all });
+wit_bindgen::generate!({ world: "gust:os/app-tl@0.1.0", path: ["../wit", "../wit-os"], generate_all });
 use crate::gust::os::time::{now, deadline, elapsed};
 use crate::gust::os::log::line;
 use alloc::vec::Vec;
