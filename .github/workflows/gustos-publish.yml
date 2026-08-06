@@ -23,6 +23,9 @@ on:
       - "benches/gust/drivers/*-provider/**"
       - "benches/gust/drivers/wit-os/**"
       - "benches/gust/drivers/build-gustos-components.sh"
+      - "benches/gust/drivers/build-fused-gustos.sh"
+      - "benches/gust/drivers/run-gustos-hostrun.sh"
+      - "benches/gust/drivers/gustos-hostrun/**"
       - ".github/workflows/gustos-publish.yml"
     tags: ["v*"]
   pull_request:
@@ -31,6 +34,9 @@ on:
       - "benches/gust/drivers/*-provider/**"
       - "benches/gust/drivers/wit-os/**"
       - "benches/gust/drivers/build-gustos-components.sh"
+      - "benches/gust/drivers/build-fused-gustos.sh"
+      - "benches/gust/drivers/run-gustos-hostrun.sh"
+      - "benches/gust/drivers/gustos-hostrun/**"
       - ".github/workflows/gustos-publish.yml"
   workflow_dispatch:
     inputs:
@@ -61,8 +67,47 @@ jobs:
           cargo install wac-cli --version 0.10.1 --locked
       - name: Build + verify the gust:os provider components
         run: bash benches/gust/drivers/build-gustos-components.sh
+      - name: Syntax-check the driver shell gates
+        # A gate with a syntax error is not a gate. A bash syntax error reached main in
+        # build-fused-gustos.sh because this workflow's path filter did not cover that
+        # file; the filter is fixed above and this check makes the class cheap to catch.
+        run: |
+          rc=0
+          for f in benches/gust/drivers/*.sh benches/gust/silicon/*.sh; do
+            [ -f "$f" ] || continue
+            bash -n "$f" || { echo "::error file=$f::bash syntax error"; rc=1; }
+          done
+          exit $rc
       - name: Compose + verify the fused gust:os component (gale#224)
         run: bash benches/gust/drivers/build-fused-gustos.sh
+      - name: EXECUTE the composite + negative controls (REQ-OS-COMPOSITE-EXEC-001)
+        # E1 of the v0.7.0 ladder. Runs the fused component on a host engine and
+        # observes a handle crossing spawn -> timer -> exec, then re-runs the harness
+        # against a deliberately two-scheduler composite which it MUST refute. Exit 4
+        # means a negative control passed, i.e. the harness stopped being a gate.
+        run: |
+          set +e
+          bash benches/gust/drivers/run-gustos-hostrun.sh | tee /tmp/e1.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          # Exit codes are meaningful (see the script header): 0 = claims held;
+          # 1 = REFUTED; 2 = could not instantiate; 3 = claims held but a WIT
+          # return-contract deviation was observed; 4 = a negative control did not
+          # fail, i.e. the harness stopped being a gate.
+          case "$rc" in
+            0) echo "E1: claims held, no deviations" ;;
+            3) # 3 deviations are KNOWN and tracked (timer.sleep returns success for an
+               # out-of-range or already-done handle, so the arm is silently lost).
+               # Pin the count so a FOURTH one fails this gate instead of hiding here.
+               n=$(sed -n 's/.*HELD under execution; \([0-9]*\) WIT return-contract deviation.*/\1/p' /tmp/e1.log | head -1)
+               if [ "$n" = "3" ]; then
+                 echo "E1: claims held; $n known WIT deviations (tracked, count pinned)"
+               else
+                 echo "::error::E1 deviation count changed: expected 3, got '$n' — a new contract deviation appeared"
+                 exit 1
+               fi ;;
+            *) echo "::error::E1 harness exit $rc — see log above"; exit 1 ;;
+          esac
 
   publish:
     name: "sign + publish gust:os components (OCI + wasm.directory)"
