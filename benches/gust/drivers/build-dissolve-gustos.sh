@@ -28,7 +28,9 @@
 # change the tires, not the car.
 #
 # Exit: 0 = dissolved and the seam is intact; 1 = a stage failed;
-#       2 = the seam is wrong (empty, or carrying something undeclared).
+#       2 = the seam is wrong (empty, or carrying something undeclared);
+#       4 = the NEGATIVE CONTROL passed, i.e. the gate has stopped discriminating
+#           and any green it reports means nothing.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="${OUT:-$HERE/gustos-components}"

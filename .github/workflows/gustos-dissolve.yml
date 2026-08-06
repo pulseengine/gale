@@ -1,0 +1,121 @@
+# E2 gate (VER-OS-COMPOSITE-DISSOLVE-001): lower the fused gust:os composite to a
+# native object on every change that could affect it, and assert the seam survives.
+#
+# Why a workflow of its own rather than a step in gustos-publish.yml: this one needs
+# the full dissolve toolchain (meld + loom + synth), which no gale workflow has ever
+# installed. Keeping it separate means the cheap structural gate in gustos-publish
+# still runs in seconds on provider edits, and this heavier one runs only when
+# something that can change the dissolve moves.
+#
+# The pins are the point. A dissolve measured with a different compiler is not
+# comparable to the figure recorded in measurements/composite-dissolved.md, so the
+# versions are fixed here and bumped deliberately -- meld 0.41.3, loom 1.2.0,
+# synth 0.52.0 (gale's pin, #208).
+name: gustos dissolve
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "benches/gust/drivers/*-provider/**"
+      - "benches/gust/drivers/wit-os/**"
+      - "benches/gust/drivers/wit/**"
+      - "benches/gust/drivers/build-gustos-components.sh"
+      - "benches/gust/drivers/build-fused-gustos.sh"
+      - "benches/gust/drivers/build-dissolve-gustos.sh"
+      - ".github/workflows/gustos-dissolve.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "benches/gust/drivers/*-provider/**"
+      - "benches/gust/drivers/wit-os/**"
+      - "benches/gust/drivers/wit/**"
+      - "benches/gust/drivers/build-gustos-components.sh"
+      - "benches/gust/drivers/build-fused-gustos.sh"
+      - "benches/gust/drivers/build-dissolve-gustos.sh"
+      - ".github/workflows/gustos-dissolve.yml"
+  workflow_dispatch:
+
+env:
+  MELD_VERSION: "0.41.3"
+  LOOM_VERSION: "1.2.0"
+  SYNTH_VERSION: "0.52.0"
+
+jobs:
+  dissolve:
+    name: "the composite dissolves, and the gust:hal seam survives it"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-tools + wac
+        run: |
+          cargo install wasm-tools --version 1.245.1 --locked
+          cargo install wac-cli --version 0.10.1 --locked
+
+      - name: Install pinned meld + loom + synth
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/pe-toolchain/bin" && cd "$HOME/pe-toolchain"
+          fetch() {  # repo version binary
+            local repo="$1" ver="$2" bin="$3"
+            local tar="${repo}-v${ver}-x86_64-unknown-linux-gnu.tar.gz"
+            gh release download "v${ver}" --repo "pulseengine/${repo}" \
+              -p "$tar" -p SHA256SUMS.txt --clobber -D "$repo-$ver"
+            ( cd "$repo-$ver" && sha256sum -c --ignore-missing SHA256SUMS.txt 2>/dev/null \
+              | grep -q "$tar: OK" || { echo "::error::$repo $ver checksum FAILED"; exit 1; } )
+            tar xzf "$repo-$ver/$tar" -C "$repo-$ver"
+            install -m755 "$(find "$repo-$ver" -name "$bin" -type f | head -1)" "$HOME/pe-toolchain/bin/$bin"
+          }
+          fetch meld  "$MELD_VERSION"  meld
+          fetch loom  "$LOOM_VERSION"  loom
+          fetch synth "$SYNTH_VERSION" synth
+          echo "$HOME/pe-toolchain/bin" >> "$GITHUB_PATH"
+
+      - name: Install arm binutils (nm + size for the seam gate)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq binutils-arm-none-eabi
+
+      - name: Versions actually in use
+        run: |
+          meld --version; loom --version; synth --version
+          arm-none-eabi-nm --version | head -1
+
+      # The gate. Its own negative control runs inside the script: an object with no
+      # seam MUST be refused, and if that control ever passes the script exits 4 --
+      # because a gate that has stopped discriminating reports a green that means
+      # nothing. Exit 2 = the seam is wrong (empty, or carrying something undeclared).
+      - name: Dissolve the composite + assert the seam
+        run: bash benches/gust/drivers/build-dissolve-gustos.sh
+
+      # The committed object is evidence quoted in measurements/composite-dissolved.md.
+      # If a provider change moves it, that is a real finding and the diff should be
+      # reviewed, not silently absorbed -- so surface it rather than fail on it.
+      - name: Did the committed object drift?
+        run: |
+          if git diff --quiet -- benches/gust/drivers/os-node/gustos-dissolved-cm3.o; then
+            echo "committed object unchanged"
+          else
+            echo "::warning::gustos-dissolved-cm3.o changed -- re-run the script and commit it, and check measurements/composite-dissolved.md still states the truth"
+            arm-none-eabi-size benches/gust/drivers/os-node/gustos-dissolved-cm3.o
+          fi
+
+      - name: Upload the dissolved object
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gustos-dissolved-cm3
+          path: benches/gust/drivers/os-node/gustos-dissolved-cm3.o
+          if-no-files-found: warn
