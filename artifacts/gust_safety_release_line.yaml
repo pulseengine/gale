@@ -985,7 +985,7 @@ artifacts:
   - id: REQ-OS-COMPOSITE-DISSOLVE-001
     type: sw-req
     title: "The composed OS SHALL be dissolved to a native object, and its footprint measured rather than inferred from wasm"
-    status: proposed
+    status: implemented
     release: v0.7.0
     tags: [gust, os, component-model, dissolve, footprint]
     links:
@@ -1002,6 +1002,17 @@ artifacts:
       and per-function WCET emission (REQ-OS-WCET-001) has nothing to bound.
       The failure mode to watch is a SMALLER object with no undefined symbols, which means
       the gust:hal seam was swallowed rather than preserved.
+      DELIVERED (2026-08-06): benches/gust/drivers/build-dissolve-gustos.sh lowers the
+      fused composite through meld fuse --memory shared -> loom optimize --passes inline
+      -> synth compile --target cortex-m3 (pin 0.52.0). First native figure for the OS
+      as a whole: text 4792, data 0, bss 0 -- 0 B of the STM32F100RB's 8192 SRAM, 31
+      functions, 25 relocations. The seam gate passes with undefined = EXACTLY
+      {poll-task, read32, write32}, and its negative control (an object with no seam)
+      is refused on every run. See measurements/composite-dissolved.md.
+      NOT verified yet: nothing in CI runs this, so the property can still silently
+      stop holding -- that is what VER-OS-COMPOSITE-DISSOLVE-001 requires.
+      The 20741 -> 4792 numbers are NOT a ratio: a wasm component and a .text section
+      measure different things.
 
   - id: VER-OS-COMPOSITE-DISSOLVE-001
     type: sw-verification
