@@ -890,7 +890,7 @@ artifacts:
   - id: REQ-OS-COMPOSITE-EXEC-001
     type: sw-req
     title: "The composed OS SHALL be EXECUTED and its one-scheduler / one-clock properties observed, not only structurally asserted"
-    status: proposed
+    status: verified
     release: v0.7.0
     tags: [gust, os, component-model, execution]
     links:
@@ -911,7 +911,7 @@ artifacts:
     type: sw-verification
     title: "Handle observed crossing spawn -> timer -> exec in the executed composite, gated in CI"
     method: test
-    status: proposed
+    status: verified
     release: v0.7.0
     tags: [gust, os, execution, gate]
     links:
@@ -925,6 +925,62 @@ artifacts:
       silently stop holding.
       Kill-criterion: the handle is rejected, or resolves to different task state across
       the three interfaces.
+      DELIVERED (2026-08-06, gale#250 + gale#254): the composite is EXECUTED on a host
+      engine by benches/gust/drivers/run-gustos-hostrun.sh. A handle from
+      gust:os/spawn.start is accepted by gust:os/timer.sleep and agreed on by
+      gust:os/exec.state; the timer's arming wakes spawn's task; 21 checks passed,
+      0 FAILED. Corroborated independently: spawn and exec exhaust ONE 8-slot table
+      JOINTLY, where two private tables would allow 8 each.
+      IT IS A GATE, NOT A RUN: wired into .github/workflows/gustos-publish.yml on
+      every change to any provider, to the composite build scripts, or to the harness
+      (gale#254 — until then nothing ran it, and the workflow's path filter did not
+      even cover the script it gates). Two negative controls run with it: a
+      two-scheduler composite that the harness MUST refute (16 passed, 5 FAILED,
+      exit 1), so a harness that can only pass is caught (exit 4).
+      WHAT IT DOES NOT COVER, stated because the checks pass anyway: two STATELESS
+      instances of the time provider pass all 21 checks — both read the same register
+      through the same host import, so they are indistinguishable at the seam (one
+      clock SOURCE reached twice). A second clock with a different source or offset IS
+      caught. Also untouched: the dissolved/native path (that is
+      REQ-OS-COMPOSITE-DISSOLVE-001), gust:os channel and io, 32-bit clock wraparound,
+      multi-task interleaving, and silicon.
+      A structural gate of the SAME composite was separately shown unable to detect a
+      two-scheduler wiring at all — byte-identical WIT, same five core modules, same
+      import routing. A count over modules cannot see a count over instances. That is
+      why this property had to be executed to be known, and it is the argument for
+      the whole E1 rung.
+
+  - id: FIND-OS-TIMER-SLEEP-CONTRACT-001
+    type: finding
+    title: "timer.sleep reports success for handles it cannot arm — the caller is told a wake was armed that will never fire"
+    status: active
+    release: v0.7.0
+    tags: [gust, os, timer, contract, defect]
+    links:
+      - type: derives-from
+        target: REQ-OS-COMPOSITE-EXEC-001
+    description: >
+      OBSERVED under execution (2026-08-06, gale#250), not by inspection. The
+      gust:os/timer WIT contract specifies 0xFFFFFFFF for a handle that cannot be
+      armed. Three cases return 0 (success) instead:
+        timer.sleep(8, 10)          -> 0   (task id out of the 8-slot range)
+        timer.sleep(0xDEADBEEF, 10) -> 0   (not a task id at all)
+        timer.sleep(0, 10)          -> 0   where exec.state(0) is already done
+      Tasks::set_deadline correctly no-ops in each case, so nothing is corrupted —
+      the defect is the RETURN VALUE. The arm is silently lost and the caller has
+      been told a wake is scheduled that will never fire. On a failsafe path that is
+      the difference between a missed deadline that is detected and one that is not.
+      SCOPE: this is a PROVIDER defect. gale#250 was an execution experiment over the
+      composite and deliberately did not modify providers, so it was reported and not
+      fixed. It is recorded here because a defect that lives only in a PR body is a
+      defect nobody is tracking.
+      CURRENTLY GATED BY COUNT, NOT BY ABSENCE: the CI step in gustos-publish.yml
+      accepts the harness's exit 3 only while the deviation count is exactly 3, so a
+      FOURTH deviation fails the build. That pins the blast radius; it does not fix
+      these three.
+      Kill-criterion for the fix: timer.sleep returns 0xFFFFFFFF for an out-of-range
+      id, a non-id, and an already-done task, and the harness's deviation count drops
+      to 0 — at which point the CI step's pinned count must drop with it.
 
   - id: REQ-OS-COMPOSITE-DISSOLVE-001
     type: sw-req
