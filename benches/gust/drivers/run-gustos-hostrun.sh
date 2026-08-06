@@ -23,7 +23,11 @@ WAC="${WAC:-wac}"
 FUSED="$OUT/fused-gustos.component.wasm"
 
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
-  OUT="$OUT" bash "$HERE/build-fused-gustos.sh" | tail -2 || exit 1
+  # `cmd | tail || exit` tests TAIL's status, not the script's — which is exactly how a
+  # bash syntax error in build-fused-gustos.sh reached main unnoticed. Check the
+  # producer's own status via PIPESTATUS.
+  OUT="$OUT" bash "$HERE/build-fused-gustos.sh" | tail -2
+  [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "build-fused-gustos.sh FAILED — see above"; exit 1; }
   echo ""
 fi
 [ -f "$FUSED" ] || { echo "no composite at $FUSED (run build-fused-gustos.sh)"; exit 1; }
