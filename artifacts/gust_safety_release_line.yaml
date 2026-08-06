@@ -594,7 +594,7 @@ artifacts:
   - id: VER-OS-WCET-EVT-001
     type: sw-verification
     title: "EVT cross-check of synth's static WCET against real STM32F100 DWT samples — bounds dominate on the two bounded gust:os/time functions"
-    method: test
+    method: automated-test
     status: verified
     release: v0.6.0
     description: >
@@ -666,7 +666,7 @@ artifacts:
   - id: VER-OS-PUBLISH-001
     type: sw-verification
     title: "v0.6.0's gale-nano pulled from ghcr, signature verified, and the delivery invariant re-checked against the PUBLISHED bytes"
-    method: test
+    method: automated-test
     status: verified
     release: v0.6.0
     links:
@@ -720,7 +720,7 @@ artifacts:
   - id: VER-OS-DELIVERY-001
     type: sw-verification
     title: "The fused gust:os component exists, exports the whole world, and its residual is sealed to gust:hal + the app seam — gated, with the gate negative-tested"
-    method: test
+    method: automated-test
     status: verified
     release: v0.6.0
     links:
@@ -858,7 +858,7 @@ artifacts:
   - id: VER-DRV-COMPONENT-001
     type: sw-verification
     title: "Per-driver componentization gate + whole-graph no-env-import sweep, both negative-tested"
-    method: test
+    method: automated-test
     status: proposed
     release: v0.7.1
     tags: [gust, driver, component-model, gate]
@@ -910,7 +910,7 @@ artifacts:
   - id: VER-OS-COMPOSITE-EXEC-001
     type: sw-verification
     title: "Handle observed crossing spawn -> timer -> exec in the executed composite, gated in CI"
-    method: test
+    method: automated-test
     status: verified
     release: v0.7.0
     tags: [gust, os, execution, gate]
@@ -1049,7 +1049,7 @@ artifacts:
   - id: VER-OS-TARGET-RV32-001
     type: sw-verification
     title: "Generated RV32 target (spar drift gate green) + one real-register ESP32-C3 driver observed acting on hardware"
-    method: test
+    method: automated-test
     status: proposed
     release: v0.7.1
     tags: [gust, os, target, riscv, silicon, gate]
@@ -1096,7 +1096,7 @@ artifacts:
   - id: VER-OS-PARTITION-TENANT-001
     type: sw-verification
     title: "Component tenant confined to its partition on real silicon — window respected, region-swap ordered, no cross-partition reach"
-    method: test
+    method: automated-test
     status: proposed
     release: v0.7.1
     tags: [gust, os, arinc653, partition, silicon, gate]

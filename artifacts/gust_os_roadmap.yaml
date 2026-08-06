@@ -435,7 +435,7 @@ artifacts:
   - id: VER-OS-SYSCALL-001
     type: sw-verification
     title: "v0.4.0 syscall seam — tl (buffer) + ts (spawn) fused nodes probe green on synth 0.45.1"
-    method: test
+    method: automated-test
     status: verified
     release: v0.4.0
     description: >
