@@ -285,6 +285,20 @@ artifacts:
       (https://github.com/cpetig/wasm-shm-test/blob/main/DESIGN.md). cpetig is aware;
       this is recorded as the forward direction, not committed scope.
 
+      The framing question upstream is Luke Wagner's talk "Does the Component Model
+      Require Extra Copying?" (https://youtu.be/YZG7waS2XZg). That question is not
+      academic on an 8 KB part: a copy at the seam is a copy we cannot afford, which
+      is why own<dma-buffer> is specified as a TRANSFER (attach/detach carry it) and
+      not as a hand-off plus memcpy. Our contribution to that question is an answer
+      that is verified rather than argued -- the Kani-proven ownership FSM, on
+      silicon, in 220 B.
+
+      Also relevant to timing: the Bytecode Alliance's Component Model 1.0 roadmap
+      (Eric Gregory, 2026-06-08) places shared-everything threads AFTER 1.0
+      ("these advancements also pave the road for shared-everything threads later").
+      The general mechanism is future work; our specific verified instance exists
+      now, which is the window in which contributing it is worth something.
+
       Alignment: his "host may answer ZERO to the allocation request and use a FIXED
       valid address … MPU not MMU" is exactly gale's embedded reality (meld
       merged-memory + synth --native-pointer-abi fixed base, F100/M3 MPU, BYO-OS);
@@ -301,7 +315,7 @@ artifacts:
       (3) gale's differentiated contribution = the VERIFIED ownership-transfer
       discipline (Kani-proven attach/detach FSM + barrier-pairing) + the MPU/no-MMU
       embedded profile as a working reference implementation.
-    tags: [gust, dma, shared-memory, component-model, bytecode-alliance, canonical-abi, next-step]
+    tags: [gust, dma, shared-memory, component-model, bytecode-alliance, canonical-abi, next-step, upstream-reference]
     links:
       - type: related-to
         target: SAC-DMA-SEAM
