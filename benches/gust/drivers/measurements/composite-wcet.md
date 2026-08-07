@@ -65,8 +65,13 @@ The `unmodeled-op` entries do not say **which** op:
 That is not actionable. With the opcode named, 9 declines become a specific, bounded
 request against synth's cycle model — possibly a handful of instructions covering all
 9. Without it, the only path is bisecting by hand. **Requested: include the offending
-opcode (and ideally its offset) in the `unmodeled-op` decline.** Filed once GitHub
-Actions/API is back; recorded here so it is not lost.
+opcode (and ideally its offset) in the `unmodeled-op` decline.**
+
+**Filed as synth#921** (https://github.com/pulseengine/synth/issues/921) — a follow-up
+to the closed synth#778 that shipped `--emit-wcet`. The report carries the full decline
+payload, the nine function names, and the tally; it also offers to run an instrumented
+build against this composite, since it reproduces in three commands from a committed
+input.
 
 ## What this does NOT say
 
