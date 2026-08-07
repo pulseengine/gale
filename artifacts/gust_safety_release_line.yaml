@@ -1018,7 +1018,7 @@ artifacts:
     type: sw-verification
     title: "Dissolved composite measured, with undefined symbols gated to exactly the gust:hal seam"
     method: automated-test
-    status: proposed
+    status: verified
     release: v0.7.0
     tags: [gust, os, dissolve, gate]
     links:
@@ -1033,6 +1033,24 @@ artifacts:
       Kill-criterion: the undefined set is not exactly the gust:hal seam — an empty set
       means the seam was inlined away and the OS is no longer swappable; a larger set
       means it depends on something we have not declared.
+      DELIVERED (2026-08-07, gale#257 + gale#258): .github/workflows/gustos-dissolve.yml
+      runs build-dissolve-gustos.sh on every change to the providers, the WIT seam, or
+      the composite/dissolve scripts, on pinned checksum-verified meld 0.41.3 / loom
+      1.2.0 / synth 0.52.0.
+      IT IS A GATE, NOT A RUN: green in CI on two independent heads -- the E2 commit
+      itself, and the single-source-WIT change that rebuilt every provider from source
+      with the vendored gust:hal copy deleted. The seam held both times: undefined =
+      EXACTLY {poll-task, read32, write32}.
+      The gate carries its own negative control on every invocation -- an object with
+      NO undefined symbols (the seam-swallowed shape) must be refused, and if that
+      control ever passes the script exits 4 rather than reporting a green that means
+      nothing.
+      Measured: text 4792, data 0, bss 0 -- 0 B of the STM32F100RB's 8192 SRAM.
+      NOT covered: the object has never been EXECUTED. E1 executed the component on a
+      host engine; running the dissolved object is E3 (Renode) / E4 (silicon), both
+      v0.7.1. And .text is space, not cycles -- see composite-wcet.md for what T4
+      actually bounds today (1 of 31).
+
 
   - id: REQ-OS-TARGET-RV32-001
     type: sw-req
