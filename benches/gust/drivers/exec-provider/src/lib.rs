@@ -50,7 +50,7 @@ unsafe impl GlobalAlloc for NoAlloc {
 #[global_allocator]
 static A: NoAlloc = NoAlloc;
 
-wit_bindgen::generate!({ world: "exec-provider", path: "../wit-os", generate_all });
+wit_bindgen::generate!({ world: "gust:os/exec-provider@0.1.0", path: ["../wit", "../wit-os"], generate_all });
 use exports::gust::os::exec::Guest as ExecGuest;
 use exports::gust::sched::tasks::Guest as SchedGuest;
 

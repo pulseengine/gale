@@ -20,7 +20,7 @@ unsafe impl GlobalAlloc for Bump {
 }
 #[global_allocator] static A: Bump = Bump;
 
-wit_bindgen::generate!({ world: "log-provider", path: "../wit-os", generate_all });
+wit_bindgen::generate!({ world: "gust:os/log-provider@0.1.0", path: ["../wit", "../wit-os"], generate_all });
 use crate::gust::hal::mmio::write32;
 use exports::gust::os::log::Guest;
 

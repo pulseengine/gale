@@ -6,7 +6,7 @@ struct NoAlloc;
 unsafe impl GlobalAlloc for NoAlloc { unsafe fn alloc(&self,_:Layout)->*mut u8{core::ptr::null_mut()} unsafe fn dealloc(&self,_:*mut u8,_:Layout){} }
 #[global_allocator] static A: NoAlloc = NoAlloc;
 
-wit_bindgen::generate!({ world: "app-time", path: "../wit-os" });
+wit_bindgen::generate!({ world: "gust:os/app-time@0.1.0", path: ["../wit", "../wit-os"] });
 use crate::gust::os::time::{now, deadline, elapsed};
 
 struct App;
