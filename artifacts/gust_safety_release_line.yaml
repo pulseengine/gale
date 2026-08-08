@@ -435,20 +435,58 @@ artifacts:
     status: proposed
     release: v0.7.0
     description: >
-      Cross-cutting track T2. The compiled object implementing the trusted
-      switch, MPU/MMU region-program, and Health-Monitor core (the
-      isolation-critical binary produced by v0.5.0/v0.6.0) SHALL be
-      object-code-verified with ZERO coverage gap: every codegen rule the
-      compiler applies to this object SHALL carry a per-rule verification
-      obligation (RULE-VERIFY), and the resulting binary SHALL additionally
-      pass a binary-translation validation pass (BIN-VERIFY) confirming the
-      emitted machine code is a faithful lowering of the verified source.
-      This closes the source-to-binary gap for the isolation-critical
-      object specifically — not the whole compiler surface — so the
-      compiler is removed from the isolation trust argument BY
-      CONSTRUCTION rather than by review. The first milestone on this track
-      is synth#757 coverage completion, which also gates the v0.4.0 syscall
-      seam.
+      Cross-cutting track T2. The compiled object implementing the trusted switch,
+      MPU/MMU region-program, and Health-Monitor core SHALL be object-code-verified
+      with zero coverage gap over the rules it exercises.
+
+      PRECONDITION. This requires an object produced by a compiler that emits
+      per-rule obligations — i.e. the isolation core SHALL be lowered through the
+      dissolve path (wasm -> synth), not by LLVM directly. As of v0.7.0 it is NOT:
+      plain/src/{partition_switch,mpu_switch,health_monitor}.rs are compiled
+      natively. Moving them is the substance of this requirement, and is tractable
+      because all three are already thin-seam shaped — ~1790 lines of scalar logic
+      over FOUR native atoms (ctx_save, region_swap, ctx_resume, mpu_write), with no
+      inline assembly, no volatile access and no raw pointers.
+
+      THE OBLIGATION. Every codegen rule applied to this object SHALL carry a
+      discharged per-rule verification obligation (RULE-VERIFY), and the object SHALL
+      pass binary-translation validation (BIN-VERIFY) confirming the emitted machine
+      code is a faithful lowering of its wasm input. Zero-gap is claimed over the
+      UNION of the two: a rule declined by BIN-VERIFY as non-computational is covered
+      only if its RULE-VERIFY theorem is discharged.
+
+      WHAT THIS ACHIEVES, STATED PRECISELY. The isolation core's trust argument SHALL
+      NOT depend on qualifying the Rust->wasm lowering. rustc lowers Rust to wasm
+      through LLVM, but LLVM is treated as an UNTRUSTED PRODUCER whose output is
+      verified rather than believed: the wasm artifact itself carries MC/DC decision
+      coverage (witness), sound abstract interpretation over its value domains
+      (scry), and the executable oracles, and is then lowered to machine code by a
+      translation-validated compiler (synth: RULE-VERIFY + BIN-VERIFY). Qualification
+      of LLVM is therefore not required for this object — the classical alternative
+      to tool qualification is verification of the tool's OUTPUT, and that is what is
+      claimed here. This holds ONLY while the evidence-on-wasm below is actually
+      gathered for this object; it is not an argument that can be asserted in advance
+      of it.
+
+      EVIDENCE-ON-WASM OBLIGATIONS. For the isolation-critical wasm artifact
+      specifically, the following SHALL be produced and gated: witness MC/DC with
+      ZERO unresolved gap rows over the switch/MPU/HM decisions; scry trap-verdict
+      and value-range results together with its gap report; and the executable oracle
+      set already discharging REQ-OS-SWITCH-001 / REQ-OS-ISO-001 / REQ-OS-HM-001
+      RE-RUN against the wasm build rather than only the native one. That last clause
+      is load-bearing: MC/DC and abstract interpretation establish properties OF THE
+      WASM, and do not by themselves show the wasm refines the Verus-proven Rust — a
+      miscompile could yield wasm that is well-covered and sound-by-AI yet
+      semantically different from the proven source. Absent these, the argument above
+      is unsupported and the object falls back to requiring a qualified Rust->wasm
+      toolchain.
+
+      KNOWN OPEN GAP. i32_const_correct is Admitted in synth's Rocq development
+      (false as stated for un-normalized operands; the supporting arithmetic —
+      i32_const_large_reconstruct, movw_movt_reconstruct_Z — is Qed). BIN-VERIFY
+      declines i32.const as a register operation, so neither half currently covers
+      it. Filed as synth#933. Zero-gap CANNOT be claimed while it stands. Measured on
+      the E2 composite: 473 i32.const occurrences across 34 of 67 functions.
     tags: [gust, os, track-t2, object-code-verification, synth, codegen, safety, gale63]
     links:
       - type: derives-from
@@ -473,9 +511,19 @@ artifacts:
       source for that same object. The report's coverage figure SHALL be
       100% over the rules actually exercised by this object (a zero-gap
       claim scoped to the isolation-critical binary, not a whole-compiler
-      claim). Kill-criterion: any applied codegen rule on this object
-      lacks a RULE-VERIFY obligation, or BIN-VERIFY reports a translation
-      mismatch.
+      claim), and the evidence-on-wasm obligations of REQ-OS-OBJVERIFY-001 SHALL
+      accompany it — witness MC/DC with zero unresolved gap rows, scry's verdicts and
+      gap report, and the REQ-OS-SWITCH-001 / REQ-OS-ISO-001 / REQ-OS-HM-001 oracles
+      re-run against the WASM build. Without those the coverage figure describes the
+      lowering only, not the artifact's conformance to the Verus-proven source.
+
+      Kill-criterion: any applied codegen rule on this object lacks a discharged
+      RULE-VERIFY obligation AND is not covered by BIN-VERIFY; or BIN-VERIFY reports
+      a translation mismatch; or witness reports an unresolved MC/DC gap row over the
+      switch/MPU/HM decisions; or the object is NOT synth-lowered — in which case the
+      obligation is INAPPLICABLE rather than satisfied. That last clause exists
+      because "no mismatches reported" would otherwise read as passing when the true
+      state is that the pass cannot run on this object at all.
     tags: [gust, os, track-t2, object-code-verification, synth, verified]
     links:
       - type: verifies
