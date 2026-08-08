@@ -985,7 +985,7 @@ artifacts:
   - id: REQ-OS-COMPOSITE-DISSOLVE-001
     type: sw-req
     title: "The composed OS SHALL be dissolved to a native object, and its footprint measured rather than inferred from wasm"
-    status: implemented
+    status: verified
     release: v0.7.0
     tags: [gust, os, component-model, dissolve, footprint]
     links:
