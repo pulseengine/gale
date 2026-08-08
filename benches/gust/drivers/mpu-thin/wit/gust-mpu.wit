@@ -1,0 +1,25 @@
+package gust:mpu@0.1.0;
+
+/// The one native atom: write one MPU register triple. rnr < MAX_REGIONS programs
+/// RNR/RBAR/RASR; rnr == 0xFFFFFFFF writes MPU_CTRL from `rasr`. Barrier pairing is
+/// the platform layer's trusted contract — see plain/src/mpu_switch.rs.
+interface regs {
+    mpu-write: func(rnr: u32, rbar: u32, rasr: u32);
+}
+
+/// The verified region-programming core. Table state lives in this component
+/// instance — exactly one instance may own it, the exec-provider construction.
+interface iso {
+    /// RASR SIZE field for a byte size (pure).
+    size-field: func(size: u32) -> u32;
+    /// Full RASR word for a size + writability (pure).
+    rasr-for: func(size: u32, writable: bool) -> u32;
+    /// Add a region to a partition's slot set; false if it does not fit.
+    try-add-region: func(part: u32, base: u32, size: u32, writable: bool) -> bool;
+    /// Does partition `part` cover `addr` in an enabled region?
+    covers-addr: func(part: u32, addr: u32) -> bool;
+    /// Program the incoming partition's regions through the seam, in order.
+    switch-to-partition: func(part: u32);
+}
+
+world mpu-thin { import regs; export iso; }

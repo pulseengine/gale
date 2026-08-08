@@ -1,0 +1,15 @@
+[workspace]
+[package]
+name = "gust-mpu-thin"
+version = "0.1.0"
+edition = "2021"
+description = "T2 stage 2: the Verus/Kani-verified I-ISO region-programming core as a dissolvable wasm component. Bodies lifted VERBATIM from plain/src/mpu_switch.rs + mpu.rs. ONE native atom (mpu-write) as a typed component import."
+[lib]
+crate-type = ["cdylib", "rlib"]
+[dependencies]
+wit-bindgen = { version = "0.52", default-features = false, features = ["macros"] }
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1
