@@ -1,0 +1,15 @@
+package gust:hm@0.1.0;
+
+/// The Health-Monitor value-domain predicates — pure scalar logic, no seam.
+/// Derived from plain/src/health_monitor.rs (Verus + Kani verified).
+interface detect {
+    fresh: func(age-ms: u32, limit-ms: u32) -> bool;
+    plausible: func(value: s32, lo: s32, hi: s32) -> bool;
+    innovation-ok: func(innov-abs: u32, k-sigma: u32) -> bool;
+    budget-ok: func(used-us: u32, budget-us: u32) -> bool;
+    deadline-ok: func(lateness-us: u32) -> bool;
+    heartbeat-ok: func(missed-beats: u32) -> bool;
+    vote-ok: func(s0: s32, s1: s32, s2: s32, tol: s32) -> bool;
+}
+
+world hm-thin { export detect; }
