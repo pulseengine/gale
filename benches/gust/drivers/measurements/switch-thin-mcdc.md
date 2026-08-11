@@ -139,8 +139,8 @@ originating construct is the next step.
   values), so its MC/DC verdict there rests on fewer reconstructed conditions.
 - **The oracles were not re-run against the wasm.** `REQ-OS-SWITCH-001` /
   `ISO-001` / `HM-001` remain source-level only.
-- **hm-thin and mpu-thin have no evidence-on-wasm yet** — this is one module of
-  three.
+- **mpu-thin has no evidence-on-wasm yet** — it needs an `mpu-write` seam stub.
+  hm-thin is covered in the section below.
 
 ## Reproduce
 
