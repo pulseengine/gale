@@ -1,0 +1,593 @@
+module: /tmp/mcdc-mpu/core.inst.wasm
+decisions: 2/17 full MC/DC; conditions: 8 proved, 6 gap, 37 dead
+
+decision #0 lib.rs:254: NoWitness
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+  conditions:
+    c0 (branch 0): DEAD — never evaluated in any row
+    c1 (branch 1): DEAD — never evaluated in any row
+
+decision #1 lib.rs:314: Partial
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+    row 136: {c0=F, c1=F, c2=F} -> T
+    row 138: {c0=F, c1=F, c2=F} -> T
+    row 140: {c0=F, c1=F, c2=F} -> F
+    row 141: {c0=F, c1=F, c2=F} -> F
+    row 142: {c0=F, c1=T} -> F
+    row 143: {c0=F, c1=T} -> F
+    row 144: {c0=F, c1=T} -> F
+    row 145: {c0=F, c1=T} -> F
+    row 146: {c0=F, c1=T} -> F
+    row 147: {c0=F, c1=T} -> F
+    row 156: {c0=F, c1=F, c2=T} -> F
+    row 157: {c0=F, c1=F, c2=T} -> F
+    row 158: {c0=F, c1=T} -> F
+    row 159: {c0=F, c1=T} -> F
+    row 160: {c0=F, c1=T} -> F
+    row 161: {c0=F, c1=T} -> F
+    row 162: {c0=F, c1=T} -> F
+    row 163: {c0=F, c1=T} -> F
+    row 172: {c0=F, c1=T} -> F
+    row 173: {c0=F, c1=T} -> F
+    row 174: {c0=F, c1=T} -> F
+    row 175: {c0=F, c1=T} -> F
+    row 176: {c0=F, c1=T} -> F
+    row 177: {c0=F, c1=T} -> F
+    row 178: {c0=F, c1=T} -> F
+    row 179: {c0=F, c1=T} -> F
+  conditions:
+    c0 (branch 6): GAP — try a row {c0=T, c1=F, c2=T} (outcome must differ from row 157)
+    c1 (branch 7): proved via rows 136+142 (masking)
+    c2 (branch 8): proved via rows 136+156 (unique-cause)
+
+decision #2 lib.rs:184: FullMcdc
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+    row 137: {c0=F} -> F
+    row 139: {c0=F} -> F
+    row 148: {c0=T, c1=T} -> T
+    row 149: {c0=T, c1=T} -> T
+    row 150: {c1=T} -> T
+    row 151: {c1=T} -> T
+    row 152: {c1=T} -> T
+    row 153: {c1=T} -> T
+    row 154: {c1=T} -> T
+    row 155: {c1=F} -> F
+    row 164: {c1=T} -> T
+    row 165: {c1=T} -> T
+    row 166: {c1=T} -> T
+    row 167: {c1=T} -> T
+    row 168: {c1=T} -> T
+    row 169: {c1=T} -> T
+    row 170: {c1=T} -> T
+    row 171: {c1=F} -> F
+    row 180: {c1=T} -> T
+    row 181: {c1=T} -> T
+    row 182: {c1=T} -> T
+    row 183: {c1=T} -> T
+    row 184: {c1=T} -> T
+    row 185: {c1=T} -> T
+    row 186: {c1=T} -> T
+    row 187: {c1=F} -> F
+  conditions:
+    c0 (branch 9): proved via rows 137+148 (masking)
+    c1 (branch 10): proved via rows 148+155 (masking)
+
+decision #3 lib.rs:192: Partial
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+    row 15: {c0=F, c1=F} -> F
+    row 25: {c0=T, c1=F} -> F
+    row 27: {c0=T, c1=F} -> F
+    row 29: {c0=T, c1=F} -> F
+    row 31: {c0=T, c1=F} -> F
+    row 33: {c0=T, c1=F} -> F
+    row 35: {c0=T, c1=T} -> T
+    row 36: {c0=T, c1=F} -> F
+    row 46: {c0=T, c1=F} -> F
+    row 56: {c0=T, c1=F} -> F
+    row 66: {c0=T, c1=F} -> F
+    row 76: {c0=T, c1=F} -> F
+    row 86: {c0=T, c1=F} -> F
+    row 96: {c0=T, c1=F} -> F
+    row 106: {c0=T, c1=F} -> F
+    row 116: {c0=T, c1=F} -> F
+    row 126: {c0=T, c1=F} -> F
+  conditions:
+    c0 (branch 11): GAP — try a row {c0=F, c1=F} (outcome must differ from row 126)
+    c1 (branch 12): proved via rows 25+35 (unique-cause)
+
+decision #4 lib.rs:84: FullMcdc
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+    row 16: {c0=F, c1=F} -> F
+    row 26: {c0=T} -> T
+    row 28: {c0=F, c1=T} -> T
+    row 30: {c0=T} -> T
+    row 32: {c0=F, c1=F} -> F
+    row 34: {c0=F, c1=F} -> F
+    row 37: {c0=F, c1=F} -> F
+    row 47: {c0=F, c1=F} -> F
+    row 57: {c0=F, c1=F} -> F
+    row 67: {c0=F, c1=F} -> F
+    row 77: {c0=F, c1=F} -> F
+    row 87: {c0=F, c1=F} -> F
+    row 97: {c0=F, c1=F} -> F
+    row 107: {c0=F, c1=F} -> F
+    row 117: {c0=F, c1=F} -> F
+    row 127: {c0=F, c1=F} -> F
+  conditions:
+    c0 (branch 13): proved via rows 16+26 (masking)
+    c1 (branch 14): proved via rows 16+28 (unique-cause)
+
+decision #5 lib.rs:192: Partial
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+    row 17: {c0=T} -> T
+    row 18: {c0=T} -> T
+    row 19: {c0=T} -> T
+    row 20: {c0=T} -> T
+    row 21: {c0=T} -> T
+    row 22: {c0=T} -> T
+    row 23: {c0=T} -> T
+    row 24: {c0=T} -> T
+    row 38: {c0=F, c1=F, c2=F} -> T
+    row 39: {c0=T} -> T
+    row 40: {c0=T} -> T
+    row 41: {c0=T} -> T
+    row 42: {c0=T} -> T
+    row 43: {c0=T} -> T
+    row 44: {c0=T} -> T
+    row 45: {c0=T} -> T
+    row 48: {c0=T} -> T
+    row 49: {c0=T} -> T
+    row 50: {c0=T} -> T
+    row 51: {c0=T} -> T
+    row 52: {c0=T} -> T
+    row 53: {c0=T} -> T
+    row 54: {c0=T} -> T
+    row 55: {c0=T} -> T
+    row 58: {c0=F, c1=F, c2=F} -> T
+    row 59: {c0=T} -> T
+    row 60: {c0=T} -> T
+    row 61: {c0=T} -> T
+    row 62: {c0=T} -> T
+    row 63: {c0=T} -> T
+    row 64: {c0=T} -> T
+    row 65: {c0=T} -> T
+    row 68: {c0=F, c1=F, c2=F} -> T
+    row 69: {c0=F, c1=F, c2=F} -> T
+    row 70: {c0=T} -> T
+    row 71: {c0=T} -> T
+    row 72: {c0=T} -> T
+    row 73: {c0=T} -> T
+    row 74: {c0=T} -> T
+    row 75: {c0=T} -> T
+    row 78: {c0=F, c1=F, c2=F} -> T
+    row 79: {c0=F, c1=F, c2=F} -> T
+    row 80: {c0=F, c1=F, c2=F} -> T
+    row 81: {c0=T} -> T
+    row 82: {c0=T} -> T
+    row 83: {c0=T} -> T
+    row 84: {c0=T} -> T
+    row 85: {c0=T} -> T
+    row 88: {c0=F, c1=F, c2=F} -> T
+    row 89: {c0=F, c1=F, c2=F} -> T
+    row 90: {c0=F, c1=F, c2=F} -> T
+    row 91: {c0=F, c1=F, c2=F} -> T
+    row 92: {c0=T} -> T
+    row 93: {c0=T} -> T
+    row 94: {c0=T} -> T
+    row 95: {c0=T} -> T
+    row 98: {c0=F, c1=F, c2=F} -> T
+    row 99: {c0=F, c1=F, c2=F} -> T
+    row 100: {c0=F, c1=F, c2=F} -> T
+    row 101: {c0=F, c1=F, c2=F} -> T
+    row 102: {c0=F, c1=F, c2=F} -> T
+    row 103: {c0=T} -> T
+    row 104: {c0=T} -> T
+    row 105: {c0=T} -> T
+    row 108: {c0=F, c1=F, c2=F} -> T
+    row 109: {c0=F, c1=F, c2=F} -> T
+    row 110: {c0=F, c1=F, c2=F} -> T
+    row 111: {c0=F, c1=F, c2=F} -> T
+    row 112: {c0=F, c1=F, c2=F} -> T
+    row 113: {c0=F, c1=F, c2=F} -> T
+    row 114: {c0=T} -> T
+    row 115: {c0=T} -> T
+    row 118: {c0=F, c1=F, c2=F} -> T
+    row 119: {c0=F, c1=F, c2=F} -> T
+    row 120: {c0=F, c1=F, c2=F} -> T
+    row 121: {c0=F, c1=F, c2=F} -> T
+    row 122: {c0=F, c1=F, c2=F} -> T
+    row 123: {c0=F, c1=F, c2=F} -> T
+    row 124: {c0=F, c1=F, c2=F} -> T
+    row 125: {c0=T} -> T
+    row 128: {c0=F, c1=F, c2=F} -> F
+    row 129: {c0=F, c1=F, c2=F} -> F
+    row 130: {c0=F, c1=F, c2=F} -> F
+    row 131: {c0=F, c1=F, c2=F} -> F
+    row 132: {c0=F, c1=F, c2=F} -> F
+    row 133: {c0=F, c1=F, c2=F} -> F
+    row 134: {c0=F, c1=F, c2=F} -> F
+    row 135: {c0=F, c1=F, c2=F} -> F
+  conditions:
+    c0 (branch 17): proved via rows 17+128 (masking)
+    c1 (branch 18): GAP — try a row {c0=F, c1=T, c2=F} (outcome must differ from row 135)
+    c2 (branch 19): GAP — try a row {c0=F, c1=F, c2=T} (outcome must differ from row 135)
+
+decision #6 panicking.rs:266: NoWitness
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+    row 188: {c0=F, c1=F} -> ?
+    row 189: {c0=F, c1=F} -> ?
+    row 190: {c0=T} -> ?
+    row 191: {c0=T} -> ?
+    row 192: {c0=T} -> ?
+    row 193: {c0=T} -> ?
+    row 194: {c0=T} -> ?
+    row 195: {c0=T} -> ?
+    row 196: {c0=F, c1=F} -> ?
+    row 197: {c0=F, c1=F} -> ?
+    row 198: {c0=F, c1=F} -> ?
+    row 199: {c0=F, c1=F} -> ?
+    row 200: {c0=F, c1=F} -> ?
+    row 201: {c0=F, c1=F} -> ?
+    row 202: {c0=F, c1=F} -> ?
+    row 203: {c0=F, c1=F} -> ?
+    row 204: {c0=T} -> ?
+    row 205: {c0=T} -> ?
+    row 206: {c0=T} -> ?
+    row 207: {c0=T} -> ?
+    row 208: {c0=T} -> ?
+    row 209: {c0=T} -> ?
+    row 210: {c0=T} -> ?
+    row 211: {c0=T} -> ?
+  conditions:
+    c0 (branch 25): GAP
+    c1 (branch 26): GAP
+
+decision #7 macros.rs:284: NoWitness
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+  conditions:
+    c0 (branch 29): DEAD — never evaluated in any row
+    c1 (branch 30): DEAD — never evaluated in any row
+    c2 (branch 31): DEAD — never evaluated in any row
+
+decision #8 count.rs:72: NoWitness
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+  conditions:
+    c0 (branch 52): DEAD — never evaluated in any row
+    c1 (branch 53): DEAD — never evaluated in any row
+
+decision #9 macros.rs:279: NoWitness
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+  conditions:
+    c0 (branch 47): DEAD — never evaluated in any row
+    c1 (branch 48): DEAD — never evaluated in any row
+    c2 (branch 49): DEAD — never evaluated in any row
+    c3 (branch 50): DEAD — never evaluated in any row
+
+decision #10 mod.rs:1867: NoWitness
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+  conditions:
+    c0 (branch 36): DEAD — never evaluated in any row
+    c1 (branch 37): DEAD — never evaluated in any row
+    c2 (branch 38): DEAD — never evaluated in any row
+
+decision #11 <meld-adapter>:2: NoWitness
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+  conditions:
+    c0 (branch 75): DEAD — never evaluated in any row
+    c1 (branch 76): DEAD — never evaluated in any row
+    c2 (branch 77): DEAD — never evaluated in any row
+
+decision #12 count.rs:117: NoWitness
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+  conditions:
+    c0 (branch 62): DEAD — never evaluated in any row
+    c1 (branch 63): DEAD — never evaluated in any row
+    c2 (branch 64): DEAD — never evaluated in any row
+
+decision #13 macros.rs:279: NoWitness
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+  conditions:
+    c0 (branch 66): DEAD — never evaluated in any row
+    c1 (branch 68): DEAD — never evaluated in any row
+
+decision #14 num.rs:210: NoWitness
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+  conditions:
+    c0 (branch 70): DEAD — never evaluated in any row
+    c1 (branch 71): DEAD — never evaluated in any row
+
+decision #15 <meld-adapter>:2: NoWitness
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+  conditions:
+    c0 (branch 78): DEAD — never evaluated in any row
+    c1 (branch 79): DEAD — never evaluated in any row
+    c2 (branch 80): DEAD — never evaluated in any row
+
+decision #16 <meld-adapter>:2: NoWitness
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+  conditions:
+    c0 (branch 81): DEAD — never evaluated in any row
+    c1 (branch 82): DEAD — never evaluated in any row
+    c2 (branch 83): DEAD — never evaluated in any row
+    c3 (branch 84): DEAD — never evaluated in any row
+    c4 (branch 85): DEAD — never evaluated in any row
+
+decision #17 count.rs:68: Unreached
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> T
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> T
+    row 5: {} -> T
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> F
+    row 9: {} -> F
+    row 10: {} -> F
+    row 11: {} -> T
+    row 12: {} -> T
+    row 13: {} -> T
+    row 14: {} -> T
+  conditions:
+    c0 (branch 42): DEAD — never evaluated in any row
+    c1 (branch 43): DEAD — never evaluated in any row
+    c2 (branch 44): DEAD — never evaluated in any row
+    c3 (branch 45): DEAD — never evaluated in any row
+    c4 (branch 46): DEAD — never evaluated in any row
+

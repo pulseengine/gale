@@ -1,0 +1,13 @@
+module: /tmp/mcdc-mpu/core.inst.wasm
+overall: 2/17 full MC/DC; conditions: 8 proved, 6 gap, 37 dead (51 total)
+
+source file                               decisions  full mcdc     proved        gap       dead
+---------------------------------------- ---------- ---------- ---------- ---------- ----------
+lib.rs                                            6          2          8          4          2
+<meld-adapter>                                    3          0          0          0         11
+count.rs                                          3          0          0          0         10
+macros.rs                                         3          0          0          0          9
+mod.rs                                            1          0          0          0          3
+num.rs                                            1          0          0          0          2
+panicking.rs                                      1          0          0          2          0
+

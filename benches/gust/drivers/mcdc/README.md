@@ -20,3 +20,15 @@ Two traps this harness exists to avoid:
    MC/DC.** The percentage it prints is not a coverage result.
 2. **`meld fuse` without `--preserve-names` drops the name section**, and every
    gap row becomes `(anon)` — unattributable, so the gaps cannot be triaged.
+
+Two things to know when writing vectors. The harness runs the **fused core**, so
+argument types come from the core signature, not the WIT:
+
+- a WIT `bool` is an `i32` — write `1` / `0`, not `true` / `false`;
+- a WIT `u32` is an `i32` — values at or above 2^31 need the two's-complement
+  form (`0xFFFF_FFE0` is `-32`), or witness rejects the spec as out of range.
+
+And a seam stub is **part of the artefact under measurement**: fusing it adds one
+more copy of the canonical-ABI glue, so anything counted per-component is
+inflated by one. See the `cabi_realloc` correction in
+`../measurements/switch-thin-mcdc.md`.

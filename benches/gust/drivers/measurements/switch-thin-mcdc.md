@@ -208,3 +208,75 @@ table misleading — the `lib.rs` row understates the driver's own decisions.
 - **4 only-in-synth divergences** remain, unexplained (synth#944).
 - **Nothing ran on silicon or Renode.**
 - **mpu-thin still has no evidence-on-wasm** — it needs an `mpu-write` seam stub.
+
+---
+
+# mpu-thin — the third module, and a correction to the `cabi_realloc` count
+
+`DRV=mpu-thin STUB=regs-stub VECTORS=vectors-mpu.sh`. The region-programming core;
+one seam (`mpu-write`), stubbed as a no-op the way the Kani harness stubs it.
+
+    overall: 2/17 full MC/DC; conditions: 8 proved, 6 gap, 37 dead (51 total)
+    object-disposition: 86 branches — 30 obligation-stands, 0 justified-infeasible,
+                        0 needs-object-coverage, 56 no-provenance; 12 only-in-synth
+
+## The best user-code result of the three
+
+| file | decisions | full MC/DC | proved | gap | dead |
+|---|---|---|---|---|---|
+| **`lib.rs`** (mpu-thin itself) | **6** | **2** | **8** | **4** | **2** |
+| `<meld-adapter>` | 3 | 0 | 0 | 0 | 11 |
+| `count.rs` | 3 | 0 | 0 | 0 | 10 |
+| `macros.rs` | 3 | 0 | 0 | 0 | 9 |
+| `mod.rs` | 1 | 0 | 0 | 0 | 3 |
+| `num.rs` | 1 | 0 | 0 | 0 | 2 |
+| `panicking.rs` | 1 | 0 | 0 | 2 | 0 |
+
+Two decisions reach **full MC/DC** — the first non-zero `full mcdc` count on any
+driver's own code in this repo. `validate_region`'s four-condition conjunction
+(power-of-two · min-size · alignment · no-overflow) and `size_field`'s ladder are
+both the shape MC/DC was designed for, and a designed vector set closes them.
+mpu-thin's own code: **25 branches, 19 reached.**
+
+## Same dead payload, third time
+
+    <core::fmt::Formatter>::pad_integral        25 branches, 0 reached
+    core::str::count::do_count_chars            20 branches, 0 reached
+    <u32 as core::fmt::Display>::fmt             5 branches, 0 reached
+    pad_integral::write_prefix                   3 branches, 0 reached
+
+Byte-identical in shape to switch-thin's 53 (there `<u64 as Display>`, here `<u32>`).
+mpu-thin indexes `regions[r]`; hm-thin indexes nothing and carries none of this.
+Three modules, and the correlation with array indexing holds every time.
+
+## Correction: the `cabi_realloc` duplication was our harness
+
+An earlier note reported `cabi_realloc` **×2**. That was wrong, and the tell was
+in hm-thin all along: it declares zero seams, so it is the one module fused
+*without* a stub — and it showed **one** copy.
+
+| artefact | components fused | `cabi_realloc` fns with branches |
+|---|---|---|
+| switch-thin **alone** (shipped shape) | 1 | **1** (3 branches) |
+| switch-thin + seam stub (what we measure) | 2 | 2 (6 branches) |
+| hm-thin (no stub needed) | 1 | **1** (3 branches) |
+
+One copy **per fused component** — the second was the stub's own. So the honest
+scale figure for the shipped single-component shape is **56 of 65 unreached
+branches are library machinery (53 formatting, 3 canonical-ABI glue)**, not 59 of 68.
+
+The duplication is still real where gale actually ships — `iso-core-fused` fuses
+three components — but it scales with component count, not "×2 per driver".
+Corrected on loom#303 before it could be built into that issue's acceptance gate.
+
+**The measurement lesson generalises:** a seam stub is part of the artefact under
+measurement. Anything counted per-component is inflated by it, and the run must be
+read against a driver that needs no stub before a per-component claim is made.
+
+## What this does NOT establish
+
+- **Not zero-gap** — 2/17 decisions, 6 gap, 37 dead.
+- **12 only-in-synth divergences**, the most of any module (synth#944).
+- **The seam is stubbed to a no-op**, so `mpu_write`'s barrier-pairing contract is
+  not exercised at all — that contract is trusted platform code either way.
+- **Nothing ran on silicon or under Renode.**
