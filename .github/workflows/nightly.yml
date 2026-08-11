@@ -25,6 +25,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.run_id }}
   cancel-in-progress: false
 
+env:
+  # Authenticate `west sdk install`'s GitHub API release-list fetch (anonymous
+  # 60 req/hr -> 5000/hr) so concurrent jobs don't 403 and fail to install the
+  # SDK. Same root cause fixed in zephyr-tests.yml / llvm-lto.yml / coverage.yml.
+  # github.token (the secrets context is not available at workflow-level env).
+  GITHUB_TOKEN: ${{ github.token }}
+
 jobs:
   kani-extended:
     name: Kani Extended Bounds
@@ -187,7 +194,7 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
           cd zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install -t "${SDK_TARGET}" && break || sleep 5; done
+          for attempt in 1 2 3; do west sdk install -t "${SDK_TARGET}" --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Build and run test
         env:

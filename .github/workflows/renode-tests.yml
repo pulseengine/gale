@@ -20,6 +20,11 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  # Authenticate `west sdk install`'s GitHub API release-list fetch (anonymous
+  # 60 req/hr -> 5000/hr) so concurrent jobs don't 403 and fail to install the
+  # SDK. Same root cause fixed in zephyr-tests.yml / llvm-lto.yml / coverage.yml.
+  # github.token (the secrets context is not available at workflow-level env).
+  GITHUB_TOKEN: ${{ github.token }}
   HOME: /root
   DOCKER_CONFIG: /tmp/.docker
   # ENOSPC durable fix (gale#73): the ci-base image fills most of the host root,
@@ -89,7 +94,7 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
           west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install --install-base /mnt -t arm-zephyr-eabi && break || sleep 5; done
+          for attempt in 1 2 3; do west sdk install --install-base /mnt -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Build Zephyr+Gale ELF
         env:
