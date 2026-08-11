@@ -1,0 +1,152 @@
+# Evidence-on-wasm for switch-thin — the first MC/DC + object-disposition run
+
+**Date:** 2026-08-11 · **T2 / REQ-OS-OBJVERIFY-001, the evidence-on-wasm leg** ·
+witness 0.39.0, meld 0.41.3, loom 1.2.0, synth 0.52.0
+
+Every stage-2 `RESULTS.md` closes with the same admission: *"No evidence-on-wasm.
+No witness MC/DC, no scry, and the oracles have not been re-run against the wasm
+build."* `REQ-OS-OBJVERIFY-001` was re-worded to **require** that set. This is the
+first time any of it has been gathered on a dissolved gale artifact.
+
+It is not a clean result, and that is the point of running it.
+
+## The headline
+
+    witness report --format mcdc-rollup      (84 invocations, all 9 exports)
+
+    overall: 3/22 decisions full MC/DC
+             conditions: 13 proved, 11 gap, 51 dead   (75 total)
+
+**Two thirds of the conditions in the shipped isolation-core module are dead** —
+never evaluated by a vector set that drives every export, every FSM phase, the
+window-wrap, and a 10-vector sweep of `MajorFrame::check`.
+
+Per source file:
+
+| file | decisions | full MC/DC | proved | gap | dead |
+|---|---|---|---|---|---|
+| `mod.rs` | 6 | 3 | 8 | 1 | 5 |
+| **`lib.rs`** (switch-thin itself) | **4** | **0** | **2** | **7** | **2** |
+| `macros.rs` | 4 | 0 | 2 | 1 | 11 |
+| `<meld-adapter>` | 3 | 0 | 0 | 0 | 16 |
+| `count.rs` | 2 | 0 | 0 | 0 | 12 |
+| `num.rs` | 2 | 0 | 0 | 0 | 4 |
+| `option.rs` | 1 | 0 | 1 | 1 | 0 |
+| `wit_bindgen_cabi_realloc.rs` | 1 | 0 | 0 | 1 | 1 |
+
+### Read the percentage carefully — it is not the MC/DC number
+
+`witness report` with no `--format` prints `coverage: 30/98 (30.6%)`. That counts
+branches **reached** (`hits > 0`); it is not both-outcome coverage and it is not
+MC/DC. The MC/DC verdict is `--format mcdc`, and it is the stricter 3/22 above.
+Quoting the 30.6% as a coverage result would have overstated the evidence.
+
+## Where the dead conditions live — named, not guessed
+
+`meld fuse --preserve-names` keeps the name section (without it every row reads
+`(anon)` and the gaps are unattributable). Branch counts by function:
+
+| function | branches | reached |
+|---|---|---|
+| `core::fmt::Formatter::pad_integral` | 25 | **0** |
+| `core::str::count::do_count_chars` | 20 | **0** |
+| `<u64 as Display>::fmt` | 5 | **0** |
+| `pad_integral::write_prefix` | 3 | **0** |
+| `wit_bindgen::rt::cabi_realloc` ×2 | 3 + 3 | **0** |
+| switch-thin's own code (10 fns) | 37 | 28 |
+| `MajorFrame::check` | 8 | 8 |
+
+**53 of the 68 unreached branches are `u64` decimal formatting.** A partition
+switch in a 3.7 KB isolation core carries an integer-to-string formatter it can
+never execute.
+
+`cabi_realloc` appearing **twice** independently reproduces **loom#303**
+("Canonical-ABI glue survives the dissolve … `cabi_realloc` (x2) is never removed").
+
+### Root cause: a proven invariant that never reaches the compiler
+
+The formatter is dragged in by `panic_bounds_check` — two array-index bounds
+checks on `self.cur`. `cur < MAX_WINDOWS` is exactly what the Verus/Kani proof
+establishes and what `Switcher`'s invariant maintains, but nothing communicates
+that fact to LLVM, so it emits a bounds check whose panic path formats the index.
+
+This is the proof-carrying-facts gap in miniature, on a safety-critical object.
+
+## What it costs — measured, not estimated
+
+Communicating the already-proven bound (`& (MAX_WINDOWS-1)`, a no-op under the
+invariant) and const-initialising the two `static mut Option<…>` singletons:
+
+| | shipped | + proof-carrying bound | delta |
+|---|---|---|---|
+| wasm | 8 903 B | 4 413 B | **−50.4%** |
+| `.text` | 5 220 | 2 382 | **−54.4%** |
+| `.data` | 376 | 16 | −95.7% |
+| `.bss` | 2 484 | 2 180 | −12.2% |
+| **SRAM** (data+bss) | **2 860 B** | **2 196 B** | **−23.2%** |
+| branches | 98 | 28 | −71.4% |
+| conditions dead | 51 | 5 | −90.2% |
+| MC/DC decisions | 3/22 | 2/5 | — |
+| undefined symbols | 3 seams | **3 seams** | unchanged |
+| panic/fmt functions | 4 | **0** | eliminated |
+
+The seam set is byte-for-byte the same three atoms — `ctx-save`, `region-swap`,
+`ctx-resume`. Nothing was swallowed to buy the reduction.
+
+**This is a measurement, not a shipped change.** The FSM bodies are lifted
+verbatim from the Verus/Kani-proven `plain/src/partition_switch.rs`, and that
+claim is load-bearing for the whole track; changing them is a decision that needs
+its own artifact and a re-run of the proofs, not a drive-by edit. The experiment
+sizes the prize so the decision can be taken on a number.
+
+## WASM → object disposition — the first one in this repo
+
+`synth --emit-provenance` (synth-provenance-v1, 33 functions) joined to the
+witness manifest by `(func_index, byte_offset)`:
+
+    98 branches — 42 obligation-stands, 0 justified-infeasible,
+                  0 needs-object-coverage, 56 no-provenance; 9 only-in-synth
+
+- **42 obligation-stands** — every WASM branch in switch-thin's own code and its
+  wit_bindgen glue maps to a real object branch. The lowering did not lose any.
+- **56 no-provenance** — exactly the dead set: the four `core::fmt` functions (53)
+  plus the second `cabi_realloc` copy (3).
+- **9 only-in-synth** — object conditional branches with **no WASM counterpart**,
+  in `tick` (1), `run_switch` (3), `mark_resumed` (1), `mark_swapped` (1),
+  `current_window` (1), `cabi_realloc` (1), and one function carrying no witness
+  branches at all.
+
+Those 9 are new **object-code obligations**: control flow that exists in the
+shipped binary and in no source or WASM decision, so no source-level MC/DC
+argument can discharge them. Surfacing precisely this is why object-code
+verification exists. They are consistent with the bounds-check finding above, but
+that correspondence is **not yet established** — mapping each of the 9 to its
+originating construct is the next step.
+
+## What this does NOT establish
+
+- **Not zero-gap.** `VER-OS-OBJVERIFY-001` wants zero gap rows; this is 3/22
+  decisions with 11 gaps and 51 dead conditions. `REQ-OS-OBJVERIFY-001` stays
+  `proposed`.
+- **The three seams are stubbed** to return success — the same substitution the
+  Kani harness makes, since `run_switch`'s FFI calls cannot be linked. No native
+  context save/restore was exercised.
+- **Nothing executed on silicon or under Renode.** This is wasmtime.
+- **The 9 only-in-synth divergences are unexplained**, not justified. A divergence
+  is an open obligation until each is traced to a construct and discharged.
+- **Per-condition attribution is partial.** In the reduced build witness's
+  `evaluated` maps come back empty (rows carry outcomes but not per-condition
+  values), so its MC/DC verdict there rests on fewer reconstructed conditions.
+- **The oracles were not re-run against the wasm.** `REQ-OS-SWITCH-001` /
+  `ISO-001` / `HM-001` remain source-level only.
+- **hm-thin and mpu-thin have no evidence-on-wasm yet** — this is one module of
+  three.
+
+## Reproduce
+
+    benches/gust/drivers/mcdc/run-mcdc.sh          # DRV=… for another thin driver
+
+Requires `witness >= 0.39.0` (`object-disposition` landed in 0.39, witness#109).
+The build must carry DWARF: `debuginfo=2` changes the crate disambiguator and
+permutes four function indices, so the manifest and the provenance map must both
+come from that one artefact — never join across builds.
