@@ -1,0 +1,35 @@
+package gust:switch@0.1.0;
+
+/// The three trusted seams. Context save/restore and the region program stay NATIVE
+/// — they touch CPU state wasm cannot name. What crosses is the POLICY that decides
+/// when and in which order they run. Each returns a status word.
+interface ctx {
+    ctx-save: func(part: u32) -> u32;
+    region-swap: func(part: u32) -> u32;
+    ctx-resume: func(part: u32) -> u32;
+}
+
+/// The verified switch FSM. Non-maskability is a property of this contract's SHAPE:
+/// there is no transition that leaves the pipeline early and no input that suppresses
+/// entering it at a window boundary — the wdg-thin cannot-un-start construction
+/// applied to preemption. That absence survives the dissolve.
+interface fsm {
+    /// Program one window of the static major frame. Returns false if out of range.
+    set-window: func(idx: u32, partition-id: u32, offset: u32, budget: u32) -> bool;
+    /// Close the frame: records frame-len and checks contiguity/no-overlap.
+    seal-frame: func(frame-len: u32) -> bool;
+    /// Frame well-formedness — contiguous, no gap, no overlap.
+    frame-check: func() -> bool;
+    /// Which window contains time t.
+    current-window: func(t: u32) -> u32;
+    /// Advance to time t; true when a window boundary was crossed (preemption due).
+    tick: func(t: u32) -> bool;
+    /// One-way pipeline phase acknowledgements.
+    mark-saved: func() -> bool;
+    mark-swapped: func() -> bool;
+    mark-resumed: func() -> bool;
+    /// Drive the full switch through the three seams, in order.
+    run-switch: func();
+}
+
+world switch-thin { import ctx; export fsm; }
