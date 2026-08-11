@@ -1,0 +1,1173 @@
+{
+  "schema": "synth-provenance-v1",
+  "module": "core2.wasm",
+  "functions": [
+    {
+      "func_index": 0,
+      "name": "func_0",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 2,
+      "name": "func_2",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 3,
+      "name": "func_3",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 4,
+      "name": "gust:switch/ctx@0.1.0#region-swap",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 5,
+      "name": "func_5",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 6,
+      "name": "func_6",
+      "entries": [
+        {
+          "instruction_offset": 723,
+          "wasm_op_index": 4,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            28
+          ]
+        },
+        {
+          "instruction_offset": 728,
+          "wasm_op_index": 7,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            42
+          ]
+        },
+        {
+          "instruction_offset": 740,
+          "wasm_op_index": 13,
+          "op": "Br",
+          "kind": "preserved",
+          "object_pcs": [
+            78
+          ]
+        },
+        {
+          "instruction_offset": 758,
+          "wasm_op_index": 23,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            128
+          ]
+        }
+      ],
+      "object_cond_branches": [
+        {
+          "pc": 28,
+          "wasm_op_index": 4,
+          "instruction_offset": 723,
+          "resolved": true
+        },
+        {
+          "pc": 42,
+          "wasm_op_index": 7,
+          "instruction_offset": 728,
+          "resolved": true
+        },
+        {
+          "pc": 128,
+          "wasm_op_index": 23,
+          "instruction_offset": 758,
+          "resolved": true
+        }
+      ]
+    },
+    {
+      "func_index": 7,
+      "name": "func_7",
+      "entries": [
+        {
+          "instruction_offset": 776,
+          "wasm_op_index": 3,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            22
+          ]
+        }
+      ],
+      "object_cond_branches": [
+        {
+          "pc": 22,
+          "wasm_op_index": 3,
+          "instruction_offset": 776,
+          "resolved": true
+        }
+      ]
+    },
+    {
+      "func_index": 8,
+      "name": "cabi_realloc_wit_bindgen_0_52_0",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 9,
+      "name": "cabi_realloc",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 10,
+      "name": "func_10",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 11,
+      "name": "gust:switch/fsm@0.1.0#tick",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 12,
+      "name": "func_12",
+      "entries": [
+        {
+          "instruction_offset": 856,
+          "wasm_op_index": 10,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            42
+          ]
+        },
+        {
+          "instruction_offset": 871,
+          "wasm_op_index": 16,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            68
+          ]
+        },
+        {
+          "instruction_offset": 929,
+          "wasm_op_index": 35,
+          "op": "Br",
+          "kind": "preserved",
+          "object_pcs": [
+            234
+          ]
+        },
+        {
+          "instruction_offset": 939,
+          "wasm_op_index": 39,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            252
+          ]
+        },
+        {
+          "instruction_offset": 953,
+          "wasm_op_index": 45,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            280
+          ]
+        },
+        {
+          "instruction_offset": 982,
+          "wasm_op_index": 59,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            340
+          ]
+        }
+      ],
+      "object_cond_branches": [
+        {
+          "pc": 42,
+          "wasm_op_index": 10,
+          "instruction_offset": 856,
+          "resolved": true
+        },
+        {
+          "pc": 68,
+          "wasm_op_index": 16,
+          "instruction_offset": 871,
+          "resolved": true
+        },
+        {
+          "pc": 112,
+          "wasm_op_index": 23,
+          "instruction_offset": 891,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryFill (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 134,
+          "wasm_op_index": 28,
+          "instruction_offset": 907,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 150,
+          "wasm_op_index": 28,
+          "instruction_offset": 907,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 186,
+          "wasm_op_index": 28,
+          "instruction_offset": 907,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 252,
+          "wasm_op_index": 39,
+          "instruction_offset": 939,
+          "resolved": true
+        },
+        {
+          "pc": 280,
+          "wasm_op_index": 45,
+          "instruction_offset": 953,
+          "resolved": true
+        },
+        {
+          "pc": 340,
+          "wasm_op_index": 59,
+          "instruction_offset": 982,
+          "resolved": true
+        }
+      ]
+    },
+    {
+      "func_index": 13,
+      "name": "gust:switch/fsm@0.1.0#mark-saved",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 14,
+      "name": "func_14",
+      "entries": [
+        {
+          "instruction_offset": 1042,
+          "wasm_op_index": 7,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            38
+          ]
+        },
+        {
+          "instruction_offset": 1053,
+          "wasm_op_index": 11,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            58
+          ]
+        },
+        {
+          "instruction_offset": 1127,
+          "wasm_op_index": 38,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            258
+          ]
+        }
+      ],
+      "object_cond_branches": [
+        {
+          "pc": 38,
+          "wasm_op_index": 7,
+          "instruction_offset": 1042,
+          "resolved": true
+        },
+        {
+          "pc": 58,
+          "wasm_op_index": 11,
+          "instruction_offset": 1053,
+          "resolved": true
+        },
+        {
+          "pc": 102,
+          "wasm_op_index": 18,
+          "instruction_offset": 1073,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryFill (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 124,
+          "wasm_op_index": 23,
+          "instruction_offset": 1089,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 140,
+          "wasm_op_index": 23,
+          "instruction_offset": 1089,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 178,
+          "wasm_op_index": 23,
+          "instruction_offset": 1089,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 258,
+          "wasm_op_index": 38,
+          "instruction_offset": 1127,
+          "resolved": true
+        }
+      ]
+    },
+    {
+      "func_index": 15,
+      "name": "gust:switch/fsm@0.1.0#run-switch",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 16,
+      "name": "func_16",
+      "entries": [
+        {
+          "instruction_offset": 1174,
+          "wasm_op_index": 7,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            30
+          ]
+        },
+        {
+          "instruction_offset": 1185,
+          "wasm_op_index": 11,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            46
+          ]
+        },
+        {
+          "instruction_offset": 1251,
+          "wasm_op_index": 34,
+          "op": "Br",
+          "kind": "preserved",
+          "object_pcs": [
+            220
+          ]
+        },
+        {
+          "instruction_offset": 1266,
+          "wasm_op_index": 41,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            252
+          ]
+        },
+        {
+          "instruction_offset": 1292,
+          "wasm_op_index": 54,
+          "op": "Select",
+          "kind": "folded-predication",
+          "object_pcs": [
+            284
+          ]
+        },
+        {
+          "instruction_offset": 1341,
+          "wasm_op_index": 79,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            368
+          ]
+        },
+        {
+          "instruction_offset": 1357,
+          "wasm_op_index": 86,
+          "op": "Br",
+          "kind": "preserved",
+          "object_pcs": [
+            396
+          ]
+        },
+        {
+          "instruction_offset": 1374,
+          "wasm_op_index": 96,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            426
+          ]
+        }
+      ],
+      "object_cond_branches": [
+        {
+          "pc": 30,
+          "wasm_op_index": 7,
+          "instruction_offset": 1174,
+          "resolved": true
+        },
+        {
+          "pc": 46,
+          "wasm_op_index": 11,
+          "instruction_offset": 1185,
+          "resolved": true
+        },
+        {
+          "pc": 92,
+          "wasm_op_index": 18,
+          "instruction_offset": 1205,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryFill (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 114,
+          "wasm_op_index": 23,
+          "instruction_offset": 1221,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 130,
+          "wasm_op_index": 23,
+          "instruction_offset": 1221,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 160,
+          "wasm_op_index": 23,
+          "instruction_offset": 1221,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 252,
+          "wasm_op_index": 41,
+          "instruction_offset": 1266,
+          "resolved": true
+        },
+        {
+          "pc": 368,
+          "wasm_op_index": 79,
+          "instruction_offset": 1341,
+          "resolved": true
+        },
+        {
+          "pc": 426,
+          "wasm_op_index": 96,
+          "instruction_offset": 1374,
+          "resolved": true
+        }
+      ]
+    },
+    {
+      "func_index": 17,
+      "name": "gust:switch/fsm@0.1.0#seal-frame",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 18,
+      "name": "func_18",
+      "entries": [
+        {
+          "instruction_offset": 1431,
+          "wasm_op_index": 3,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            26
+          ]
+        },
+        {
+          "instruction_offset": 1476,
+          "wasm_op_index": 20,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            120
+          ]
+        }
+      ],
+      "object_cond_branches": [
+        {
+          "pc": 26,
+          "wasm_op_index": 3,
+          "instruction_offset": 1431,
+          "resolved": true
+        },
+        {
+          "pc": 70,
+          "wasm_op_index": 10,
+          "instruction_offset": 1451,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryFill (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 120,
+          "wasm_op_index": 20,
+          "instruction_offset": 1476,
+          "resolved": true
+        },
+        {
+          "pc": 136,
+          "wasm_op_index": 24,
+          "instruction_offset": 1490,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 152,
+          "wasm_op_index": 24,
+          "instruction_offset": 1490,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 190,
+          "wasm_op_index": 24,
+          "instruction_offset": 1490,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        }
+      ]
+    },
+    {
+      "func_index": 19,
+      "name": "func_19",
+      "entries": [
+        {
+          "instruction_offset": 1529,
+          "wasm_op_index": 5,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            42
+          ]
+        },
+        {
+          "instruction_offset": 1540,
+          "wasm_op_index": 9,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            62
+          ]
+        }
+      ],
+      "object_cond_branches": [
+        {
+          "pc": 42,
+          "wasm_op_index": 5,
+          "instruction_offset": 1529,
+          "resolved": true
+        },
+        {
+          "pc": 62,
+          "wasm_op_index": 9,
+          "instruction_offset": 1540,
+          "resolved": true
+        },
+        {
+          "pc": 106,
+          "wasm_op_index": 16,
+          "instruction_offset": 1560,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryFill (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        }
+      ]
+    },
+    {
+      "func_index": 20,
+      "name": "gust:switch/fsm@0.1.0#frame-check",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 21,
+      "name": "func_21",
+      "entries": [
+        {
+          "instruction_offset": 1624,
+          "wasm_op_index": 5,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            30
+          ]
+        },
+        {
+          "instruction_offset": 1635,
+          "wasm_op_index": 9,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            46
+          ]
+        }
+      ],
+      "object_cond_branches": [
+        {
+          "pc": 30,
+          "wasm_op_index": 5,
+          "instruction_offset": 1624,
+          "resolved": true
+        },
+        {
+          "pc": 46,
+          "wasm_op_index": 9,
+          "instruction_offset": 1635,
+          "resolved": true
+        },
+        {
+          "pc": 92,
+          "wasm_op_index": 16,
+          "instruction_offset": 1655,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryFill (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 114,
+          "wasm_op_index": 21,
+          "instruction_offset": 1671,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 130,
+          "wasm_op_index": 21,
+          "instruction_offset": 1671,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 160,
+          "wasm_op_index": 21,
+          "instruction_offset": 1671,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        }
+      ]
+    },
+    {
+      "func_index": 22,
+      "name": "gust:switch/fsm@0.1.0#mark-resumed",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 23,
+      "name": "func_23",
+      "entries": [
+        {
+          "instruction_offset": 1730,
+          "wasm_op_index": 7,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            38
+          ]
+        },
+        {
+          "instruction_offset": 1741,
+          "wasm_op_index": 11,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            58
+          ]
+        },
+        {
+          "instruction_offset": 1815,
+          "wasm_op_index": 38,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            258
+          ]
+        },
+        {
+          "instruction_offset": 1842,
+          "wasm_op_index": 51,
+          "op": "Select",
+          "kind": "folded-predication",
+          "object_pcs": [
+            302
+          ]
+        }
+      ],
+      "object_cond_branches": [
+        {
+          "pc": 38,
+          "wasm_op_index": 7,
+          "instruction_offset": 1730,
+          "resolved": true
+        },
+        {
+          "pc": 58,
+          "wasm_op_index": 11,
+          "instruction_offset": 1741,
+          "resolved": true
+        },
+        {
+          "pc": 102,
+          "wasm_op_index": 18,
+          "instruction_offset": 1761,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryFill (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 124,
+          "wasm_op_index": 23,
+          "instruction_offset": 1777,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 140,
+          "wasm_op_index": 23,
+          "instruction_offset": 1777,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 178,
+          "wasm_op_index": 23,
+          "instruction_offset": 1777,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 258,
+          "wasm_op_index": 38,
+          "instruction_offset": 1815,
+          "resolved": true
+        }
+      ]
+    },
+    {
+      "func_index": 24,
+      "name": "func_24",
+      "entries": [
+        {
+          "instruction_offset": 1888,
+          "wasm_op_index": 10,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            42
+          ]
+        },
+        {
+          "instruction_offset": 1903,
+          "wasm_op_index": 16,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            68
+          ]
+        },
+        {
+          "instruction_offset": 1960,
+          "wasm_op_index": 36,
+          "op": "Br",
+          "kind": "preserved",
+          "object_pcs": [
+            224
+          ]
+        },
+        {
+          "instruction_offset": 1973,
+          "wasm_op_index": 42,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            248
+          ]
+        }
+      ],
+      "object_cond_branches": [
+        {
+          "pc": 42,
+          "wasm_op_index": 10,
+          "instruction_offset": 1888,
+          "resolved": true
+        },
+        {
+          "pc": 68,
+          "wasm_op_index": 16,
+          "instruction_offset": 1903,
+          "resolved": true
+        },
+        {
+          "pc": 112,
+          "wasm_op_index": 23,
+          "instruction_offset": 1923,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryFill (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 134,
+          "wasm_op_index": 28,
+          "instruction_offset": 1939,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 150,
+          "wasm_op_index": 28,
+          "instruction_offset": 1939,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 180,
+          "wasm_op_index": 28,
+          "instruction_offset": 1939,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 248,
+          "wasm_op_index": 42,
+          "instruction_offset": 1973,
+          "resolved": true
+        }
+      ]
+    },
+    {
+      "func_index": 25,
+      "name": "func_25",
+      "entries": [
+        {
+          "instruction_offset": 2031,
+          "wasm_op_index": 7,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            38
+          ]
+        },
+        {
+          "instruction_offset": 2042,
+          "wasm_op_index": 11,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            58
+          ]
+        },
+        {
+          "instruction_offset": 2113,
+          "wasm_op_index": 36,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            250
+          ]
+        },
+        {
+          "instruction_offset": 2129,
+          "wasm_op_index": 43,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            286
+          ]
+        },
+        {
+          "instruction_offset": 2145,
+          "wasm_op_index": 50,
+          "op": "Select",
+          "kind": "folded-predication",
+          "object_pcs": [
+            318
+          ]
+        }
+      ],
+      "object_cond_branches": [
+        {
+          "pc": 38,
+          "wasm_op_index": 7,
+          "instruction_offset": 2031,
+          "resolved": true
+        },
+        {
+          "pc": 58,
+          "wasm_op_index": 11,
+          "instruction_offset": 2042,
+          "resolved": true
+        },
+        {
+          "pc": 102,
+          "wasm_op_index": 18,
+          "instruction_offset": 2062,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryFill (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 124,
+          "wasm_op_index": 23,
+          "instruction_offset": 2078,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 140,
+          "wasm_op_index": 23,
+          "instruction_offset": 2078,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 176,
+          "wasm_op_index": 23,
+          "instruction_offset": 2078,
+          "resolved": false,
+          "note": "object conditional branch from non-branch source op MemoryCopy (uncovered in v1: i64-expansion / trap-guard / bounds-check branch)"
+        },
+        {
+          "pc": 250,
+          "wasm_op_index": 36,
+          "instruction_offset": 2113,
+          "resolved": true
+        },
+        {
+          "pc": 286,
+          "wasm_op_index": 43,
+          "instruction_offset": 2129,
+          "resolved": true
+        }
+      ]
+    },
+    {
+      "func_index": 28,
+      "name": "func_28",
+      "entries": [
+        {
+          "instruction_offset": 2166,
+          "wasm_op_index": 1,
+          "op": "Br",
+          "kind": "preserved",
+          "object_pcs": [
+            2
+          ]
+        }
+      ],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 30,
+      "name": "func_30",
+      "entries": [
+        {
+          "instruction_offset": 2190,
+          "wasm_op_index": 5,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            26
+          ]
+        },
+        {
+          "instruction_offset": 2200,
+          "wasm_op_index": 10,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            52
+          ]
+        },
+        {
+          "instruction_offset": 2210,
+          "wasm_op_index": 15,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            78
+          ]
+        },
+        {
+          "instruction_offset": 2220,
+          "wasm_op_index": 20,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            108
+          ]
+        },
+        {
+          "instruction_offset": 2230,
+          "wasm_op_index": 25,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            132
+          ]
+        },
+        {
+          "instruction_offset": 2240,
+          "wasm_op_index": 30,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            152
+          ]
+        },
+        {
+          "instruction_offset": 2257,
+          "wasm_op_index": 40,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            216
+          ]
+        },
+        {
+          "instruction_offset": 2273,
+          "wasm_op_index": 49,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            274
+          ]
+        }
+      ],
+      "object_cond_branches": [
+        {
+          "pc": 26,
+          "wasm_op_index": 5,
+          "instruction_offset": 2190,
+          "resolved": true
+        },
+        {
+          "pc": 52,
+          "wasm_op_index": 10,
+          "instruction_offset": 2200,
+          "resolved": true
+        },
+        {
+          "pc": 78,
+          "wasm_op_index": 15,
+          "instruction_offset": 2210,
+          "resolved": true
+        },
+        {
+          "pc": 108,
+          "wasm_op_index": 20,
+          "instruction_offset": 2220,
+          "resolved": true
+        },
+        {
+          "pc": 132,
+          "wasm_op_index": 25,
+          "instruction_offset": 2230,
+          "resolved": true
+        },
+        {
+          "pc": 152,
+          "wasm_op_index": 30,
+          "instruction_offset": 2240,
+          "resolved": true
+        },
+        {
+          "pc": 216,
+          "wasm_op_index": 40,
+          "instruction_offset": 2257,
+          "resolved": true
+        },
+        {
+          "pc": 274,
+          "wasm_op_index": 49,
+          "instruction_offset": 2273,
+          "resolved": true
+        }
+      ]
+    },
+    {
+      "func_index": 31,
+      "name": "gust:switch/fsm@0.1.0#current-window",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 32,
+      "name": "gust:switch/fsm@0.1.0#mark-swapped",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 33,
+      "name": "gust:switch/fsm@0.1.0#set-window",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 36,
+      "name": "func_36",
+      "entries": [
+        {
+          "instruction_offset": 2387,
+          "wasm_op_index": 3,
+          "op": "BrIf",
+          "kind": "preserved",
+          "object_pcs": [
+            22
+          ]
+        }
+      ],
+      "object_cond_branches": [
+        {
+          "pc": 22,
+          "wasm_op_index": 3,
+          "instruction_offset": 2387,
+          "resolved": true
+        }
+      ]
+    },
+    {
+      "func_index": 39,
+      "name": "func_39",
+      "entries": [],
+      "object_cond_branches": []
+    },
+    {
+      "func_index": 40,
+      "name": "func_40",
+      "entries": [],
+      "object_cond_branches": []
+    }
+  ]
+}

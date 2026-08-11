@@ -1,0 +1,125 @@
+{
+  "schema_version": "2",
+  "witness_version": "0.39.0",
+  "module_source": "/tmp/mcdc-hm/core.wasm",
+  "original_module_sha256": "8d9c2e4213ef117cd9f7eb1ac54a678dddf981771041d30d69fc4a3b75bf0b6d",
+  "branches": [
+    {
+      "id": 0,
+      "function_index": 2,
+      "function_name": "_RINvNtNtNtNtCsiXlvi8Ni4kG_12gust_hm_thin7exports4gust2hm6detect20__export_vote_ok_cabiNtBa_1PEBa_",
+      "function_display": "gust_hm_thin::exports::gust::hm::detect::_export_vote_ok_cabi::<gust_hm_thin::P>",
+      "kind": "br_if",
+      "instr_index": 15,
+      "byte_offset": 484,
+      "seq_debug": "3"
+    },
+    {
+      "id": 1,
+      "function_index": 2,
+      "function_name": "_RINvNtNtNtNtCsiXlvi8Ni4kG_12gust_hm_thin7exports4gust2hm6detect20__export_vote_ok_cabiNtBa_1PEBa_",
+      "function_display": "gust_hm_thin::exports::gust::hm::detect::_export_vote_ok_cabi::<gust_hm_thin::P>",
+      "kind": "br_if",
+      "instr_index": 21,
+      "byte_offset": 495,
+      "seq_debug": "3"
+    },
+    {
+      "id": 2,
+      "function_index": 2,
+      "function_name": "_RINvNtNtNtNtCsiXlvi8Ni4kG_12gust_hm_thin7exports4gust2hm6detect20__export_vote_ok_cabiNtBa_1PEBa_",
+      "function_display": "gust_hm_thin::exports::gust::hm::detect::_export_vote_ok_cabi::<gust_hm_thin::P>",
+      "kind": "br_if",
+      "instr_index": 25,
+      "byte_offset": 502,
+      "seq_debug": "3"
+    },
+    {
+      "id": 3,
+      "function_index": 2,
+      "function_name": "_RINvNtNtNtNtCsiXlvi8Ni4kG_12gust_hm_thin7exports4gust2hm6detect20__export_vote_ok_cabiNtBa_1PEBa_",
+      "function_display": "gust_hm_thin::exports::gust::hm::detect::_export_vote_ok_cabi::<gust_hm_thin::P>",
+      "kind": "br_if",
+      "instr_index": 4,
+      "byte_offset": 512,
+      "seq_debug": "2"
+    },
+    {
+      "id": 4,
+      "function_index": 2,
+      "function_name": "_RINvNtNtNtNtCsiXlvi8Ni4kG_12gust_hm_thin7exports4gust2hm6detect20__export_vote_ok_cabiNtBa_1PEBa_",
+      "function_display": "gust_hm_thin::exports::gust::hm::detect::_export_vote_ok_cabi::<gust_hm_thin::P>",
+      "kind": "br_if",
+      "instr_index": 10,
+      "byte_offset": 523,
+      "seq_debug": "2"
+    },
+    {
+      "id": 5,
+      "function_index": 10,
+      "function_name": "_RNvNtCs4GuYD5kr2XG_11wit_bindgen2rt12cabi_realloc",
+      "function_display": "wit_bindgen::rt::cabi_realloc",
+      "kind": "br_if",
+      "instr_index": 1,
+      "byte_offset": 598,
+      "seq_debug": "3"
+    },
+    {
+      "id": 6,
+      "function_index": 10,
+      "function_name": "_RNvNtCs4GuYD5kr2XG_11wit_bindgen2rt12cabi_realloc",
+      "function_display": "wit_bindgen::rt::cabi_realloc",
+      "kind": "br_if",
+      "instr_index": 4,
+      "byte_offset": 603,
+      "seq_debug": "3"
+    },
+    {
+      "id": 7,
+      "function_index": 10,
+      "function_name": "_RNvNtCs4GuYD5kr2XG_11wit_bindgen2rt12cabi_realloc",
+      "function_display": "wit_bindgen::rt::cabi_realloc",
+      "kind": "br_if",
+      "instr_index": 2,
+      "byte_offset": 633,
+      "seq_debug": "1"
+    },
+    {
+      "id": 8,
+      "function_index": 11,
+      "function_name": "_RNvNtCs4GuYD5kr2XG_11wit_bindgen2rt14run_ctors_once",
+      "function_display": "wit_bindgen::rt::run_ctors_once",
+      "kind": "br_if",
+      "instr_index": 2,
+      "byte_offset": 651,
+      "seq_debug": "1"
+    }
+  ],
+  "decisions": [
+    {
+      "id": 0,
+      "conditions": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "source_file": "wit_bindgen_cabi_realloc.rs",
+      "source_line": 11,
+      "chain_kind": "or"
+    },
+    {
+      "id": 1,
+      "conditions": [
+        5,
+        6,
+        7
+      ],
+      "source_file": "wit_bindgen_cabi_realloc.rs",
+      "source_line": 11,
+      "chain_kind": "mixed"
+    }
+  ],
+  "attribution_source": "dwarf"
+}
