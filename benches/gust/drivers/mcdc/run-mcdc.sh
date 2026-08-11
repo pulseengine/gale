@@ -15,6 +15,9 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DRV="${DRV:-$HERE/../switch-thin}"
+# Seam stub component to plug in. Empty for a driver with no imports (hm-thin).
+STUB="${STUB-$HERE/ctx-stub}"
+VECTORS="${VECTORS:-$HERE/vectors.sh}"
 OUT="${OUT:-${TMPDIR:-/tmp}/gust-mcdc}"
 WITNESS="${WITNESS:-witness}"
 MELD="${MELD:-meld}"
@@ -32,20 +35,26 @@ echo "== 1. build with DWARF (witness needs it for decision reconstruction) =="
 ( cd "$DRV" && CARGO_PROFILE_RELEASE_DEBUG=2 cargo build --release --target wasm32-unknown-unknown )
 WASM="$(ls "$DRV"/target/wasm32-unknown-unknown/release/*.wasm | head -1)"
 
-echo "== 2. componentize, plug the seam stub, fuse to one core =="
+echo "== 2. componentize, plug the seam stub (if any), fuse to one core =="
 wasm-tools component new "$WASM" -o "$OUT/drv.component.wasm"
-( cd "$HERE/ctx-stub" && cargo build --release --target wasm32-unknown-unknown )
-wasm-tools component new "$HERE/ctx-stub/target/wasm32-unknown-unknown/release/ctx_stub.wasm" \
-  -o "$OUT/ctx-stub.component.wasm"
-wac plug "$OUT/drv.component.wasm" --plug "$OUT/ctx-stub.component.wasm" -o "$OUT/sealed.wasm"
+if [ -n "$STUB" ]; then
+  ( cd "$STUB" && cargo build --release --target wasm32-unknown-unknown )
+  wasm-tools component new "$(ls "$STUB"/target/wasm32-unknown-unknown/release/*.wasm | head -1)" \
+    -o "$OUT/stub.component.wasm"
+  wac plug "$OUT/drv.component.wasm" --plug "$OUT/stub.component.wasm" -o "$OUT/sealed.wasm"
+else
+  # a driver with no imports (hm-thin: pure scalar predicates, zero seams) needs
+  # nothing plugged — it is already sealed.
+  cp "$OUT/drv.component.wasm" "$OUT/sealed.wasm"
+fi
 # --preserve-names: without it meld drops the name section and every function in
 # the report reads "(anon)" — the gap rows become unattributable.
 "$MELD" fuse "$OUT/sealed.wasm" --memory shared --preserve-names -o "$OUT/core.wasm" >/dev/null
 
 echo "== 3. instrument + run the designed vector set =="
 "$WITNESS" instrument "$OUT/core.wasm" -o "$OUT/core.inst.wasm"
-# shellcheck source=vectors.sh
-source "$HERE/vectors.sh"
+# shellcheck source=/dev/null
+source "$VECTORS"
 "$WITNESS" run "$OUT/core.inst.wasm" "${A[@]}" -o "$OUT/run.json"
 
 echo "== 4. the truth table (NOT the percentage) =="

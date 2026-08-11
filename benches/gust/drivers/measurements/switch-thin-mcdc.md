@@ -150,3 +150,61 @@ Requires `witness >= 0.39.0` (`object-disposition` landed in 0.39, witness#109).
 The build must carry DWARF: `debuginfo=2` changes the crate disambiguator and
 permutes four function indices, so the manifest and the provenance map must both
 come from that one artefact — never join across builds.
+
+---
+
+# hm-thin — the controlled comparison
+
+Same harness, `DRV=hm-thin STUB= VECTORS=vectors-hm.sh` (no stub: hm-thin declares
+zero seams). Seven pure scalar Health-Monitor predicates.
+
+    overall: 0/2 full MC/DC; conditions: 1 proved, 4 gap, 3 dead (8 total)
+    object-disposition: 9 branches — 9 obligation-stands, 0 justified-infeasible,
+                        0 needs-object-coverage, 0 no-provenance; 4 only-in-synth
+
+## It confirms the switch-thin root cause
+
+**9 branches in the whole fused core, against switch-thin's 98 — and not one byte
+of panic or formatting machinery.** No `pad_integral`, no `do_count_chars`, no
+`<u64 as Display>::fmt`, no `panic_bounds_check`. (The only textual hit for those
+names is a source path inside `.debug_str`, not a function.)
+
+hm-thin does no array indexing. switch-thin indexes `[self.cur]`. That is the only
+structural difference between the two, and it is worth 53 dead branches — a
+controlled comparison, not an inference from one data point.
+
+The object side is the cleanest of the three modules: **every WASM branch maps to
+an object branch, and nothing lacks provenance.**
+
+## MC/DC is close to vacuous here, and that is the honest reading
+
+Six of the seven predicates compile to **zero branches**:
+
+| predicate | br_if / br_table |
+|---|---|
+| `fresh`, `plausible`, `innovation-ok`, `budget-ok`, `deadline-ok`, `heartbeat-ok` | **0** |
+| `vote-ok` | 5 |
+
+`lo <= value && value <= hi` lowers to a branchless `and`; `if d >= 0 { d } else { -d }`
+lowers to a select. MC/DC is defined over decisions — where the compiler emits no
+decision there is nothing to cover, and a coverage number says nothing about
+whether the predicate is right. **Their correctness argument rests entirely on the
+Verus/Kani proofs; structural coverage cannot add to it or subtract from it.**
+
+That is a useful boundary for the track: MC/DC earns its keep on control flow
+(switch-thin's FSM), not on branchless value-domain predicates.
+
+## Friction observed
+
+Both decisions are attributed to `wit_bindgen_cabi_realloc.rs:11`, but the
+conditions are the five branches of `_export_vote_ok_cabi`. Inlined-decision
+attribution points at the wrong source file, which makes the rollup's per-file
+table misleading — the `lib.rs` row understates the driver's own decisions.
+
+## What this does NOT establish
+
+- **Not zero-gap** — 4 gap, 3 dead of 8 conditions; `vote-ok`'s wrapper has 2 of
+  its 5 branches unreached.
+- **4 only-in-synth divergences** remain, unexplained (synth#944).
+- **Nothing ran on silicon or Renode.**
+- **mpu-thin still has no evidence-on-wasm** — it needs an `mpu-write` seam stub.
