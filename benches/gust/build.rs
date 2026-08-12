@@ -214,6 +214,21 @@ fn main() {
     // qemu-semihosting demonstrator of this SAME dissolved .o (RAM-window register
     // effects + cannot-un-start), run before the `gust-wdg-renode` content-gate
     // (renode-test/gust_wdg.robot).
+    // The dissolved ISOLATION CORE (hm-thin + mpu-thin + switch-thin, wac-composed
+    // -> meld fuse --memory shared -> loom -> synth --native-pointer-abi): the
+    // ARINC-653 partition switch, the MPU region programmer and the health monitor
+    // in ONE object with four native atoms. gust_iso is the FIRST harness to
+    // EXECUTE it — every prior claim about this object (seam set, sizes, BIN-VERIFY,
+    // witness MC/DC, WASM->object disposition) is static. Two defects reached main
+    // through that gap (gale#266 overlapping data segments, gale#269 / synth#929
+    // i64-arg miscompile), so the Renode gate (renode-test/gust_iso.robot) exists
+    // to make execution a standing oracle rather than a one-off.
+    let iobj = Path::new(&manifest).join("drivers/iso-core-fused-cm3.o");
+    if iobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_iso={}", iobj.display());
+        println!("cargo:rustc-link-arg-bin=gust_iso_probe={}", iobj.display());
+        println!("cargo:rerun-if-changed={}", iobj.display());
+    }
     let wobj = Path::new(&manifest).join("drivers/wdg-thin/wdg-thin-cm3.o");
     if wobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_wdg={}", wobj.display());
