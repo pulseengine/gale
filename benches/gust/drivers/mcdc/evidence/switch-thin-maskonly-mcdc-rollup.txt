@@ -1,0 +1,9 @@
+module: /tmp/mcdc-maskonly/core.inst.wasm
+overall: 1/9 full MC/DC; conditions: 11 proved, 8 gap, 9 dead (28 total)
+
+source file                               decisions  full mcdc     proved        gap       dead
+---------------------------------------- ---------- ---------- ---------- ---------- ----------
+<meld-adapter>                                    4          1         10          3          5
+lib.rs                                            4          0          1          4          3
+mod.rs                                            1          0          0          1          1
+

@@ -73,9 +73,16 @@ invisible in the tool's output). More than ten times HM's 29 occurrences.
 
 ## What this does NOT establish
 
-- **No evidence-on-wasm.** No witness MC/DC, no scry, and the `REQ-OS-ISO-001`
-  oracles have not been re-run against the wasm build. BIN-VERIFY shows the lowering
-  is faithful, not that the wasm refines the Verus-proven Rust.
+- **Partial evidence-on-wasm.** witness MC/DC **has now been run** —
+  `../measurements/switch-thin-mcdc.md`, mpu-thin section: 2/17 decisions full
+  MC/DC, 8 proved / 6 gap / 37 dead, plus a WASM→object disposition (86 branches,
+  30 obligation-stands, 12 only-in-synth). This module's own `lib.rs` is the best
+  of the three — 6 decisions, 2 at full MC/DC — but it is **not zero-gap**, and 53
+  of its unreached branches are integer-formatting machinery reachable only from
+  `panic_bounds_check` on an index the proof already bounds.
+  **scry has not been run**, and the `REQ-OS-ISO-001` oracles have **not** been
+  re-run against the wasm build. BIN-VERIFY shows the lowering is faithful, not
+  that the wasm refines the Verus-proven Rust.
 - **Not executed.** Nothing has run this object, on silicon or under Renode.
 - **The seam is still native.** `mpu_write` remains trusted platform code, including
   its barrier-pairing contract. What moved is the region-programming *policy*.

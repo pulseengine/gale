@@ -1,0 +1,10 @@
+object-disposition: 98 branches — 42 obligation-stands, 0 justified-infeasible, 0 needs-object-coverage, 56 no-provenance; 9 only-in-synth
+  DIVERGENCE only-in-synth: func 6 off 740 (object branch witness never instrumented)
+  DIVERGENCE only-in-synth: func 12 off 929 (object branch witness never instrumented)
+  DIVERGENCE only-in-synth: func 16 off 1251 (object branch witness never instrumented)
+  DIVERGENCE only-in-synth: func 16 off 1292 (object branch witness never instrumented)
+  DIVERGENCE only-in-synth: func 16 off 1357 (object branch witness never instrumented)
+  DIVERGENCE only-in-synth: func 23 off 1842 (object branch witness never instrumented)
+  DIVERGENCE only-in-synth: func 24 off 1960 (object branch witness never instrumented)
+  DIVERGENCE only-in-synth: func 25 off 2145 (object branch witness never instrumented)
+  DIVERGENCE only-in-synth: func 28 off 2166 (object branch witness never instrumented)

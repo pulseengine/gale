@@ -1,0 +1,67 @@
+module: /tmp/mcdc-hm/core.inst.wasm
+decisions: 0/2 full MC/DC; conditions: 1 proved, 4 gap, 3 dead
+
+decision #0 wit_bindgen_cabi_realloc.rs:11: Partial
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> F
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> F
+    row 5: {} -> F
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> T
+    row 9: {} -> F
+    row 10: {} -> T
+    row 11: {} -> T
+    row 12: {} -> F
+    row 13: {} -> T
+    row 14: {} -> T
+    row 15: {} -> F
+    row 16: {} -> F
+    row 17: {} -> T
+    row 18: {} -> F
+    row 19: {} -> F
+    row 20: {c0=T, c3=T} -> T
+    row 21: {c0=F, c1=F, c2=F} -> F
+    row 22: {c0=T, c3=F, c4=T} -> T
+    row 23: {c0=T, c3=T} -> T
+    row 24: {c0=T, c3=T} -> T
+    row 25: {c0=T, c3=T} -> T
+    row 26: {c0=T, c3=T} -> T
+    row 27: {c0=F, c1=F, c2=F} -> F
+  conditions:
+    c0 (branch 0): proved via rows 20+21 (masking)
+    c1 (branch 1): GAP — try a row {c0=F, c1=T, c2=F} (outcome must differ from row 27)
+    c2 (branch 2): GAP — try a row {c0=F, c1=F, c2=T} (outcome must differ from row 27)
+    c3 (branch 3): GAP — try a row {c0=T, c3=T, c4=T} (outcome must differ from row 22)
+    c4 (branch 4): GAP — try a row {c0=T, c3=F, c4=F} (outcome must differ from row 22)
+
+decision #1 wit_bindgen_cabi_realloc.rs:11: NoWitness
+  truth table:
+    row 0: {} -> T
+    row 1: {} -> F
+    row 2: {} -> T
+    row 3: {} -> T
+    row 4: {} -> F
+    row 5: {} -> F
+    row 6: {} -> T
+    row 7: {} -> T
+    row 8: {} -> T
+    row 9: {} -> F
+    row 10: {} -> T
+    row 11: {} -> T
+    row 12: {} -> F
+    row 13: {} -> T
+    row 14: {} -> T
+    row 15: {} -> F
+    row 16: {} -> F
+    row 17: {} -> T
+    row 18: {} -> F
+    row 19: {} -> F
+  conditions:
+    c0 (branch 5): DEAD — never evaluated in any row
+    c1 (branch 6): DEAD — never evaluated in any row
+    c2 (branch 7): DEAD — never evaluated in any row
+

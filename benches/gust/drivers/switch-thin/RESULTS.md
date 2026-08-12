@@ -81,9 +81,17 @@ is unobtainable from the tool. Recorded rather than glossed.
 
 ## What this does NOT establish
 
-- **No evidence-on-wasm.** No witness MC/DC, no scry, and the `REQ-OS-SWITCH-001`
-  oracles have not been re-run against the wasm build. This shows the lowering is
-  faithful; it does not show the wasm refines the Verus-proven Rust.
+- **Partial evidence-on-wasm.** witness MC/DC **has now been run** —
+  `../measurements/switch-thin-mcdc.md`: **3/22 decisions full MC/DC, 13 proved /
+  11 gap / 51 dead**, plus the repo's first WASM→object disposition (98 branches,
+  42 obligation-stands, 56 no-provenance, 9 only-in-synth). Far from zero-gap: two
+  thirds of this module's conditions are never evaluated, and 53 of them are `u64`
+  formatting reachable only from `panic_bounds_check` on `self.cur` — an index
+  `Switcher`'s invariant already bounds. See that document for the −54.4% `.text`
+  this costs, recorded as a measurement rather than a change.
+  **scry has not been run**, and the `REQ-OS-SWITCH-001` oracles have **not** been
+  re-run against the wasm build. This shows the lowering is faithful; it does not
+  show the wasm refines the Verus-proven Rust.
 - **Nothing has executed any of these objects** — not on silicon, not under Renode.
   The Kani harness already substitutes the seam (`run_switch`'s FFI calls cannot be
   linked), so execution evidence is a separate obligation.

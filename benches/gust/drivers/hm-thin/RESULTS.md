@@ -66,11 +66,18 @@ appearing 29 times.
 
 ## What it does NOT establish
 
-- **Not the full evidence-on-wasm set.** `REQ-OS-OBJVERIFY-001` also requires witness
+- **Not the full evidence-on-wasm set.** `REQ-OS-OBJVERIFY-001` requires witness
   MC/DC with zero unresolved gap rows, scry's verdicts and gap report, and the
-  `REQ-OS-HM-001` oracles **re-run against the wasm build**. None of those has been
-  done for this artifact. Without them, BIN-VERIFY shows the lowering is faithful but
-  not that the wasm refines the Verus-proven Rust.
+  `REQ-OS-HM-001` oracles **re-run against the wasm build**.
+  - witness MC/DC **has now been run** — `../measurements/switch-thin-mcdc.md`,
+    hm-thin section — and it is **not** zero-gap: 0/2 decisions full MC/DC,
+    1 proved / 4 gap / 3 dead. It also shows MC/DC is close to vacuous here: six
+    of the seven predicates compile to zero branches, so their correctness rests
+    entirely on the Verus/Kani proofs, not on structural coverage.
+  - **scry has not been run**, and the `REQ-OS-HM-001` oracles have **not** been
+    re-run against the wasm build.
+  Without those, BIN-VERIFY shows the lowering is faithful but not that the wasm
+  refines the Verus-proven Rust.
 - **Not executed.** Nothing has run this object.
 - **Not the switch.** `partition_switch` (3 seams) and `mpu_switch` (1 seam) are the
   remaining stage-2 work; HM was chosen first precisely because it is the easy case.

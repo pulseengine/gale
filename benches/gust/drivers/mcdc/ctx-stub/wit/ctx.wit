@@ -1,0 +1,9 @@
+package gust:switch@0.1.0;
+
+interface ctx {
+    ctx-save: func(part: u32) -> u32;
+    region-swap: func(part: u32) -> u32;
+    ctx-resume: func(part: u32) -> u32;
+}
+
+world ctx-stub { export ctx; }
