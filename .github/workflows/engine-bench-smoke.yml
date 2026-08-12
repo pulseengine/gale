@@ -80,7 +80,11 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git \
             --mr gale/sem-replacement zephyr-workspace
           cd zephyr-workspace
-          west update --narrow -o=--depth=1
+          # west update fetches ~60 third-party modules; a single transient TLS failure
+          # on any one of them kills the whole step (seen on openthread, percepio,
+          # uoscore-uedhoc, liblc3 — a different project each time, while its neighbours
+          # clone fine from the same host). west update is resumable, so retry.
+          for attempt in 1 2 3; do west update --narrow -o=--depth=1 && break || sleep 15; done
           for attempt in 1 2 3; do
             west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5
           done
