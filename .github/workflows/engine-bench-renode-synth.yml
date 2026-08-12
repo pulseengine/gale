@@ -66,6 +66,13 @@ defaults:
   run:
     shell: bash
 
+env:
+  # Authenticate `west sdk install`'s GitHub API release-list fetch (anonymous
+  # 60 req/hr -> 5000/hr) so concurrent jobs don't 403 and fail to install the
+  # SDK. Same root cause fixed in zephyr-tests.yml / llvm-lto.yml / coverage.yml.
+  # github.token (the secrets context is not available at workflow-level env).
+  GITHUB_TOKEN: ${{ github.token }}
+
 jobs:
   long-run-synth:
     runs-on: ubuntu-22.04
@@ -136,9 +143,13 @@ jobs:
           west init -m https://github.com/pulseengine/zephyr.git \
             --mr gale/sem-replacement zephyr-workspace
           cd zephyr-workspace
-          west update --narrow -o=--depth=1
+          # west update fetches ~60 third-party modules; a single transient TLS failure
+          # on any one of them kills the whole step (seen on openthread, percepio,
+          # uoscore-uedhoc, liblc3 — a different project each time, while its neighbours
+          # clone fine from the same host). west update is resumable, so retry.
+          for attempt in 1 2 3; do west update --narrow -o=--depth=1 && break || sleep 15; done
           for attempt in 1 2 3; do
-            west sdk install -t arm-zephyr-eabi && break || sleep 5
+            west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5
           done
 
       - name: Setup SDK paths

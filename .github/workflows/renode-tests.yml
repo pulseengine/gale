@@ -20,6 +20,11 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  # Authenticate `west sdk install`'s GitHub API release-list fetch (anonymous
+  # 60 req/hr -> 5000/hr) so concurrent jobs don't 403 and fail to install the
+  # SDK. Same root cause fixed in zephyr-tests.yml / llvm-lto.yml / coverage.yml.
+  # github.token (the secrets context is not available at workflow-level env).
+  GITHUB_TOKEN: ${{ github.token }}
   HOME: /root
   DOCKER_CONFIG: /tmp/.docker
   # ENOSPC durable fix (gale#73): the ci-base image fills most of the host root,
@@ -88,8 +93,12 @@ jobs:
           export TMPDIR=/mnt/tmp   # SDK download temp on the big disk (after mkdir)
           west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement /mnt/zephyr-workspace
           cd /mnt/zephyr-workspace
-          west update --narrow -o=--depth=1
-          for attempt in 1 2 3; do west sdk install --install-base /mnt -t arm-zephyr-eabi && break || sleep 5; done
+          # west update fetches ~60 third-party modules; a single transient TLS failure
+          # on any one of them kills the whole step (seen on openthread, percepio,
+          # uoscore-uedhoc, liblc3 — a different project each time, while its neighbours
+          # clone fine from the same host). west update is resumable, so retry.
+          for attempt in 1 2 3; do west update --narrow -o=--depth=1 && break || sleep 15; done
+          for attempt in 1 2 3; do west sdk install --install-base /mnt -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
 
       - name: Build Zephyr+Gale ELF
         env:
