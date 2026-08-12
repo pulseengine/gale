@@ -14,12 +14,23 @@ WASM→object disposition join against synth's provenance map.
 - `evidence/` — the committed output of the run recorded in
   `../measurements/switch-thin-mcdc.md`.
 
-Two traps this harness exists to avoid:
+Two traps this harness exists to avoid. **witness 0.40.0 now warns about both**
+(REQ-063/REQ-064, from pulseengine/witness#177 and #178 filed off this work), but
+the harness still handles them by default so the warnings should never fire here:
 
 1. **`witness report` without `--format mcdc` reports branches *reached*, not
-   MC/DC.** The percentage it prints is not a coverage result.
+   MC/DC.** As of 0.40.0 the default output says so itself — `branches reached:
+   30/98 (30.6%) — reached at least once, NOT MC/DC` — but the number is still
+   not a coverage result. `run-mcdc.sh` writes the `--format mcdc` truth table.
 2. **`meld fuse` without `--preserve-names` drops the name section**, and every
    gap row becomes `(anon)` — unattributable, so the gaps cannot be triaged.
+   0.40.0 warns at instrument time; `run-mcdc.sh` always passes the flag.
+
+A third, only visible in the manifest: a build **without DWARF** still reports
+`attribution_source: "dwarf"`, because `meld` emits a synthetic `<meld-adapter>`
+unit regardless — so decisions collapse from 23 to 3, all of them the adapter's,
+with none from user code. 0.40.0 warns on this too. `run-mcdc.sh` always builds
+with `debuginfo=2`.
 
 Two things to know when writing vectors. The harness runs the **fused core**, so
 argument types come from the core signature, not the WIT:
@@ -31,4 +42,5 @@ argument types come from the core signature, not the WIT:
 And a seam stub is **part of the artefact under measurement**: fusing it adds one
 more copy of the canonical-ABI glue, so anything counted per-component is
 inflated by one. See the `cabi_realloc` correction in
-`../measurements/switch-thin-mcdc.md`.
+`../measurements/switch-thin-mcdc.md`. witness#180 (`--stub-imports`) will remove
+the hand-built stub crates entirely once it lands.

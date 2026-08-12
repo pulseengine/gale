@@ -146,7 +146,8 @@ originating construct is the next step.
 
     benches/gust/drivers/mcdc/run-mcdc.sh          # DRV=… for another thin driver
 
-Requires `witness >= 0.39.0` (`object-disposition` landed in 0.39, witness#109).
+Requires `witness >= 0.39.0` (`object-disposition` landed in 0.39, witness#109);
+0.40.0 or newer is recommended — it warns about the two invocation traps below.
 The build must carry DWARF: `debuginfo=2` changes the crate disambiguator and
 permutes four function indices, so the manifest and the provenance map must both
 come from that one artefact — never join across builds.
