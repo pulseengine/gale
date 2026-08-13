@@ -15,15 +15,43 @@ lowering the composite to native."* It has now been lowered.
       -> meld fuse --memory shared            (component graph -> ONE core module)
       -> loom optimize --passes inline
       -> synth compile --target cortex-m3 --all-exports --relocatable
+                       --native-pointer-abi
 
-    text   4792
-    data      0
-    bss       0
+    text   5124
+    data    512
+    bss    3096
     ---------------
-    SRAM      0 B of the STM32F100RB's 8192
+    SRAM   3608 B of the STM32F100RB's 8192   (44%)
 
-31 functions, 25 import-call relocations, 3 external symbols, 7473 B ELF
-(4792 B of that is `.text`; the rest is ELF structure, not code).
+3 external symbols (`poll-task`, `read32`, `write32`) — exactly the declared seam.
+
+### These numbers replace an earlier set that could not be executed
+
+The first cut of this measurement read `text 4792 / data 0 / bss 0` and
+`SRAM 0 B of 8192`. That object was compiled **without `--native-pointer-abi`**,
+so its linear memory was not reserved in the object at all — while the module
+still declared **17 wasm pages (1 088 KB)** for an embedder to supply. Nothing
+supplied it, and the composite **could not execute**: it passed three checks in
+`gust_osfused_probe` and then hung.
+
+`SRAM 0 B` therefore read as "this OS needs no RAM" for an object that needed
+1.05 MB — 128× the F100's entire 8 KB. The caveat below (*"`bss 0` is not 'the OS
+needs no RAM'"*) was correct in kind but unquantified, and the quantity was
+disqualifying. This is the same error `mpu-thin/RESULTS.md` caught for itself and
+did quantify (*"wrong by a factor of 136 on an 8 KB part"*). Recorded as gale#275.
+
+Two changes fixed it, and both are in the build scripts rather than a note:
+
+1. `build-gustos-components.sh` caps the declared arena at **one wasm page** —
+   `-zstack-size=2048 --initial-memory=65536`. wasm-ld's default is a 1 MB shadow
+   stack under `--stack-first` plus a 1 MB `--global-base`, which is where 17
+   pages came from.
+2. `build-dissolve-gustos.sh` passes `--native-pointer-abi`, so the arena is
+   reserved **in the object** and the numbers above are the whole footprint.
+
+The result is self-contained, fits the F100 at 44%, and **executes** —
+`gust_osfused_probe` reports ALL CHECKS PASSED, including a one-shot timer armed
+through `timer#sleep` firing at the correct tick.
 
 ## What this does NOT say
 
@@ -37,9 +65,11 @@ lowering the composite to native."* It has now been lowered.
   caveat that applies to every driver seam.
 - **This is a relocatable object, not a linked image.** It still needs the TCB
   bridge; `synth` says so itself ("requires linking with Kiln bridge").
-- **Not executed.** E1 executed the *component* on a host engine. Nothing has run
-  this object. Running the dissolved OS under Renode is E3, and on silicon is E4 —
-  both v0.7.1.
+- **Executed under qemu, not Renode and not silicon.** E1 executed the *component*
+  on a host engine; `gust_osfused_probe` now executes this OBJECT on qemu
+  lm3s6965evb (real v7-M). Renode is still E3 and silicon still E4 — both v0.7.1.
+  The seams are stubbed: a software tick source behind `read32`, and `poll-task`
+  returning Done, so nothing here exercises real hardware or a real task body.
 - **No cycle claim.** `.text` is space.
 
 ## The gate, and its direction
