@@ -1,14 +1,13 @@
-module: core2.inst.wasm
+module: /tmp/mcdc41/core.inst.wasm
 overall: 3/22 full MC/DC; conditions: 13 proved, 11 gap, 51 dead (75 total)
 
 source file                               decisions  full mcdc     proved        gap       dead
 ---------------------------------------- ---------- ---------- ---------- ---------- ----------
 mod.rs                                            6          3          8          1          5
-lib.rs                                            4          0          2          7          2
+lib.rs                                            5          0          3          8          2
 macros.rs                                         4          0          2          1         11
 <meld-adapter>                                    3          0          0          0         16
 count.rs                                          2          0          0          0         12
 num.rs                                            2          0          0          0          4
-option.rs                                         1          0          1          1          0
 wit_bindgen_cabi_realloc.rs                       1          0          0          1          1
 

@@ -42,5 +42,25 @@ argument types come from the core signature, not the WIT:
 And a seam stub is **part of the artefact under measurement**: fusing it adds one
 more copy of the canonical-ABI glue, so anything counted per-component is
 inflated by one. See the `cabi_realloc` correction in
-`../measurements/switch-thin-mcdc.md`. witness#180 (`--stub-imports`) will remove
-the hand-built stub crates entirely once it lands.
+`../measurements/switch-thin-mcdc.md`.
+
+## witness 0.41.0
+
+Two things landed off reports filed from this harness; one is usable, one is not.
+
+**REQ-065 (inline attribution, witness#179) — partially.** Decisions inlined
+through stdlib now attribute to the driver: switch-thin's `lib.rs` row went 4→5
+decisions and 2→3 proved, and the `option.rs` row disappeared. The overall
+verdict is unchanged (`3/22; 13 proved, 11 gap, 51 dead`) across 0.39/0.40/0.41,
+so it is re-attribution only and no committed evidence moves.
+**hm-thin is unchanged** — both its decisions are still booked to
+`wit_bindgen_cabi_realloc.rs` with no `lib.rs` row, because there the outermost
+frame is itself a generated cabi wrapper. For the thin-driver shape that is the
+common case, not an edge case; tracked on witness#179.
+
+**REQ-066 (`--stub-imports`, witness#180) — not usable yet.** It would delete
+`ctx-stub/` and `regs-stub/` entirely, but it only applies to
+`--backend-wasmtime-component`, and no export name resolves on that backend — not
+even the documented `pkg:ns/iface@ver#func` form that works on the core backend.
+Filed as witness#194. Until it is fixed the stub crates and the `wac plug` +
+`meld fuse` steps stay.
