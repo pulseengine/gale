@@ -35,3 +35,17 @@ the bounds checks alone. It answers loom#303's question about what strands what:
 Both `cabi_realloc` copies survive the mask with all 6 unreached branches intact,
 while every formatting function disappears. So the formatter is stranded by
 `panic_bounds_check` in the driver's own code — **not** by `cabi_realloc`.
+
+## ⚠ Per-file attribution is provisional (witness#179)
+
+The `source file` column in every committed rollup here was produced by witness
+0.39–0.42, which never rebased branch offsets into DWARF space. Branches whose
+offset fell past the last line-table row were silently **clamped** to it instead
+of resolved, so an unknown subset of those rows are artifacts rather than
+attribution. Fixed in witness#197 (v0.43.0); these files will be regenerated and
+diffed against what is committed.
+
+Unaffected: per-**function** attribution (`function_display`, from the wasm name
+section) and the per-**condition** verdict counts. The dead-code finding — 53 of
+68 unreached branches being integer-formatting machinery — rests on the function
+path and stands.

@@ -21,6 +21,22 @@ It is not a clean result, and that is the point of running it.
 never evaluated by a vector set that drives every export, every FSM phase, the
 window-wrap, and a 10-vector sweep of `MajorFrame::check`.
 
+> **⚠ The per-source-file column below is PROVISIONAL (witness#179).** witness
+> 0.39–0.42 never rebased branch offsets into DWARF space, so any branch whose
+> offset fell past the last line-table row was silently **clamped** to that row
+> rather than resolved — and that row is often `wit_bindgen_cabi_realloc.rs:11`.
+> Some rows here are real and some are clamp artifacts, and that cannot be told
+> apart from outside the tool. Fixed in witness#197, shipping in v0.43.0; every
+> number will be re-run and diffed then.
+>
+> **What is NOT affected:** the per-FUNCTION findings (`pad_integral`,
+> `do_count_chars`, `<uN as Display>::fmt`, `cabi_realloc` …) come from the wasm
+> **name section** via `function_display`, not from DWARF line info — a different
+> data path, untouched by the offset bug. That is why `meld --preserve-names` is
+> mandatory in the harness. The verdict counts (`3/22 full MC/DC; 13 proved,
+> 11 gap, 51 dead of 75`) are per-*condition*, not per-file, and are likewise
+> expected to hold — but will be verified, not assumed.
+
 Per source file:
 
 | file | decisions | full MC/DC | proved | gap | dead |
