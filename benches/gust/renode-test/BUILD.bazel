@@ -93,6 +93,21 @@ renode_test(
 # (verified-wasm key-sequence lifecycle, Kani-proven cannot-un-start) exercised on a
 # RAM-mapped IWDG window on a real STM32 model; asserts the exact KR/PR/RLR register
 # effects via Wait For Line On Uart (content, not just no-fault).
+# The dissolved ISOLATION CORE content gate (gale#266/#269/#270). This is the
+# FIRST harness to EXECUTE iso-core-fused-cm3.o — every other claim about that
+# object is static, and two defects reached main through the gap. It discriminates:
+# on synth 0.52.0 `iso-frame-ok` FAILS (set-window returns 0 where the wasm returns
+# true); on 0.56.0 every line passes.
+renode_test(
+    name = "gust-iso-renode",
+    timeout = "short",
+    robot_test = "gust_iso.robot",
+    variables_with_label = {
+        "ELF": ":gust_iso.elf",
+        "REPL": ":gust_iso.repl",
+    },
+)
+
 renode_test(
     name = "gust-wdg-renode",
     timeout = "short",
