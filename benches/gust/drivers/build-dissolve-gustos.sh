@@ -79,8 +79,13 @@ printf '  %-26s %8s B\n' "gustos.loom.wasm" "$(wc -c < "$T/gustos.loom.wasm" | t
 
 echo "== synth compile --target cortex-m3 --all-exports --relocatable =="
 mkdir -p "$(dirname "$OBJ")"
+# --native-pointer-abi: reserve the linear memory IN the object. Without it the
+# object is not self-contained — data/bss read 0 while the module still declares an
+# arena the embedder must supply, and nothing supplied it, so the composite could
+# not execute at all (gale#275). With the arena capped to one page upstream, the
+# reservation is 3 608 B of the F100's 8 192 and the object runs (gust_osfused_probe).
 if ! "$SYNTH" compile "$T/gustos.loom.wasm" --target cortex-m3 --all-exports \
-      --relocatable -o "$OBJ" 2>"$T/synth.err"; then
+      --relocatable --native-pointer-abi -o "$OBJ" 2>"$T/synth.err"; then
   echo "  FAILED:"; sed 's/^/    /' "$T/synth.err" | head -20; exit 1
 fi
 
@@ -92,6 +97,22 @@ read -r text data bss _ <<<"$("$SIZE" "$OBJ" | awk 'NR==2{print $1, $2, $3}')"
 printf '  -> text=%s data=%s bss=%s   total=%s B\n' "$text" "$data" "$bss" "$((text+data+bss))"
 printf '  -> against the STM32F100RB budget: %s B of 8192 SRAM (%s%%)\n' \
   "$((data+bss))" "$(( (data+bss)*100/8192 ))"
+# Cross-check the reservation against the arena the module DECLARES. Without
+# --native-pointer-abi the linear memory is not reserved in the object, so
+# data/bss read 0 while the module still needs an embedder-supplied arena —
+# "0 B of 8192 SRAM" then reads as "this OS needs no RAM", the same 136x error
+# mpu-thin/RESULTS.md caught for itself (gale#275). We now pass the flag, so the
+# two should agree; shout if they ever diverge again.
+pages="$(wasm-tools print "$T/gustos.loom.wasm" 2>/dev/null \
+  | grep -oE '\(memory \(;0;\) [0-9]+' | grep -oE '[0-9]+$' | head -1)"
+if [ -n "${pages:-}" ]; then
+  kb=$((pages * 64))
+  printf '  -> declared linear-memory arena: %s wasm page(s) = %s KB\n' "$pages" "$kb"
+  if [ "$((data+bss))" -eq 0 ]; then
+    echo "  WARNING: the object reserves NOTHING while the module declares ${kb} KB —"
+    echo "           it is not self-contained and cannot execute standalone (gale#275)."
+  fi
+fi
 
 # ── the gate ────────────────────────────────────────────────────────────────────
 echo ""

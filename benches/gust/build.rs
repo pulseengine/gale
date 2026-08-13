@@ -223,6 +223,19 @@ fn main() {
     // through that gap (gale#266 overlapping data segments, gale#269 / synth#929
     // i64-arg miscompile), so the Renode gate (renode-test/gust_iso.robot) exists
     // to make execution a standing oracle rather than a one-off.
+    // The E2 FUSED gust:os composite (drivers/os-node/gustos-dissolved-cm3.o) —
+    // the whole seam (time, log, spawn, exec, timer, sched/tasks) fused from a
+    // component graph into ONE object with three native atoms. It was built,
+    // symbol-gated, size-gated and WCET-measured, but linked into NOTHING, so it
+    // had never executed — and it is the artifact carrying the gale#269 /
+    // synth#929 miscompile (timer#sleep calls time#deadline(u64,u64), which
+    // thumb-2 mismarshals; synth 0.56.0 refuses to emit it). gust_os_probe is
+    // the qemu oracle for exactly that.
+    let gobj = Path::new(&manifest).join("drivers/os-node/gustos-dissolved-cm3.o");
+    if gobj.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_osfused_probe={}", gobj.display());
+        println!("cargo:rerun-if-changed={}", gobj.display());
+    }
     let iobj = Path::new(&manifest).join("drivers/iso-core-fused-cm3.o");
     if iobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_iso={}", iobj.display());

@@ -51,7 +51,15 @@ fail=""
 for entry in "${PROVIDERS[@]}"; do
   crate="${entry%%:*}"; wasm_name="${entry##*:}"
   printf '== %s ==\n' "$crate"
-  ( cd "$HERE/$crate" && cargo build --release --target wasm32-unknown-unknown >/dev/null 2>&1 )
+  # Cap the declared linear memory. wasm-ld defaults to a 1 MB shadow stack under
+  # --stack-first plus a 1 MB --global-base, so each provider declares 17 pages
+  # (1088 KB). Fused, that is what synth --native-pointer-abi must reserve: the
+  # composite came out at data 1 049 632 B — 128x the STM32F100RB's whole 8 KB of
+  # SRAM, so the object could not be self-contained and could not run (gale#275).
+  # At one page (the wasm minimum) the same composite dissolves to
+  # data 512 / bss 3096 = 3 608 B of 8 192 (44%) and executes correctly.
+  ( cd "$HERE/$crate" && RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-zstack-size=2048 -C link-arg=--initial-memory=65536 -C link-arg=--max-memory=65536" \
+      cargo build --release --target wasm32-unknown-unknown >/dev/null 2>&1 )
   core="$(find "$HERE/$crate/target/wasm32-unknown-unknown/release" -maxdepth 1 -name "$wasm_name.wasm" | head -1)"
   comp="$OUT/$crate.component.wasm"
   "$WT" component new "$core" -o "$comp"
