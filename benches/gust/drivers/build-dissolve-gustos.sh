@@ -92,6 +92,19 @@ read -r text data bss _ <<<"$("$SIZE" "$OBJ" | awk 'NR==2{print $1, $2, $3}')"
 printf '  -> text=%s data=%s bss=%s   total=%s B\n' "$text" "$data" "$bss" "$((text+data+bss))"
 printf '  -> against the STM32F100RB budget: %s B of 8192 SRAM (%s%%)\n' \
   "$((data+bss))" "$(( (data+bss)*100/8192 ))"
+# ...and the number that line does NOT include. Without --native-pointer-abi the
+# linear memory is not reserved in the object, so data/bss say 0 while the module
+# still DECLARES an arena the embedder must supply. Reporting only data+bss reads
+# as "this OS needs no RAM" — the same 136x error mpu-thin/RESULTS.md caught for
+# itself. Print the declared arena next to it so the two are never confused.
+pages="$(wasm-tools print "$T/gustos.loom.wasm" 2>/dev/null \
+  | grep -oE '\(memory \(;0;\) [0-9]+' | grep -oE '[0-9]+$' | head -1)"
+if [ -n "${pages:-}" ]; then
+  kb=$((pages * 64))
+  printf '  -> PLUS a DECLARED linear-memory arena of %s wasm pages = %s KB, supplied\n' "$pages" "$kb"
+  printf '     by the embedder and NOT counted above. On an 8 KB part that is %sx the\n' "$(( kb * 1024 / 8192 ))"
+  printf '     whole SRAM: this object is not standalone-runnable (gale#275).\n'
+fi
 
 # ── the gate ────────────────────────────────────────────────────────────────────
 echo ""
