@@ -1,4 +1,4 @@
-module: core2.inst.wasm
+module: /tmp/mcdc41/core.inst.wasm
 decisions: 3/22 full MC/DC; conditions: 13 proved, 11 gap, 51 dead
 
 decision #0 lib.rs:220: Partial
