@@ -19,7 +19,9 @@
 //!   ring_buf_peek         -> RingBuf::peek          (ring_buffer.c:105-130)
 //!
 //! Omitted (not safety-relevant):
-//!   - ring_buf_item_* — item-mode wrappers (same underlying ring)
+//!   - ring_buf_item_* — item-mode wrappers (same underlying ring); deprecated
+//!     upstream in Zephyr 4.5, so the omission is upstream-aligned rather than an
+//!     arbitrary scope decision (gale#43)
 //!   - ring_buf_put_claim/finish — zero-copy API (same index logic)
 //!   - ring_buf_get_claim/finish — zero-copy API (same index logic)
 //!   - ring_buf_internal_reset — test helper
