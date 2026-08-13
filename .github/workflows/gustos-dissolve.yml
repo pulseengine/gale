@@ -118,7 +118,7 @@ jobs:
 
       - name: Upload the dissolved object
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gustos-dissolved-cm3
           path: benches/gust/drivers/os-node/gustos-dissolved-cm3.o
