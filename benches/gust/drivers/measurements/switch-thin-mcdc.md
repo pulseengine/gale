@@ -127,17 +127,36 @@ witness manifest by `(func_index, byte_offset)`:
   wit_bindgen glue maps to a real object branch. The lowering did not lose any.
 - **56 no-provenance** — exactly the dead set: the four `core::fmt` functions (53)
   plus the second `cabi_realloc` copy (3).
-- **9 only-in-synth** — object conditional branches with **no WASM counterpart**,
-  in `tick` (1), `run_switch` (3), `mark_resumed` (1), `mark_swapped` (1),
-  `current_window` (1), `cabi_realloc` (1), and one function carrying no witness
-  branches at all.
+- **9 only-in-synth** — **NOT what this originally claimed. See the correction below.**
 
-Those 9 are new **object-code obligations**: control flow that exists in the
-shipped binary and in no source or WASM decision, so no source-level MC/DC
-argument can discharge them. Surfacing precisely this is why object-code
-verification exists. They are consistent with the bounds-check finding above, but
-that correspondence is **not yet established** — mapping each of the 9 to its
-originating construct is the next step.
+> ### ⚠ CORRECTION (synth#944, fixed in synth v0.57.0)
+>
+> This document originally read: *"Those 9 are new **object-code obligations**:
+> control flow that exists in the shipped binary and in no source or WASM decision,
+> so no source-level MC/DC argument can discharge them."* **That was wrong**, and I
+> raised it upstream as synth#944 on that basis.
+>
+> synth reproduced the exact 9 keys from the manifest + provenance map committed
+> here and showed every one is a provenance entry **for a real source WASM op**:
+>
+> | | count | source op | object realization |
+> |---|---|---|---|
+> | `preserved` | **6** | `br` | unconditional branch |
+> | `folded-predication` | **3** | `select` | predicated IT-move — *no branch at all* |
+>
+> None is a miscompile and none is an unattributed compiler-introduced branch.
+> witness's manifest only records `br_if` / `br_table_target` / `br_table_default` /
+> `if_then` / `if_else` — it never instruments unconditional `br` or `select`,
+> correctly, because they are not decisions. `only_in_synth` therefore means
+> "synth entry with no *witness* branch record", and its hardcoded text —
+> *"(object branch witness never instrumented)"* — is literally accurate but reads
+> as an alarm.
+>
+> **What I got wrong:** I read a reconciler's vocabulary as a finding about the
+> object. The join was doing exactly what it says; I supplied the alarming
+> interpretation. synth v0.57.0 now emits verified machine-readable origins for
+> genuinely compiler-introduced branches, so the category that *does* need
+> discharging is now populated and named rather than inferred.
 
 ## What this does NOT establish
 
@@ -148,8 +167,9 @@ originating construct is the next step.
   Kani harness makes, since `run_switch`'s FFI calls cannot be linked. No native
   context save/restore was exercised.
 - **Nothing executed on silicon or under Renode.** This is wasmtime.
-- **The 9 only-in-synth divergences are unexplained**, not justified. A divergence
-  is an open obligation until each is traced to a construct and discharged.
+- ~~**The 9 only-in-synth divergences are unexplained**, not justified.~~
+  **Withdrawn** — all 9 are attributed source ops (6 `br`, 3 `select`); see the
+  correction above. synth#944, fixed in synth v0.57.0.
 - **Per-condition attribution is partial.** In the reduced build witness's
   `evaluated` maps come back empty (rows carry outcomes but not per-condition
   values), so its MC/DC verdict there rests on fewer reconstructed conditions.
@@ -223,7 +243,7 @@ table misleading — the `lib.rs` row understates the driver's own decisions.
 
 - **Not zero-gap** — 4 gap, 3 dead of 8 conditions; `vote-ok`'s wrapper has 2 of
   its 5 branches unreached.
-- **4 only-in-synth divergences** remain, unexplained (synth#944).
+- **4 only-in-synth entries** — same category as the 9 above: uninstrumented `br`/`select`, not unexplained obligations (synth#944, corrected).
 - **Nothing ran on silicon or Renode.**
 - **mpu-thin still has no evidence-on-wasm** — it needs an `mpu-write` seam stub.
 

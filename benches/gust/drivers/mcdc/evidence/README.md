@@ -49,3 +49,22 @@ Unaffected: per-**function** attribution (`function_display`, from the wasm name
 section) and the per-**condition** verdict counts. The dead-code finding — 53 of
 68 unreached branches being integer-formatting machinery — rests on the function
 path and stands.
+
+## ⚠ `only-in-synth` is not a finding (synth#944, corrected)
+
+`*-object-disposition.txt` reports `N only-in-synth`, with the line
+*"(object branch witness never instrumented)"*. This was originally read here as
+*object-code obligations nothing can discharge* and filed upstream as synth#944.
+**That reading was wrong.**
+
+synth reproduced the exact keys from `switch-thin.{witness,provenance}.json` in
+this directory: all are provenance entries for real source WASM ops — **6
+`preserved` `br` (unconditional) and 3 `folded-predication` `select`** (a
+predicated IT-move, no branch at all). witness only instruments `br_if` /
+`br_table_*` / `if_then` / `if_else`, correctly, since `br` and `select` are not
+decisions. `only_in_synth` means "synth entry with no *witness* record", not
+"branch with no origin".
+
+synth v0.57.0 emits verified machine-readable origins for genuinely
+compiler-introduced branches, so that category is now named rather than inferred.
+Read these counts as a vocabulary mismatch between two tools, not as a defect.
