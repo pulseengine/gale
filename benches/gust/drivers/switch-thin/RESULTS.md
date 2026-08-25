@@ -1,7 +1,8 @@
 # switch-thin — the last isolation-core module, and the whole core fused
 
 **Date:** 2026-08-11 · **T2 / REQ-OS-OBJVERIFY-001 stage 2, final module** ·
-meld 0.41.3, loom 1.2.0, synth 0.52.0 (`--features verify` build for BIN-VERIFY)
+meld 0.41.3 (per-module) / **0.48.0** (the fused core), loom 1.2.0,
+synth 0.52.0 (`--features verify` build for BIN-VERIFY)
 
 Third and last module onto the dissolve path, after `hm-thin` (0 seams) and
 `mpu-thin` (1 seam). This one carries **three** — and carries the property the whole
@@ -33,21 +34,53 @@ cannot name. That split was already in the source; the dissolve did not invent i
 
 ## THE RESULT — the whole isolation core, fused
 
-    hm.component + mpu.component + switch.component
-      -> meld fuse --memory shared   (6 components -> 14 413 B, -38.3%)
-      -> loom optimize -> synth --native-pointer-abi --shadow-stack-size 2048
+    hm.component + mpu.component + switch.component     (--emit-relocs, __heap_base)
+      -> meld 0.48 fuse --memory shared --pack-rebase --share-stack
+      -> loom optimize -> synth --native-pointer-abi
 
-    text 9284   data 1016   bss 2688
+    text 8712   data 1096   bss 3140
 
-    SRAM   3 704 B of the STM32F100RB's 8 192   (45%)   — 4 488 B FREE
-    FLASH  9 284 B of 131 072                    (7%)
+    SRAM   4 236 B of the STM32F100RB's 8 192   (51%)   — 3 956 B FREE
+    FLASH  8 712 B of 131 072                    (7%)
     seams  [ ctx-save · region-swap · ctx-resume · mpu-write ]
+    data segments: 8, ALL DISJOINT
+
+Built by `../build-iso-core.sh`, which gates on both.
+
+### These numbers replace a build that was smaller and WRONG
+
+The earlier figure was `text 9284 / data 1016 / bss 2688 — SRAM 3 704 B (45%)`,
+from `meld fuse --memory shared`. That path merges memories **without rebasing**,
+so all three components placed static data at the same base: the fused module had
+**four overlapping data-segment pairs**, one of them mpu-thin's 320-byte
+`RegionTable` over switch-thin's `.data` (gale#266).
+
+It shipped anyway because it was the only build that FIT. The correct alternatives
+were 16x to 272x over the 8 KB budget — page-granular rebasing costs 64 KB per
+component, and these three hold 1 088 B of real state between them.
+
+meld 0.48.0 closed that, in two parts we asked for on meld#370:
+
+- **`--pack-rebase`** places each component at its true static extent — which needs
+  `--emit-relocs` *and* a retained `__heap_base`, both now enforced by
+  `../build-reloc-cores.sh`.
+- **`--share-stack`** collapses the three per-component 2 KB shadow stacks into
+  one. That was 6 144 B of the 7 236 B packed extent — 85% of the footprint was
+  stack, holding 1 088 B of state.
+
+So the correct build is now **532 B larger than the incorrect one, and both fit**.
+
+meld 0.48 also **refuses** the old path outright rather than emitting silently
+corrupt output — *"overlapping data segments in fused output (3 overlapping
+pair(s)) … this silently corrupts data"*. `check-data-overlap.py` stays as
+defence-in-depth and is a hard gate in the build script (verified to exit 5 on a
+module produced by the older meld).
 
 **Four native atoms for the entire isolation core.** The same four identified by
 reading the source before any of this was built — no drift, nothing undeclared added
 across three modules and a fusion.
 
-### Fusion is what makes it fit
+### Fusion is what makes it fit — and `--share-stack` is what makes it correct
 
 Built separately each module carries its own 2 KB shadow stack:
 
@@ -58,9 +91,10 @@ Built separately each module carries its own 2 KB shadow stack:
 | `hm-thin` (with its own stack) | ~2 688 B |
 | **total** | **~8 872 B — over the 8 192 budget** |
 
-| fused | SRAM |
-|---|---|
-| **iso-core-fused** | **3 704 B — fits, 4 488 B free** |
+| fused | SRAM | |
+|---|---|---|
+| `--memory shared` (overlapping, withdrawn) | 3 704 B | fits, but **corrupt** |
+| **`--pack-rebase --share-stack`** | **4 236 B** | **fits, DISJOINT, 3 956 B free** |
 
 An earlier note in `mpu-thin/RESULTS.md` flagged 40.6% for one module as a
 constraint. That figure is correct **per module** and per-module is not how this
@@ -92,9 +126,13 @@ is unobtainable from the tool. Recorded rather than glossed.
   **scry has not been run**, and the `REQ-OS-SWITCH-001` oracles have **not** been
   re-run against the wasm build. This shows the lowering is faithful; it does not
   show the wasm refines the Verus-proven Rust.
-- **Nothing has executed any of these objects** — not on silicon, not under Renode.
-  The Kani harness already substitutes the seam (`run_switch`'s FFI calls cannot be
-  linked), so execution evidence is a separate obligation.
+- **Executed under qemu, not on silicon and not under Renode.** `gust_iso_probe`
+  runs this object on qemu lm3s6965evb (real v7-M): 8 of 9 checks pass, including
+  the seam ORDER observed rather than assumed, and cross-component
+  non-interference. The one failure is `iso-frame-bad` — the synth 0.52.0
+  `set-window` miscompile (gale#270), fixed in synth 0.56+ and pending our pin
+  bump. The seams are recorded, not performed, exactly as the Kani harness
+  substitutes them.
 - **The four seams remain trusted native code**, including `mpu_write`'s
   barrier-pairing contract and the register save/restore.
 - **The shadow-stack budget is asserted, not proven** — the `2048 of 8192` gap.
@@ -103,10 +141,11 @@ is unobtainable from the tool. Recorded rather than glossed.
 
 ## Reproduce
 
-    cd benches/gust/drivers/switch-thin && cargo build --release --target wasm32-unknown-unknown
-    wasm-tools component new target/wasm32-unknown-unknown/release/gust_switch_thin.wasm -o sw.component.wasm
-    # the fused core:
-    meld fuse hm.component.wasm mpu.component.wasm sw.component.wasm --memory shared -o iso.fused.wasm
-    loom optimize iso.fused.wasm --passes inline --attestation false -o iso.loom.wasm
-    synth compile iso.loom.wasm --target cortex-m3 --all-exports --relocatable \
-      --native-pointer-abi --shadow-stack-size 2048 -o iso-core-fused-cm3.o
+    # the fused core — one command, both gates (disjointness + the exact seam set):
+    benches/gust/drivers/build-iso-core.sh
+
+    # and execute it:
+    cd benches/gust && cargo build --release --bin gust_iso_probe --target thumbv7m-none-eabi
+    qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
+      -semihosting-config enable=on,target=native \
+      -kernel target/thumbv7m-none-eabi/release/gust_iso_probe
