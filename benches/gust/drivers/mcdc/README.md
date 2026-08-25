@@ -48,15 +48,17 @@ inflated by one. See the `cabi_realloc` correction in
 
 Two things landed off reports filed from this harness; one is usable, one is not.
 
-**REQ-065 (inline attribution, witness#179) — partially.** Decisions inlined
+**REQ-065 (inline attribution, witness#179) — COMPLETED in 0.43.0.** Partially in
+0.41.0: Decisions inlined
 through stdlib now attribute to the driver: switch-thin's `lib.rs` row went 4→5
 decisions and 2→3 proved, and the `option.rs` row disappeared. The overall
 verdict is unchanged (`3/22; 13 proved, 11 gap, 51 dead`) across 0.39/0.40/0.41,
 so it is re-attribution only and no committed evidence moves.
-**hm-thin is unchanged** — both its decisions are still booked to
-`wit_bindgen_cabi_realloc.rs` with no `lib.rs` row, because there the outermost
-frame is itself a generated cabi wrapper. For the thin-driver shape that is the
-common case, not an edge case; tracked on witness#179.
+hm-thin was unchanged in 0.41.0 — both decisions booked to
+`wit_bindgen_cabi_realloc.rs` with no `lib.rs` row. **0.43.0 fixes it**: the real
+cause was not the outermost-frame rule but two DWARF extraction bugs (v4
+`.debug_ranges` dropped; branch offsets never rebased, so out-of-range branches
+were *clamped* onto the last line-table row). hm-thin now attributes to `lib.rs`.
 
 **REQ-066 (`--stub-imports`, witness#180) — not usable yet.** It would delete
 `ctx-stub/` and `regs-stub/` entirely, but it only applies to

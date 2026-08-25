@@ -36,35 +36,16 @@ Both `cabi_realloc` copies survive the mask with all 6 unreached branches intact
 while every formatting function disappears. So the formatter is stranded by
 `panic_bounds_check` in the driver's own code — **not** by `cabi_realloc`.
 
-## ⚠ Per-file attribution is provisional (witness#179)
+## Per-file attribution: FIXED in witness 0.43.0 (witness#179)
 
-The `source file` column in every committed rollup here was produced by witness
-0.39–0.42, which never rebased branch offsets into DWARF space. Branches whose
-offset fell past the last line-table row were silently **clamped** to it instead
-of resolved, so an unknown subset of those rows are artifacts rather than
-attribution. Fixed in witness#197 (v0.43.0); these files will be regenerated and
-diffed against what is committed.
+These rollups were regenerated on **witness 0.43.0**. Everything committed here
+before that was produced by 0.39–0.42, which never rebased branch offsets into
+DWARF space: branches past the last line-table row were silently **clamped** to
+it, usually onto `wit_bindgen_cabi_realloc.rs:11`. Two bugs — v4
+`.debug_ranges` never extracted, and offsets never rebased — both found by
+upstream reproducing the manifests in *this directory*, and fixed in witness#197.
 
-Unaffected: per-**function** attribution (`function_display`, from the wasm name
-section) and the per-**condition** verdict counts. The dead-code finding — 53 of
-68 unreached branches being integer-formatting machinery — rests on the function
-path and stands.
-
-## ⚠ `only-in-synth` is not a finding (synth#944, corrected)
-
-`*-object-disposition.txt` reports `N only-in-synth`, with the line
-*"(object branch witness never instrumented)"*. This was originally read here as
-*object-code obligations nothing can discharge* and filed upstream as synth#944.
-**That reading was wrong.**
-
-synth reproduced the exact keys from `switch-thin.{witness,provenance}.json` in
-this directory: all are provenance entries for real source WASM ops — **6
-`preserved` `br` (unconditional) and 3 `folded-predication` `select`** (a
-predicated IT-move, no branch at all). witness only instruments `br_if` /
-`br_table_*` / `if_then` / `if_else`, correctly, since `br` and `select` are not
-decisions. `only_in_synth` means "synth entry with no *witness* record", not
-"branch with no origin".
-
-synth v0.57.0 emits verified machine-readable origins for genuinely
-compiler-introduced branches, so that category is now named rather than inferred.
-Read these counts as a vocabulary mismatch between two tools, not as a defect.
+The re-run moved the totals, not just the file column (75 → 70 conditions on
+switch-thin, 3 → 2 full MC/DC), and hm-thin — the fixture committed here
+specifically to catch the case — now attributes to `lib.rs` instead of generated
+glue.

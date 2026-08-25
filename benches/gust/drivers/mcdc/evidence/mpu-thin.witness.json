@@ -1,8 +1,8 @@
 {
   "schema_version": "2",
-  "witness_version": "0.39.0",
-  "module_source": "/tmp/mcdc-mpu/core.wasm",
-  "original_module_sha256": "b1592e2cf0808e185be6288b9bd61f3e8dd353c1ab66fedf07100f7dccbc6c19",
+  "witness_version": "0.43.0",
+  "module_source": "/tmp/w43-mpu/core.wasm",
+  "original_module_sha256": "eb08c51745ffc16121f539579e7e01bd66b5102063288c7a85dbd4270303d0d9",
   "branches": [
     {
       "id": 0,
@@ -873,65 +873,68 @@
     {
       "id": 0,
       "conditions": [
-        0,
-        1
+        6,
+        7,
+        8,
+        9,
+        10
       ],
       "source_file": "lib.rs",
-      "source_line": 254,
+      "source_line": 297,
       "chain_kind": "mixed",
+      "inline_context": {
+        "call_file": "lib.rs",
+        "call_line": 326
+      }
+    },
+    {
+      "id": 1,
+      "conditions": [
+        12,
+        13,
+        14,
+        15
+      ],
+      "source_file": "lib.rs",
+      "source_line": 251,
+      "chain_kind": "or",
       "inline_context": {
         "call_file": "lib.rs",
         "call_line": 324
       }
     },
     {
-      "id": 1,
-      "conditions": [
-        6,
-        7,
-        8
-      ],
-      "source_file": "lib.rs",
-      "source_line": 314,
-      "chain_kind": "mixed"
-    },
-    {
       "id": 2,
       "conditions": [
-        9,
-        10
+        16,
+        17,
+        18,
+        19,
+        20
       ],
       "source_file": "lib.rs",
-      "source_line": 184,
-      "chain_kind": "or",
-      "inline_context": {
-        "call_file": "lib.rs",
-        "call_line": 220
-      }
+      "source_line": 263,
+      "chain_kind": "mixed"
     },
     {
       "id": 3,
       "conditions": [
-        11,
-        12
+        21,
+        22
       ],
       "source_file": "lib.rs",
-      "source_line": 192,
-      "chain_kind": "or",
-      "inline_context": {
-        "call_file": "lib.rs",
-        "call_line": 220
-      }
+      "source_line": 278,
+      "chain_kind": "mixed"
     },
     {
       "id": 4,
       "conditions": [
-        13,
-        14
+        24,
+        25
       ],
       "source_file": "lib.rs",
-      "source_line": 84,
-      "chain_kind": "or",
+      "source_line": 192,
+      "chain_kind": "mixed",
       "inline_context": {
         "call_file": "lib.rs",
         "call_line": 220
@@ -940,140 +943,151 @@
     {
       "id": 5,
       "conditions": [
-        17,
-        18,
-        19
+        29,
+        30
       ],
-      "source_file": "lib.rs",
-      "source_line": 192,
-      "chain_kind": "mixed",
-      "inline_context": {
-        "call_file": "lib.rs",
-        "call_line": 220
-      }
+      "source_file": "mod.rs",
+      "source_line": 124,
+      "chain_kind": "mixed"
     },
     {
       "id": 6,
       "conditions": [
-        25,
-        26
-      ],
-      "source_file": "panicking.rs",
-      "source_line": 266,
-      "chain_kind": "mixed"
-    },
-    {
-      "id": 7,
-      "conditions": [
-        29,
-        30,
-        31
+        36,
+        37,
+        38,
+        39
       ],
       "source_file": "macros.rs",
       "source_line": 284,
       "chain_kind": "mixed"
     },
     {
+      "id": 7,
+      "conditions": [
+        40,
+        41
+      ],
+      "source_file": "mod.rs",
+      "source_line": 1856,
+      "chain_kind": "or"
+    },
+    {
       "id": 8,
       "conditions": [
-        52,
-        53
+        47,
+        54
       ],
-      "source_file": "count.rs",
-      "source_line": 72,
+      "source_file": "range.rs",
+      "source_line": 900,
       "chain_kind": "or"
     },
     {
       "id": 9,
       "conditions": [
-        47,
         48,
         49,
-        50
+        51,
+        52,
+        53,
+        55,
+        56,
+        57
       ],
-      "source_file": "macros.rs",
-      "source_line": 279,
-      "chain_kind": "mixed"
+      "source_file": "result.rs",
+      "source_line": 2173,
+      "chain_kind": "mixed",
+      "inline_context": {
+        "call_file": "mod.rs",
+        "call_line": 1967
+      }
     },
     {
       "id": 10,
       "conditions": [
-        36,
-        37,
-        38
+        59,
+        67
       ],
-      "source_file": "mod.rs",
-      "source_line": 1867,
-      "chain_kind": "mixed"
+      "source_file": "count.rs",
+      "source_line": 68,
+      "chain_kind": "and"
     },
     {
       "id": 11,
       "conditions": [
-        75,
-        76,
-        77
+        61,
+        62,
+        63
       ],
-      "source_file": "<meld-adapter>",
-      "source_line": 2,
-      "chain_kind": "mixed"
+      "source_file": "macros.rs",
+      "source_line": 284,
+      "chain_kind": "or"
     },
     {
       "id": 12,
       "conditions": [
-        62,
-        63,
-        64
+        65,
+        66
       ],
-      "source_file": "count.rs",
-      "source_line": 117,
-      "chain_kind": "mixed"
+      "source_file": "macros.rs",
+      "source_line": 284,
+      "chain_kind": "or"
     },
     {
       "id": 13,
       "conditions": [
-        66,
-        68
+        69,
+        71,
+        72
       ],
       "source_file": "macros.rs",
-      "source_line": 279,
+      "source_line": 180,
       "chain_kind": "or"
     },
     {
       "id": 14,
       "conditions": [
-        70,
-        71
+        74,
+        75,
+        76,
+        77
       ],
-      "source_file": "num.rs",
-      "source_line": 210,
+      "source_file": "macros.rs",
+      "source_line": 284,
       "chain_kind": "mixed"
     },
     {
       "id": 15,
       "conditions": [
         78,
-        79,
         80
       ],
-      "source_file": "<meld-adapter>",
-      "source_line": 2,
-      "chain_kind": "mixed"
+      "source_file": "mod.rs",
+      "source_line": 1848,
+      "chain_kind": "or"
     },
     {
       "id": 16,
       "conditions": [
         81,
-        82,
-        83,
-        84,
-        85
+        82
       ],
-      "source_file": "<meld-adapter>",
-      "source_line": 2,
-      "chain_kind": "mixed"
+      "source_file": "num.rs",
+      "source_line": 198,
+      "chain_kind": "or"
     },
     {
       "id": 17,
+      "conditions": [
+        84,
+        85
+      ],
+      "source_file": "num.rs",
+      "source_line": 236,
+      "chain_kind": "and"
+    },
+    {
+      "id": 18,
       "conditions": [
         42,
         43,
@@ -1081,295 +1095,477 @@
         45,
         46
       ],
-      "source_file": "count.rs",
-      "source_line": 68
+      "source_file": "mod.rs",
+      "source_line": 502,
+      "inline_context": {
+        "call_file": "mod.rs",
+        "call_line": 1957
+      }
     }
   ],
   "branch_inline_contexts": {
-    "0": {
+    "4": {
       "call_file": "lib.rs",
-      "call_line": 324
+      "call_line": 144
     },
-    "1": {
+    "6": {
       "call_file": "lib.rs",
-      "call_line": 324
+      "call_line": 326
+    },
+    "7": {
+      "call_file": "lib.rs",
+      "call_line": 326
+    },
+    "8": {
+      "call_file": "lib.rs",
+      "call_line": 326
     },
     "9": {
       "call_file": "lib.rs",
-      "call_line": 220
+      "call_line": 326
     },
     "10": {
       "call_file": "lib.rs",
-      "call_line": 220
-    },
-    "11": {
-      "call_file": "lib.rs",
-      "call_line": 220
+      "call_line": 326
     },
     "12": {
       "call_file": "lib.rs",
-      "call_line": 220
+      "call_line": 324
     },
     "13": {
       "call_file": "lib.rs",
-      "call_line": 220
+      "call_line": 324
     },
     "14": {
       "call_file": "lib.rs",
-      "call_line": 220
+      "call_line": 324
     },
     "15": {
       "call_file": "lib.rs",
-      "call_line": 220
-    },
-    "16": {
-      "call_file": "lib.rs",
-      "call_line": 220
-    },
-    "17": {
-      "call_file": "lib.rs",
-      "call_line": 220
-    },
-    "18": {
-      "call_file": "lib.rs",
-      "call_line": 220
-    },
-    "19": {
-      "call_file": "lib.rs",
-      "call_line": 220
-    },
-    "20": {
-      "call_file": "lib.rs",
-      "call_line": 220
-    },
-    "21": {
-      "call_file": "lib.rs",
-      "call_line": 156
-    },
-    "22": {
-      "call_file": "lib.rs",
-      "call_line": 42
+      "call_line": 324
     },
     "24": {
-      "call_file": "panicking.rs",
-      "call_line": 72
+      "call_file": "lib.rs",
+      "call_line": 220
     },
-    "27": {
+    "25": {
+      "call_file": "lib.rs",
+      "call_line": 220
+    },
+    "26": {
+      "call_file": "lib.rs",
+      "call_line": 144
+    },
+    "34": {
+      "call_file": "iter.rs",
+      "call_line": 47
+    },
+    "35": {
       "call_file": "map.rs",
       "call_line": 128
     },
-    "28": {
+    "36": {
       "call_file": "map.rs",
       "call_line": 128
     },
-    "54": {
+    "42": {
+      "call_file": "mod.rs",
+      "call_line": 1957
+    },
+    "43": {
+      "call_file": "mod.rs",
+      "call_line": 1957
+    },
+    "44": {
+      "call_file": "mod.rs",
+      "call_line": 1957
+    },
+    "45": {
+      "call_file": "mod.rs",
+      "call_line": 1957
+    },
+    "46": {
+      "call_file": "mod.rs",
+      "call_line": 1957
+    },
+    "48": {
+      "call_file": "mod.rs",
+      "call_line": 1967
+    },
+    "49": {
+      "call_file": "mod.rs",
+      "call_line": 1865
+    },
+    "50": {
+      "call_file": "range.rs",
+      "call_line": 900
+    },
+    "51": {
+      "call_file": "mod.rs",
+      "call_line": 1967
+    },
+    "52": {
+      "call_file": "mod.rs",
+      "call_line": 1874
+    },
+    "53": {
+      "call_file": "mod.rs",
+      "call_line": 1875
+    },
+    "55": {
+      "call_file": "mod.rs",
+      "call_line": 1757
+    },
+    "56": {
+      "call_file": "mod.rs",
+      "call_line": 1867
+    },
+    "57": {
+      "call_file": "mod.rs",
+      "call_line": 1858
+    },
+    "64": {
+      "call_file": "map.rs",
+      "call_line": 128
+    },
+    "68": {
       "call_file": "iter.rs",
       "call_line": 100
     },
-    "59": {
-      "call_file": "macros.rs",
-      "call_line": 180
-    },
-    "61": {
-      "call_file": "count.rs",
+    "73": {
+      "call_file": "map.rs",
       "call_line": 128
     },
-    "64": {
-      "call_file": "count.rs",
-      "call_line": 103
+    "74": {
+      "call_file": "map.rs",
+      "call_line": 128
     },
-    "70": {
+    "79": {
+      "call_file": "mod.rs",
+      "call_line": 1849
+    },
+    "81": {
       "call_file": "num.rs",
       "call_line": 185
     }
   },
   "branch_inline_chains": {
-    "0": [
+    "4": [
       {
         "call_file": "lib.rs",
-        "call_line": 324
+        "call_line": 17
+      },
+      {
+        "call_file": "lib.rs",
+        "call_line": 322
+      },
+      {
+        "call_file": "lib.rs",
+        "call_line": 144
       }
     ],
-    "1": [
+    "6": [
       {
         "call_file": "lib.rs",
-        "call_line": 324
+        "call_line": 326
+      }
+    ],
+    "7": [
+      {
+        "call_file": "lib.rs",
+        "call_line": 326
+      }
+    ],
+    "8": [
+      {
+        "call_file": "lib.rs",
+        "call_line": 326
       }
     ],
     "9": [
       {
         "call_file": "lib.rs",
-        "call_line": 327
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 220
+        "call_line": 326
       }
     ],
     "10": [
       {
         "call_file": "lib.rs",
-        "call_line": 327
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 220
-      }
-    ],
-    "11": [
-      {
-        "call_file": "lib.rs",
-        "call_line": 327
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 220
+        "call_line": 326
       }
     ],
     "12": [
       {
         "call_file": "lib.rs",
-        "call_line": 327
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 220
+        "call_line": 324
       }
     ],
     "13": [
       {
         "call_file": "lib.rs",
-        "call_line": 327
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 220
+        "call_line": 324
       }
     ],
     "14": [
       {
         "call_file": "lib.rs",
-        "call_line": 327
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 220
+        "call_line": 324
       }
     ],
     "15": [
       {
         "call_file": "lib.rs",
-        "call_line": 327
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 220
-      }
-    ],
-    "16": [
-      {
-        "call_file": "lib.rs",
-        "call_line": 327
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 220
-      }
-    ],
-    "17": [
-      {
-        "call_file": "lib.rs",
-        "call_line": 327
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 220
-      }
-    ],
-    "18": [
-      {
-        "call_file": "lib.rs",
-        "call_line": 327
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 220
-      }
-    ],
-    "19": [
-      {
-        "call_file": "lib.rs",
-        "call_line": 327
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 220
-      }
-    ],
-    "20": [
-      {
-        "call_file": "lib.rs",
-        "call_line": 327
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 220
-      }
-    ],
-    "21": [
-      {
-        "call_file": "lib.rs",
-        "call_line": 327
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 221
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 156
-      }
-    ],
-    "22": [
-      {
-        "call_file": "lib.rs",
-        "call_line": 327
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 221
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 156
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 150
-      },
-      {
-        "call_file": "lib.rs",
-        "call_line": 42
+        "call_line": 324
       }
     ],
     "24": [
       {
-        "call_file": "panicking.rs",
+        "call_file": "lib.rs",
+        "call_line": 327
+      },
+      {
+        "call_file": "lib.rs",
+        "call_line": 220
+      }
+    ],
+    "25": [
+      {
+        "call_file": "lib.rs",
+        "call_line": 327
+      },
+      {
+        "call_file": "lib.rs",
+        "call_line": 220
+      }
+    ],
+    "26": [
+      {
+        "call_file": "lib.rs",
+        "call_line": 327
+      },
+      {
+        "call_file": "lib.rs",
+        "call_line": 220
+      },
+      {
+        "call_file": "lib.rs",
+        "call_line": 193
+      },
+      {
+        "call_file": "lib.rs",
+        "call_line": 144
+      }
+    ],
+    "34": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1839
+      },
+      {
+        "call_file": "iter.rs",
+        "call_line": 47
+      }
+    ],
+    "35": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1839
+      },
+      {
+        "call_file": "iter.rs",
+        "call_line": 47
+      },
+      {
+        "call_file": "count.rs",
+        "call_line": 33
+      },
+      {
+        "call_file": "count.rs",
+        "call_line": 136
+      },
+      {
+        "call_file": "filter.rs",
+        "call_line": 142
+      },
+      {
+        "call_file": "iterator.rs",
+        "call_line": 3674
+      },
+      {
+        "call_file": "accum.rs",
+        "call_line": 52
+      },
+      {
+        "call_file": "map.rs",
+        "call_line": 128
+      }
+    ],
+    "36": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1839
+      },
+      {
+        "call_file": "iter.rs",
+        "call_line": 47
+      },
+      {
+        "call_file": "count.rs",
+        "call_line": 33
+      },
+      {
+        "call_file": "count.rs",
+        "call_line": 136
+      },
+      {
+        "call_file": "filter.rs",
+        "call_line": 142
+      },
+      {
+        "call_file": "iterator.rs",
+        "call_line": 3674
+      },
+      {
+        "call_file": "accum.rs",
+        "call_line": 52
+      },
+      {
+        "call_file": "map.rs",
+        "call_line": 128
+      }
+    ],
+    "42": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1873
+      },
+      {
+        "call_file": "mod.rs",
+        "call_line": 1957
+      }
+    ],
+    "43": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1873
+      },
+      {
+        "call_file": "mod.rs",
+        "call_line": 1957
+      }
+    ],
+    "44": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1873
+      },
+      {
+        "call_file": "mod.rs",
+        "call_line": 1957
+      }
+    ],
+    "45": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1873
+      },
+      {
+        "call_file": "mod.rs",
+        "call_line": 1957
+      }
+    ],
+    "46": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1873
+      },
+      {
+        "call_file": "mod.rs",
+        "call_line": 1957
+      }
+    ],
+    "48": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1873
+      },
+      {
+        "call_file": "mod.rs",
+        "call_line": 1967
+      }
+    ],
+    "49": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1865
+      }
+    ],
+    "50": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1866
+      },
+      {
+        "call_file": "mod.rs",
+        "call_line": 1966
+      },
+      {
+        "call_file": "range.rs",
+        "call_line": 985
+      },
+      {
+        "call_file": "range.rs",
+        "call_line": 900
+      }
+    ],
+    "51": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1866
+      },
+      {
+        "call_file": "mod.rs",
+        "call_line": 1967
+      }
+    ],
+    "52": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1874
+      }
+    ],
+    "53": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1875
+      }
+    ],
+    "55": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1876
+      },
+      {
+        "call_file": "mod.rs",
+        "call_line": 1757
+      }
+    ],
+    "56": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1867
+      }
+    ],
+    "57": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1858
+      }
+    ],
+    "64": [
+      {
+        "call_file": "count.rs",
         "call_line": 72
-      }
-    ],
-    "27": [
-      {
-        "call_file": "mod.rs",
-        "call_line": 1839
-      },
-      {
-        "call_file": "iter.rs",
-        "call_line": 47
-      },
-      {
-        "call_file": "count.rs",
-        "call_line": 33
       },
       {
         "call_file": "count.rs",
@@ -1392,41 +1588,7 @@
         "call_line": 128
       }
     ],
-    "28": [
-      {
-        "call_file": "mod.rs",
-        "call_line": 1839
-      },
-      {
-        "call_file": "iter.rs",
-        "call_line": 47
-      },
-      {
-        "call_file": "count.rs",
-        "call_line": 33
-      },
-      {
-        "call_file": "count.rs",
-        "call_line": 136
-      },
-      {
-        "call_file": "filter.rs",
-        "call_line": 142
-      },
-      {
-        "call_file": "iterator.rs",
-        "call_line": 3674
-      },
-      {
-        "call_file": "accum.rs",
-        "call_line": 52
-      },
-      {
-        "call_file": "map.rs",
-        "call_line": 128
-      }
-    ],
-    "54": [
+    "68": [
       {
         "call_file": "count.rs",
         "call_line": 81
@@ -1444,29 +1606,65 @@
         "call_line": 100
       }
     ],
-    "59": [
-      {
-        "call_file": "macros.rs",
-        "call_line": 180
-      }
-    ],
-    "61": [
+    "73": [
       {
         "call_file": "count.rs",
-        "call_line": 91
+        "call_line": 69
       },
       {
         "call_file": "count.rs",
+        "call_line": 136
+      },
+      {
+        "call_file": "filter.rs",
+        "call_line": 142
+      },
+      {
+        "call_file": "iterator.rs",
+        "call_line": 3674
+      },
+      {
+        "call_file": "accum.rs",
+        "call_line": 52
+      },
+      {
+        "call_file": "map.rs",
         "call_line": 128
       }
     ],
-    "64": [
+    "74": [
       {
         "call_file": "count.rs",
-        "call_line": 103
+        "call_line": 69
+      },
+      {
+        "call_file": "count.rs",
+        "call_line": 136
+      },
+      {
+        "call_file": "filter.rs",
+        "call_line": 142
+      },
+      {
+        "call_file": "iterator.rs",
+        "call_line": 3674
+      },
+      {
+        "call_file": "accum.rs",
+        "call_line": 52
+      },
+      {
+        "call_file": "map.rs",
+        "call_line": 128
       }
     ],
-    "70": [
+    "79": [
+      {
+        "call_file": "mod.rs",
+        "call_line": 1849
+      }
+    ],
+    "81": [
       {
         "call_file": "num.rs",
         "call_line": 143
