@@ -39,6 +39,21 @@ OUT="${OUT:-$HERE/gustos-components}"
 # version and half on another, which is exactly the mixed-toolchain hazard.
 MELD="${MELD:-$HOME/pe-toolchain/meld-0.48.0/meld}"; [ -x "$MELD" ] || MELD="meld"
 LOOM="${LOOM:-loom}"
+
+# The version is pinned in TWO places — this default and MELD_VERSION in
+# .github/workflows/gustos-dissolve.yml — and they DID drift: the local default
+# moved to 0.48.0 while CI still installed 0.41.3, so CI fell through to a meld
+# with no --pack-rebase and failed deep inside the fuse with "unexpected
+# argument". Check up front instead of discovering it there.
+meld_ver="$("$MELD" --version 2>/dev/null | awk '{print $2}')"
+case "$meld_ver" in
+  0.4[89].*|0.[5-9][0-9].*|[1-9].*) : ;;
+  *) echo "FATAL: meld $meld_ver is too old — this build needs >= 0.48.0 for" >&2
+     echo "       --pack-rebase / --share-stack. Set \$MELD, or bump MELD_VERSION" >&2
+     echo "       in .github/workflows/gustos-dissolve.yml if this is CI." >&2
+     exit 1 ;;
+esac
+
 # Default to gale's PIN (0.52.0, #208), not whatever is on PATH — a dissolve measured
 # with a different compiler is not comparable to the numbers already recorded.
 SYNTH="${SYNTH:-$HOME/pe-toolchain/synth-0.52.0/synth}"
