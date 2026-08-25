@@ -487,6 +487,20 @@ artifacts:
       declines i32.const as a register operation, so neither half currently covers
       it. Filed as synth#933. Zero-gap CANNOT be claimed while it stands. Measured on
       the E2 composite: 473 i32.const occurrences across 34 of 67 functions.
+      MEASURED 2026-08-26 (measurements/t2-union-denominator.md) — the first time
+      this requirement's own metric could be computed. synth#935 shipped
+      --emit-verify-report so a decline denominator exists at all, and synth#933
+      proved i32_const_correct, which had been Admitted.
+      BIN-VERIFY (SMT) over hm-thin + mpu-thin + switch-thin: 477 applied rule
+      instances, 22 verified, 455 declined = 4.6%.
+      RULE-VERIFY (Rocq) covers 226 of those declines, all Qed: LocalGet 131,
+      I32Const 55, LocalSet 36, Select 4.
+      UNION: 248 of 477 covered = 52%; 229 = 48% GAP.
+      The gap is CONTROL FLOW (End 60, BrIf 38, Block 36, Call 31, Br 7,
+      Unreachable 6 = 178) plus BYTE-LEVEL MEMORY (I32Load8U 15, I32Store8 15) —
+      not arithmetic. So this requirement is NOT met, and now carries a number
+      rather than an adjective. I32Const moving from covered-by-neither-half to
+      Qed is synth#933, which this repo filed off hm-thin's BIN-VERIFY run.
     tags: [gust, os, track-t2, object-code-verification, synth, codegen, safety, gale63]
     links:
       - type: derives-from
@@ -495,20 +509,6 @@ artifacts:
         target: REQ-OS-ISO-001
       - type: related-to
         target: DD-OS-BUILD-001
-      MEASURED 2026-08-26 (measurements/t2-union-denominator.md), first time the
-      requirement's own metric could be computed: synth#935 shipped
-      --emit-verify-report so the decline denominator exists, and synth#933 proved
-      i32_const_correct which had been Admitted.
-        BIN-VERIFY (SMT):  22 of 477 applied rule instances verified (4.6%)
-                           across hm-thin + mpu-thin + switch-thin
-        RULE-VERIFY (Rocq) covers 226 of the 455 declines (LocalGet 131,
-                           I32Const 55, LocalSet 36, Select 4 — all Qed)
-        UNION:             248 of 477 = 52% covered, 229 = 48% GAP
-      The gap is control flow (End/BrIf/Block/Br/Call/Unreachable = 178) plus
-      byte-level memory access (I32Load8U/I32Store8 = 30) — not arithmetic.
-      So this requirement is NOT met, and now has a number rather than an
-      adjective. I32Const moving from "covered by neither half" to Qed is
-      synth#933, which this repo filed off hm-thin's BIN-VERIFY run.
 
   - id: VER-OS-OBJVERIFY-001
     type: sw-verification
