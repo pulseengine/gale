@@ -14,41 +14,48 @@ It is not a clean result, and that is the point of running it.
 
     witness report --format mcdc-rollup      (84 invocations, all 9 exports)
 
-    overall: 3/22 decisions full MC/DC
-             conditions: 13 proved, 11 gap, 51 dead   (75 total)
+    overall: 2/23 decisions full MC/DC
+             conditions: 13 proved, 8 gap, 49 dead   (70 total)
 
-**Two thirds of the conditions in the shipped isolation-core module are dead** —
+**Seven tenths of the conditions in the shipped isolation-core module are dead** —
 never evaluated by a vector set that drives every export, every FSM phase, the
 window-wrap, and a 10-vector sweep of `MajorFrame::check`.
-
-> **⚠ The per-source-file column below is PROVISIONAL (witness#179).** witness
-> 0.39–0.42 never rebased branch offsets into DWARF space, so any branch whose
-> offset fell past the last line-table row was silently **clamped** to that row
-> rather than resolved — and that row is often `wit_bindgen_cabi_realloc.rs:11`.
-> Some rows here are real and some are clamp artifacts, and that cannot be told
-> apart from outside the tool. Fixed in witness#197, shipping in v0.43.0; every
-> number will be re-run and diffed then.
->
-> **What is NOT affected:** the per-FUNCTION findings (`pad_integral`,
-> `do_count_chars`, `<uN as Display>::fmt`, `cabi_realloc` …) come from the wasm
-> **name section** via `function_display`, not from DWARF line info — a different
-> data path, untouched by the offset bug. That is why `meld --preserve-names` is
-> mandatory in the harness. The verdict counts (`3/22 full MC/DC; 13 proved,
-> 11 gap, 51 dead of 75`) are per-*condition*, not per-file, and are likewise
-> expected to hold — but will be verified, not assumed.
 
 Per source file:
 
 | file | decisions | full MC/DC | proved | gap | dead |
 |---|---|---|---|---|---|
-| `mod.rs` | 6 | 3 | 8 | 1 | 5 |
-| **`lib.rs`** (switch-thin itself) | **4** | **0** | **2** | **7** | **2** |
-| `macros.rs` | 4 | 0 | 2 | 1 | 11 |
-| `<meld-adapter>` | 3 | 0 | 0 | 0 | 16 |
-| `count.rs` | 2 | 0 | 0 | 0 | 12 |
+| **`lib.rs`** (switch-thin itself) | **10** | **2** | **13** | **8** | **6** |
+| `macros.rs` | 5 | 0 | 0 | 0 | 16 |
+| `mod.rs` | 4 | 0 | 0 | 0 | 11 |
 | `num.rs` | 2 | 0 | 0 | 0 | 4 |
-| `option.rs` | 1 | 0 | 1 | 1 | 0 |
-| `wit_bindgen_cabi_realloc.rs` | 1 | 0 | 0 | 1 | 1 |
+| `count.rs` | 1 | 0 | 0 | 0 | 2 |
+| `range.rs` | 1 | 0 | 0 | 0 | 2 |
+| `result.rs` | 1 | 0 | 0 | 0 | 8 |
+
+### These numbers are witness 0.43.0, and they REPLACE a set that was mis-attributed
+
+witness 0.39–0.42 never rebased branch offsets into DWARF space, so any branch
+past the last line-table row was silently **clamped** to it — usually
+`wit_bindgen_cabi_realloc.rs:11`. Two bugs, both found from the manifests
+committed in this directory (witness#179, fixed in witness#197 / v0.43.0):
+DWARF v4 `.debug_ranges` was never extracted, and branch offsets were never
+rebased.
+
+What changed on re-run, and it is not only the file column:
+
+| | 0.41.0 | **0.43.0** |
+|---|---|---|
+| switch-thin overall | 3/22 · 13 proved, 11 gap, 51 dead (75) | **2/23 · 13, 8, 49 (70)** |
+| switch-thin `lib.rs` | 5 decisions, 0 full, 3 proved | **10 decisions, 2 full, 13 proved** |
+| mpu-thin overall | 2/17 · 8 proved, 6 gap, 37 dead (51) | **2/18 · 12, 6, 43 (61)** |
+| hm-thin | **no `lib.rs` row at all** | **`lib.rs` present, 1 proved** |
+| `<meld-adapter>`, `wit_bindgen_cabi_realloc.rs` rows | present | **gone** |
+
+The driver's own code went from 5 decisions to 10 and from 0 full MC/DC to 2 —
+decisions that were always its own, previously booked to generated glue. The
+**totals moved too** (75 → 70 conditions, 3 → 2 full MC/DC), which is why the
+earlier note said these would be verified rather than assumed.
 
 ### Read the percentage carefully — it is not the MC/DC number
 

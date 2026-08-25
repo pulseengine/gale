@@ -1,8 +1,8 @@
 {
   "schema_version": "2",
-  "witness_version": "0.39.0",
-  "module_source": "/tmp/mcdc-hm/core.wasm",
-  "original_module_sha256": "8d9c2e4213ef117cd9f7eb1ac54a678dddf981771041d30d69fc4a3b75bf0b6d",
+  "witness_version": "0.43.0",
+  "module_source": "/tmp/w43-hm/core.wasm",
+  "original_module_sha256": "7875794d3bf92fbcfcc496930000e04817cd49e3690db144b0dd8d5b702b762c",
   "branches": [
     {
       "id": 0,
@@ -105,21 +105,98 @@
         3,
         4
       ],
-      "source_file": "wit_bindgen_cabi_realloc.rs",
-      "source_line": 11,
-      "chain_kind": "or"
+      "source_file": "lib.rs",
+      "source_line": 55,
+      "chain_kind": "or",
+      "inline_context": {
+        "call_file": "lib.rs",
+        "call_line": 66
+      }
     },
     {
       "id": 1,
       "conditions": [
         5,
-        6,
-        7
+        6
       ],
-      "source_file": "wit_bindgen_cabi_realloc.rs",
-      "source_line": 11,
+      "source_file": "mod.rs",
+      "source_line": 124,
       "chain_kind": "mixed"
     }
   ],
+  "branch_inline_contexts": {
+    "0": {
+      "call_file": "lib.rs",
+      "call_line": 66
+    },
+    "1": {
+      "call_file": "lib.rs",
+      "call_line": 66
+    },
+    "2": {
+      "call_file": "lib.rs",
+      "call_line": 66
+    },
+    "3": {
+      "call_file": "lib.rs",
+      "call_line": 66
+    },
+    "4": {
+      "call_file": "lib.rs",
+      "call_line": 66
+    }
+  },
+  "branch_inline_chains": {
+    "0": [
+      {
+        "call_file": "lib.rs",
+        "call_line": 20
+      },
+      {
+        "call_file": "lib.rs",
+        "call_line": 66
+      }
+    ],
+    "1": [
+      {
+        "call_file": "lib.rs",
+        "call_line": 20
+      },
+      {
+        "call_file": "lib.rs",
+        "call_line": 66
+      }
+    ],
+    "2": [
+      {
+        "call_file": "lib.rs",
+        "call_line": 20
+      },
+      {
+        "call_file": "lib.rs",
+        "call_line": 66
+      }
+    ],
+    "3": [
+      {
+        "call_file": "lib.rs",
+        "call_line": 20
+      },
+      {
+        "call_file": "lib.rs",
+        "call_line": 66
+      }
+    ],
+    "4": [
+      {
+        "call_file": "lib.rs",
+        "call_line": 20
+      },
+      {
+        "call_file": "lib.rs",
+        "call_line": 66
+      }
+    ]
+  },
   "attribution_source": "dwarf"
 }

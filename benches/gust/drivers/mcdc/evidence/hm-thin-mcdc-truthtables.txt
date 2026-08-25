@@ -1,7 +1,7 @@
-module: /tmp/mcdc-hm/core.inst.wasm
-decisions: 0/2 full MC/DC; conditions: 1 proved, 4 gap, 3 dead
+module: /tmp/w43-hm/core.inst.wasm
+decisions: 0/2 full MC/DC; conditions: 1 proved, 4 gap, 2 dead
 
-decision #0 wit_bindgen_cabi_realloc.rs:11: Partial
+decision #0 lib.rs:55: Partial
   truth table:
     row 0: {} -> T
     row 1: {} -> F
@@ -38,7 +38,7 @@ decision #0 wit_bindgen_cabi_realloc.rs:11: Partial
     c3 (branch 3): GAP — try a row {c0=T, c3=T, c4=T} (outcome must differ from row 22)
     c4 (branch 4): GAP — try a row {c0=T, c3=F, c4=F} (outcome must differ from row 22)
 
-decision #1 wit_bindgen_cabi_realloc.rs:11: NoWitness
+decision #1 mod.rs:124: NoWitness
   truth table:
     row 0: {} -> T
     row 1: {} -> F
@@ -63,5 +63,4 @@ decision #1 wit_bindgen_cabi_realloc.rs:11: NoWitness
   conditions:
     c0 (branch 5): DEAD — never evaluated in any row
     c1 (branch 6): DEAD — never evaluated in any row
-    c2 (branch 7): DEAD — never evaluated in any row
 

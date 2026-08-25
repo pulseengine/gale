@@ -25,7 +25,7 @@ MELD="${MELD:-meld}"
 SYNTH="${SYNTH:-$HOME/pe-toolchain/synth-0.52.0/synth}"
 [ -x "$SYNTH" ] || SYNTH="synth"
 
-command -v "$WITNESS" >/dev/null 2>&1 || { echo "need witness (>=0.39.0; 0.41.0+ recommended) on PATH or \$WITNESS" >&2; exit 2; }
+command -v "$WITNESS" >/dev/null 2>&1 || { echo "need witness (>=0.43.0 — earlier versions mis-attribute, witness#179) on PATH or \$WITNESS" >&2; exit 2; }
 
 mkdir -p "$OUT"
 echo "== 1. build with DWARF (witness needs it for decision reconstruction) =="

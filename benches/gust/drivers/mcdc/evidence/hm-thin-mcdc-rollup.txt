@@ -1,7 +1,8 @@
-module: /tmp/mcdc-hm/core.inst.wasm
-overall: 0/2 full MC/DC; conditions: 1 proved, 4 gap, 3 dead (8 total)
+module: /tmp/w43-hm/core.inst.wasm
+overall: 0/2 full MC/DC; conditions: 1 proved, 4 gap, 2 dead (7 total)
 
 source file                               decisions  full mcdc     proved        gap       dead
 ---------------------------------------- ---------- ---------- ---------- ---------- ----------
-wit_bindgen_cabi_realloc.rs                       2          0          1          4          3
+lib.rs                                            1          0          1          4          0
+mod.rs                                            1          0          0          0          2
 
