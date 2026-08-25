@@ -65,6 +65,16 @@ adjective: 52% union coverage, 48% gap.** The gap is not arithmetic — it is
 **control flow** (`End`, `BrIf`, `Block`, `Br`, `Call`, `Unreachable` = 178
 instances) plus **byte-level memory access** (`I32Load8U`, `I32Store8` = 30).
 
+Every arithmetic and comparison rule these objects use is covered by one half or
+the other. What has no obligation is the set of constructs deciding *whether* the
+arithmetic runs.
+
+**Routed upstream as synth#1057**, with the caveats below stated in the report
+rather than left for them to find. `BrIf` is nominated as the first one worth
+having: 38 instances, and the subject of three closed miscompiles (synth#483,
+#500, #930) — which argues these are the rules most worth an obligation, not
+least.
+
 ## What DID close, and it is ours
 
 `I32Const` — 55 instances here — was the rule this repo flagged as covered by
