@@ -58,7 +58,7 @@ for entry in "${PROVIDERS[@]}"; do
   # SRAM, so the object could not be self-contained and could not run (gale#275).
   # At one page (the wasm minimum) the same composite dissolves to
   # data 512 / bss 3096 = 3 608 B of 8 192 (44%) and executes correctly.
-  ( cd "$HERE/$crate" && RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-zstack-size=2048 -C link-arg=--initial-memory=65536 -C link-arg=--max-memory=65536" \
+  ( cd "$HERE/$crate" && RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=--emit-relocs -C link-arg=--export=__heap_base -C link-arg=-zstack-size=2048 -C link-arg=--initial-memory=65536 -C link-arg=--max-memory=65536" \
       cargo build --release --target wasm32-unknown-unknown >/dev/null 2>&1 )
   core="$(find "$HERE/$crate/target/wasm32-unknown-unknown/release" -maxdepth 1 -name "$wasm_name.wasm" | head -1)"
   comp="$OUT/$crate.component.wasm"

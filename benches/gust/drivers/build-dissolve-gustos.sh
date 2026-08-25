@@ -34,7 +34,10 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="${OUT:-$HERE/gustos-components}"
-MELD="${MELD:-meld}"
+# Pin meld too, not just synth. Until now this script took whatever meld was on
+# PATH (0.41.3) while the isolation core used 0.48.0 — half the pipeline on one
+# version and half on another, which is exactly the mixed-toolchain hazard.
+MELD="${MELD:-$HOME/pe-toolchain/meld-0.48.0/meld}"; [ -x "$MELD" ] || MELD="meld"
 LOOM="${LOOM:-loom}"
 # Default to gale's PIN (0.52.0, #208), not whatever is on PATH — a dissolve measured
 # with a different compiler is not comparable to the numbers already recorded.
@@ -64,11 +67,22 @@ printf '%-28s %8s B  (wasm component)\n' "$(basename "$FUSED")" "$(wc -c < "$FUS
 
 # ── the dissolve ────────────────────────────────────────────────────────────────
 echo ""
-echo "== meld fuse --memory shared =="
-if ! "$MELD" fuse "$FUSED" --memory shared -o "$T/gustos.fused.wasm" 2>"$T/meld.err"; then
+echo "== meld fuse --memory shared --pack-rebase --share-stack =="
+# --pack-rebase --share-stack, not bare --memory shared. The bare form merges
+# memories WITHOUT rebasing: this composite came out with TEN overlapping
+# data-segment pairs, and meld 0.48 now refuses it outright ("this silently
+# corrupts data"). --pack-rebase needs --emit-relocs + a retained __heap_base,
+# both supplied by build-gustos-components.sh; --share-stack collapses the
+# per-provider shadow stacks, which otherwise dominate the packed extent.
+if ! "$MELD" fuse "$FUSED" --memory shared --pack-rebase --share-stack \
+      -o "$T/gustos.fused.wasm" 2>"$T/meld.err"; then
   echo "  FAILED:"; sed 's/^/    /' "$T/meld.err" | head -20; exit 1
 fi
 printf '  %-26s %8s B  (core module)\n' "gustos.fused.wasm" "$(wc -c < "$T/gustos.fused.wasm" | tr -d ' ')"
+
+echo ""
+echo "== GATE: data segments must be DISJOINT (gale#266) =="
+python3 "$HERE/check-data-overlap.py" "$T/gustos.fused.wasm" || exit 5
 
 echo "== loom optimize --passes inline =="
 if ! "$LOOM" optimize "$T/gustos.fused.wasm" --passes inline --attestation false \

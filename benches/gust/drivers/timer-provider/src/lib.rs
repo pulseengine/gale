@@ -31,6 +31,11 @@ use crate::gust::os::time;
 use crate::gust::sched::tasks;
 use exports::gust::os::timer::Guest;
 
+/// `gust:sched/tasks.state` encoding, mirrored from the WIT: 0 = free,
+/// 1 = pending, 2 = done, 0xFFFF_FFFF = invalid. Only a Pending slot is armable —
+/// the same predicate `Tasks::set_deadline` applies internally.
+const TASK_PENDING: u32 = 1;
+
 struct P;
 impl Guest for P {
     /// Arm a one-shot wake `ticks` from now on task `handle` — the RESOLVED
@@ -48,6 +53,20 @@ impl Guest for P {
         // makes synth's ARM backend loud-decline the frame-backing sleep (u64 param
         // + a call); widening internally keeps the deadline math full-width.
         if ticks >= (1u32 << 31) {
+            return 0xFFFF_FFFF;
+        }
+        // `Tasks::set_deadline` writes ONLY a Pending slot — a Free, Done or
+        // out-of-range handle is a silent no-op. Returning 0 regardless told the
+        // caller a wake was armed that will never fire; on a failsafe path that is
+        // the difference between a missed deadline that is detected and one that
+        // is not (FIND-OS-TIMER-SLEEP-CONTRACT-001, observed under execution).
+        //
+        // ASK the owner the same question it asks itself rather than
+        // re-implementing the guard here: `tasks::state` is a 1:1 forward to the
+        // verified table, and invalid/Free/Done are exactly the cases set_deadline
+        // declines. No admission decision moves into this marshalling layer, and
+        // no WIT or verified-core change is needed — `state` already exists.
+        if tasks::state(handle) != TASK_PENDING {
             return 0xFFFF_FFFF;
         }
         let d = time::deadline(time::now(), ticks as u64);
