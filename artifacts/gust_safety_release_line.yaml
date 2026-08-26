@@ -433,7 +433,7 @@ artifacts:
     type: sw-req
     title: "T2: zero-coverage-gap object-code verification of the trusted switch/MPU/HM object"
     status: proposed
-    release: v0.7.0
+    release: v0.7.2
     description: >
       Cross-cutting track T2. The compiled object implementing the trusted switch,
       MPU/MMU region-program, and Health-Monitor core SHALL be object-code-verified
@@ -515,7 +515,7 @@ artifacts:
     title: "RULE-VERIFY (per-rule) + BIN-VERIFY (binary-translation) zero-gap coverage report on the trusted object"
     method: formal-verification
     status: proposed
-    release: v0.7.0
+    release: v0.7.2
     description: >
       Evidence for REQ-OS-OBJVERIFY-001: a coverage report over the
       compiled switch/MPU/HM object showing every applied codegen rule
@@ -551,7 +551,7 @@ artifacts:
     type: sw-req
     title: "T3: machine-checked compositional schedulability — inner response time bounded against the outer supply"
     status: proposed
-    release: v0.7.0
+    release: v0.7.2
     description: >
       Cross-cutting track T3. The inner tickless cooperative executor's
       worst-case response time, running under the outer partition's
@@ -583,7 +583,7 @@ artifacts:
     title: "Lean-verified jittered WCRT recurrence + cooperative blocking term + demand-vs-supply cap, on the shipped executor"
     method: formal-verification
     status: proposed
-    release: v0.7.0
+    release: v0.7.2
     description: >
       Evidence for REQ-OS-SCHED-001: the Lean-verified worst-case-response-
       time recurrence, instantiated with (1) the derived release-jitter
@@ -611,7 +611,7 @@ artifacts:
     type: sw-req
     title: "T4: sound static-WCET inputs, gale-owned — no partition budget sized from raw DWT high-water-marks"
     status: implemented
-    release: v0.7.0
+    release: v0.7.2
     description: >
       Cross-cutting track T4. The per-function cycle bound feeding the
       track-T3 schedulability analysis SHALL be a SOUND static bound, and
@@ -816,7 +816,7 @@ artifacts:
     title: "Sound per-function static-WCET emission cross-checked against a statistical (EVT) bound, on the trusted object's functions"
     method: formal-verification
     status: proposed
-    release: v0.7.0
+    release: v0.7.2
     description: >
       Evidence for REQ-OS-WCET-001: for every function in the trusted
       switch/MPU/HM object and the inner executor core, the compiler-
