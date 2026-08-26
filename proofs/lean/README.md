@@ -81,26 +81,26 @@ utilisation bound and rate-monotonic optimality; it does **not** prove anything
 about `src/executor.rs`. The jittered/supply-derived WCRT recurrence that track
 T3 (`REQ-OS-SCHED-001`) needs lives in spar, not here — see #287.
 
-## Why the CI job passes `--lockfile_mode=off`
+## A platform trap that used to live here (fixed upstream)
 
-`rules_lean`'s `mathlib_repo` takes `host_platform` as a repo-rule **attribute**,
-so it is written into `MODULE.bazel.lock` and frozen to whichever OS generated
-the lock. Ours says:
-
-    "mathlib": { "attributes": { "host_platform": "darwin_aarch64", … } }
-
-A Linux runner reusing that lock builds `_lean_toolchain` from the **macOS**
-toolchain, and `sh` ends up parsing a Mach-O binary:
+`rules_lean`'s `mathlib_repo` once took `host_platform` as a repo-rule
+**attribute**, so it was written into `MODULE.bazel.lock` and frozen to whichever
+OS generated the lock. A Linux runner reusing a macOS-generated lock built
+`_lean_toolchain` from the **macOS** toolchain, and `sh` ended up parsing a Mach-O
+binary:
 
     lake: 1: …!H__PAGEZERO?__TEXT@@__text__TEXTXdX?__stubs__TEXT?: not found
     lake: 9: Syntax error: Unterminated quoted string
 
-Which is why the proofs passed on a developer Mac and could not run in CI at all.
-`--lockfile_mode=off` makes bazel re-resolve the extension for the actual host.
+Which is why these proofs passed on a developer Mac and could not run in CI at
+all — a plausible reason the targets sat uninvoked for months.
 
-Filed upstream as **rules_lean#30** — a repo rule capturing the host platform as
-an attribute makes a checked-in lockfile non-portable, which defeats the purpose
-of committing one. Remove this flag once the platform is resolved at fetch time.
+Filed as **rules_lean#30** and **fixed upstream** in `70f5138`: the platform is
+now detected at fetch time (`detect_host_platform`), so the lock is
+platform-neutral. `MODULE.bazel.lock`'s `mathlib` entry no longer carries
+`host_platform`, and the `--lockfile_mode=off` workaround gale carried in the
+meantime has been removed.
 
-**It weakens lockfile verification for this step only, and it cannot weaken a
-proof.** The theorems still elaborate under a real Lean kernel, or the job is red.
+The `rules_lean_mathlib_timeout.patch` gale carried was dropped at the same time
+rather than rebased: it raised the `lake update` timeout 600 -> 1800, and upstream
+now uses 3600/1200/7200. It was obsolete, not merely conflicting.

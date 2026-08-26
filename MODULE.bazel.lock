@@ -256,8 +256,8 @@
     },
     "@@rules_lean+//lean:extensions.bzl%lean": {
       "general": {
-        "bzlTransitiveDigest": "TiD+a3YYv7vr+CAHA/qxxRW2DLQwKzPhwjJedYw/3FU=",
-        "usagesDigest": "GtR3UEk2n6H5Wdr/fw2Dvc4+TVFjgNgPrWVq/CDi+3U=",
+        "bzlTransitiveDigest": "bPdITkAx1QrulMR3OJBWQzR3AoXMwKaqmERBtXTb0p0=",
+        "usagesDigest": "mEfyEo4v4ojKkqEmvk+D+pQE41YPBuA4r4qsWj/h8g4=",
         "recordedInputs": [],
         "generatedRepoSpecs": {
           "lean_darwin_aarch64": {
@@ -289,7 +289,7 @@
             "attributes": {
               "version": "4.27.0",
               "platform": "linux_aarch64",
-              "sha256": "fe229059c9050ccf79111a4ba8ea1ebbcb8d3b06075cfee1a57edb97544d4e2a"
+              "sha256": "b256eec276baaaccc3eb3fa64d7ccff64f710b7caa074f305ba95e0013ad31e7"
             }
           },
           "lean_toolchains": {
@@ -306,7 +306,6 @@
           "mathlib": {
             "repoRuleId": "@@rules_lean+//lean/private:repo.bzl%mathlib_repo",
             "attributes": {
-              "host_platform": "darwin_aarch64",
               "lean_version": "4.27.0",
               "mathlib_rev": "v4.27.0"
             }
