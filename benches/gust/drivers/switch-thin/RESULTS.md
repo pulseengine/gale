@@ -2,7 +2,8 @@
 
 **Date:** 2026-08-11 · **T2 / REQ-OS-OBJVERIFY-001 stage 2, final module** ·
 meld 0.41.3 (per-module) / **0.48.0** (the fused core), loom 1.2.0,
-synth 0.52.0 (`--features verify` build for BIN-VERIFY)
+synth **0.57.0** (the fused core and its execution; per-module figures below
+are from the 0.52.0 build and are unchanged), `--features verify` build for BIN-VERIFY
 
 Third and last module onto the dissolve path, after `hm-thin` (0 seams) and
 `mpu-thin` (1 seam). This one carries **three** — and carries the property the whole
@@ -38,7 +39,7 @@ cannot name. That split was already in the source; the dissolve did not invent i
       -> meld 0.48 fuse --memory shared --pack-rebase --share-stack
       -> loom optimize -> synth --native-pointer-abi
 
-    text 8712   data 1096   bss 3140
+    text 8700   data 1096   bss 3140
 
     SRAM   4 236 B of the STM32F100RB's 8 192   (51%)   — 3 956 B FREE
     FLASH  8 712 B of 131 072                    (7%)
@@ -127,11 +128,13 @@ is unobtainable from the tool. Recorded rather than glossed.
   re-run against the wasm build. This shows the lowering is faithful; it does not
   show the wasm refines the Verus-proven Rust.
 - **Executed under qemu, not on silicon and not under Renode.** `gust_iso_probe`
-  runs this object on qemu lm3s6965evb (real v7-M): 8 of 9 checks pass, including
-  the seam ORDER observed rather than assumed, and cross-component
-  non-interference. The one failure is `iso-frame-bad` — the synth 0.52.0
-  `set-window` miscompile (gale#270), fixed in synth 0.56+ and pending our pin
-  bump. The seams are recorded, not performed, exactly as the Kani harness
+  runs this object on qemu lm3s6965evb (real v7-M): **all 9 checks pass**,
+  including the seam ORDER observed rather than assumed, and cross-component
+  non-interference. This was 8 of 9 until the synth pin moved 0.52.0 -> 0.57.0:
+  the one failure was `iso-frame-bad`, the `set-window` miscompile (gale#270).
+  That is now closed by execution rather than by an upstream changelog — same
+  source, same meld 0.48.0, same loom 1.2.0, only `$SYNTH` changing, measured
+  both ways in `../measurements/synth-pin-0.57.md`. The seams are recorded, not performed, exactly as the Kani harness
   substitutes them.
 - **The four seams remain trusted native code**, including `mpu_write`'s
   barrier-pairing contract and the register save/restore.
