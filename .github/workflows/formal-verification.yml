@@ -24,6 +24,9 @@ on:
       - 'proofs/**'
       - 'BUILD.bazel'
       - 'MODULE.bazel'
+      # this workflow must test its own changes, or a PR that edits the gate
+      # merges without ever running it (gale#288 nearly did exactly that)
+      - '.github/workflows/formal-verification.yml'
   pull_request:
     branches: [main]
     paths:
@@ -32,6 +35,11 @@ on:
       - 'ffi/**'
       - 'tests/**'
       - 'proofs/**'
+      # BUILD/MODULE were on the push filter but NOT here, so a PR touching
+      # bazel deps skipped the proofs it could break
+      - 'BUILD.bazel'
+      - 'MODULE.bazel'
+      - '.github/workflows/formal-verification.yml'
   schedule:
     - cron: '0 2 * * 0'
 
@@ -106,5 +114,45 @@ jobs:
             //proofs:sched_proofs_test \
             //proofs:thread_lifecycle_proofs_test \
             //proofs:executor_proofs_test \
+            --test_output=errors
+        timeout-minutes: 45
+
+  lean:
+    name: Lean Proofs (7 files)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # These targets existed in proofs/lean/BUILD.bazel but no workflow ever
+      # invoked them (gale#286), so "0 sorry" was a grep result rather than a
+      # verification result. Measured before adding: 8.7s for all seven with a
+      # warm mathlib, ~258s cold — and the cold time is almost entirely the
+      # one-time download of 7869 prebuilt mathlib files from the upstream
+      # Azure cache, not elaboration (critical path 13.89s).
+      # --lockfile_mode=off: rules_lean's mathlib_repo takes `host_platform` as a
+      # repo-rule ATTRIBUTE, so it is frozen into MODULE.bazel.lock by whichever
+      # OS generated the lock. Ours was generated on darwin_aarch64, so a Linux
+      # runner reused it and executed a Mach-O `lake` — sh parsed the binary and
+      # died at "Unterminated quoted string" (gale#288, rules_lean#30). Turning
+      # the lock off for this invocation makes bazel re-resolve the extension for
+      # the actual host. Remove once rules_lean resolves the platform at fetch
+      # time. This weakens lockfile verification for this step ONLY; it cannot
+      # weaken a proof — the theorems still elaborate under a real Lean kernel or
+      # the job stays red.
+      - name: Run Lean proof verification
+        run: |
+          bazel test --lockfile_mode=off \
+            //proofs/lean:scheduling_test \
+            //proofs/lean:priority_ceiling_test \
+            //proofs/lean:mpu_region_test \
+            //proofs/lean:priority_queue_test \
+            //proofs/lean:systick_test \
+            //proofs/lean:ring_buf_test \
+            //proofs/lean:atomic_test \
             --test_output=errors
         timeout-minutes: 45
