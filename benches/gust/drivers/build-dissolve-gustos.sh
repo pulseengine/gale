@@ -56,7 +56,7 @@ esac
 
 # Default to gale's PIN (0.52.0, #208), not whatever is on PATH — a dissolve measured
 # with a different compiler is not comparable to the numbers already recorded.
-SYNTH="${SYNTH:-$HOME/pe-toolchain/synth-0.52.0/synth}"
+SYNTH="${SYNTH:-$HOME/pe-toolchain/synth-0.57.0/synth}"
 [ -x "$SYNTH" ] || SYNTH="synth"
 NM="${NM:-arm-none-eabi-nm}"
 SIZE="${SIZE:-arm-none-eabi-size}"

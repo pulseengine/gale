@@ -35,7 +35,7 @@ trap 'rm -rf "$T"' EXIT
 # Pins, not whatever is on PATH — a footprint measured with a different toolchain
 # is not comparable to the numbers recorded in the RESULTS.md files.
 MELD="${MELD:-$HOME/pe-toolchain/meld-0.48.0/meld}"; [ -x "$MELD" ] || MELD="meld"
-SYNTH="${SYNTH:-$HOME/pe-toolchain/synth-0.52.0/synth}"; [ -x "$SYNTH" ] || SYNTH="synth"
+SYNTH="${SYNTH:-$HOME/pe-toolchain/synth-0.57.0/synth}"; [ -x "$SYNTH" ] || SYNTH="synth"
 LOOM="${LOOM:-loom}"
 
 # The version is pinned in TWO places — this default and MELD_VERSION in

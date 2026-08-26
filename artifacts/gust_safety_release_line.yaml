@@ -1127,6 +1127,19 @@ artifacts:
       host engine; running the dissolved object is E3 (Renode) / E4 (silicon), both
       v0.7.1. And .text is space, not cycles -- see composite-wcet.md for what T4
       actually bounds today (1 of 31).
+      UPDATE (2026-08-26, synth pin 0.52.0 -> 0.57.0): the "never been EXECUTED" line
+      above is superseded. gust_osfused_probe (gale#276, extended by gale#283) links this
+      object and runs it on qemu lm3s6965evb: ALL CHECKS PASSED on BOTH pins, 6/6.
+      Rebuilt and re-executed each way -- 0.52.0 gives text 5368, 0.57.0 gives text 5384,
+      data 1580 / bss 3620 / SRAM 5200 B (63%) / 1-page arena identical on both. The bump
+      neither fixed nor broke this object; it was already green once gale#283 landed the
+      timer.sleep contract fix. What DID change: 0.57.0 emits gust:os/timer@0.1.0#sleep
+      (276 B) where gale#269 records 0.56.0 refusing it, so that hazard does not reproduce.
+      NOT established: osfused-deadline-armed cannot detect a dropped i64 high half --
+      time.now() is a 32-bit mmio read widened to u64 and sleep's ticks is u32 at the WIT
+      surface, so BOTH u64 arguments to deadline are structurally zero-extended and a lost
+      high half is unobservable through this seam. The check does establish register
+      PLACEMENT. See measurements/synth-pin-0.57.md.
 
 
   - id: REQ-OS-TARGET-RV32-001
