@@ -107,3 +107,17 @@ lean_proof_test(
     srcs = ["Atomic.lean"],
     deps = [":atomic", "@mathlib//:Mathlib"],
 )
+
+# ── Partition Supply (T3 / REQ-OS-SCHED-001) ──────────────────────────
+
+lean_library(
+    name = "partition_supply",
+    srcs = ["PartitionSupply.lean"],
+    deps = ["@mathlib//:Mathlib"],
+)
+
+lean_proof_test(
+    name = "partition_supply_test",
+    srcs = ["PartitionSupply.lean"],
+    deps = [":partition_supply", "@mathlib//:Mathlib"],
+)
