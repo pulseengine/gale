@@ -12,7 +12,13 @@ Seven files, 136 theorems/lemmas, **0 `sorry` / 0 `axiom`**. Every file has a
     //proofs/lean:ring_buf_test          ring buffer index arithmetic
     //proofs/lean:atomic_test            wrapping atomic arithmetic
 
-Run them locally with `bazel test //proofs/lean:all`.
+Run them locally with `bazel test //proofs/lean:all` — which is also exactly what
+CI runs. **Do not go back to an enumerated target list.** The list form silently
+failed to cover a new proof the first time one was added: `PartitionSupply.lean`
+made it 8 targets while the workflow still named 7, and the job went green
+without elaborating it. That is gale#286's shape — a gate that exists but does
+not run — one level down. With `:all`, a new `lean_proof_test` is gated by
+construction rather than by remembering to edit a workflow.
 
 ## Why the job exists (gale#286)
 
