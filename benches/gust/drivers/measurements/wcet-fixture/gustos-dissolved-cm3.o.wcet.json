@@ -1,0 +1,199 @@
+{
+  "schema": "synth-wcet-v1",
+  "module": "gustos.loom.wasm",
+  "core_class": "cortex-m3",
+  "wait_states": 0,
+  "memory_assumption": "zero-wait-state instruction memory (flash accelerator / I-cache hit); in-order single-issue pipeline; documented per-instruction worst-case cycles",
+  "functions": [
+    {
+      "status": "declined",
+      "name": "gust:os/log@0.1.0#line",
+      "reason": "loop",
+      "note": "backward branch (loop) without a statically-proven trip count — canonical const-bound counted loops are proven automatically; equality-exit shapes need a verified --wcet-hints entry; data-dependent bounds are the scry loop-bound-inference follow-up"
+    },
+    {
+      "status": "declined",
+      "name": "cabi_realloc_wit_bindgen_0_52_0",
+      "reason": "loop",
+      "note": "backward branch (loop) without a statically-proven trip count — canonical const-bound counted loops are proven automatically; equality-exit shapes need a verified --wcet-hints entry; data-dependent bounds are the scry loop-bound-inference follow-up"
+    },
+    {
+      "status": "declined",
+      "name": "cabi_realloc",
+      "reason": "callee-unbounded",
+      "note": "a directly-called callee is itself unbounded — the decline propagates up the call graph (a caller cannot be bounded while a callee it invokes is unbounded)"
+    },
+    {
+      "status": "bounded",
+      "name": "gust:os/time@0.1.0#deadline",
+      "cycles": 38,
+      "instr_count": 14
+    },
+    {
+      "status": "bounded",
+      "name": "gust:os/time@0.1.0#elapsed",
+      "cycles": 109,
+      "instr_count": 17
+    },
+    {
+      "status": "declined",
+      "name": "gust:os/time@0.1.0#now",
+      "reason": "call",
+      "note": "direct call to an external/imported/unresolvable callee with no per-function bound in this module — cannot compose an inter-procedural bound (local direct calls ARE composed, #778 phase 3)"
+    },
+    {
+      "status": "bounded",
+      "name": "gust:os/time@0.1.0#resolution",
+      "cycles": 68,
+      "instr_count": 15
+    },
+    {
+      "status": "declined",
+      "name": "gust:os/exec@0.1.0#admit",
+      "reason": "callee-unbounded",
+      "note": "a directly-called callee is itself unbounded — the decline propagates up the call graph (a caller cannot be bounded while a callee it invokes is unbounded)"
+    },
+    {
+      "status": "declined",
+      "name": "exec_admit",
+      "reason": "loop",
+      "note": "backward branch (loop) without a statically-proven trip count — canonical const-bound counted loops are proven automatically; equality-exit shapes need a verified --wcet-hints entry; data-dependent bounds are the scry loop-bound-inference follow-up"
+    },
+    {
+      "status": "declined",
+      "name": "gust:sched/tasks@0.1.0#state",
+      "reason": "loop",
+      "note": "backward branch (loop) without a statically-proven trip count — canonical const-bound counted loops are proven automatically; equality-exit shapes need a verified --wcet-hints entry; data-dependent bounds are the scry loop-bound-inference follow-up"
+    },
+    {
+      "status": "declined",
+      "name": "gust:os/exec@0.1.0#poll-round",
+      "reason": "callee-unbounded",
+      "note": "a directly-called callee is itself unbounded — the decline propagates up the call graph (a caller cannot be bounded while a callee it invokes is unbounded)"
+    },
+    {
+      "status": "declined",
+      "name": "exec_poll_round",
+      "reason": "loop",
+      "note": "backward branch (loop) without a statically-proven trip count — canonical const-bound counted loops are proven automatically; equality-exit shapes need a verified --wcet-hints entry; data-dependent bounds are the scry loop-bound-inference follow-up"
+    },
+    {
+      "status": "declined",
+      "name": "func_22",
+      "reason": "loop",
+      "note": "backward branch (loop) without a statically-proven trip count — canonical const-bound counted loops are proven automatically; equality-exit shapes need a verified --wcet-hints entry; data-dependent bounds are the scry loop-bound-inference follow-up"
+    },
+    {
+      "status": "declined",
+      "name": "gust:sched/tasks@0.1.0#admit",
+      "reason": "callee-unbounded",
+      "note": "a directly-called callee is itself unbounded — the decline propagates up the call graph (a caller cannot be bounded while a callee it invokes is unbounded)"
+    },
+    {
+      "status": "declined",
+      "name": "func_24",
+      "reason": "loop",
+      "note": "backward branch (loop) without a statically-proven trip count — canonical const-bound counted loops are proven automatically; equality-exit shapes need a verified --wcet-hints entry; data-dependent bounds are the scry loop-bound-inference follow-up"
+    },
+    {
+      "status": "declined",
+      "name": "func_25",
+      "reason": "loop",
+      "note": "backward branch (loop) without a statically-proven trip count — canonical const-bound counted loops are proven automatically; equality-exit shapes need a verified --wcet-hints entry; data-dependent bounds are the scry loop-bound-inference follow-up"
+    },
+    {
+      "status": "declined",
+      "name": "func_26",
+      "reason": "loop",
+      "note": "backward branch (loop) without a statically-proven trip count — canonical const-bound counted loops are proven automatically; equality-exit shapes need a verified --wcet-hints entry; data-dependent bounds are the scry loop-bound-inference follow-up"
+    },
+    {
+      "status": "declined",
+      "name": "func_27",
+      "reason": "loop",
+      "note": "backward branch (loop) without a statically-proven trip count — canonical const-bound counted loops are proven automatically; equality-exit shapes need a verified --wcet-hints entry; data-dependent bounds are the scry loop-bound-inference follow-up"
+    },
+    {
+      "status": "declined",
+      "name": "func_28",
+      "reason": "loop",
+      "note": "backward branch (loop) without a statically-proven trip count — canonical const-bound counted loops are proven automatically; equality-exit shapes need a verified --wcet-hints entry; data-dependent bounds are the scry loop-bound-inference follow-up"
+    },
+    {
+      "status": "declined",
+      "name": "func_32",
+      "reason": "loop",
+      "note": "backward branch (loop) without a statically-proven trip count — canonical const-bound counted loops are proven automatically; equality-exit shapes need a verified --wcet-hints entry; data-dependent bounds are the scry loop-bound-inference follow-up"
+    },
+    {
+      "status": "declined",
+      "name": "poll_task",
+      "reason": "call",
+      "note": "direct call to an external/imported/unresolvable callee with no per-function bound in this module — cannot compose an inter-procedural bound (local direct calls ARE composed, #778 phase 3)"
+    },
+    {
+      "status": "declined",
+      "name": "exec_state",
+      "reason": "loop",
+      "note": "backward branch (loop) without a statically-proven trip count — canonical const-bound counted loops are proven automatically; equality-exit shapes need a verified --wcet-hints entry; data-dependent bounds are the scry loop-bound-inference follow-up"
+    },
+    {
+      "status": "declined",
+      "name": "gust:sched/tasks@0.1.0#poll-round",
+      "reason": "callee-unbounded",
+      "note": "a directly-called callee is itself unbounded — the decline propagates up the call graph (a caller cannot be bounded while a callee it invokes is unbounded)"
+    },
+    {
+      "status": "declined",
+      "name": "gust:sched/tasks@0.1.0#set-deadline",
+      "reason": "callee-unbounded",
+      "note": "a directly-called callee is itself unbounded — the decline propagates up the call graph (a caller cannot be bounded while a callee it invokes is unbounded)"
+    },
+    {
+      "status": "declined",
+      "name": "gust:sched/tasks@0.1.0#slept-status",
+      "reason": "callee-unbounded",
+      "note": "a directly-called callee is itself unbounded — the decline propagates up the call graph (a caller cannot be bounded while a callee it invokes is unbounded)"
+    },
+    {
+      "status": "declined",
+      "name": "gust:sched/tasks@0.1.0#wake",
+      "reason": "callee-unbounded",
+      "note": "a directly-called callee is itself unbounded — the decline propagates up the call graph (a caller cannot be bounded while a callee it invokes is unbounded)"
+    },
+    {
+      "status": "declined",
+      "name": "func_44",
+      "reason": "callee-unbounded",
+      "note": "a directly-called callee is itself unbounded — the decline propagates up the call graph (a caller cannot be bounded while a callee it invokes is unbounded)"
+    },
+    {
+      "status": "declined",
+      "name": "gust:os/timer@0.1.0#sleep",
+      "reason": "unmodeled-op",
+      "note": "op not classified by the cycle model",
+      "op": "I32WrapI64",
+      "offset": 170
+    },
+    {
+      "status": "declined",
+      "name": "gust:os/timer@0.1.0#slept",
+      "reason": "unmodeled-op",
+      "note": "op not classified by the cycle model",
+      "op": "I32WrapI64",
+      "offset": 48
+    },
+    {
+      "status": "declined",
+      "name": "gust:os/spawn@0.1.0#poll",
+      "reason": "callee-unbounded",
+      "note": "a directly-called callee is itself unbounded — the decline propagates up the call graph (a caller cannot be bounded while a callee it invokes is unbounded)"
+    },
+    {
+      "status": "declined",
+      "name": "gust:os/spawn@0.1.0#start",
+      "reason": "callee-unbounded",
+      "note": "a directly-called callee is itself unbounded — the decline propagates up the call graph (a caller cannot be bounded while a callee it invokes is unbounded)"
+    }
+  ]
+}
