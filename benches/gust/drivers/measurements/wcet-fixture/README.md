@@ -91,3 +91,49 @@ synth#1063 lands.
 The sidecar carries `wait_states` and a `memory_assumption`. Every bound is
 **conditional on a zero-wait-state precondition**. A cycle figure quoted without
 it is not the number synth emitted.
+
+---
+
+## `gustos.loom.named.wasm` — the same module WITH a name section
+
+Added after scry pointed out (scry#144) that their identity-churn corpus is
+**legacy**-mangled and the **v0** path has unit coverage but no corpus
+measurement. The fixture above has **zero** named functions — it is the default
+dissolve build, and `meld fuse` drops the name section without `--preserve-names`.
+So it could not serve that purpose. This file can.
+
+    gustos.loom.named.wasm    meld fuse … --preserve-names   -> 59 of 68 named
+    gustos.loom.wasm          (default)                      ->  0 of 68 named
+
+Both produce a **byte-identical** `.wcet.json`, which is the point of synth#1063:
+`synth-wcet-v1` names from the export section and does not consult the name
+section either way.
+
+### v0 identity churn, measured on this module
+
+scry's `#146` two-tier fix strips the v0 crate disambiguator (`Cs<base62>_`) where
+the stripped name is unique in the module, and marks it `id_build_local` where it
+is not. On this module:
+
+    38 of 62 distinct names are v0-mangled (`_R…`); 0 legacy; 24 unmangled
+    after stripping Cs<disambiguator>_ :  38 unique, 0 collisions
+
+So every v0 name here qualifies for a stable key — **no `id_build_local`
+fallbacks**.
+
+Two-build churn, replicating scry's experiment. The perturbation must change
+**crate metadata**, not source: a comment added to `exec-provider/src/lib.rs`
+churned **nothing** (100% raw survival), because the v0 disambiguator derives from
+crate name/version/flags rather than content. Bumping `exec-provider`'s version
+`0.1.0 -> 0.1.1` is the honest perturbation:
+
+    RAW v0 names                  26 / 38 survived   = 68.4%   (12 vanished)
+    STRIPPED (scry #146 identity) 38 / 38 survived   = 100.0%  (0 vanished)
+
+The 12 that vanish raw are exactly `exec-provider`'s functions — the crate whose
+metadata moved. Compare scry's legacy corpus: ~52% -> ~74%.
+
+**Scope.** One module, one perturbation kind (a version bump). It does not cover
+rustc upgrades, dependency-graph changes, or the collision case — this module has
+no collisions to exercise `id_build_local` with, which is a gap in what it can
+demonstrate, not evidence that the flag is unnecessary.
