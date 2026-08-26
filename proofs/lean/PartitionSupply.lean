@@ -94,6 +94,46 @@ example : ¬ (lsbf 5 4 4 ≤ (4 / 5) * 4) := by decide
     single tick `Switcher::tick` spends on the switch, is `Θ_eff = 39`. -/
 example : 2 * 39 ≤ 100 + 1 := by decide
 
+/-- **The arithmetic step that removes the utilisation bound.** `lsbf` is
+    dominated by the complete frames PLUS what the partial frame cannot withhold,
+    at every utilisation `Θ ≤ Π`.
+
+    This is what `lsbf_le_full_frames` could not give: that lemma throws the
+    partial frame away, and is genuinely FALSE above one half (its counterexample
+    above). Keeping the partial term makes the comparison hold everywhere. -/
+theorem lsbf_le_strong_floor (Pi Th t : Nat) (hPi : 0 < Pi) (hTh : Th ≤ Pi) :
+    lsbf Pi Th t ≤ (t / Pi) * Th + (t % Pi - (Pi - Th)) := by
+  unfold lsbf blackout
+  by_cases h : t ≤ 2 * (Pi - Th)
+  · rw [if_pos h]; exact Nat.zero_le _
+  · rw [if_neg h]
+    have hdm : (t / Pi) * Pi + t % Pi = t := by
+      rw [Nat.mul_comm]; exact Nat.div_add_mod t Pi
+    have hrlt : t % Pi < Pi := Nat.mod_lt t hPi
+    have key : Th * (t - 2 * (Pi - Th))
+        ≤ Pi * ((t / Pi) * Th + (t % Pi - (Pi - Th))) := by
+      rcases Nat.lt_or_ge (t % Pi) (2 * (Pi - Th)) with h2 | h2
+      · -- the remainder is inside the blackout: all supply comes from full frames
+        have ht : t - 2 * (Pi - Th) ≤ (t / Pi) * Pi := by omega
+        calc Th * (t - 2 * (Pi - Th))
+            ≤ Th * ((t / Pi) * Pi) := Nat.mul_le_mul_left _ ht
+          _ = Pi * ((t / Pi) * Th) := by ring
+          _ ≤ Pi * ((t / Pi) * Th + (t % Pi - (Pi - Th))) :=
+              Nat.mul_le_mul_left _ (Nat.le_add_right _ _)
+      · -- the remainder outruns the blackout: the partial frame carries the rest
+        have ht : t - 2 * (Pi - Th) = (t / Pi) * Pi + (t % Pi - 2 * (Pi - Th)) := by omega
+        have hsub : t % Pi - 2 * (Pi - Th) ≤ t % Pi - (Pi - Th) := by omega
+        rw [ht, Nat.mul_add]
+        have h1 : Th * (t % Pi - 2 * (Pi - Th)) ≤ Pi * (t % Pi - (Pi - Th)) :=
+          Nat.mul_le_mul hTh hsub
+        calc Th * ((t / Pi) * Pi) + Th * (t % Pi - 2 * (Pi - Th))
+            ≤ Pi * ((t / Pi) * Th) + Pi * (t % Pi - (Pi - Th)) :=
+              Nat.add_le_add (le_of_eq (by ring)) h1
+          _ = Pi * ((t / Pi) * Th + (t % Pi - (Pi - Th))) := by ring
+    calc Th * (t - 2 * (Pi - Th)) / Pi
+        ≤ Pi * ((t / Pi) * Th + (t % Pi - (Pi - Th))) / Pi := Nat.div_le_div_right key
+      _ = (t / Pi) * Th + (t % Pi - (Pi - Th)) := Nat.mul_div_cancel_left _ hPi
+
 /-! ## Part 2 — the supply floor from a static cyclic frame -/
 
 /-- Supply over `[s, s+t)`: ticks whose position in the major frame is useful to
@@ -250,23 +290,47 @@ theorem supply_floor_strong (Pi : Nat) (u : Nat → Bool) (s t : Nat) (hPi : 0 <
 
     `Θ` here is `thetaEff`, never the raw window budget: see the header.
 
-    **Why `≤ ½` and not unconditional.** The bound comes from `supply_floor`,
-    which throws the partial frame away. `supply_floor_strong` above keeps it and
-    holds for ALL utilisations, so the supply side is already unconditional. What
-    is still missing is the purely arithmetic step
-
-        lsbf Π Θ t  ≤  ⌊t/Π⌋·Θ + (t mod Π − (Π − Θ))
-
-    which an exhaustive numeric sweep (Π ≤ 60, all Θ ≤ Π, t ≤ 600) found **no
-    counterexample to in either regime** — but a numeric sweep is not a proof, and
-    it is not asserted here as one. `lsbf_le_full_frames` is genuinely FALSE above
-    one half (see its counterexample), so the unconditional version needs that
-    step rather than a re-tactic of this one. -/
+    **Superseded by `supplyGuarantee`, and kept deliberately.** This is the
+    simpler route — complete frames only — and it is the one that fails above one
+    half, because `lsbf_le_full_frames` throws the partial frame away. Keeping it
+    beside the unconditional result records that the `≤ ½` restriction was a
+    property of the ROUTE, not of the conclusion: `supplyGuarantee` reaches every
+    utilisation by keeping the partial term (`supply_floor_strong` +
+    `lsbf_le_strong_floor`). The counterexample below still bites this lemma.
+-/
 theorem supplyGuarantee_of_half_utilisation
     (Pi : Nat) (u : Nat → Bool) (s t : Nat)
     (hPi : 0 < Pi) (hU : 2 * thetaEff Pi u ≤ Pi + 1) :
     lsbf Pi (thetaEff Pi u) t ≤ supply Pi u s t :=
   le_trans (lsbf_le_full_frames Pi (thetaEff Pi u) t hPi hU) (supply_floor Pi u s t)
+
+/-- A frame cannot contain more useful ticks than it has ticks. Immediate from
+    `thetaEff_add_compl`. -/
+theorem thetaEff_le (Pi : Nat) (u : Nat → Bool) : thetaEff Pi u ≤ Pi := by
+  have h := thetaEff_add_compl Pi u
+  omega
+
+/-- **`SupplyGuarantee`, discharged UNCONDITIONALLY for gust's static major
+    frame.**
+
+    spar's `ArincSupply.lean` proves the inner response-time analysis sound
+    *conditional on* `∀ t, lsbf Π Θ t ≤ sbf t`, and states that spar does NOT
+    prove it — it is the partition scheduler's obligation. This is that
+    obligation, discharged from the frame's periodic structure alone, at every
+    utilisation:
+
+    * `supply_floor_strong` — the static cyclic frame delivers `⌊t/Π⌋·Θ_eff` plus
+      whatever the partial frame cannot withhold, from ANY start, so no reasoning
+      about phase or interval alignment is needed;
+    * `lsbf_le_strong_floor` — that floor dominates `lsbf` for every `Θ ≤ Π`.
+
+    `Θ` is `thetaEff` throughout, never the raw window budget — `Switcher::tick`
+    fires at `end - 1`, so a partition owning `k` windows receives `Θ − k`, and
+    instantiating with the raw budget is UNSOUND (see the header). -/
+theorem supplyGuarantee (Pi : Nat) (u : Nat → Bool) (s t : Nat) (hPi : 0 < Pi) :
+    lsbf Pi (thetaEff Pi u) t ≤ supply Pi u s t :=
+  le_trans (lsbf_le_strong_floor Pi (thetaEff Pi u) t hPi (thetaEff_le Pi u))
+           (supply_floor_strong Pi u s t hPi)
 
 /-- Definitional sanity, so the theorem above cannot hold because `supply` or
     `thetaEff` mean something other than intended. A partition owning ticks
