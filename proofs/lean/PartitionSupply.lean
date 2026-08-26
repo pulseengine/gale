@@ -174,6 +174,66 @@ theorem supply_floor (Pi : Nat) (u : Nat → Bool) (s t : Nat) :
       = supply Pi u s ((t / Pi) * Pi) := (supply_full Pi u (t / Pi) s).symm
     _ ≤ supply Pi u s t := supply_mono Pi u s (Nat.div_mul_le_self t Pi)
 
+/-! ## Part 3 — counting the partial frame, which removes the utilisation bound -/
+
+/-- A tick is either useful or not: supply and its complement partition the
+    interval. -/
+theorem supply_add_compl (Pi : Nat) (u : Nat → Bool) (s t : Nat) :
+    supply Pi u s t + supply Pi (fun i => !u i) s t = t := by
+  unfold supply
+  rw [← Finset.sum_add_distrib]
+  have h : ∀ x : Nat,
+      ((if u ((s + x) % Pi) = true then 1 else 0)
+        + if (fun i => !u i) ((s + x) % Pi) = true then 1 else 0) = 1 := by
+    intro x; cases hb : u ((s + x) % Pi) <;> simp [hb]
+  rw [Finset.sum_congr rfl (fun x _ => h x)]
+  simp
+
+/-- Dually, the useful and non-useful ticks of one frame sum to `Π`. -/
+theorem thetaEff_add_compl (Pi : Nat) (u : Nat → Bool) :
+    thetaEff Pi u + thetaEff Pi (fun i => !u i) = Pi := by
+  unfold thetaEff
+  rw [← Finset.sum_add_distrib]
+  have h : ∀ x : Nat,
+      ((if u (x % Pi) = true then 1 else 0)
+        + if (fun i => !u i) (x % Pi) = true then 1 else 0) = 1 := by
+    intro x; cases hb : u (x % Pi) <;> simp [hb]
+  rw [Finset.sum_congr rfl (fun x _ => h x)]
+  simp
+
+/-- **The partial frame carries supply too.** Over `r ≤ Π` consecutive ticks a
+    partition loses at most the whole non-useful budget `Π − Θ_eff`, because a
+    sub-interval of a frame cannot contain more non-useful ticks than the frame
+    does. This is the piece the `≤ ½` bound was standing in for. -/
+theorem supply_partial (Pi : Nat) (u : Nat → Bool) (s r : Nat) (hr : r ≤ Pi) :
+    r ≤ supply Pi u s r + (Pi - thetaEff Pi u) := by
+  have hsum := supply_add_compl Pi u s r
+  have hmono : supply Pi (fun i => !u i) s r ≤ supply Pi (fun i => !u i) s Pi :=
+    supply_mono Pi _ s hr
+  have hper : supply Pi (fun i => !u i) s Pi = thetaEff Pi (fun i => !u i) :=
+    supply_period Pi _ s
+  have hth := thetaEff_add_compl Pi u
+  omega
+
+/-- **The strong supply floor.** Over any interval of length `t`, from any start,
+    a partition receives at least the complete frames PLUS whatever the partial
+    frame cannot withhold:
+
+        ⌊t/Π⌋ · Θ_eff  +  (t mod Π  −  (Π − Θ_eff))
+
+    The second term is what `supply_floor` throws away. It is zero at low
+    utilisation — which is why the `≤ ½` route worked — and it is exactly what is
+    needed above one half. -/
+theorem supply_floor_strong (Pi : Nat) (u : Nat → Bool) (s t : Nat) (hPi : 0 < Pi) :
+    (t / Pi) * thetaEff Pi u + (t % Pi - (Pi - thetaEff Pi u)) ≤ supply Pi u s t := by
+  have hsplit : (t / Pi) * Pi + t % Pi = t := by
+    rw [Nat.mul_comm]; exact Nat.div_add_mod t Pi
+  have hadd := supply_add Pi u s ((t / Pi) * Pi) (t % Pi)
+  rw [hsplit, supply_full] at hadd
+  have hp := supply_partial Pi u (s + (t / Pi) * Pi) (t % Pi)
+    (Nat.le_of_lt (Nat.mod_lt t hPi))
+  omega
+
 /-! ## The obligation spar left to gale -/
 
 /-- **`SupplyGuarantee`, discharged for gust's static major frame at utilisation
@@ -188,7 +248,20 @@ theorem supply_floor (Pi : Nat) (u : Nat → Bool) (s t : Nat) :
       so no reasoning about phase or interval alignment is needed;
     * `lsbf_le_full_frames` — those complete frames already dominate `lsbf`.
 
-    `Θ` here is `thetaEff`, never the raw window budget: see the header. -/
+    `Θ` here is `thetaEff`, never the raw window budget: see the header.
+
+    **Why `≤ ½` and not unconditional.** The bound comes from `supply_floor`,
+    which throws the partial frame away. `supply_floor_strong` above keeps it and
+    holds for ALL utilisations, so the supply side is already unconditional. What
+    is still missing is the purely arithmetic step
+
+        lsbf Π Θ t  ≤  ⌊t/Π⌋·Θ + (t mod Π − (Π − Θ))
+
+    which an exhaustive numeric sweep (Π ≤ 60, all Θ ≤ Π, t ≤ 600) found **no
+    counterexample to in either regime** — but a numeric sweep is not a proof, and
+    it is not asserted here as one. `lsbf_le_full_frames` is genuinely FALSE above
+    one half (see its counterexample), so the unconditional version needs that
+    step rather than a re-tactic of this one. -/
 theorem supplyGuarantee_of_half_utilisation
     (Pi : Nat) (u : Nat → Bool) (s t : Nat)
     (hPi : 0 < Pi) (hU : 2 * thetaEff Pi u ≤ Pi + 1) :
