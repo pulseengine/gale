@@ -24,6 +24,9 @@ on:
       - 'proofs/**'
       - 'BUILD.bazel'
       - 'MODULE.bazel'
+      # this workflow must test its own changes, or a PR that edits the gate
+      # merges without ever running it (gale#288 nearly did exactly that)
+      - '.github/workflows/formal-verification.yml'
   pull_request:
     branches: [main]
     paths:
@@ -32,6 +35,11 @@ on:
       - 'ffi/**'
       - 'tests/**'
       - 'proofs/**'
+      # BUILD/MODULE were on the push filter but NOT here, so a PR touching
+      # bazel deps skipped the proofs it could break
+      - 'BUILD.bazel'
+      - 'MODULE.bazel'
+      - '.github/workflows/formal-verification.yml'
   schedule:
     - cron: '0 2 * * 0'
 
