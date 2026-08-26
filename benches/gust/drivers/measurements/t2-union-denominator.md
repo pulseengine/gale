@@ -19,10 +19,22 @@ metric can be computed.
 
     module         applied  verified  declined
     hm-thin            190        13       177
-    mpu-thin           138         7       131
-    switch-thin        149         2       147
+    mpu-thin           147         7       140
+    switch-thin        159         2       157
     ----------------------------------------------
-    TOTAL              477        22       455        4.6% SMT-verified
+    TOTAL              496        22       474        4.4% SMT-verified
+
+**These counts are now pinned by committed fixtures** — `verify-reports/*.verify.json`,
+one `synth-verify-v1` sidecar per driver, with the full toolchain and the exact
+pipeline recorded in `verify-reports/README.md`. An earlier cut of this document
+read `138` / `149` for the two stubbed drivers (total 477); those numbers did not
+reproduce on a clean rebuild and have been replaced by ones that do. `verified`
+reproduced exactly either way (13 / 7 / 2 = 22) — the drift was entirely in
+`declined`, and its cause is that the **seam stubs are rebuilt from source and
+nothing pins them**. That is the argument for the fixtures, and it is why the
+loom stage is named explicitly: skipping `loom optimize --passes inline` gives
+139 instances instead of 496, because inlining duplicates callee bodies and the
+inventory is a property of the *optimized* module.
 
 Decline reasons split almost evenly: `register-operation` 227 (explicitly
 "deferred to per-rule Rocq obligations") and `unmodeled-op` 228.
@@ -40,30 +52,53 @@ distinct) and reading each one's terminator:
 | declined kind | instances | Rocq obligation | status |
 |---|---|---|---|
 | `LocalGet` | 131 | `local_get_correct` | **Qed** |
-| `I32Const` | 55 | `i32_const_correct` | **Qed** |
+| `I32Const` | 62 | `i32_const_correct` | **Qed** |
 | `LocalSet` | 36 | `local_set_correct` | **Qed** |
 | `Select` | 4 | `select_correct` | **Qed** |
-| `End` | 60 | — | **none found** |
-| `BrIf` | 38 | — | **none found** |
-| `Block` | 36 | — | **none found** |
+| `End` | 64 | — | **none found** |
+| `BrIf` | 40 | — | **none found** |
+| `Block` | 38 | — | **none found** |
 | `Call` | 31 | — | **none found** |
-| `I32Load8U` | 15 | — | **none found** |
-| `I32Store8` | 15 | — | **none found** |
+| `I32Load8U` | 17 | — | **none found** |
+| `I32Store8` | 17 | — | **none found** |
 | `Br` | 7 | — | **none found** |
 | `Unreachable` | 6 | — | **none found** |
+| `LocalTee` | 4 | — | **none found** |
+| `I64ExtendI32S` | 3 | — | **none found** |
+| `I64LeS` | 3 | — | **none found** |
+| `I64ExtendI32U` | 2 | — | **none found** |
+| `I64Sub` | 2 | — | **none found** |
+| `I64GtS` | 2 | — | **none found** |
+| `I64Const`, `I64ShrS`, `I64Xor`, `I32Ctz`, `I32Popcnt` | 1 each | — | **none found** |
+
+### A claim from the earlier cut is WITHDRAWN
+
+That cut listed twelve declined kinds and concluded: *"Every arithmetic and
+comparison rule these objects use is covered by one half or the other."*
+
+**That is false on the reproducible build.** The tail above — `I64LeS` (3),
+`I64Sub` (2), `I64GtS` (2), `I64Const`, `I64ShrS`, `I64Xor`, `I32Ctz`,
+`I32Popcnt` (1 each), and the two `I64ExtendI32*` widenings (5) — are arithmetic,
+comparison and widening rules with **no Rocq obligation and no SMT
+verification**. Seventeen instances, 3.4% of the denominator. Small, but the earlier sentence asserted a categorical property, and
+a categorical claim is refuted by any counterexample.
+
+The revised statement: the gap is **dominated** by control flow and byte-level
+memory (220 of 241), but it is not confined to them.
 
 ## THE UNION
 
     SMT-verified                       22
-    declined but Rocq-Qed             226        (131 + 55 + 36 + 4)
+    declined but Rocq-Qed             233        (131 + 62 + 36 + 4)
     ------------------------------------------
-    covered by the union              248  of 477   = 52%
-    covered by NEITHER half           229  of 477   = 48%
+    covered by the union              255  of 496   = 51%
+    covered by NEITHER half           241  of 496   = 49%
 
 **`REQ-OS-OBJVERIFY-001` is not met, and now has a number instead of an
-adjective: 52% union coverage, 48% gap.** The gap is not arithmetic — it is
-**control flow** (`End`, `BrIf`, `Block`, `Br`, `Call`, `Unreachable` = 178
-instances) plus **byte-level memory access** (`I32Load8U`, `I32Store8` = 30).
+adjective: 51% union coverage, 49% gap.** The gap is not arithmetic — it is
+**control flow** (`End`, `BrIf`, `Block`, `Br`, `Call`, `Unreachable` = 186
+instances) plus **byte-level memory access** (`I32Load8U`, `I32Store8` = 34) —
+220 of the 241, with a 21-instance tail of `LocalTee` and i64 arithmetic.
 
 Every arithmetic and comparison rule these objects use is covered by one half or
 the other. What has no obligation is the set of constructs deciding *whether* the

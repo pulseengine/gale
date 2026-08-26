@@ -1,0 +1,482 @@
+{
+  "backend": "arm",
+  "binary": "/private/tmp/claude-501/-Volumes-Home-git-pulseengine-gale/b9703d91-674b-4409-82ca-8c80975abd51/scratchpad/verifyfix/mpu-thin/loom-cm3.o",
+  "functions": [
+    {
+      "function": "gust:mpu/regs@0.1.0#mpu-write",
+      "rules": [
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Block",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "register-operation",
+          "rocq_theorem": "i32_const_correct",
+          "rule": "I32Const",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Load8U",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "BrIf",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Store8",
+          "status": "declined"
+        },
+        {
+          "count": 2,
+          "reason": "unmodeled-op",
+          "rule": "End",
+          "status": "declined"
+        }
+      ]
+    },
+    {
+      "function": "cabi_realloc_wit_bindgen_0_52_0",
+      "rules": [
+        {
+          "count": 1,
+          "rule": "I32Eqz",
+          "smt_rule": "i32.eqz → CMP #0 + SetCond(EQ)",
+          "status": "verified"
+        },
+        {
+          "count": 13,
+          "reason": "register-operation",
+          "rocq_theorem": "local_get_correct",
+          "rule": "LocalGet",
+          "status": "declined"
+        },
+        {
+          "count": 5,
+          "reason": "register-operation",
+          "rocq_theorem": "local_set_correct",
+          "rule": "LocalSet",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "unmodeled-op",
+          "rule": "Block",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "unmodeled-op",
+          "rule": "BrIf",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "unmodeled-op",
+          "rule": "Call",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Br",
+          "status": "declined"
+        },
+        {
+          "count": 4,
+          "reason": "unmodeled-op",
+          "rule": "End",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Unreachable",
+          "status": "declined"
+        }
+      ]
+    },
+    {
+      "function": "cabi_realloc",
+      "rules": [
+        {
+          "count": 1,
+          "rule": "I32Eqz",
+          "smt_rule": "i32.eqz → CMP #0 + SetCond(EQ)",
+          "status": "verified"
+        },
+        {
+          "count": 13,
+          "reason": "register-operation",
+          "rocq_theorem": "local_get_correct",
+          "rule": "LocalGet",
+          "status": "declined"
+        },
+        {
+          "count": 5,
+          "reason": "register-operation",
+          "rocq_theorem": "local_set_correct",
+          "rule": "LocalSet",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "unmodeled-op",
+          "rule": "Block",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "unmodeled-op",
+          "rule": "BrIf",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "unmodeled-op",
+          "rule": "Call",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Br",
+          "status": "declined"
+        },
+        {
+          "count": 4,
+          "reason": "unmodeled-op",
+          "rule": "End",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Unreachable",
+          "status": "declined"
+        }
+      ]
+    },
+    {
+      "function": "gust:mpu/iso@0.1.0#size-field",
+      "rules": [
+        {
+          "count": 1,
+          "rule": "I32Add",
+          "smt_rule": "i32.add → ADD",
+          "status": "verified"
+        },
+        {
+          "count": 1,
+          "rule": "I32GtU",
+          "smt_rule": "i32.gt_u → CMP + SetCond(HI)",
+          "status": "verified"
+        },
+        {
+          "count": 1,
+          "rule": "I32Eq",
+          "smt_rule": "i32.eq → CMP + SetCond(EQ)",
+          "status": "verified"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Block",
+          "status": "declined"
+        },
+        {
+          "count": 8,
+          "reason": "register-operation",
+          "rocq_theorem": "i32_const_correct",
+          "rule": "I32Const",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Load8U",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "BrIf",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Store8",
+          "status": "declined"
+        },
+        {
+          "count": 2,
+          "reason": "unmodeled-op",
+          "rule": "End",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "register-operation",
+          "rocq_theorem": "local_get_correct",
+          "rule": "LocalGet",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Ctz",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "register-operation",
+          "rocq_theorem": "local_tee_correct",
+          "rule": "LocalTee",
+          "status": "declined"
+        },
+        {
+          "count": 2,
+          "reason": "unmodeled-op",
+          "rule": "Select",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Popcnt",
+          "status": "declined"
+        }
+      ]
+    },
+    {
+      "function": "gust:mpu/iso@0.1.0#covers-addr",
+      "rules": [
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Block",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "register-operation",
+          "rocq_theorem": "i32_const_correct",
+          "rule": "I32Const",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Load8U",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "BrIf",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Store8",
+          "status": "declined"
+        },
+        {
+          "count": 2,
+          "reason": "unmodeled-op",
+          "rule": "End",
+          "status": "declined"
+        },
+        {
+          "count": 2,
+          "reason": "register-operation",
+          "rocq_theorem": "local_get_correct",
+          "rule": "LocalGet",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Call",
+          "status": "declined"
+        }
+      ]
+    },
+    {
+      "function": "gust:mpu/iso@0.1.0#try-add-region",
+      "rules": [
+        {
+          "count": 1,
+          "rule": "I32And",
+          "smt_rule": "i32.and → AND",
+          "status": "verified"
+        },
+        {
+          "count": 1,
+          "rule": "I32Ne",
+          "smt_rule": "i32.ne → CMP + SetCond(NE)",
+          "status": "verified"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Block",
+          "status": "declined"
+        },
+        {
+          "count": 5,
+          "reason": "register-operation",
+          "rocq_theorem": "i32_const_correct",
+          "rule": "I32Const",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Load8U",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "BrIf",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Store8",
+          "status": "declined"
+        },
+        {
+          "count": 2,
+          "reason": "unmodeled-op",
+          "rule": "End",
+          "status": "declined"
+        },
+        {
+          "count": 4,
+          "reason": "register-operation",
+          "rocq_theorem": "local_get_correct",
+          "rule": "LocalGet",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Call",
+          "status": "declined"
+        }
+      ]
+    },
+    {
+      "function": "gust:mpu/iso@0.1.0#switch-to-partition",
+      "rules": [
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Block",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "register-operation",
+          "rocq_theorem": "i32_const_correct",
+          "rule": "I32Const",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Load8U",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "BrIf",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Store8",
+          "status": "declined"
+        },
+        {
+          "count": 2,
+          "reason": "unmodeled-op",
+          "rule": "End",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "register-operation",
+          "rocq_theorem": "local_get_correct",
+          "rule": "LocalGet",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Call",
+          "status": "declined"
+        }
+      ]
+    },
+    {
+      "function": "gust:mpu/iso@0.1.0#rasr-for",
+      "rules": [
+        {
+          "count": 2,
+          "reason": "register-operation",
+          "rocq_theorem": "local_get_correct",
+          "rule": "LocalGet",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Call",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "End",
+          "status": "declined"
+        }
+      ]
+    }
+  ],
+  "schema": "synth-verify-v1",
+  "source": "/private/tmp/claude-501/-Volumes-Home-git-pulseengine-gale/b9703d91-674b-4409-82ca-8c80975abd51/scratchpad/verifyfix/mpu-thin/loom.wasm",
+  "summary": {
+    "applied_rule_kinds": 67,
+    "declined": 60,
+    "declined_by_reason": {
+      "register-operation": {
+        "instructions": 71,
+        "rule_kinds": 15
+      },
+      "unmodeled-op": {
+        "instructions": 69,
+        "rule_kinds": 45
+      }
+    },
+    "failed": 0,
+    "unknown": 0,
+    "verified": 7
+  }
+}
