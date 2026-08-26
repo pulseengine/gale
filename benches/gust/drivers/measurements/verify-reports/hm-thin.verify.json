@@ -1,0 +1,454 @@
+{
+  "backend": "arm",
+  "binary": "/private/tmp/claude-501/-Volumes-Home-git-pulseengine-gale/b9703d91-674b-4409-82ca-8c80975abd51/scratchpad/verifyfix/hm-thin/loom-cm3.o",
+  "functions": [
+    {
+      "function": "gust:hm/detect@0.1.0#innovation-ok",
+      "rules": [
+        {
+          "count": 1,
+          "rule": "I32LeU",
+          "smt_rule": "i32.le_u → CMP + SetCond(LS)",
+          "status": "verified"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Block",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "register-operation",
+          "rocq_theorem": "i32_const_correct",
+          "rule": "I32Const",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Load8U",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "BrIf",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Store8",
+          "status": "declined"
+        },
+        {
+          "count": 2,
+          "reason": "unmodeled-op",
+          "rule": "End",
+          "status": "declined"
+        },
+        {
+          "count": 2,
+          "reason": "register-operation",
+          "rocq_theorem": "local_get_correct",
+          "rule": "LocalGet",
+          "status": "declined"
+        }
+      ]
+    },
+    {
+      "function": "gust:hm/detect@0.1.0#plausible",
+      "rules": [
+        {
+          "count": 2,
+          "rule": "I32LeS",
+          "smt_rule": "i32.le_s → CMP + SetCond(LE)",
+          "status": "verified"
+        },
+        {
+          "count": 1,
+          "rule": "I32And",
+          "smt_rule": "i32.and → AND",
+          "status": "verified"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Block",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "register-operation",
+          "rocq_theorem": "i32_const_correct",
+          "rule": "I32Const",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Load8U",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "BrIf",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Store8",
+          "status": "declined"
+        },
+        {
+          "count": 2,
+          "reason": "unmodeled-op",
+          "rule": "End",
+          "status": "declined"
+        },
+        {
+          "count": 4,
+          "reason": "register-operation",
+          "rocq_theorem": "local_get_correct",
+          "rule": "LocalGet",
+          "status": "declined"
+        }
+      ]
+    },
+    {
+      "function": "gust:hm/detect@0.1.0#heartbeat-ok",
+      "rules": [
+        {
+          "count": 1,
+          "rule": "I32Eqz",
+          "smt_rule": "i32.eqz → CMP #0 + SetCond(EQ)",
+          "status": "verified"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Block",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "register-operation",
+          "rocq_theorem": "i32_const_correct",
+          "rule": "I32Const",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Load8U",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "BrIf",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Store8",
+          "status": "declined"
+        },
+        {
+          "count": 2,
+          "reason": "unmodeled-op",
+          "rule": "End",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "register-operation",
+          "rocq_theorem": "local_get_correct",
+          "rule": "LocalGet",
+          "status": "declined"
+        }
+      ]
+    },
+    {
+      "function": "gust:hm/detect@0.1.0#vote-ok",
+      "rules": [
+        {
+          "count": 4,
+          "rule": "I32Sub",
+          "smt_rule": "i32.sub → SUB",
+          "status": "verified"
+        },
+        {
+          "count": 2,
+          "rule": "I32GtS",
+          "smt_rule": "i32.gt_s → CMP + SetCond(GT)",
+          "status": "verified"
+        },
+        {
+          "count": 27,
+          "reason": "register-operation",
+          "rocq_theorem": "local_get_correct",
+          "rule": "LocalGet",
+          "status": "declined"
+        },
+        {
+          "count": 6,
+          "reason": "register-operation",
+          "rocq_theorem": "local_set_correct",
+          "rule": "LocalSet",
+          "status": "declined"
+        },
+        {
+          "count": 2,
+          "reason": "unmodeled-op",
+          "rule": "Select",
+          "status": "declined"
+        },
+        {
+          "count": 2,
+          "reason": "unmodeled-op",
+          "rule": "I64ExtendI32U",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "unmodeled-op",
+          "rule": "I64ExtendI32S",
+          "status": "declined"
+        },
+        {
+          "count": 2,
+          "reason": "unmodeled-op",
+          "rule": "I64Sub",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "register-operation",
+          "rocq_theorem": "local_tee_correct",
+          "rule": "LocalTee",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "register-operation",
+          "rocq_theorem": "i64_const_correct",
+          "rule": "I64Const",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I64ShrS",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I64Xor",
+          "status": "declined"
+        },
+        {
+          "count": 4,
+          "reason": "unmodeled-op",
+          "rule": "Block",
+          "status": "declined"
+        },
+        {
+          "count": 6,
+          "reason": "register-operation",
+          "rocq_theorem": "i32_const_correct",
+          "rule": "I32Const",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Load8U",
+          "status": "declined"
+        },
+        {
+          "count": 6,
+          "reason": "unmodeled-op",
+          "rule": "BrIf",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "I32Store8",
+          "status": "declined"
+        },
+        {
+          "count": 5,
+          "reason": "unmodeled-op",
+          "rule": "End",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "unmodeled-op",
+          "rule": "I64LeS",
+          "status": "declined"
+        },
+        {
+          "count": 2,
+          "reason": "unmodeled-op",
+          "rule": "I64GtS",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Br",
+          "status": "declined"
+        }
+      ]
+    },
+    {
+      "function": "cabi_realloc_wit_bindgen_0_52_0",
+      "rules": [
+        {
+          "count": 1,
+          "rule": "I32Eqz",
+          "smt_rule": "i32.eqz → CMP #0 + SetCond(EQ)",
+          "status": "verified"
+        },
+        {
+          "count": 13,
+          "reason": "register-operation",
+          "rocq_theorem": "local_get_correct",
+          "rule": "LocalGet",
+          "status": "declined"
+        },
+        {
+          "count": 5,
+          "reason": "register-operation",
+          "rocq_theorem": "local_set_correct",
+          "rule": "LocalSet",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "unmodeled-op",
+          "rule": "Block",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "unmodeled-op",
+          "rule": "BrIf",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "unmodeled-op",
+          "rule": "Call",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Br",
+          "status": "declined"
+        },
+        {
+          "count": 4,
+          "reason": "unmodeled-op",
+          "rule": "End",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Unreachable",
+          "status": "declined"
+        }
+      ]
+    },
+    {
+      "function": "cabi_realloc",
+      "rules": [
+        {
+          "count": 1,
+          "rule": "I32Eqz",
+          "smt_rule": "i32.eqz → CMP #0 + SetCond(EQ)",
+          "status": "verified"
+        },
+        {
+          "count": 13,
+          "reason": "register-operation",
+          "rocq_theorem": "local_get_correct",
+          "rule": "LocalGet",
+          "status": "declined"
+        },
+        {
+          "count": 5,
+          "reason": "register-operation",
+          "rocq_theorem": "local_set_correct",
+          "rule": "LocalSet",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "unmodeled-op",
+          "rule": "Block",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "unmodeled-op",
+          "rule": "BrIf",
+          "status": "declined"
+        },
+        {
+          "count": 3,
+          "reason": "unmodeled-op",
+          "rule": "Call",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Br",
+          "status": "declined"
+        },
+        {
+          "count": 4,
+          "reason": "unmodeled-op",
+          "rule": "End",
+          "status": "declined"
+        },
+        {
+          "count": 1,
+          "reason": "unmodeled-op",
+          "rule": "Unreachable",
+          "status": "declined"
+        }
+      ]
+    }
+  ],
+  "schema": "synth-verify-v1",
+  "source": "/private/tmp/claude-501/-Volumes-Home-git-pulseengine-gale/b9703d91-674b-4409-82ca-8c80975abd51/scratchpad/verifyfix/hm-thin/loom.wasm",
+  "summary": {
+    "applied_rule_kinds": 64,
+    "declined": 56,
+    "declined_by_reason": {
+      "register-operation": {
+        "instructions": 95,
+        "rule_kinds": 15
+      },
+      "unmodeled-op": {
+        "instructions": 82,
+        "rule_kinds": 41
+      }
+    },
+    "failed": 0,
+    "unknown": 0,
+    "verified": 8
+  }
+}
