@@ -567,6 +567,38 @@ artifacts:
       poll/await point, not merely observed sound over a finite set of
       test runs. This is strictly stronger than the DWT-based high-water-
       mark evidence the project has relied on to date.
+      DEPENDENCY MAP (2026-08-26): T3 splits into a SUPPLY half and a DEMAND half,
+      and only the supply half is actionable today.
+      UPSTREAM IS DELIVERED. spar#331 closed COMPLETED and the code is on spar main:
+      proofs/Proofs/Scheduling/ArincSupply.lean (0 sorry / 0 admit / 0 axiom) proves
+      (a) the cooperative non-preemptive blocking term folds into the release jitter,
+      so monotonicity and least-fixed-point convergence transfer to
+      rtaStepJitteredBlocking, and (b) lsbf(Pi,Theta,t) = floor(Theta*(t-2*(Pi-Theta))/Pi)
+      is monotone, with fallback_sound_of_supply_guarantee giving demand-vs-supply
+      soundness CONDITIONAL on a SupplyGuarantee hypothesis.
+      SUPPLY HALF -- GALE'S OBLIGATION, NOT SPAR'S, and independent of WCET. spar
+      explicitly does NOT prove SupplyGuarantee (forall t, lsbf Pi Theta t <= sbf t);
+      it is carried as a hypothesis and named as the partition scheduler's duty. gale
+      has the material: MajorFrame in plain/src/partition_switch.rs maps onto the
+      periodic resource with Pi = frame_len and Theta = the sum of budgets owned by a
+      partition, and frame_inv (already Verus/Kani-proven) states the MAX_WINDOWS=4
+      windows tile [0, frame_len) contiguously with no gap, no overlap and every
+      budget > 0. Discharging SupplyGuarantee from frame_inv needs NO C_i.
+      DEMAND HALF -- BLOCKED ON T4. The recurrence's C_i are exactly synth's
+      per-function static WCET bounds: emit-wcet.sh's own header records the split as
+      'reason=call -- bound is intra-procedural; composition is spar's job (T3,
+      spar#331: WCRT recurrence consumes these as C_i)'. T4 currently bounds 3 of 31
+      functions on the E2 composite, and its critical path is scry loop-bound
+      inference (13 of 28 declines, 11 cascades behind them) -- routed as scry#144.
+      So the demand-bound function cannot be instantiated over the shipped executor
+      until T4 advances.
+      THIRD BLOCKER, GALE-OWNED (gale#286): this requirement demands a MACHINE-CHECKED
+      (Lean-verified) analysis, but NO workflow compiles gale's Lean. proofs/lean/ has
+      7 files / 136 theorems / 0 sorry with lean_proof_test targets defined, and
+      formal-verification.yml runs only verus, kani and rocq. The VER kill-criterion
+      below ('the Lean proof fails to discharge') therefore cannot fire today.
+      CORRECTION: an earlier reading of this line called T3 'the one triad item that is
+      gale-actionable'. That was too broad -- only the supply half is.
     tags: [gust, os, track-t3, schedulability, spar, lean, wcet, safety, gale63]
     links:
       - type: derives-from
