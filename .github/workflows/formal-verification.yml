@@ -108,3 +108,33 @@ jobs:
             //proofs:executor_proofs_test \
             --test_output=errors
         timeout-minutes: 45
+
+  lean:
+    name: Lean Proofs (7 files)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # These targets existed in proofs/lean/BUILD.bazel but no workflow ever
+      # invoked them (gale#286), so "0 sorry" was a grep result rather than a
+      # verification result. Measured before adding: 8.7s for all seven with a
+      # warm mathlib, ~258s cold — and the cold time is almost entirely the
+      # one-time download of 7869 prebuilt mathlib files from the upstream
+      # Azure cache, not elaboration (critical path 13.89s).
+      - name: Run Lean proof verification
+        run: |
+          bazel test \
+            //proofs/lean:scheduling_test \
+            //proofs/lean:priority_ceiling_test \
+            //proofs/lean:mpu_region_test \
+            //proofs/lean:priority_queue_test \
+            //proofs/lean:systick_test \
+            //proofs/lean:ring_buf_test \
+            //proofs/lean:atomic_test \
+            --test_output=errors
+        timeout-minutes: 45
