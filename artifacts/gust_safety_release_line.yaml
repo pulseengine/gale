@@ -1001,7 +1001,7 @@ artifacts:
   - id: FIND-OS-TIMER-SLEEP-CONTRACT-001
     type: finding
     title: "timer.sleep reports success for handles it cannot arm — the caller is told a wake was armed that will never fire"
-    status: active
+    status: resolved
     release: v0.7.0
     tags: [gust, os, timer, contract, defect]
     links:
@@ -1029,6 +1029,21 @@ artifacts:
       Kill-criterion for the fix: timer.sleep returns 0xFFFFFFFF for an out-of-range
       id, a non-id, and an already-done task, and the harness's deviation count drops
       to 0 — at which point the CI step's pinned count must drop with it.
+      RESOLVED 2026-08-25. `timer.sleep` now asks `gust:sched/tasks.state` before
+      arming and returns 0xFFFF_FFFF unless the slot is Pending — the same predicate
+      `Tasks::set_deadline` applies internally, so no admission decision moved into
+      the marshalling layer and NO WIT or verified-core change was needed (`state`
+      already existed on the internal seam).
+      KILL-CRITERION MET, all three legs:
+        out-of-range (8), non-id (0xDEADBEEF), already-Done -> 0xFFFF_FFFF each
+          (gust_osfused_probe on qemu lm3s6965evb: osfused-sleep-contract-ok)
+        the VALID arm still works — state 0x1->0x2, armed=0, pending at +10,
+          elapsed at +100 — which is what blocked an earlier attempt at this fix
+        run-gustos-hostrun.sh deviation count 3 -> 0 (exit 3 -> exit 0), and the
+          negative control still refutes the two-scheduler composite, so the
+          harness is still a live gate
+        the CI count-pin in gustos-publish.yml dropped with it: exit 3 is now a
+          REGRESSION rather than a tracked state.
 
   - id: REQ-OS-COMPOSITE-DISSOLVE-001
     type: sw-req

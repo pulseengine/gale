@@ -1,13 +1,13 @@
 # T4 on the whole OS — 1 bound of 31, and the reasons are not the ones we planned for
 
-**Date:** 2026-08-06 · **REQ-OS-WCET-001** · synth 0.52.0, schema `synth-wcet-v1`,
+**Date:** 2026-08-06, re-measured 2026-08-25 · **REQ-OS-WCET-001** · synth 0.52.0 → **0.57.0**, schema `synth-wcet-v1`,
 core class `cortex-m3` · input: the E2 dissolved composite (31 functions)
 
 E2 produced the first native object for the whole OS, which made T4 possible for the
 first time. Running `synth --emit-wcet` over it gives the honest coverage number:
 
-    BOUNDED    1  of 31
-    DECLINED  30
+    BOUNDED    3  of 31
+    DECLINED  28
 
 The single bound is `gust:os/time@0.1.0#deadline` at **36 cycles**.
 
@@ -19,10 +19,37 @@ from feeding T3, and the answer is: further than the plan assumed.
 
 | reason | n | what it means | whose problem |
 |---|---|---|---|
+| `loop` | **13** | backward branch without a statically-proven trip count | **scry** — loop-bound inference |
 | `callee-unbounded` | 11 | a directly-called callee is itself unbounded | **cascade** — resolves when the leaves do |
-| `unmodeled-op` | 9 | "op not classified by the cycle model" | **synth** — the cycle model has holes |
-| `loop` | 8 | backward branch without a statically-proven trip count | **scry** — loop-bound inference |
 | `call` | 2 | direct call to an external/imported function | **by design** — see below |
+| `unmodeled-op` | **2** | "op not classified by the cycle model" | **synth** — largely FIXED, see below |
+
+### RE-MEASURED on synth 0.57.0 — and the blocker INVERTED
+
+The first cut of this measurement (synth 0.52.0) read **1 bounded of 31**, with
+`unmodeled-op` at **9** — larger than `loop` at 8 — and recorded that as the
+finding the release plan had not anticipated. synth#921 asked for the offending
+opcode to be named; it turned out to be just `I64Const` + `I64Str` (synth#936).
+
+**Both are now closed and the numbers moved:**
+
+| | synth 0.52.0 | **synth 0.57.0** |
+|---|---|---|
+| BOUNDED | 1 of 31 | **3 of 31** |
+| `unmodeled-op` | **9** | **2** |
+| `loop` | 8 | **13** |
+| `callee-unbounded` | 11 | 11 |
+| `call` | 2 | 2 |
+
+`unmodeled-op` fell 9 → 2, which is synth#936 landing. `loop` ROSE 8 → 13,
+because functions that previously declined on an unmodelled opcode now get far
+enough to decline on a loop instead — the gap moved, it did not vanish.
+
+So the earlier finding is superseded: **`loop` is no longer merely larger than
+`unmodeled-op`, it is 13 of 28 declines with 11 cascades behind it.** scry
+loop-bound inference is now unambiguously the critical path for T4, and synth's
+half is essentially done. Closing loop-bound inference would take coverage from
+3/31 to at most 16/31 directly, plus whatever the 11 cascades release.
 
 ### `call` (2) is correct, not a gap
 
@@ -40,16 +67,27 @@ something they call declines. Fix the leaves and these follow.
 
 **So the real work is 17 leaves — 9 `unmodeled-op` + 8 `loop` — and 11 more come free.**
 
-## The finding the plan did not anticipate
+## The finding the plan did not anticipate — and the plan turned out right
 
 `docs/releases/v0.7.0-plan.md` names **one** T4 blocker: *"scry loop-bound inference —
 closes the `reason=loop` gap in the WCET sidecars, which is the one thing standing
 between per-function bounds and a schedulability argument."*
 
-That is no longer accurate. `unmodeled-op` (9) is **larger** than `loop` (8), and
-`emit-wcet.sh`'s own header documents only `reason=call` and `reason=loop` — this third
-category is not in the track's written model of itself. Closing loop-bound inference
-alone would take coverage from 1/31 to at most 9/31, not to a schedulability argument.
+On synth 0.52.0 that looked wrong: `unmodeled-op` (9) was **larger** than `loop` (8),
+and `emit-wcet.sh`'s own header documented only `reason=call` and `reason=loop`, so
+the third category was not in the track's written model of itself. That was the
+finding, and it was accurate as measured.
+
+**It has since been closed rather than confirmed.** synth#921 asked for the offending
+opcode to be named; it was `I64Const` + `I64Str` (synth#936), both now fixed, and
+`unmodeled-op` fell 9 → 2. What is left is `loop` at 13 — which is exactly the single
+blocker the plan named in the first place.
+
+So the honest record is: the plan under-specified the blocker set for one release
+cycle, the gap was measured and routed upstream, synth closed it, and the plan's
+original claim now holds. **scry loop-bound inference is the one thing standing
+between per-function bounds and a schedulability argument** — with 11 cascade
+declines behind it, closing it is worth far more than the 13 it names directly.
 
 ## Friction to route upstream (synth)
 

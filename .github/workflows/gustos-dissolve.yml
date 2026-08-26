@@ -9,7 +9,7 @@
 #
 # The pins are the point. A dissolve measured with a different compiler is not
 # comparable to the figure recorded in measurements/composite-dissolved.md, so the
-# versions are fixed here and bumped deliberately -- meld 0.41.3, loom 1.2.0,
+# versions are fixed here and bumped deliberately -- meld 0.48.0, loom 1.2.0,
 # synth 0.52.0 (gale's pin, #208).
 name: gustos dissolve
 
@@ -41,7 +41,7 @@ on:
   workflow_dispatch:
 
 env:
-  MELD_VERSION: "0.41.3"
+  MELD_VERSION: "0.48.0"
   LOOM_VERSION: "1.2.0"
   SYNTH_VERSION: "0.52.0"
 

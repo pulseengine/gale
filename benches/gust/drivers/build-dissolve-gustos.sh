@@ -34,8 +34,26 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="${OUT:-$HERE/gustos-components}"
-MELD="${MELD:-meld}"
+# Pin meld too, not just synth. Until now this script took whatever meld was on
+# PATH (0.41.3) while the isolation core used 0.48.0 — half the pipeline on one
+# version and half on another, which is exactly the mixed-toolchain hazard.
+MELD="${MELD:-$HOME/pe-toolchain/meld-0.48.0/meld}"; [ -x "$MELD" ] || MELD="meld"
 LOOM="${LOOM:-loom}"
+
+# The version is pinned in TWO places — this default and MELD_VERSION in
+# .github/workflows/gustos-dissolve.yml — and they DID drift: the local default
+# moved to 0.48.0 while CI still installed 0.41.3, so CI fell through to a meld
+# with no --pack-rebase and failed deep inside the fuse with "unexpected
+# argument". Check up front instead of discovering it there.
+meld_ver="$("$MELD" --version 2>/dev/null | awk '{print $2}')"
+case "$meld_ver" in
+  0.4[89].*|0.[5-9][0-9].*|[1-9].*) : ;;
+  *) echo "FATAL: meld $meld_ver is too old — this build needs >= 0.48.0 for" >&2
+     echo "       --pack-rebase / --share-stack. Set \$MELD, or bump MELD_VERSION" >&2
+     echo "       in .github/workflows/gustos-dissolve.yml if this is CI." >&2
+     exit 1 ;;
+esac
+
 # Default to gale's PIN (0.52.0, #208), not whatever is on PATH — a dissolve measured
 # with a different compiler is not comparable to the numbers already recorded.
 SYNTH="${SYNTH:-$HOME/pe-toolchain/synth-0.52.0/synth}"
@@ -64,11 +82,22 @@ printf '%-28s %8s B  (wasm component)\n' "$(basename "$FUSED")" "$(wc -c < "$FUS
 
 # ── the dissolve ────────────────────────────────────────────────────────────────
 echo ""
-echo "== meld fuse --memory shared =="
-if ! "$MELD" fuse "$FUSED" --memory shared -o "$T/gustos.fused.wasm" 2>"$T/meld.err"; then
+echo "== meld fuse --memory shared --pack-rebase --share-stack =="
+# --pack-rebase --share-stack, not bare --memory shared. The bare form merges
+# memories WITHOUT rebasing: this composite came out with TEN overlapping
+# data-segment pairs, and meld 0.48 now refuses it outright ("this silently
+# corrupts data"). --pack-rebase needs --emit-relocs + a retained __heap_base,
+# both supplied by build-gustos-components.sh; --share-stack collapses the
+# per-provider shadow stacks, which otherwise dominate the packed extent.
+if ! "$MELD" fuse "$FUSED" --memory shared --pack-rebase --share-stack \
+      -o "$T/gustos.fused.wasm" 2>"$T/meld.err"; then
   echo "  FAILED:"; sed 's/^/    /' "$T/meld.err" | head -20; exit 1
 fi
 printf '  %-26s %8s B  (core module)\n' "gustos.fused.wasm" "$(wc -c < "$T/gustos.fused.wasm" | tr -d ' ')"
+
+echo ""
+echo "== GATE: data segments must be DISJOINT (gale#266) =="
+python3 "$HERE/check-data-overlap.py" "$T/gustos.fused.wasm" || exit 5
 
 echo "== loom optimize --passes inline =="
 if ! "$LOOM" optimize "$T/gustos.fused.wasm" --passes inline --attestation false \

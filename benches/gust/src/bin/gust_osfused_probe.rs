@@ -67,6 +67,8 @@ extern "C" {
     fn os_slept(handle: u32) -> u32;
     #[link_name = "gust:sched/tasks@0.1.0#poll-round"]
     fn os_poll_round(now_lo: u32, now_hi: u32);
+    #[link_name = "gust:sched/tasks@0.1.0#state"]
+    fn os_task_state(h: u32) -> u32;
 }
 
 static mut FAILED: u32 = 0;
@@ -112,12 +114,19 @@ fn main() -> ! {
             "osfused-elapsed-bad",
         );
 
-        // 3) THE ONE THAT MATTERS (gale#269 / synth#929). `sleep` is all-u32 at
-        //    the WIT surface, but it CALLS `deadline(now: u64, ticks: u64)` — the
-        //    (i64, i64) shape thumb-2 mismarshals. If the armed deadline is wrong,
-        //    the timer fires at the wrong tick, or never.
+        // 3+4) THE TIMER SEQUENCE AND THE CONTRACT CASES — SAMPLED WITH NO I/O
+        //      BETWEEN THE CALLS.
+        //
+        //      This ordering is load-bearing, not cosmetic. Semihosting between
+        //      samples perturbs the dissolved object, and an earlier version of
+        //      this probe — which printed between each step — reported
+        //      `state(0)=255` (a value `exec_state` cannot return) and a timer
+        //      that had already elapsed before any time passed. Both were the
+        //      harness. Run as one uninterrupted sequence, every value is
+        //      correct. That is gale#278, and this is the shape that does not lie.
         set_ticks(1000);
         let h = os_spawn_start(0);
+        let st_after_spawn = os_task_state(h);
         let armed = os_sleep(h, 50); // due at tick 1050
         let before = os_slept(h);
 
@@ -128,15 +137,33 @@ fn main() -> ! {
         set_ticks(1100); // past the deadline — must have elapsed
         os_poll_round(1100, 0);
         let late = os_slept(h);
+        let st_final = os_task_state(h);
 
+        // FIND-OS-TIMER-SLEEP-CONTRACT-001's kill-criterion, same uninterrupted
+        // run: the WIT specifies 0xFFFF_FFFF for a handle that cannot be armed.
+        const FAIL: u32 = 0xFFFF_FFFF;
+        let oor = os_sleep(8, 10); // task id outside the 8-slot table
+        let nonid = os_sleep(0xDEAD_BEEF, 10); // not a task id at all
+        let done = os_sleep(h, 10); // h is Done by now — cannot be armed
+
+        // ── sampling over; I/O from here is safe ──────────────────────────────
         hprintln!(
-            "  [sleep] handle={} armed={} before={} at+10={} at+100={}",
-            h, armed, before, early, late
+            "  [sleep] handle={} state {:#x}->{:#x} armed={:#x} before={} at+10={} at+100={}",
+            h, st_after_spawn, st_final, armed, before, early, late
         );
         ok(
-            armed == 0 && early == 0 && late == 1,
+            st_after_spawn == 1 && armed == 0 && before == 0 && early == 0 && late == 1,
             "osfused-deadline-armed-ok",
             "osfused-deadline-armed-bad",
+        );
+        hprintln!(
+            "  [contract] out-of-range={:#x} non-id={:#x} already-done={:#x} (want {:#x})",
+            oor, nonid, done, FAIL
+        );
+        ok(
+            oor == FAIL && nonid == FAIL && done == FAIL,
+            "osfused-sleep-contract-ok",
+            "osfused-sleep-contract-bad",
         );
 
         hprintln!("osfused-gate done");

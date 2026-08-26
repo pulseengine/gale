@@ -96,16 +96,16 @@ jobs:
           # fail, i.e. the harness stopped being a gate.
           case "$rc" in
             0) echo "E1: claims held, no deviations" ;;
-            3) # 3 deviations are KNOWN and tracked (timer.sleep returns success for an
-               # out-of-range or already-done handle, so the arm is silently lost).
-               # Pin the count so a FOURTH one fails this gate instead of hiding here.
-               n=$(sed -n 's/.*HELD under execution; \([0-9]*\) WIT return-contract deviation.*/\1/p' /tmp/e1.log | head -1)
-               if [ "$n" = "3" ]; then
-                 echo "E1: claims held; $n known WIT deviations (tracked, count pinned)"
-               else
-                 echo "::error::E1 deviation count changed: expected 3, got '$n' — a new contract deviation appeared"
-                 exit 1
-               fi ;;
+            3) # There are no longer any known deviations. The three that were pinned
+               # here — timer.sleep returning success for an out-of-range, non-id or
+               # already-Done handle — are FIXED (FIND-OS-TIMER-SLEEP-CONTRACT-001):
+               # sleep now asks gust:sched/tasks.state before arming and returns
+               # 0xFFFF_FFFF when the slot is not Pending. The harness reports 0.
+               # So exit 3 is now a REGRESSION, not a tracked state.
+               echo "::error::E1 reported a WIT return-contract deviation. The known three"
+               echo "::error::were fixed and the count pinned to 0 — this is a new deviation."
+               sed -n 's/.*\(HELD under execution;.*\)/  \1/p' /tmp/e1.log | head -1
+               exit 1 ;;
             *) echo "::error::E1 harness exit $rc — see log above"; exit 1 ;;
           esac
 
