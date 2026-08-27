@@ -18,10 +18,16 @@ use cortex_m_semihosting::debug;
 use panic_halt as _;
 
 #[no_mangle]
+// Re-pinned for REQ-DRV-COMPONENT-001 (gale#307): the driver imports gust:hal/mmio
+// as a WIT-typed component import, so the dissolved object's undefined symbols are
+// the INTERFACE FIELD names read32/write32, not the old mmio_* extern names. Same
+// bridge, same bodies — only the exported symbol changed.
+#[export_name = "read32"]
 pub extern "C" fn mmio_read32(addr: u32) -> u32 {
     unsafe { read_volatile(addr as *const u32) }
 }
 #[no_mangle]
+#[export_name = "write32"]
 pub extern "C" fn mmio_write32(addr: u32, val: u32) {
     unsafe { write_volatile(addr as *mut u32, val) }
 }
