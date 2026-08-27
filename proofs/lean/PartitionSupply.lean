@@ -332,6 +332,69 @@ theorem supplyGuarantee (Pi : Nat) (u : Nat → Bool) (s t : Nat) (hPi : 0 < Pi)
   le_trans (lsbf_le_strong_floor Pi (thetaEff Pi u) t hPi (thetaEff_le Pi u))
            (supply_floor_strong Pi u s t hPi)
 
+/-! ## Part 4 — connecting `u` to a concrete major-frame window -/
+
+/-- The residue predicate induced by ONE window `[a, a+w)` of the major frame.
+
+    The final tick is NOT useful: `Switcher::tick` fires at `t == offset + budget
+    - 1`, so each owned window spends its last tick on the
+    `ctx-save -> region-swap -> ctx-resume` sequence. This is where `Θ_eff` comes
+    from — it is a property of the switch FSM, not an accounting choice. -/
+def windowUseful (a w : Nat) : Nat → Bool :=
+  fun i => decide (a ≤ i ∧ i < a + w - 1)
+
+/-- **`Θ_eff = Θ − 1` for a single window, as a theorem rather than a comment.**
+
+    A partition owning one window of `w` ticks in a frame of period `Π` receives
+    `w − 1` useful ticks per frame. Instantiating spar's analysis with the raw
+    budget `w` is therefore not a conservative approximation — it is a claim this
+    theorem contradicts. -/
+theorem thetaEff_window (Pi a w : Nat) (hw : 0 < w) (hfit : a + w ≤ Pi) :
+    thetaEff Pi (windowUseful a w) = w - 1 := by
+  unfold thetaEff windowUseful
+  have hcongr : ∀ i ∈ Finset.range Pi,
+      (if (decide (a ≤ i % Pi ∧ i % Pi < a + w - 1) : Bool) = true then 1 else 0)
+        = (if (decide (a ≤ i ∧ i < a + w - 1) : Bool) = true then 1 else 0) := by
+    intro i hi
+    rw [Nat.mod_eq_of_lt (Finset.mem_range.mp hi)]
+  rw [Finset.sum_congr rfl hcongr]
+  have hfilter : (Finset.range Pi).filter (fun i => (decide (a ≤ i ∧ i < a + w - 1) : Bool) = true)
+      = Finset.Ico a (a + w - 1) := by
+    ext x
+    simp only [Finset.mem_filter, Finset.mem_range, Finset.mem_Ico, decide_eq_true_eq]
+    omega
+  rw [← Finset.card_filter, hfilter, Nat.card_Ico]
+  omega
+
+/-- **`SupplyGuarantee` for a concrete major-frame window.** A partition owning
+    the window `[a, a+w)` of a `Π`-tick frame is guaranteed `lsbf Π (w−1)` — the
+    raw budget MINUS the tick the switch consumes. -/
+theorem supplyGuarantee_window (Pi a w s t : Nat)
+    (hPi : 0 < Pi) (hw : 0 < w) (hfit : a + w ≤ Pi) :
+    lsbf Pi (w - 1) t ≤ supply Pi (windowUseful a w) s t := by
+  have h := supplyGuarantee Pi (windowUseful a w) s t hPi
+  rwa [thetaEff_window Pi a w hw hfit] at h
+
+/-- **Instantiating with the RAW window budget is unsound — machine-checked.**
+
+    Frame `Π = 4`, one window `[0, 3)` (a proper part of the frame, `w < Π`),
+    interval starting at `s = 2`, length `t = 6`:
+
+        lsbf 4 3 6 = 3   but   supply = 2
+
+    So the guarantee FAILS with the raw budget `w = 3`. This was previously
+    recorded here as a simulation result; it is now a theorem. `Switcher::tick`
+    firing at `end - 1` is not an accounting detail that can be rounded away. -/
+example : ¬ (lsbf 4 3 6 ≤ supply 4 (windowUseful 0 3) 2 6) := by decide
+
+/-- The same instance with `Θ_eff = w − 1 = 2` holds, as `supplyGuarantee_window`
+    requires — so the failure above is specifically the raw budget, not the
+    window or the interval. -/
+example : lsbf 4 2 6 ≤ supply 4 (windowUseful 0 3) 2 6 := by decide
+
+/-- And `Θ_eff` really is `2` here, so the two examples are about the same frame. -/
+example : thetaEff 4 (windowUseful 0 3) = 2 := by decide
+
 /-- Definitional sanity, so the theorem above cannot hold because `supply` or
     `thetaEff` mean something other than intended. A partition owning ticks
     `[0, 39)` of a 100-tick major frame — one 40-tick window minus the tick
