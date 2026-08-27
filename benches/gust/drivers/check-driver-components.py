@@ -122,7 +122,11 @@ def check_object(wasm: pathlib.Path, obj: pathlib.Path, name: str,
         parts = line.split()
         if parts and (parts[0] == "U" or (len(parts) > 1 and parts[1] == "U")):
             got.add(parts[-1])
-    if got != want:
+    if got == want:
+        if not quiet:
+            print(f"       obj  {obj.name}: undefined {sorted(got) or '(none)'} == wasm imports")
+        return 0
+    if True:
         if not quiet:
             print(f"  FAIL {name}: committed {obj.name} disagrees with its source")
             print(f"       wasm imports -> expect: {sorted(want) or '(none)'}")
@@ -179,7 +183,7 @@ def main() -> int:
         sys.exit(f"FATAL: no *-thin drivers under {root} (exit 2)")
 
     print(f"VER-DRV-COMPONENT-001 — {len(drivers)} thin-seam driver(s)")
-    worst, checked, missing = 0, 0, []
+    worst, checked, missing, objs_checked = 0, 0, [], 0
     for d in drivers:
         if not args.no_build:
             b = run(["cargo", "build", "--release", "--target", "wasm32-unknown-unknown", "-q"],
@@ -197,7 +201,9 @@ def main() -> int:
         worst = worst or rc
         objs = sorted(d.glob("*-cm3.o"))
         if objs and rc == 0:
-            worst = worst or check_object(built[0], objs[0], d.name, args.nm)
+            orc = check_object(built[0], objs[0], d.name, args.nm)
+            worst = worst or orc
+            objs_checked += 1
 
     if missing:
         # Not a pass: an unbuilt driver is an UNCHECKED driver, and silently
@@ -206,7 +212,10 @@ def main() -> int:
         print("       build with: cargo build --release --target wasm32-unknown-unknown")
         worst = worst or 2
 
-    print(f"\n  checked {checked} of {len(drivers)}")
+    # Report the object count explicitly: "no failures" must not be confusable
+    # with "nothing was compared". A silent success is how #307 hid.
+    print(f"\n  checked {checked} of {len(drivers)} modules, "
+          f"{objs_checked} committed object(s) compared against source")
     if worst == 0:
         rc = self_test()
         if rc != 0:
