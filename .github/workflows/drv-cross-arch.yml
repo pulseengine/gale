@@ -41,8 +41,15 @@ env:
 
 jobs:
   cross-arch:
+    # ubuntu-24.04, NOT 22.04. synth's published Linux binaries need GLIBC 2.39;
+    # 22.04 ships 2.35, and the binary dies with
+    #   libc.so.6: version `GLIBC_2.39' not found
+    # which under `set -o pipefail` killed this gate at its own version check,
+    # producing NO output at all. gustos-dissolve.yml — the other synth-using
+    # workflow — is already on 24.04; this one copied 22.04 from a workflow that
+    # does not use synth.
     name: "seam survives lowering on ARM and RISC-V (8 drivers)"
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -108,4 +115,4 @@ jobs:
         run: |
           cd benches/gust/drivers
           SYNTH="$HOME/pe-toolchain/bin/synth" LOOM="$HOME/pe-toolchain/bin/loom" \
-            NM=arm-none-eabi-nm bash -x build-cross-arch.sh
+            NM=arm-none-eabi-nm bash build-cross-arch.sh
