@@ -1,0 +1,8 @@
+# gale's toolchain pin. See docs/toolchain-pin.md for why, and for the
+# reproducibility evidence behind adopting this particular layer.
+manifest-version = 1
+
+[toolchain]
+realm   = "pulseengine"
+channel = "rolling"
+layer   = "2026.08.4"
