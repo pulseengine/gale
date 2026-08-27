@@ -27,12 +27,31 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-// gust:hal mmio capability — resolved at link by the SAME ~10-line TCB bridge the
-// other thin-seam drivers use.
-extern "C" {
-    fn mmio_read32(addr: u32) -> u32;
-    fn mmio_write32(addr: u32, val: u32);
+// wit-bindgen's canonical-ABI glue must LINK against a global allocator; this world
+// is scalar-only (u32 in, u32 out), so nothing ever calls it and a zero-state
+// trapping allocator keeps the driver's 0-SRAM property intact.
+#[cfg(not(kani))]
+use core::alloc::{GlobalAlloc, Layout};
+#[cfg(not(kani))]
+struct NoAlloc;
+#[cfg(not(kani))]
+unsafe impl GlobalAlloc for NoAlloc {
+    unsafe fn alloc(&self, _: Layout) -> *mut u8 {
+        core::ptr::null_mut()
+    }
+    unsafe fn dealloc(&self, _: *mut u8, _: Layout) {}
 }
+#[cfg(not(kani))]
+#[global_allocator]
+static ALLOC: NoAlloc = NoAlloc;
+
+// gust:hal mmio capability as a WIT-TYPED COMPONENT IMPORT (REQ-DRV-COMPONENT-001),
+// not a raw `env` extern. The dissolved object still resolves it through the same
+// ~10-line TCB bridge every other thin-seam driver uses — what changes is that the
+// dependency is declared in the WIT and checkable on the module, rather than being
+// an undefined symbol nobody typed.
+wit_bindgen::generate!({ world: "pwm-driver", path: "../wit", generate_all });
+use crate::gust::hal::mmio::{read32 as mmio_read32, write32 as mmio_write32};
 
 // STM32 advanced-timer register map (offsets from the timer base, e.g. TIM1=0x4001_2C00).
 // Device knowledge as *data* (offsets/bit math), not trusted code.
@@ -280,6 +299,35 @@ pub extern "C" fn pwm_is_safe(state: u32) -> u32 {
 // ─────────────────────────────── Kani proofs ────────────────────────────────
 //
 // The safety properties over the full input space. Run: `cargo kani`.
+// `gust:hal/pwm` exported over the SAME bodies as the C-ABI symbols above, not a
+// second implementation: the component's exports and the dissolved object's `pwm_*`
+// entry points then cannot diverge in behaviour. Same shape gpio-thin uses.
+#[cfg(not(kani))]
+struct Driver;
+#[cfg(not(kani))]
+impl exports::gust::hal::pwm::Guest for Driver {
+    fn configure(base: u32, state: u32, psc: u32, period: u32) -> u32 {
+        pwm_configure(base, state, psc, period)
+    }
+    fn set_duty(base: u32, state: u32, duty: u32, period: u32) -> u32 {
+        pwm_set_duty(base, state, duty, period)
+    }
+    fn start(base: u32, state: u32) -> u32 {
+        pwm_start(base, state)
+    }
+    fn failsafe(base: u32, state: u32) -> u32 {
+        pwm_failsafe(base, state)
+    }
+    fn duty(state: u32) -> u32 {
+        pwm_duty(state)
+    }
+    fn is_safe(state: u32) -> u32 {
+        pwm_is_safe(state)
+    }
+}
+#[cfg(not(kani))]
+export!(Driver);
+
 #[cfg(kani)]
 mod kani_proofs {
     use super::*;

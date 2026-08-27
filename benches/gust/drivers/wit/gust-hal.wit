@@ -96,6 +96,17 @@ interface gpio {
     toggle: func(port-base: u32, pin: u32);
 }
 
+/// STM32 advanced-timer PWM protocol (mirrors pwm-thin's exports). Every function
+/// returns a status word rather than trapping: the failsafe path must stay total.
+interface pwm {
+    configure: func(base: u32, state: u32, psc: u32, period: u32) -> u32;
+    set-duty: func(base: u32, state: u32, duty: u32, period: u32) -> u32;
+    start: func(base: u32, state: u32) -> u32;
+    failsafe: func(base: u32, state: u32) -> u32;
+    duty: func(state: u32) -> u32;
+    is-safe: func(state: u32) -> u32;
+}
+
 /// STM32 hardware-timer protocol (mirrors timer-thin's exports).
 interface timer {
     init: func(base: u32, psc: u32, arr: u32);
@@ -145,6 +156,7 @@ world timer-driver { import mmio; export timer; }
 world spi-driver { import mmio; export spi; }
 world uart-driver { import mmio; import irq; export uart; }
 world wdg-driver { import mmio; export wdg; }
+world pwm-driver { import mmio; export pwm; }
 
 /// Thin-seam driver world — imports only generic MMIO + IRQ; exports one step.
 world driver-thin {
