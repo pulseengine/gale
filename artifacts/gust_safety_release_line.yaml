@@ -491,11 +491,22 @@ artifacts:
       this requirement's own metric could be computed. synth#935 shipped
       --emit-verify-report so a decline denominator exists at all, and synth#933
       proved i32_const_correct, which had been Admitted.
-      BIN-VERIFY (SMT) over hm-thin + mpu-thin + switch-thin: 477 applied rule
-      instances, 22 verified, 455 declined = 4.6%.
-      RULE-VERIFY (Rocq) covers 226 of those declines, all Qed: LocalGet 131,
-      I32Const 55, LocalSet 36, Select 4.
-      UNION: 248 of 477 covered = 52%; 229 = 48% GAP.
+      BIN-VERIFY (SMT) over hm-thin + mpu-thin + switch-thin: 496 applied rule
+      instances, 22 verified, 474 declined = 4.4%.
+      RULE-VERIFY (Rocq) covers 294 of those declines, read from synth's
+      proof-inventory.json keyed by CONSTRUCTOR rather than by a derived theorem
+      name.
+      UNION: 316 of 496 covered = 64%; 180 = 36% GAP.
+      SUPERSEDES two earlier figures, both of which were too LOW, and the reason
+      is worth keeping: 52% (denominator 477) did not reproduce on a clean
+      rebuild because the seam stubs are rebuilt from source and nothing pins
+      them; 51% (denominator 496) was measured by DERIVING theorem names from
+      rule kinds, which failed three different ways and lost 51 instances —
+      BrIf -> brif_correct (no separator), I64LeS/GtS/ShrS -> i64_les_correct
+      (trailing sign joined), and I64ExtendI32S/U, which are discharged by
+      *_executes theorems and so lay OUTSIDE the *_correct universe the matcher
+      searched at all. synth v0.60.0 ships proof-inventory.json (synth#1089) so
+      the mapping is read rather than guessed.
       The gap is CONTROL FLOW (End 60, BrIf 38, Block 36, Call 31, Br 7,
       Unreachable 6 = 178) plus BYTE-LEVEL MEMORY (I32Load8U 15, I32Store8 15) —
       not arithmetic. So this requirement is NOT met, and now carries a number
