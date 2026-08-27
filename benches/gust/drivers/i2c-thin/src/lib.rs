@@ -24,10 +24,29 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 
 // gust:hal mmio capability — resolved at link by the SAME ~10-line TCB bridge the
 // other thin-seam drivers use. Polled I2C needs only register reads/writes.
-extern "C" {
-    fn mmio_read32(addr: u32) -> u32;
-    fn mmio_write32(addr: u32, val: u32);
+// wit-bindgen's canonical-ABI glue must LINK against a global allocator; this world
+// is scalar-only (u32 in, u32 out), so nothing ever calls it and a zero-state
+// trapping allocator keeps the driver's 0-SRAM property intact.
+#[cfg(not(kani))]
+use core::alloc::{GlobalAlloc, Layout};
+#[cfg(not(kani))]
+struct NoAlloc;
+#[cfg(not(kani))]
+unsafe impl GlobalAlloc for NoAlloc {
+    unsafe fn alloc(&self, _: Layout) -> *mut u8 {
+        core::ptr::null_mut()
+    }
+    unsafe fn dealloc(&self, _: *mut u8, _: Layout) {}
 }
+#[cfg(not(kani))]
+#[global_allocator]
+static ALLOC: NoAlloc = NoAlloc;
+
+// gust:hal mmio capability as a WIT-TYPED COMPONENT IMPORT (REQ-DRV-COMPONENT-001),
+// not a raw `env` extern — same two primitives, now declared in the WIT and
+// checkable on the module instead of being an undefined symbol nobody typed.
+wit_bindgen::generate!({ world: "i2c-driver", path: "../wit", generate_all });
+use crate::gust::hal::mmio::{read32 as mmio_read32, write32 as mmio_write32};
 
 // STM32F1 I2C register map (offsets from the peripheral base, e.g. I2C1=0x4000_5400).
 // Device knowledge as *data* (offsets/bit math), not trusted code.
@@ -316,6 +335,38 @@ pub extern "C" fn i2c_stop(base: u32, state: u32) -> u32 {
 // ─────────────────────────────── Kani proofs ────────────────────────────────
 //
 // The safety properties over the full input space. Run: `cargo kani`.
+// `gust:hal/i2c` exported over the SAME bodies as the C-ABI symbols above, not a
+// second implementation: the component's exports and the dissolved object's
+// `i2c_*` entry points then cannot diverge in behaviour. Same shape gpio-thin uses.
+#[cfg(not(kani))]
+struct Driver;
+#[cfg(not(kani))]
+impl exports::gust::hal::i2c::Guest for Driver {
+    fn configure(base: u32, apb1_mhz: u32, divisor: u32, fast: u32, trise: u32) {
+        i2c_configure(base, apb1_mhz, divisor, fast, trise)
+    }
+    fn start(base: u32, state: u32, count: u32, read: u32) -> u32 {
+        i2c_start(base, state, count, read)
+    }
+    fn addr_ack(state: u32) -> u32 {
+        i2c_addr_ack(state)
+    }
+    fn step(base: u32, state: u32, out: u32) -> u32 {
+        i2c_step(base, state, out)
+    }
+    fn ack_byte(state: u32) -> u32 {
+        i2c_ack_byte(state)
+    }
+    fn is_complete(state: u32) -> u32 {
+        i2c_is_complete(state)
+    }
+    fn stop(base: u32, state: u32) -> u32 {
+        i2c_stop(base, state)
+    }
+}
+#[cfg(not(kani))]
+export!(Driver);
+
 #[cfg(kani)]
 mod kani_proofs {
     use super::*;

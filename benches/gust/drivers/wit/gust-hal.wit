@@ -96,6 +96,51 @@ interface gpio {
     toggle: func(port-base: u32, pin: u32);
 }
 
+/// STM32 ADC protocol (mirrors adc-thin's exports).
+interface adc {
+    configure: func(base: u32, channel: u32, sample-code: u32);
+    enable: func(base: u32, state: u32, channel: u32, cr2-extra: u32) -> u32;
+    start: func(base: u32, state: u32, cr2-extra: u32) -> u32;
+    poll: func(base: u32, state: u32) -> u32;
+    read: func(base: u32, state: u32) -> u32;
+    sample: func(state: u32) -> u32;
+    is-complete: func(state: u32) -> u32;
+    disable: func(base: u32, state: u32) -> u32;
+}
+
+/// bxCAN protocol (mirrors can-thin's exports).
+interface can {
+    enter-init: func(base: u32, state: u32) -> u32;
+    configure: func(base: u32, state: u32, brp: u32, ts1: u32, ts2: u32, sjw: u32) -> u32;
+    leave-init: func(base: u32, state: u32) -> u32;
+    tx-request: func(base: u32, state: u32, id: u32, dlc: u32, dlo: u32, dhi: u32) -> u32;
+    rx-release: func(base: u32, state: u32) -> u32;
+    mode: func(state: u32) -> u32;
+}
+
+/// STM32 DAC protocol (mirrors dac-thin's exports).
+interface dac {
+    configure: func(base: u32, channel: u32);
+    enable: func(base: u32, state: u32, channel: u32) -> u32;
+    load: func(base: u32, state: u32, v: u32) -> u32;
+    trigger: func(base: u32, state: u32) -> u32;
+    output: func(base: u32, state: u32) -> u32;
+    value: func(state: u32) -> u32;
+    is-output: func(state: u32) -> u32;
+    disable: func(base: u32, state: u32) -> u32;
+}
+
+/// I2C master protocol (mirrors i2c-thin's exports).
+interface i2c {
+    configure: func(base: u32, apb1-mhz: u32, divisor: u32, fast: u32, trise: u32);
+    start: func(base: u32, state: u32, count: u32, read: u32) -> u32;
+    addr-ack: func(state: u32) -> u32;
+    step: func(base: u32, state: u32, out: u32) -> u32;
+    ack-byte: func(state: u32) -> u32;
+    is-complete: func(state: u32) -> u32;
+    stop: func(base: u32, state: u32) -> u32;
+}
+
 /// STM32 advanced-timer PWM protocol (mirrors pwm-thin's exports). Every function
 /// returns a status word rather than trapping: the failsafe path must stay total.
 interface pwm {
@@ -157,6 +202,10 @@ world spi-driver { import mmio; export spi; }
 world uart-driver { import mmio; import irq; export uart; }
 world wdg-driver { import mmio; export wdg; }
 world pwm-driver { import mmio; export pwm; }
+world adc-driver { import mmio; export adc; }
+world can-driver { import mmio; export can; }
+world dac-driver { import mmio; export dac; }
+world i2c-driver { import mmio; export i2c; }
 
 /// Thin-seam driver world — imports only generic MMIO + IRQ; exports one step.
 world driver-thin {

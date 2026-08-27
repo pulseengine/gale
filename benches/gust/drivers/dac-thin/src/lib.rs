@@ -28,10 +28,29 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 
 // gust:hal mmio capability — resolved at link by the SAME ~10-line TCB bridge the
 // other thin-seam drivers use. Software-triggered DAC needs only reads/writes.
-extern "C" {
-    fn mmio_read32(addr: u32) -> u32;
-    fn mmio_write32(addr: u32, val: u32);
+// wit-bindgen's canonical-ABI glue must LINK against a global allocator; this world
+// is scalar-only (u32 in, u32 out), so nothing ever calls it and a zero-state
+// trapping allocator keeps the driver's 0-SRAM property intact.
+#[cfg(not(kani))]
+use core::alloc::{GlobalAlloc, Layout};
+#[cfg(not(kani))]
+struct NoAlloc;
+#[cfg(not(kani))]
+unsafe impl GlobalAlloc for NoAlloc {
+    unsafe fn alloc(&self, _: Layout) -> *mut u8 {
+        core::ptr::null_mut()
+    }
+    unsafe fn dealloc(&self, _: *mut u8, _: Layout) {}
 }
+#[cfg(not(kani))]
+#[global_allocator]
+static ALLOC: NoAlloc = NoAlloc;
+
+// gust:hal mmio capability as a WIT-TYPED COMPONENT IMPORT (REQ-DRV-COMPONENT-001),
+// not a raw `env` extern — same two primitives, now declared in the WIT and
+// checkable on the module instead of being an undefined symbol nobody typed.
+wit_bindgen::generate!({ world: "dac-driver", path: "../wit", generate_all });
+use crate::gust::hal::mmio::{read32 as mmio_read32, write32 as mmio_write32};
 
 // STM32F1 DAC register map (offsets from the peripheral base, DAC=0x4000_7400).
 // Device knowledge as *data* (offsets/bit math), not trusted code.
@@ -320,6 +339,41 @@ pub extern "C" fn dac_disable(base: u32, state: u32) -> u32 {
 // ─────────────────────────────── Kani proofs ────────────────────────────────
 //
 // The safety properties over the full input space. Run: `cargo kani`.
+// `gust:hal/dac` exported over the SAME bodies as the C-ABI symbols above, not a
+// second implementation: the component's exports and the dissolved object's
+// `dac_*` entry points then cannot diverge in behaviour. Same shape gpio-thin uses.
+#[cfg(not(kani))]
+struct Driver;
+#[cfg(not(kani))]
+impl exports::gust::hal::dac::Guest for Driver {
+    fn configure(base: u32, channel: u32) {
+        dac_configure(base, channel)
+    }
+    fn enable(base: u32, state: u32, channel: u32) -> u32 {
+        dac_enable(base, state, channel)
+    }
+    fn load(base: u32, state: u32, v: u32) -> u32 {
+        dac_load(base, state, v)
+    }
+    fn trigger(base: u32, state: u32) -> u32 {
+        dac_trigger(base, state)
+    }
+    fn output(base: u32, state: u32) -> u32 {
+        dac_output(base, state)
+    }
+    fn value(state: u32) -> u32 {
+        dac_value(state)
+    }
+    fn is_output(state: u32) -> u32 {
+        dac_is_output(state)
+    }
+    fn disable(base: u32, state: u32) -> u32 {
+        dac_disable(base, state)
+    }
+}
+#[cfg(not(kani))]
+export!(Driver);
+
 #[cfg(kani)]
 mod kani_proofs {
     use super::*;
