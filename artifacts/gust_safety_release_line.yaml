@@ -599,6 +599,38 @@ artifacts:
       below ('the Lean proof fails to discharge') therefore cannot fire today.
       CORRECTION: an earlier reading of this line called T3 'the one triad item that is
       gale-actionable'. That was too broad -- only the supply half is.
+      SUPPLY HALF DISCHARGED, UNCONDITIONALLY (2026-08-26, PR #292 + #295 + #297):
+      proofs/lean/PartitionSupply.lean, 17 theorems, 0 sorry / 0 admit / 0 axiom /
+      0 native_decide, CI-gated by the lean job on //proofs/lean:all.
+        supplyGuarantee (Pi) (u) (s t) (hPi : 0 < Pi) :
+          lsbf Pi (thetaEff Pi u) t <= supply Pi u s t
+      No utilisation hypothesis: it holds for every Theta <= Pi.
+      which IS the hypothesis spar's ArincSupply.lean carries and declines to prove.
+      Two halves meet: supply_floor_strong (the static cyclic frame delivers
+      floor(t/Pi)*Theta_eff PLUS what the partial frame cannot withhold, from ANY
+      start) and lsbf_le_full_frames (those complete frames already dominate lsbf).
+      The key step avoids a complete-residue-system bijection: sliding the window one
+      tick drops a tick at the front and adds one at the back with the SAME
+      frame-relative position, since (s + Pi) % Pi = s % Pi -- so full-frame supply
+      cannot depend on phase. That is MajorFrame::check's tiling invariant doing the
+      work.
+      Theta is thetaEff THROUGHOUT, never the raw window budget.
+      The utilisation bound is GONE. It was removed by proving lsbf_le_strong_floor
+      (lsbf Pi Th t <= floor(t/Pi)*Th + (t%Pi - (Pi-Th)) for Th <= Pi), which had
+      previously been recorded here as a numeric sweep and explicitly NOT as a proof.
+      lsbf_le_full_frames remains genuinely FALSE above one half and the file keeps
+      its machine-checked counterexample (Pi=5, Th=4, t=4): it killed the ROUTE
+      (complete-frames-only), never the conclusion, and the two theorems are kept
+      side by side to record exactly that.
+      STILL OWED on the supply side, and NOT to be read as done:
+        - a side condition Lean cannot discharge: Theta_eff = Theta - k assumes the
+          three-atom switch sequence completes within ONE tick -- a WCET obligation on
+          trusted native code, outside both BIN-VERIFY and MC/DC.
+        - u is an abstract residue predicate; deriving it from a concrete MajorFrame
+          table (partition_id/offset/budget) is not done.
+      The DEMAND half is untouched and still needs T4's C_i, so this requirement stays
+      proposed: VER-OS-SCHED-001 demands the WCRT recurrence instantiated against the
+      SHIPPED executor, which this is not.
     tags: [gust, os, track-t3, schedulability, spar, lean, wcet, safety, gale63]
     links:
       - type: derives-from
