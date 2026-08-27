@@ -86,8 +86,26 @@ jobs:
           fi
           echo "pin guard bites"
 
+      # Print what the gate is about to use BEFORE running it. The first CI
+      # attempt failed with no output at all — not even the script's own
+      # "gate toolchain:" line — which made it undiagnosable from the log. A
+      # gate that dies silently in setup is the same problem as a check that
+      # passes silently: there is nothing to read.
+      - name: Toolchain diagnostics
+        run: |
+          echo "HOME=$HOME"
+          ls -la "$HOME/pe-toolchain/bin" || echo "  (bin dir missing)"
+          for t in synth loom; do
+            b="$HOME/pe-toolchain/bin/$t"
+            if [ -x "$b" ]; then echo "  $t: $("$b" --version 2>&1 | head -1)"
+            else echo "  $t: NOT EXECUTABLE at $b"; fi
+          done
+          for t in arm-none-eabi-nm arm-none-eabi-size nm; do
+            command -v "$t" >/dev/null && echo "  $t: $(command -v $t)" || echo "  $t: MISSING"
+          done
+
       - name: Cross-arch seam gate
         run: |
           cd benches/gust/drivers
           SYNTH="$HOME/pe-toolchain/bin/synth" LOOM="$HOME/pe-toolchain/bin/loom" \
-            NM=arm-none-eabi-nm bash build-cross-arch.sh
+            NM=arm-none-eabi-nm bash -x build-cross-arch.sh
