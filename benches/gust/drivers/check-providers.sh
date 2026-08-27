@@ -22,10 +22,15 @@ cd "$HERE"
 # App worlds (import gust:os capabilities) + the providers that export them.
 # Every crate here calls wit_bindgen::generate! against ../wit-os, so a WIT
 # change that outruns an impl breaks the crate that must implement it.
-CRATES=(
-  app-time app-tl app-ts
-  time-provider log-provider spawn-provider timer-provider exec-provider
-)
+# DISCOVERED, not enumerated. A hand-written list silently narrows: app-timer was
+# added and this gate kept reporting "all 8 ... in sync" while never building it —
+# the same shape as the Lean gate's enumerated target list (gale#292). Globbing
+# means a new app/provider crate is gated by construction.
+CRATES=()
+for d in "$HERE"/app-* "$HERE"/*-provider; do
+  [ -f "$d/Cargo.toml" ] && CRATES+=("$(basename "$d")")
+done
+[ ${#CRATES[@]} -gt 0 ] || { echo "FATAL: no app-*/-provider crates discovered" >&2; exit 2; }
 
 fail=""
 for c in "${CRATES[@]}"; do
