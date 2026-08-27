@@ -27,10 +27,29 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 
 // gust:hal mmio capability — resolved at link by the SAME ~10-line TCB bridge the
 // other thin-seam drivers use. Polled bxCAN needs only register reads/writes.
-extern "C" {
-    fn mmio_read32(addr: u32) -> u32;
-    fn mmio_write32(addr: u32, val: u32);
+// wit-bindgen's canonical-ABI glue must LINK against a global allocator; this world
+// is scalar-only (u32 in, u32 out), so nothing ever calls it and a zero-state
+// trapping allocator keeps the driver's 0-SRAM property intact.
+#[cfg(not(kani))]
+use core::alloc::{GlobalAlloc, Layout};
+#[cfg(not(kani))]
+struct NoAlloc;
+#[cfg(not(kani))]
+unsafe impl GlobalAlloc for NoAlloc {
+    unsafe fn alloc(&self, _: Layout) -> *mut u8 {
+        core::ptr::null_mut()
+    }
+    unsafe fn dealloc(&self, _: *mut u8, _: Layout) {}
 }
+#[cfg(not(kani))]
+#[global_allocator]
+static ALLOC: NoAlloc = NoAlloc;
+
+// gust:hal mmio capability as a WIT-TYPED COMPONENT IMPORT (REQ-DRV-COMPONENT-001),
+// not a raw `env` extern — same two primitives, now declared in the WIT and
+// checkable on the module instead of being an undefined symbol nobody typed.
+wit_bindgen::generate!({ world: "can-driver", path: "../wit", generate_all });
+use crate::gust::hal::mmio::{read32 as mmio_read32, write32 as mmio_write32};
 
 // STM32F1 bxCAN register map (offsets from the peripheral base, e.g. CAN1=0x4000_6400).
 // Device knowledge as *data* (offsets/bit math), not trusted code.
@@ -287,6 +306,35 @@ pub extern "C" fn can_mode(state: u32) -> u32 {
 // ─────────────────────────────── Kani proofs ────────────────────────────────
 //
 // The safety properties over the full input space. Run: `cargo kani`.
+// `gust:hal/can` exported over the SAME bodies as the C-ABI symbols above, not a
+// second implementation: the component's exports and the dissolved object's
+// `can_*` entry points then cannot diverge in behaviour. Same shape gpio-thin uses.
+#[cfg(not(kani))]
+struct Driver;
+#[cfg(not(kani))]
+impl exports::gust::hal::can::Guest for Driver {
+    fn enter_init(base: u32, state: u32) -> u32 {
+        can_enter_init(base, state)
+    }
+    fn configure(base: u32, state: u32, brp: u32, ts1: u32, ts2: u32, sjw: u32) -> u32 {
+        can_configure(base, state, brp, ts1, ts2, sjw)
+    }
+    fn leave_init(base: u32, state: u32) -> u32 {
+        can_leave_init(base, state)
+    }
+    fn tx_request(base: u32, state: u32, id: u32, dlc: u32, dlo: u32, dhi: u32) -> u32 {
+        can_tx_request(base, state, id, dlc, dlo, dhi)
+    }
+    fn rx_release(base: u32, state: u32) -> u32 {
+        can_rx_release(base, state)
+    }
+    fn mode(state: u32) -> u32 {
+        can_mode(state)
+    }
+}
+#[cfg(not(kani))]
+export!(Driver);
+
 #[cfg(kani)]
 mod kani_proofs {
     use super::*;
