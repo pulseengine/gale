@@ -59,9 +59,16 @@ bazel_dep(name = "rules_lean", version = "0.1.0")
 git_override(
     module_name = "rules_lean",
     remote = "https://github.com/pulseengine/rules_lean.git",
-    commit = "2fe64f13f8df31678a27483286868a67636d7217",
-    patches = ["//patches:rules_lean_mathlib_timeout.patch"],
-    patch_strip = 1,
+    # 70f5138 fixes rules_lean#30: the host platform is detected at FETCH time
+    # (detect_host_platform) instead of being recorded as a repo-rule attribute,
+    # so MODULE.bazel.lock is no longer pinned to whichever OS generated it.
+    # Before this, a lock generated on darwin_aarch64 made Linux CI execute a
+    # Mach-O `lake` (gale#288).
+    #
+    # The mathlib_timeout patch is DROPPED, not rebased: it raised the `lake
+    # update` timeout 600 -> 1800, and upstream now uses 3600/1200/7200. The
+    # patch is obsolete rather than merely conflicting.
+    commit = "70f5138a0c93eaae38af55b39794318e6c7dfd0f",
 )
 
 # Lean 4 toolchain + Mathlib (mathlib declared by rules_lean, just use_repo it)

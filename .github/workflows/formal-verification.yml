@@ -134,23 +134,7 @@ jobs:
       # warm mathlib, ~258s cold — and the cold time is almost entirely the
       # one-time download of 7869 prebuilt mathlib files from the upstream
       # Azure cache, not elaboration (critical path 13.89s).
-      # --lockfile_mode=off: rules_lean's mathlib_repo takes `host_platform` as a
-      # repo-rule ATTRIBUTE, so it is frozen into MODULE.bazel.lock by whichever
-      # OS generated the lock. Ours was generated on darwin_aarch64, so a Linux
-      # runner reused it and executed a Mach-O `lake` — sh parsed the binary and
-      # died at "Unterminated quoted string" (gale#288, rules_lean#30). Turning
-      # the lock off for this invocation makes bazel re-resolve the extension for
-      # the actual host. Remove once rules_lean resolves the platform at fetch
-      # time. This weakens lockfile verification for this step ONLY; it cannot
-      # weaken a proof — the theorems still elaborate under a real Lean kernel or
-      # the job stays red.
-      # `:all`, NOT an enumerated list. The list form silently failed to cover a
-      # new proof the first time one was added: this PR's PartitionSupply.lean
-      # made it 8 targets while CI still named 7, and the job went green without
-      # elaborating it — the same shape as gale#286 (a gate that exists but does
-      # not run) one level down. With `:all` a new lean_proof_test is gated by
-      # construction rather than by remembering to edit this file.
       - name: Run Lean proof verification
         run: |
-          bazel test --lockfile_mode=off //proofs/lean:all --test_output=errors
+          bazel test //proofs/lean:all --test_output=errors
         timeout-minutes: 45
