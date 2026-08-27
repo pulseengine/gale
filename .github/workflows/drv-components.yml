@@ -1,0 +1,63 @@
+# VER-DRV-COMPONENT-001 — thin-seam driver componentization gate (gale#302).
+#
+# REQ-DRV-COMPONENT-001 says every thin-seam driver SHALL be a wasm component
+# whose capabilities arrive as WIT-typed imports, not as raw `env` externs. That
+# was measured at 8 of 13 by hand (#302), taken to 13 of 13 (#303, #305) — and a
+# hand-run survey is not a gate: nothing stopped it regressing to 12.
+#
+# The verdict lives in Python, not shell, deliberately. Shell's defaults lose
+# verdicts quietly: `grep -q` under `set -o pipefail` can fail on SIGPIPE, and
+# `cmd | tail` reports tail's status rather than cmd's. (Both bit during this
+# gate's own development.) Same convention as check-data-overlap.py.
+name: driver components
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "benches/gust/drivers/*-thin/**"
+      - "benches/gust/drivers/wit/**"
+      - "benches/gust/drivers/check-driver-components.py"
+      - ".github/workflows/drv-components.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "benches/gust/drivers/*-thin/**"
+      - "benches/gust/drivers/wit/**"
+      - "benches/gust/drivers/check-driver-components.py"
+      - ".github/workflows/drv-components.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  driver-components:
+    name: "no raw env import + componentizes (13 thin drivers)"
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-tools
+        run: cargo install wasm-tools --version 1.245.1 --locked
+
+      # The negative control runs FIRST and on its own. A gate that has never
+      # been shown to fail is not a gate, and if the control ever stops biting
+      # the run must go red before any driver is checked — otherwise a broken
+      # checker reports 13 green modules it never actually examined.
+      - name: Negative control — a raw env import MUST be rejected
+        run: python3 benches/gust/drivers/check-driver-components.py --self-test
+
+      # Builds every driver from THIS checkout rather than trusting target/.
+      # An earlier draft read stale artefacts and reported four unconverted
+      # drivers as clean — a gate that reads build output it did not produce is
+      # reporting on code that is not checked out.
+      - name: VER-DRV-COMPONENT-001 gate
+        run: python3 benches/gust/drivers/check-driver-components.py
