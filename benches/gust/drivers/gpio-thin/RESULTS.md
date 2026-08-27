@@ -89,8 +89,8 @@ cargo build --release --target wasm32-unknown-unknown  # 849 B wasm
 loom optimize target/wasm32-unknown-unknown/release/gust_gpio_thin.wasm \
   --passes inline --attestation false -o gpio_inl.wasm
 synth compile gpio_inl.wasm --target cortex-m3 --all-exports --relocatable \
-  -o gpio-thin-cm3.o                                   # 490 B .text, 0 SRAM
-arm-zephyr-eabi-nm -u gpio-thin-cm3.o                  # only mmio_read32/write32
+  -o gpio-thin-cm3.o                                   # 1358 B .text, 0 SRAM
+arm-zephyr-eabi-nm -u gpio-thin-cm3.o                  # only read32/write32
 ```
 
 ## Remaining gate (before v0.3.0 REQ-DRV-GPIO-001 V-closes)
@@ -106,3 +106,21 @@ _Toolchain note: current pins are synth 0.52.0 / loom 1.2.0 (#208, re-pinned fro
 measured this driver's dissolved `.text` at **534 B** (was 490 B on synth 0.31.0,
 above) — a +9% regression, the one outlier in the 10-driver byte-check; filed as a
 synth note. Register effects unchanged, 0-SRAM preserved._
+
+## Size after componentization (gale#307, 2026-08-27)
+
+Re-pinning the committed object against current source moved `.text` **502 -> 1358 B**,
+and the exported-function count **5 -> 12**. The cause is the dual export surface this
+driver deliberately carries: the raw C-ABI symbols the dissolve path links, PLUS
+`gust:hal/gpio@0.1.0#*` and wit-bindgen's two `cabi_realloc` entry points.
+
+    committed (pre-conversion)   text 502    5 exported fns
+    regenerated (current source) text 1358  12 exported fns   (5 raw + 5 WIT + 2 glue)
+
+**`data` and `bss` are 0 in both.** The driver's headline property — 0 SRAM — is
+untouched; the cost is flash, where the F100 has 128 KB.
+
+The earlier figure was not wrong when taken: it described a pre-conversion object that
+was never regenerated after the driver gained its WIT surface. That divergence is what
+gale#307 is about, and it was invisible because the probes link the committed object
+rather than a freshly built one.
