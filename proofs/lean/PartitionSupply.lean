@@ -366,6 +366,20 @@ theorem thetaEff_window (Pi a w : Nat) (hw : 0 < w) (hfit : a + w ≤ Pi) :
   rw [← Finset.card_filter, hfilter, Nat.card_Ico]
   omega
 
+/-- **`Θ_eff` is additive over disjoint window sets.** If no tick is useful to
+    both, the useful counts add. This is the tool for a partition owning several
+    windows of the major frame — `MajorFrame::check` gives exactly the
+    disjointness hypothesis, since the windows tile `[0, frame_len)` without
+    overlap. -/
+theorem thetaEff_disjoint_add (Pi : Nat) (u v : Nat → Bool)
+    (hdisj : ∀ i, u i = true → v i = true → False) :
+    thetaEff Pi (fun i => u i || v i) = thetaEff Pi u + thetaEff Pi v := by
+  unfold thetaEff
+  rw [← Finset.sum_add_distrib]
+  refine Finset.sum_congr rfl (fun i _ => ?_)
+  cases hu : u (i % Pi) <;> cases hv : v (i % Pi) <;>
+    simp_all
+
 /-- **`SupplyGuarantee` for a concrete major-frame window.** A partition owning
     the window `[a, a+w)` of a `Π`-tick frame is guaranteed `lsbf Π (w−1)` — the
     raw budget MINUS the tick the switch consumes. -/
@@ -374,6 +388,36 @@ theorem supplyGuarantee_window (Pi a w s t : Nat)
     lsbf Pi (w - 1) t ≤ supply Pi (windowUseful a w) s t := by
   have h := supplyGuarantee Pi (windowUseful a w) s t hPi
   rwa [thetaEff_window Pi a w hw hfit] at h
+
+/-- **`Θ_eff = Θ − 2` for a partition owning two windows.** Each owned window
+    loses its own final tick to the switch, so the losses accumulate: `k` windows
+    cost `k` ticks, not one. This is why splitting a partition's budget across
+    more windows — the natural move to reduce its blackout — makes the raw-budget
+    instantiation fail SOONER, not later. -/
+theorem thetaEff_two_windows (Pi a1 w1 a2 w2 : Nat)
+    (hw1 : 0 < w1) (hw2 : 0 < w2)
+    (hfit1 : a1 + w1 ≤ Pi) (hfit2 : a2 + w2 ≤ Pi)
+    (hsep : a1 + w1 ≤ a2) :
+    thetaEff Pi (fun i => windowUseful a1 w1 i || windowUseful a2 w2 i)
+      = (w1 + w2) - 2 := by
+  have hdisj : ∀ i, windowUseful a1 w1 i = true → windowUseful a2 w2 i = true → False := by
+    intro i h1 h2
+    unfold windowUseful at h1 h2
+    simp only [decide_eq_true_eq] at h1 h2
+    omega
+  rw [thetaEff_disjoint_add Pi _ _ hdisj,
+      thetaEff_window Pi a1 w1 hw1 hfit1,
+      thetaEff_window Pi a2 w2 hw2 hfit2]
+  omega
+
+/-- The guarantee for a two-window partition, with the two switch ticks paid. -/
+theorem supplyGuarantee_two_windows (Pi a1 w1 a2 w2 s t : Nat)
+    (hPi : 0 < Pi) (hw1 : 0 < w1) (hw2 : 0 < w2)
+    (hfit1 : a1 + w1 ≤ Pi) (hfit2 : a2 + w2 ≤ Pi) (hsep : a1 + w1 ≤ a2) :
+    lsbf Pi ((w1 + w2) - 2) t
+      ≤ supply Pi (fun i => windowUseful a1 w1 i || windowUseful a2 w2 i) s t := by
+  have h := supplyGuarantee Pi (fun i => windowUseful a1 w1 i || windowUseful a2 w2 i) s t hPi
+  rwa [thetaEff_two_windows Pi a1 w1 a2 w2 hw1 hw2 hfit1 hfit2 hsep] at h
 
 /-- **Instantiating with the RAW window budget is unsound — machine-checked.**
 
