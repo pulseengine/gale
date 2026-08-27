@@ -36,7 +36,7 @@ concurrency:
 
 jobs:
   driver-components:
-    name: "no raw env import + componentizes (13 thin drivers)"
+    name: "no raw env + componentizes + object agrees with source (13 thin drivers)"
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
@@ -47,6 +47,13 @@ jobs:
 
       - name: Install wasm-tools
         run: cargo install wasm-tools --version 1.245.1 --locked
+
+      # nm, for reading the committed Cortex-M objects. The object-axis check
+      # compares each committed .o's undefined symbols against the field names
+      # its own wasm imports — no loom/synth needed, because the lowering maps
+      # `(import "gust:hal/mmio@0.1.0" "read32")` to an undefined `read32`.
+      - name: Install arm binutils
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq binutils-arm-none-eabi
 
       # The negative control runs FIRST and on its own. A gate that has never
       # been shown to fail is not a gate, and if the control ever stops biting
