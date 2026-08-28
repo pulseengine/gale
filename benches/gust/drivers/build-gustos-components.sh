@@ -37,6 +37,25 @@ PROVIDERS=(
   "timer-provider:gust_timer_provider"
 )
 
+# DRIFT GATE on the list above. The enumeration is deliberate -- it defines the
+# PUBLISHED composition, and a newly added provider must not silently join the
+# fused composite just by existing. But an enumeration nobody checks is how three
+# other gates in this tree came to exclude the newest thing without saying so
+# (see CROSS-ARCH.md). So: enumerated on purpose, and verified against reality.
+#
+# If a `*-provider` directory exists that is not listed, this fails and names it.
+# The fix is a deliberate decision -- add it to PROVIDERS and to
+# build-fused-gustos.sh, or record why it is excluded -- not a silent skip.
+_listed="$(printf '%s\n' "${PROVIDERS[@]}" | cut -d: -f1 | sort)"
+_present="$(cd "$HERE" && ls -d *-provider 2>/dev/null | sed 's|/$||' | sort)"
+if [ "$_listed" != "$_present" ]; then
+    echo "FATAL: PROVIDERS list has drifted from the *-provider directories." >&2
+    echo "  listed but absent:  $(comm -23 <(echo "$_listed") <(echo "$_present") | tr '\n' ' ')" >&2
+    echo "  present but unlisted: $(comm -13 <(echo "$_listed") <(echo "$_present") | tr '\n' ' ')" >&2
+    echo "  Add it to PROVIDERS and build-fused-gustos.sh, or record why it is excluded." >&2
+    exit 2
+fi
+
 # Checked at SOURCE, not in the binary. A `Tasks` table lives in wasm .bss, which a
 # module never declares, so no reliable binary signal says "this module holds one" —
 # see build-fused-gustos.sh's gate 4 for the signal that was tried and rejected.
