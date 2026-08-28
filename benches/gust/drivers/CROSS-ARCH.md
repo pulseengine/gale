@@ -40,7 +40,21 @@ ld.lld: error: undefined symbol: synth_func_18
 >>> referenced by out.o:(gust:hal/gpio@0.1.0#set)
 ```
 
-Filed upstream as **synth#1102**.
+Filed upstream as **synth#1102**, and **fixed on synth `main` as #1104** — not
+yet in a release (0.60.0 is the latest tag), so the ledger stays until we can pin
+a build that carries it.
+
+**The fix corrected our framing, and it is worth stating plainly.** This report
+described the defect as rv32-specific, on the strength of the ARM column being
+clean. It was not: synth's fix found **Thumb-2 and A32 shipping the identical
+dangling symbol at exit 0**, on a module that declines on those backends. The
+guard was missing everywhere; the ARM objects here are clean only because the ARM
+backend declines *nothing* on this corpus, so the broken path is never entered.
+
+That distinction matters for how the ARM row above should be read. "13 of 13,
+undefined set equals imports" is a true statement about **these objects**. It is
+not evidence that the ARM lowering path is sound, and it should not be cited as
+such.
 
 ## What the previous table said, and why it was wrong
 

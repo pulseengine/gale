@@ -45,9 +45,17 @@ HERE = pathlib.Path(__file__).resolve().parent
 #              exits non-zero (#952) because a requested EXPORT was skipped
 #
 # The dangling reference is emitted as `synth_func_N` while definitions are
-# named `func_N`, so it never resolves. On ARM the same internals are emitted
-# as LOCAL `t func_N`, all defined, nothing leaked -- the defect is specific to
-# the RISC-V backend.
+# named `func_N`, so it never resolves.
+#
+# CAREFUL about what the ARM column proves. On ARM these same internals come out
+# as LOCAL `t func_N`, all defined, nothing leaked -- but that is because the ARM
+# backend DECLINES NOTHING on this corpus, not because it handles a decline
+# correctly. synth's own fix (#1104) found Thumb-2 and A32 shipping the identical
+# dangling symbol with exit 0 on a module that does decline there. The missing
+# guard was never rv32-specific; our inputs simply never triggered it on ARM.
+#
+# So "ARM 13/13" is a true measurement of THESE objects and NOT evidence that the
+# ARM path is sound. Do not upgrade it into one.
 #
 # For a skipped INTERNAL function synth exits 0, so the unlinkable object ships
 # with only a warning. That is what let the old `> 0` rule read green.
