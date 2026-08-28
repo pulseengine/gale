@@ -52,6 +52,10 @@ HERE = pathlib.Path(__file__).resolve().parent
 # For a skipped INTERNAL function synth exits 0, so the unlinkable object ships
 # with only a warning. That is what let the old `> 0` rule read green.
 #
+# Filed upstream as synth#1102, and re-confirmed on synth 0.60.0 (the latest
+# release): 12 of 13 exit 0 with a dangling symbol, `ld.lld` refuses to link
+# them. Not a regression -- 0.52.0 through 0.60.0 are identical on these inputs.
+#
 # This ledger is a pin, not an excuse: if a driver starts crossing cleanly it
 # must be removed from the list, and the gate fails (exit 5) until it is. That
 # is how the ledger shrinks to empty instead of quietly outliving the bug.
@@ -60,7 +64,7 @@ RISCV_KNOWN_BAD = {
     "mpu-thin", "pwm-thin", "spi-thin", "switch-thin", "timer-thin",
     "uart-thin", "wdg-thin",
 }
-RISCV_TRACKER = "synth: RV32 selector gaps leave dangling `synth_func_N` refs"
+RISCV_TRACKER = "synth#1102 — rv32 emits a dangling `synth_func_N` for a declined internal, exit 0"
 
 
 def run(cmd, **kw):
