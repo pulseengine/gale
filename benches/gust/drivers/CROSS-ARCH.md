@@ -32,7 +32,15 @@ set of names its wasm imports — no leak, no truncation. That half of the claim
 selector skips a function it cannot select and emits the call site anyway, leaving a
 dangling `synth_func_N`. The thirteenth (`mpu-thin`) emits nothing at all. This is not
 new and is not a regression: synth 0.52.0 — the version the previous version of this
-table cited — produces byte-for-byte the same result on today's sources.
+table cited — produces byte-for-byte the same result on today's sources, as does
+0.60.0, the latest release. `ld.lld` refuses the objects outright:
+
+```
+ld.lld: error: undefined symbol: synth_func_18
+>>> referenced by out.o:(gust:hal/gpio@0.1.0#set)
+```
+
+Filed upstream as **synth#1102**.
 
 ## What the previous table said, and why it was wrong
 
