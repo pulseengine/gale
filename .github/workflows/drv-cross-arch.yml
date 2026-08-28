@@ -85,6 +85,13 @@ jobs:
           fetch loom  "$LOOM_VERSION"  loom
           echo "$HOME/pe-toolchain/bin" >> "$GITHUB_PATH"
 
+      - name: Install wasm-tools
+        # check-cross-arch.py derives each driver's EXPECTED undefined set from
+        # the wasm's import section, so it needs wasm-tools -- the old shell gate
+        # only ran nm and did not. Pinned to the same version drv-components.yml
+        # uses, so the two gates read imports through identical tooling.
+        run: cargo install wasm-tools --version 1.245.1 --locked
+
       - name: Install binutils (nm)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq binutils-arm-none-eabi
 

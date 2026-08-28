@@ -80,7 +80,10 @@ def synth_bin():
     """Resolve synth through the varve pin; fall back to $SYNTH or PATH."""
     if os.environ.get("SYNTH"):
         return os.environ["SYNTH"]
-    p = run(["varve", "which", "synth"])
+    try:
+        p = run(["varve", "which", "synth"])
+    except (FileNotFoundError, OSError):
+        return "synth"   # no varve here (CI installs a pinned synth and sets $SYNTH)
     if p.returncode == 0 and p.stdout.strip():
         cand = p.stdout.splitlines()[0].strip()
         if os.access(cand, os.X_OK):
