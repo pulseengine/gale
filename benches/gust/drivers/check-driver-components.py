@@ -178,11 +178,103 @@ def main() -> int:
         return self_test()
 
     root = pathlib.Path(args.drivers_dir)
+    # `*-thin` PLUS `dma-own`. dma-own is a driver-shaped single component with the
+    # same 1:1 wasm->object relationship, and the shell gate this script replaced
+    # covered it. Dropping it here was a silent coverage regression; naming it
+    # explicitly is the fix, and the census below stops the next one being silent.
     drivers = sorted(d for d in root.glob("*-thin") if d.is_dir())
     if not drivers:
         sys.exit(f"FATAL: no *-thin drivers under {root} (exit 2)")
 
-    print(f"VER-DRV-COMPONENT-001 — {len(drivers)} thin-seam driver(s)")
+    # ---- census of committed objects -------------------------------------------
+    # This gate's rule (committed .o undefined set == its wasm's imports) applies to
+    # a component with ONE wasm and ONE object. Composed and fused artifacts are a
+    # different shape -- gustos-dissolved-cm3.o is a fusion of a whole component
+    # graph with three native atoms, not a 1:1 lowering -- so they are NOT gated
+    # here, and pretending otherwise would produce false failures.
+    #
+    # They are LISTED instead. If a committed *-cm3.o appears that is neither gated
+    # nor on this ledger, the gate fails: a new object silently escaping coverage is
+    # exactly how dma-own escaped it.
+    # dma-own is a SEPARATE case from the composed artifacts below. It is a 1:1
+    # component-shaped crate, and the shell gate this script replaced globbed it --
+    # but it has never satisfied this requirement: its three TCB atoms are raw
+    # `extern "C"` symbols, so they land as `env` imports, not as a typed WIT
+    # interface the way all 13 thin drivers do:
+    #
+    #   FAIL dma-own: 3 raw env import(s): dma_barrier, dma_irq_poll, dma_program
+    #
+    # That was the shell gate's EXPECTED red -- its header said so in as many words
+    # ("written BEFORE the drivers are componentized and is EXPECTED TO FAIL until
+    # they are"). Nobody converted dma-own, and because that gate was wired to no
+    # workflow, the red was never seen.
+    #
+    # Whether dma-own is in REQ-DRV-COMPONENT-001's scope at all is a real question
+    # -- the requirement says "every thin-seam driver", and dma-own is an ownership
+    # FSM, not a thin-seam driver. That is a scope decision, so it is not made here.
+    # What IS recorded is its actual state, asserted, so a change cannot pass
+    # unnoticed in either direction.
+    DMA_OWN_RAW_ENV = {"dma_barrier", "dma_irq_poll", "dma_program"}
+
+    UNGATED = {
+        # dma-own: 1:1 component-shaped, but not componentized -- raw env imports,
+        # asserted against DMA_OWN_RAW_ENV below rather than left unchecked.
+        "dma-own/dma-own-cm3.o",
+        "breadth/breadth-cm3.o",
+        "os-node/exec-cm3.o",
+        "os-node/gustos-dissolved-cm3.o",
+        "os-node/os-time-cm3.o",
+        "os-node/os-tl-cm3.o",
+        "os-node/os-ts-cm3.o",
+        "spawn-provider/spawn-provider-cm3.o",
+        "timer-provider/timer-provider-cm3.o",
+    }
+    gated_dirs = {d.name for d in drivers}
+    found, stray = set(), []
+    for o in sorted(root.glob("*/*-cm3.o")):
+        rel = f"{o.parent.name}/{o.name}"
+        if o.parent.name in gated_dirs:
+            continue
+        found.add(rel)
+        if rel not in UNGATED:
+            stray.append(rel)
+    if stray:
+        print("FAIL: committed object(s) neither gated nor on the ungated ledger:")
+        for x in stray:
+            print(f"  {x}")
+        print("Add it to the gated set if it is a 1:1 component, or to UNGATED with")
+        print("a reason if it is a composed/fused artifact. Do not leave it silent.")
+        return 5
+    vanished = sorted(UNGATED - found)
+    if vanished:
+        print("FAIL: UNGATED ledger lists object(s) that no longer exist:")
+        for x in vanished:
+            print(f"  {x}")
+        print("Remove them from UNGATED -- a stale ledger hides the next escape.")
+        return 5
+
+    dma = root / "dma-own"
+    if dma.is_dir():
+        if not args.no_build:
+            run(["cargo", "build", "--release", "--target", "wasm32-unknown-unknown", "-q"],
+                cwd=str(dma))
+        ws = sorted((dma / "target/wasm32-unknown-unknown/release").glob("*.wasm"))
+        if not ws:
+            print("FAIL dma-own: no wasm built (it needs .cargo/config.toml with")
+            print("     --allow-undefined; rustc >=1.97 rust-lld rejects the raw externs)")
+            return 2
+        raw = {f for m, f in imports_of(ws[0]) if m == "env"}
+        if raw != DMA_OWN_RAW_ENV:
+            print("FAIL: dma-own's raw env imports changed and the ledger is stale.")
+            print(f"  ledger:   {sorted(DMA_OWN_RAW_ENV)}")
+            print(f"  observed: {sorted(raw)}")
+            print("  If it was componentized, move it into the gated set above.")
+            return 5
+        print(f"  note: dma-own carries {len(raw)} raw env import(s) "
+              f"({', '.join(sorted(raw))}) — ledgered, see comment; not componentized")
+
+    print(f"VER-DRV-COMPONENT-001 — {len(drivers)} component(s) gated "
+          f"({len(UNGATED)} composed/fused object(s) listed, not gated)")
     worst, checked, missing, objs_checked = 0, 0, [], 0
     for d in drivers:
         if not args.no_build:
