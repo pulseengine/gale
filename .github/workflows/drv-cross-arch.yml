@@ -19,6 +19,7 @@ on:
       - "benches/gust/drivers/*-thin/**"
       - "benches/gust/drivers/wit/**"
       - "benches/gust/drivers/build-cross-arch.sh"
+      - "benches/gust/drivers/check-cross-arch.py"
       - ".github/workflows/drv-cross-arch.yml"
   pull_request:
     branches: [main]
@@ -26,6 +27,7 @@ on:
       - "benches/gust/drivers/*-thin/**"
       - "benches/gust/drivers/wit/**"
       - "benches/gust/drivers/build-cross-arch.sh"
+      - "benches/gust/drivers/check-cross-arch.py"
       - ".github/workflows/drv-cross-arch.yml"
 
 permissions:
@@ -48,7 +50,7 @@ jobs:
     # producing NO output at all. gustos-dissolve.yml — the other synth-using
     # workflow — is already on 24.04; this one copied 22.04 from a workflow that
     # does not use synth.
-    name: "seam survives lowering on ARM and RISC-V (8 drivers)"
+    name: "seam survives lowering on ARM and RISC-V (all thin drivers)"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -111,8 +113,13 @@ jobs:
             command -v "$t" >/dev/null && echo "  $t: $(command -v $t)" || echo "  $t: MISSING"
           done
 
+      - name: Negative control — the gate's own rule must reject a leaked symbol
+        run: |
+          cd benches/gust/drivers
+          python3 check-cross-arch.py --self-test
+
       - name: Cross-arch seam gate
         run: |
           cd benches/gust/drivers
-          SYNTH="$HOME/pe-toolchain/bin/synth" LOOM="$HOME/pe-toolchain/bin/loom" \
-            NM=arm-none-eabi-nm bash build-cross-arch.sh
+          SYNTH="$HOME/pe-toolchain/bin/synth" \
+            NM=arm-none-eabi-nm python3 check-cross-arch.py
