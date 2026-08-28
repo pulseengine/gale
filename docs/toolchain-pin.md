@@ -65,3 +65,50 @@ layer omits loom on that platform rather than substituting something. gale's CI
 is `ubuntu-22.04` (x86_64) and development is darwin/arm64, so neither is
 affected — but an aarch64 Linux runner would find `varve which loom` refusing,
 by design rather than by accident.
+
+## Why the pin carries a digest (2026-08-28)
+
+The pin above names a layer **and a manifest digest**. The digest is not
+decoration — without it the pin does not resolve at all:
+
+    $ varve which synth
+    error: layer 2026.08.4 is installed more than once under different
+    digests (2 entries) and the pin carries no digest to disambiguate
+
+The rolling channel republished `2026.08.4` under a second manifest digest.
+Both copies are in the local store:
+
+| manifest digest | installed |
+|---|---|
+| `sha256:7e48ccc3…` | 2026-08-27 00:35 |
+| `sha256:c1e6a418…` | 2026-08-27 23:45 |
+
+**The two carry identical payloads.** `varve inspect` under each pin returns
+the same 47-line inventory, byte-identical apart from the layer's own digest
+line, and every dispatched tool hashes the same under both:
+
+| tool | version | sha256 (first 16) |
+|---|---|---|
+| synth | 0.58.0 | `033d7c61118e7093` |
+| loom | 1.4.0 | `9583f530baa0d6f0` |
+| meld | 0.52.0 | `88fb38bd1e796632` |
+| witness | 0.43.0 | `3c54bf7bde25f284` |
+| rivet | 0.34.0 | `72b1b81dab0b8a78` |
+
+So this is a re-publication, not a content change, and not a compromise. The
+digest recorded above is the later one — what the channel serves now.
+
+The lesson is the one varve's design already states: **on the rolling channel a
+layer name is not a stable identifier.** Any reproducibility claim anchored to
+`layer = "2026.08.4"` alone is falsifiable, and was — the name resolved to one
+manifest on 27 Aug and to two by 28 Aug. Only the digest pins the artifact.
+
+varve's behaviour here is correct and is the reason this was caught rather than
+silently mixed: it refused to guess, exited non-zero, and named the fix. A
+shim that had fallen back to an ambient binary would have produced a build
+attributable to no layer at all.
+
+Negative control for this section: delete the `digest` line from `varve.toml`
+and re-run `varve which synth`. It must exit 1 with the message above. If it
+succeeds, the duplicate has been pruned from the store and this section's
+premise no longer holds locally — the digest pin stays regardless.
