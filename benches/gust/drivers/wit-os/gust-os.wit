@@ -156,7 +156,14 @@ world spawn-provider { import gust:sched/tasks@0.1.0; export spawn; }
 /// import. Two providers reading the same timer register through a shared constant
 /// was one clock only by coincidence; importing `time` makes it one clock by
 /// construction.
-world app-timer { import time; import timer; export run: func() -> u32; }
+/// NOTE: `spawn` is imported because `timer.sleep` takes THE HANDLE THE APP HOLDS
+/// FROM `spawn.start` — see the `app-ts` note above, "a handle it returns is the
+/// executor's own handle and means the same thing to `timer.sleep`". Without
+/// `spawn` an app in this world has no way to obtain a valid handle and can only
+/// exercise `sleep`'s 0xFFFF_FFFF invalid-handle path, which is not what a
+/// tickless one-shot sleep slice is for. Added when the first implementation of
+/// this world was written (jess asked for the periodic-loop shape on gale#223).
+world app-timer { import time; import spawn; import timer; export run: func() -> u32; }
 world timer-provider { import gust:sched/tasks@0.1.0; import time; export timer; }
 
 /// The executor node itself as a provider, and the node's SINGLE owner of scheduler
