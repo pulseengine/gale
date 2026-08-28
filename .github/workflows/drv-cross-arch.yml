@@ -1,15 +1,21 @@
 # Cross-architecture seam gate for the thin-seam drivers (gale#307 follow-up).
 #
-# The property: a driver "crosses" only if its lowered object keeps gust:hal's
-# mmio calls as UNDEFINED symbols on BOTH ARM and RISC-V. An object with 0
-# undefined symbols has not crossed — it has been silently truncated (the
-# synth#871 shape, where imported calls were dropped rather than relocated).
+# The property: a driver "crosses" only if its lowered object's UNDEFINED symbol
+# set is EXACTLY the set of names its wasm imports. Not "> 0", which a leaked
+# symbol satisfies as well as a real seam symbol, and which fails a correct
+# driver that imports nothing (hm-thin). Not "== 0" either, which is the
+# synth#871 truncation shape. Equality.
 #
-# This was believed red on RISC-V for all 8 drivers. It was not: that reading
-# came from an ambient synth 0.49.0, nine versions behind gale's pin, which
-# skipped 14 of 18 functions. On the pinned toolchain every driver crosses and
-# the gate exits 0. The script now REFUSES to run unpinned rather than answer
-# from whatever is on PATH.
+# On that rule: ARM holds for all 13 drivers. RISC-V holds for NONE of them --
+# synth's RV32 selector declines a function it cannot select, emits the call
+# site anyway, and ships the unlinkable object with exit 0 (synth#1102). The
+# RISC-V leg is therefore carried as an explicit known-defect ledger inside
+# check-cross-arch.py, which FAILS if a driver's status changes in either
+# direction, so the ledger shrinks to empty rather than outliving the bug.
+#
+# An earlier version of this file claimed "on the pinned toolchain every driver
+# crosses and the gate exits 0". That was the `> 0` rule reading a dangling
+# `synth_func_N` as a seam symbol. The script still refuses to run unpinned.
 name: driver cross-arch seam
 
 on:
