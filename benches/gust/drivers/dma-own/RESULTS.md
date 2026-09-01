@@ -76,3 +76,61 @@ synth compile target/wasm32-unknown-unknown/release/gust_dma_own.wasm \
 - **synth shared-segment region marking:** synth must treat the DMA-owned window
   as externally-mutable (no caching loads across the handoff) — the codegen signal
   the ownership handle provides. Filed as synth#543 (related: synth#390 / loom#226).
+
+## Re-verified 2026-08-28 — and the object above is stale
+
+Every number in the table above was produced by **synth 0.17.0**. gale's pinned
+toolchain is now **0.58.0**, 41 releases later, and the committed
+`dma-own-cm3.o` has never been rebuilt against it. Re-measured:
+
+| | committed (synth 0.17.0) | rebuilt (synth 0.58.0) |
+|---|---|---|
+| `dma_abort` | 30 B | 30 B |
+| `dma_poll_complete` | 92 B | 92 B |
+| `dma_start` | 96 B | **94 B** |
+| **primitive sum** | **218 B** | **216 B** |
+| `.text` section | 220 B | 218 B |
+| `.bss` / `.data` | 0 / 0 | 0 / 0 |
+| undefined (TCB atoms) | 3 | 3 |
+
+synth got 2 bytes better at `dma_start`. Nothing else moved: same three atoms
+(`dma_program`, `dma_barrier`, `dma_irq_poll`), same 0 SRAM.
+
+**The two 218s are not the same 218**, and that matters for `VER-DMA-TCB`. The
+218 in the table above is the **sum of the three primitives** on 0.17.0; the 218
+in the rebuilt column is the **whole `.text` section** on 0.58.0. A size oracle
+written as `size | awk '{print $1}'` and compared against 218 would have FAILED
+against the committed object (220) and now PASSES against the rebuilt one — for
+the wrong reason, measuring a different quantity that happens to collide. An
+oracle for this claim has to say which of the two it means.
+
+**Kani: re-run, still 6/6.** `cargo kani` on kani 0.67.0:
+
+    Complete - 6 successfully verified harnesses, 0 failures, 6 total.
+
+covering `p1_access_iff_wasm_owned`, `p2_barrier_pairing`,
+`p3_abort_never_ownerless`, `p4_round_trip`, `p5_ring_per_chunk_exclusive`,
+`p6_ring_reap_and_abort`. So `VER-DMA-KANI`'s evidence holds on the current
+toolchain — this was run, not read.
+
+**The crate did not build until the config added in #316.** `dma-own` had no
+`.cargo/config.toml`, and on rustc 1.97.0 `rust-lld` rejects its three raw
+`extern "C"` atoms outright:
+
+    rust-lld: error: undefined symbol: dma_barrier
+    rust-lld: error: undefined symbol: dma_irq_poll
+    rust-lld: error: undefined symbol: dma_program
+
+Five of the thin drivers carry a config with `-C link-arg=--allow-undefined` for
+exactly this; `dma-own` was missing one. The thin drivers that lack it are fine
+because wit-bindgen emits their imports with `#[link(wasm_import_module = ...)]`
+— those are wasm imports, not undefined symbols. `dma-own` uses raw externs and
+so needs the flag.
+
+This went unnoticed because **no workflow gated `dma-own`**. The only script that
+globbed it was never wired to CI.
+
+**Still open, and not closable here:** `dma-own` is not componentized — those
+three atoms land as raw `env` imports rather than a typed WIT interface, unlike
+all 13 thin drivers. And `VER-DMA-WORKED` wants a SPI/ADC DMA round-trip on
+silicon, which no amount of local work supplies.
