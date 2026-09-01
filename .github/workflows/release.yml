@@ -87,7 +87,25 @@ jobs:
           RUST_LLVM=$(rustc -vV | grep 'LLVM version' | grep -o '[0-9]*' | head -1)
           echo "Rustc LLVM major: ${RUST_LLVM}"
           apt-get install -y -qq wget lsb-release software-properties-common gnupg > /dev/null 2>&1
-          wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- "${RUST_LLVM}" all
+          # RETRY + PIPEFAIL (gale#289). Two defects were live here:
+          #   1. no retry — one transient fetch killed the job. Observed on PR #319:
+          #      `Install matching Clang + LLD` failed at this line while
+          #      apt.llvm.org was reachable, taking the whole leg with it.
+          #   2. no pipefail — GitHub's default shell is `bash -e`, NOT
+          #      `bash -eo pipefail`, so `wget … | bash` reports BASH's status. A
+          #      failed or truncated download feeds bash empty stdin, bash exits 0,
+          #      and the step PASSES with clang never installed — the failure then
+          #      surfaces later as a confusing build error.
+          set -o pipefail
+          _ok=0
+          for _a in 1 2 3; do
+            if wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- "${RUST_LLVM}" all; then
+              _ok=1; break
+            fi
+            echo "::warning::apt.llvm.org install attempt ${_a}/3 failed; retrying" >&2
+            sleep $((_a * 15))
+          done
+          [ "$_ok" = 1 ] || { echo "::error::clang/lld install failed after 3 attempts" >&2; exit 1; }
           update-alternatives --install /usr/bin/clang        clang        /usr/bin/clang-${RUST_LLVM}        200
           update-alternatives --install /usr/bin/wasm-ld      wasm-ld      /usr/bin/wasm-ld-${RUST_LLVM}      200
           # llvm-objcopy does build-wasm-dist.sh's symbol renames (--redefine-sym /
