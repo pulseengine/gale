@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# SUPERSEDED AS A GATE by `check-cross-arch.py`. This script remains as a loud
+# reporting tool (it prints byte sizes, which the gate does not) and as the
+# subject of the workflow's pin-guard negative control. Its VERDICT was wrong
+# twice over -- it enumerated 8 of 13 drivers by hand, and its rule was
+# `undefined_count > 0`, which a leaked `synth_func_N` satisfies just as well
+# as a real seam symbol. See CROSS-ARCH.md. Do not gate on this file.
+#
 # Cross-architecture matrix for the thin-seam drivers: one wasm per driver, lowered to
 # BOTH ARM Cortex-M and RISC-V RV32, reporting the symbol shape of each object.
 #
@@ -41,7 +48,11 @@ echo "gate toolchain: synth $synth_ver"
 NM="${NM:-nm}"
 ARM_SIZE="${ARM_SIZE:-arm-none-eabi-size}"
 
-DRIVERS=(wdg-thin gpio-thin i2c-thin timer-thin adc-thin dac-thin pwm-thin uart-thin)
+# Discovered, not enumerated. The hand-written list this replaced named 8 of the
+# 13 drivers that exist, and silently skipped every one added after it was written.
+DRIVERS=()
+for _d in "$HERE"/*-thin; do [ -d "$_d" ] && DRIVERS+=("$(basename "$_d")"); done
+[ "${#DRIVERS[@]}" -gt 0 ] || { echo "FATAL: no *-thin drivers found" >&2; exit 2; }
 
 printf '%-12s | %-22s | %-22s\n' "driver" "ARM cortex-m3" "RISC-V rv32imc"
 printf '%-12s-+-%-22s-+-%-22s\n' "------------" "----------------------" "----------------------"

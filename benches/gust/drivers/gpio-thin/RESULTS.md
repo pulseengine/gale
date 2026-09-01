@@ -31,7 +31,7 @@ component and dissolved object cannot diverge.
       import gust:hal/mmio@0.1.0;
       export gust:hal/gpio@0.1.0;
 
-One import, one export — what `drivers/check-driver-components.sh` gates.
+One import, one export — what `drivers/check-driver-components.py` gates.
 `.cargo/config.toml` is **gone**: `-C link-arg=--allow-undefined` existed only
 because the raw externs were undefined wasm symbols; a WIT-typed import is a real
 wasm import, so rust-lld needs no override (verified by a clean rebuild without it,
