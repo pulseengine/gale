@@ -283,9 +283,18 @@ artifacts:
 
   - id: FIND-BYOOS-009
     type: finding
-    title: "Zephyr primitives cannot travel the OCI path: they are core modules over a 9-symbol raw env scheduler seam with no WIT"
+    title: "The downstream need is a LINKING gap, not a packaging one: componentizing the Zephyr primitives would not serve it"
     status: active
-    description: "gale#223 asks for a single acquisition path (cosign-signed OCI) for everything a downstream fuses per core. For gust:os that contract already holds — ghcr.io/pulseengine/gale-nano and the five gale-nano-<provider> packages are pushed and cosign-signed on every v* tag by gustos-publish.yml, verified present at 0.6.0 and 0.7.0. The remaining half (msgq/mutex/sem) cannot follow, and NOT because the publish loop omits them: the shipped gale-wasm-msgq-v0.7.0.wasm is a CORE MODULE (version+layer 01000000, not a component's 0x0001), so wkg oci push has nothing to publish. It is a module because its seam is nine raw env imports — k_spin_lock, k_spin_unlock, z_ready_thread, z_reschedule, z_unpend_first_thread, arch_thread_return_value_set, gale_w_msgq_pend, gale_w_thread_swap_data, gale_w_memcpy — exporting z_impl_k_msgq_put, gale_k_msgq_put_decide, memory. Componentizing needs a WIT world for the Zephyr kernel seam, which does not exist. So the real ask is: define that seam, componentize against it, then publish — a design task, not a workflow change. Same species as dma-own, which is likewise component-shaped but not a component because its three TCB atoms are raw extern C symbols. gale currently has two artifact classes — WIT-seamed (gust:os providers, the 13 thin drivers) and raw-env (Zephyr primitives, dma-own) — and only the first can travel OCI. BLOCKED on a design decision that is not gale's alone: whether two-path acquisition is a real problem for the downstream per-core meld_fuse, or tolerable. Hand-authoring a second WIT seam would also deepen the debt FIND-DRV-SPAR-001 records (gust:hal WIT is hand-authored because spar->WIT is not wired)."
+    description: |-
+      SUPERSEDES this finding's original framing, which was wrong.
+
+      Originally recorded (from gale#223, a packaging issue): the Zephyr primitives cannot travel the OCI path because they are core modules over a 9-symbol raw env scheduler seam, so the work is define-a-WIT-seam then componentize then publish. The consumer tested that premise and refuted it. What they need is the kernel-seam objects shipped as standalone LINKABLES; componentizing them produces something no easier to link than today. The packaging framing was inherited from the issue rather than derived from the requirement. Componentization is orthogonal to the need, not a prerequisite for it.
+
+      Measured facts that remain true. gale-wasm-msgq-v0.7.0.wasm IS a core module (version+layer 01000000, not a component's 0x0001) over nine raw env imports (k_spin_lock, k_spin_unlock, z_ready_thread, z_reschedule, z_unpend_first_thread, arch_thread_return_value_set, gale_w_msgq_pend, gale_w_thread_swap_data, gale_w_memcpy), exporting z_impl_k_msgq_put, gale_k_msgq_put_decide, memory.
+
+      Verified independently on the published artifact by pulling ghcr.io/pulseengine/gale-nano:0.7.0: the fused component contains NONE of those eleven symbols, with 114 recoverable names in its name section so the negative is non-vacuous. The env seam is absent because the Zephyr kernel was never brought in - it was REPLACED by an internal gust:sched/tasks@0.1.0 WIT seam between the exec and timer providers (admit, poll-round, set-deadline, slept-status, state, wake) that does not appear in the exported world. So a downstream cannot obtain k_msgq by linking the fused core either.
+
+      Open question deliberately not decided here: whether gust:sched/tasks should be promoted to the public world in place of gust:os/taskdisp. The consumer would prefer it, since set-deadline/slept-status/poll-round/wake describes what an embedder must actually drive more precisely than poll-task does, but exposing it makes it a contract owed stability.
     tags: [gust, zephyr, oci, wit, consumption, friction]
     provenance:
       created-by: ai-assisted
