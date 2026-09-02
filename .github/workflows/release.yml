@@ -74,7 +74,31 @@ jobs:
           # ci-base ships no curl; install it first (same pattern as coverage.yml
           # and the engine-bench-renode-* workflows in this repo).
           apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          # RETRY, POSIX-sh SAFE (gale#289).
+          #
+          # Two defects here. (1) Unretried: one transient fetch killed the job.
+          # (2) `curl … | sh` reports SH's status, so a failed download feeds sh
+          # empty stdin, sh exits 0, and the step PASSES with rustup never
+          # installed — surfacing later as an unrelated-looking build error.
+          #
+          # The pipe is REMOVED rather than wrapped in `set -o pipefail`. These
+          # jobs run in containers, and GitHub picks `sh -e {0}` when the image
+          # has no bash — dash rejects pipefail outright:
+          #     set: Illegal option -o pipefail
+          # Downloading to a file and running it needs no pipefail, works under
+          # both sh and bash, and removes the truncation ambiguity entirely:
+          # curl -f fails on HTTP errors, and the installer runs as a plain
+          # command whose status `set -e` already honours.
+          _ok=0
+          for _a in 1 2 3; do
+            if curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh; then
+              _ok=1; break
+            fi
+            echo "::warning::rustup download attempt ${_a}/3 failed; retrying" >&2
+            sleep $((_a * 15))
+          done
+          [ "$_ok" = 1 ] || { echo "::error::rustup download failed after 3 attempts" >&2; exit 1; }
+          sh /tmp/rustup-init.sh -y --default-toolchain stable
           . /root/.cargo/env
           rustup target add wasm32-unknown-unknown
 
@@ -98,12 +122,12 @@ jobs:
           #      surfaces later as a confusing build error.
           _ok=0
           for _a in 1 2 3; do
-            # pipefail is scoped to THIS pipeline via a subshell, deliberately.
-            # Setting it for the whole step would also apply to the
-            # `$(clang --version | head -1)` lines below, where `head` closing
-            # early can hand the producer SIGPIPE and make a perfectly healthy
-            # pipeline report 141. Narrow scope, no collateral.
-            if ( set -o pipefail; wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- "${RUST_LLVM}" all ); then
+            # The pipe is REMOVED rather than wrapped in pipefail. These jobs run in
+            # containers, and GitHub picks `sh -e {0}` where the image has no bash;
+            # dash rejects `set -o pipefail` outright ("Illegal option"), which fails
+            # every attempt on the option itself. Downloading then running needs no
+            # pipefail, works under sh and bash, and removes truncation ambiguity.
+            if wget -qO- https://apt.llvm.org/llvm.sh > /tmp/llvm.sh && bash /tmp/llvm.sh "${RUST_LLVM}" all; then
               _ok=1; break
             fi
             echo "::warning::apt.llvm.org install attempt ${_a}/3 failed; retrying" >&2
