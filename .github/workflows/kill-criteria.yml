@@ -1,0 +1,83 @@
+# The two kill-criteria that existed as code and were fired by nothing (gale#324).
+#
+# Both were written the expensive way round — someone worked out what to assert and
+# wrote the assertion — and then were never wired, so neither could fail. This
+# workflow fires them.
+#
+# NO `paths:` FILTER, deliberately: these must be REQUIRABLE (gale#294). A filtered
+# workflow does not run when a PR touches nothing it cares about, GitHub never
+# creates its check, and a required context that never reports blocks the PR
+# forever. Both jobs here are seconds of pure Python, so there is nothing to
+# path-gate away.
+#
+# Each job runs its NEGATIVE CONTROL FIRST and separately, so a green result means
+# "the gate can distinguish", not merely "the gate ran".
+name: verification kill-criteria
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  wcet-evt:
+    name: "VER-OS-WCET-001 kill-criterion can still fail"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      # The real gate consumes a semihosting capture from STM32F100 silicon, which
+      # CI has no access to. What CI CAN verify — and what actually matters for the
+      # artifact's claim — is that the criterion still DISCRIMINATES: an over-bound
+      # capture must go red. The script ships both synthetic captures for this.
+      - name: Negative control — an over-bound capture MUST be rejected
+        run: |
+          cd benches/gust/drivers
+          python3 check-wcet-evt.py --emit-sample-capture fail > /tmp/wcet-fail.txt
+          if python3 check-wcet-evt.py /tmp/wcet-fail.txt; then
+            echo "::error::over-bound capture was ACCEPTED — the kill-criterion is vacuous"
+            exit 1
+          fi
+          echo "ok: over-bound capture rejected (exit non-zero), as required"
+
+      - name: A conforming capture must be accepted
+        run: |
+          cd benches/gust/drivers
+          python3 check-wcet-evt.py --emit-sample-capture pass > /tmp/wcet-pass.txt
+          python3 check-wcet-evt.py /tmp/wcet-pass.txt
+
+  data-overlap:
+    name: "fused data segments are disjoint (gale#266)"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install wasm-tools
+        run: cargo install wasm-tools --version 1.245.1 --locked
+
+      # This gate exists BECAUSE a silent failure got through: meld exits 0 and
+      # prints "Fusion complete!" while three components' .rodata stack on the same
+      # address. Prove it still bites before trusting the green.
+      - name: Negative control — overlapping segments MUST be rejected
+        run: |
+          cd benches/gust/drivers
+          printf '%s' '(module (memory 1) (data (i32.const 0) "AAAAAAAA") (data (i32.const 4) "BBBBBBBB"))' > /tmp/overlap.wat
+          wasm-tools parse /tmp/overlap.wat -o /tmp/overlap.wasm
+          if python3 check-data-overlap.py /tmp/overlap.wasm; then
+            echo "::error::overlapping data segments were ACCEPTED — the gate is vacuous"
+            exit 1
+          fi
+          echo "ok: overlap rejected, as required"
+
+      - name: The committed fused core must be disjoint
+        run: |
+          cd benches/gust/drivers
+          python3 check-data-overlap.py measurements/wcet-fixture/gustos.loom.wasm
