@@ -96,10 +96,14 @@ jobs:
           #      failed or truncated download feeds bash empty stdin, bash exits 0,
           #      and the step PASSES with clang never installed — the failure then
           #      surfaces later as a confusing build error.
-          set -o pipefail
           _ok=0
           for _a in 1 2 3; do
-            if wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- "${RUST_LLVM}" all; then
+            # pipefail is scoped to THIS pipeline via a subshell, deliberately.
+            # Setting it for the whole step would also apply to the
+            # `$(clang --version | head -1)` lines below, where `head` closing
+            # early can hand the producer SIGPIPE and make a perfectly healthy
+            # pipeline report 141. Narrow scope, no collateral.
+            if ( set -o pipefail; wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- "${RUST_LLVM}" all ); then
               _ok=1; break
             fi
             echo "::warning::apt.llvm.org install attempt ${_a}/3 failed; retrying" >&2
