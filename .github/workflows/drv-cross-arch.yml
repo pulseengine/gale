@@ -18,23 +18,30 @@
 # `synth_func_N` as a seam symbol. The script still refuses to run unpinned.
 name: driver cross-arch seam
 
+# NO `paths:` FILTER — deliberately. This gate must be REQUIRABLE (gale#294).
+#
+# A path-filtered workflow does not run when a PR touches nothing it cares about,
+# and GitHub never creates its check. A required context that never reports blocks
+# the PR forever, so a filtered gate cannot be added to
+# `required_status_checks.contexts` — it would trade an empty gate for a
+# deadlocked one. 10 of gale's 17 PR-triggered workflows are in that state, and
+# they are the safety-relevant ones (formal-verification, rivet-v-closure, both
+# driver gates), which is why #294 has not been a one-line fix.
+#
+# The path filter is therefore moved OFF the trigger and INTO the job, as an
+# early exit. The job always runs and always reports; when no relevant path
+# changed it exits 0 in seconds without installing a toolchain. Cost is one cheap
+# runner slot per PR; the expensive matrix still only runs when it must.
+#
+# Note the shape: the skip is a STEP-level early exit inside the reporting job,
+# not a job-level `if:` that would render the job "skipped". That avoids relying
+# on how branch protection treats a skipped check — the context reports a real
+# success either way.
 on:
   push:
     branches: [main]
-    paths:
-      - "benches/gust/drivers/*-thin/**"
-      - "benches/gust/drivers/wit/**"
-      - "benches/gust/drivers/build-cross-arch.sh"
-      - "benches/gust/drivers/check-cross-arch.py"
-      - ".github/workflows/drv-cross-arch.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "benches/gust/drivers/*-thin/**"
-      - "benches/gust/drivers/wit/**"
-      - "benches/gust/drivers/build-cross-arch.sh"
-      - "benches/gust/drivers/check-cross-arch.py"
-      - ".github/workflows/drv-cross-arch.yml"
 
 permissions:
   contents: read
@@ -60,12 +67,37 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0        # the guard diffs against the merge base
+
+      - name: Does this change touch the driver seam?
+        id: guard
+        # The path filter that used to live on the trigger. Same globs, evaluated
+        # here so the job still REPORTS when they do not match (gale#294).
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "push to main — always run"; exit 0
+          fi
+          base="${{ github.event.pull_request.base.sha }}"
+          changed="$(git diff --name-only "$base"...HEAD)"
+          if printf '%s\n' "$changed" | grep -qE \
+              '^benches/gust/drivers/[^/]+-thin/|^benches/gust/drivers/wit/|^benches/gust/drivers/build-cross-arch\.sh$|^benches/gust/drivers/check-cross-arch\.py$|^\.github/workflows/drv-cross-arch\.yml$'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "driver seam touched — running the gate"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "no driver-seam path changed — gate vacuously satisfied, exiting 0"
+          fi
 
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.guard.outputs.run == 'true'
         with:
           targets: wasm32-unknown-unknown
 
       - name: Install pinned synth + loom
+        if: steps.guard.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -86,6 +118,7 @@ jobs:
           echo "$HOME/pe-toolchain/bin" >> "$GITHUB_PATH"
 
       - name: Install wasm-tools
+        if: steps.guard.outputs.run == 'true'
         # check-cross-arch.py derives each driver's EXPECTED undefined set from
         # the wasm's import section, so it needs wasm-tools -- the old shell gate
         # only ran nm and did not. Pinned to the same version drv-components.yml
@@ -93,12 +126,14 @@ jobs:
         run: cargo install wasm-tools --version 1.245.1 --locked
 
       - name: Install binutils (nm)
+        if: steps.guard.outputs.run == 'true'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq binutils-arm-none-eabi
 
       # Negative control FIRST: an unpinned toolchain must be REFUSED, not
       # silently answered. That refusal is the whole reason this gate is
       # trustworthy — the property it checks is toolchain-sensitive.
       - name: Negative control — an unpinned/old synth must be refused
+        if: steps.guard.outputs.run == 'true'
         run: |
           set -euo pipefail
           cd benches/gust/drivers
@@ -114,6 +149,7 @@ jobs:
       # gate that dies silently in setup is the same problem as a check that
       # passes silently: there is nothing to read.
       - name: Toolchain diagnostics
+        if: steps.guard.outputs.run == 'true'
         run: |
           echo "HOME=$HOME"
           ls -la "$HOME/pe-toolchain/bin" || echo "  (bin dir missing)"
@@ -127,11 +163,13 @@ jobs:
           done
 
       - name: Negative control — the gate's own rule must reject a leaked symbol
+        if: steps.guard.outputs.run == 'true'
         run: |
           cd benches/gust/drivers
           python3 check-cross-arch.py --self-test
 
       - name: Cross-arch seam gate
+        if: steps.guard.outputs.run == 'true'
         run: |
           cd benches/gust/drivers
           SYNTH="$HOME/pe-toolchain/bin/synth" \
