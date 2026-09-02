@@ -42,6 +42,31 @@
 //! the four primitives explicitly requested plus five adjacent decision
 //! points that share the same bug class.
 
+/// Coverage notes: diagnostics for the deterministic sweep, not fuzz findings.
+///
+/// These fire on ordinary input classes (cpu_id >= MAX_CPUS, current_thread == 0,
+/// num_waiters > 64, timer saturated), so under libFuzzer they hit constantly:
+/// measured at 21.5% of executions and ~488k exec/s, which is 11.7 MB/s of stderr
+/// — about 42 GB over the nightly's `-max_total_time=3600`. CI captures step
+/// stderr and streams it to the Actions log service, which cannot keep up, so the
+/// fuzzer blocked on output, overshot its budget and was killed at
+/// `timeout-minutes: 75` before `Upload corpus (always)` could run. The target had
+/// therefore never persisted a corpus (gale#326).
+///
+/// cargo-fuzz builds with `--cfg fuzzing`, so these compile out there and remain
+/// in `precondition_erasure_smoke`, where 2511 runs of readable output is the
+/// point. DIVERGE and PANIC-VALID are NOT gated: they are rare and are real
+/// findings.
+#[cfg(not(fuzzing))]
+macro_rules! coverage_note {
+    ($($arg:tt)*) => { eprintln!($($arg)*) };
+}
+
+#[cfg(fuzzing)]
+macro_rules! coverage_note {
+    ($($arg:tt)*) => {{}};
+}
+
 use std::panic::{self, AssertUnwindSafe};
 
 use gale::condvar::broadcast_decide;
@@ -345,7 +370,7 @@ pub static CASES: &[PreconditionCase] = &[
                 // cpu_id. The 2026-04-23 fix makes the FFI fast-reject
                 // this case; the plain fn does not. Report as coverage
                 // note (not a divergence — see U-9 narrative).
-                eprintln!(
+                coverage_note!(
                     "COVERAGE U-9 spin_lock_valid returned TRUE with cpu_id={} (>= MAX_CPUS), thread_cpu=0x{:x}",
                     current_cpu_id, thread_cpu
                 );
@@ -373,7 +398,7 @@ pub static CASES: &[PreconditionCase] = &[
             }
             // U-8 indicator: current_thread == 0 is the aliased sentinel.
             if current_thread == 0 && r {
-                eprintln!(
+                coverage_note!(
                     "COVERAGE U-8 spin_unlock_valid accepted current_thread=0 with cpu_id={}",
                     current_cpu_id
                 );
@@ -428,7 +453,7 @@ pub static CASES: &[PreconditionCase] = &[
             // silently. A downstream caller using `r` as an index into
             // a length-64 wait queue will OOB.
             if a.a > 64 {
-                eprintln!(
+                coverage_note!(
                     "COVERAGE U-11 broadcast_decide accepted num_waiters={} (> MAX_WAITERS=64)",
                     a.a
                 );
@@ -454,7 +479,7 @@ pub static CASES: &[PreconditionCase] = &[
             // Coverage note: the saturated case is indistinguishable to
             // the caller from a fresh expiration.
             if a.a == u32::MAX {
-                eprintln!(
+                coverage_note!(
                     "COVERAGE U-12 timer status saturated at u32::MAX (period={})",
                     a.b
                 );
