@@ -112,3 +112,65 @@ Negative control for this section: delete the `digest` line from `varve.toml`
 and re-run `varve which synth`. It must exit 1 with the message above. If it
 succeeds, the duplicate has been pruned from the store and this section's
 premise no longer holds locally — the digest pin stays regardless.
+
+## What this pin does NOT cover: rustc
+
+The varve layer pins synth, loom, meld, witness and rivet. Several build scripts
+pin their own synth on top of that (`build-os-ts.sh` uses synth 0.45.1). Every
+crate's `Cargo.lock` is committed — 13 thin drivers and 5 providers, all tracked.
+
+**rustc is not pinned.** `rust-toolchain.toml` says:
+
+    [toolchain]
+    channel = "stable"
+
+A floating channel. So the compiler that produces the wasm — the input to the
+entire pinned pipeline — is whatever `stable` happens to be on the machine.
+
+### This is not hypothetical; four committed objects have drifted
+
+Re-running each builder on the current toolchain, with the synth version each
+script pins:
+
+| object | committed | rebuilt | delta |
+|---|---|---|---|
+| `breadth/breadth-cm3.o` | 4368 | 4616 | +248 |
+| `os-node/os-time-cm3.o` | 1609 | 1932 | +323 |
+| `os-node/os-tl-cm3.o` | 4317 | 4003 | −314 |
+| `os-node/os-ts-cm3.o` | 3638 | **8857** | **+5219 (2.4×)** |
+
+Undefined-symbol sets are identical in all four, so the seam contracts hold and
+nothing is functionally wrong. Only code size moved.
+
+Since the synth version is pinned per-script and the dependency versions are
+pinned by committed lockfiles, rustc is the remaining unpinned variable in the
+path from source to committed object.
+
+### Stated precisely
+
+rustc is the remaining *unpinned* variable. That is not the same as having proved
+it is the cause. A bisect across installed stables (1.90.0, 1.94.0) could not run:
+`rust-std-wasm32-unknown-unknown` is installed only for `stable`, so those
+toolchains cannot build the wasm at all, and the failure is silent — cargo exits
+101 with no output under the scripts' `set -euo pipefail`.
+
+To settle it, install the wasm32 std for an older stable and rebuild:
+
+    rustup target add wasm32-unknown-unknown --toolchain 1.94.0
+    RUSTUP_TOOLCHAIN=1.94.0 bash benches/gust/drivers/build-os-ts.sh
+
+If that reproduces 3638 bytes, rustc is confirmed as the cause and the version
+that built the committed objects is identified.
+
+### Why it matters here
+
+varve exists to close the mixed-toolchain hazard: half a pipeline on one version,
+half on another, producing an artifact no single toolchain ever built. That hazard
+is closed downstream of the wasm and open upstream of it. A committed object that
+no toolchain reproduces is a measurement waiting to be taken from the wrong
+artifact — the shape already seen in `dma-own-cm3.o`, which was 41 synth releases
+stale and whose `RESULTS.md` numbers no current build produces.
+
+Pinning `channel` to an exact version would close it. That is a real cost
+(deliberate bumps, CI churn) and a decision rather than an obvious fix, so it is
+recorded here rather than taken.
