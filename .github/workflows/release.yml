@@ -74,7 +74,22 @@ jobs:
           # ci-base ships no curl; install it first (same pattern as coverage.yml
           # and the engine-bench-renode-* workflows in this repo).
           apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          # RETRY + SCOPED PIPEFAIL (gale#289, pattern from #320).
+          # Unretried, one transient fetch killed the job. And without pipefail the
+          # pipeline reports SH's status — a failed download feeds sh empty stdin,
+          # sh exits 0, and the step PASSES with rustup never installed.
+          # pipefail is scoped to THIS pipeline: setting it for the whole step would
+          # also hit later `... | head -1` lines, where head closing early hands the
+          # producer SIGPIPE and a healthy pipeline reports 141.
+          _ok=0
+          for _a in 1 2 3; do
+            if ( set -o pipefail; curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable ); then
+              _ok=1; break
+            fi
+            echo "::warning::rustup install attempt ${_a}/3 failed; retrying" >&2
+            sleep $((_a * 15))
+          done
+          [ "$_ok" = 1 ] || { echo "::error::rustup install failed after 3 attempts" >&2; exit 1; }
           . /root/.cargo/env
           rustup target add wasm32-unknown-unknown
 
