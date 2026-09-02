@@ -86,3 +86,9 @@ doc = false
 name = "mem_slab_fuzz"
 path = "fuzz_targets/mem_slab_fuzz.rs"
 doc = false
+
+# `fuzzing` is set by cargo-fuzz (--cfg fuzzing) but is not a built-in cfg, so
+# rustc's check-cfg warns on it. Declare it rather than carry 28 warnings per
+# build. Used by the coverage_note! macro in src/precondition_erasure.rs.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
