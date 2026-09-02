@@ -65,8 +65,24 @@ HERE = pathlib.Path(__file__).resolve().parent
 # them. Not a regression -- 0.52.0 through 0.60.0 are identical on these inputs.
 #
 # This ledger is a pin, not an excuse: if a driver starts crossing cleanly it
-# must be removed from the list, and the gate fails (exit 5) until it is. That
-# is how the ledger shrinks to empty instead of quietly outliving the bug.
+# must be removed from the list, and the gate fails (exit 5) until it is.
+#
+# UPDATE, synth 0.61.0 (2026-09-02). The fix for #1102 shipped as RQ-61-DANGLE,
+# and it does NOT empty this ledger. I predicted it would; that was wrong. What
+# changed is the failure MODE, not the outcome:
+#
+#   synth 0.58/0.60   12 of 13 emitted an unlinkable object at exit 0
+#   synth 0.61.0      13 of 13 REFUSE at exit 1, no object written
+#                     Error: #1102: N retained function(s) relocate against
+#                            declined function(s)
+#
+# So the silent-truncation class is closed — nothing that cannot link is emitted
+# any more — but no driver crosses RV32, because the underlying RV32 selector
+# gaps are untouched (immediate too large for memory offset; GlobalGet
+# unsupported by the RV32 skeleton). The ledger stays at 13 for a better reason.
+#
+# Note we are still PINNED to 0.58.0; the above was measured against a
+# downloaded 0.61.0. The gate's behaviour on the pin is unchanged.
 RISCV_KNOWN_BAD = {
     "adc-thin", "can-thin", "dac-thin", "gpio-thin", "hm-thin", "i2c-thin",
     "mpu-thin", "pwm-thin", "spi-thin", "switch-thin", "timer-thin",

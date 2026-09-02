@@ -41,8 +41,25 @@ ld.lld: error: undefined symbol: synth_func_18
 ```
 
 Filed upstream as **synth#1102**, and **fixed on synth `main` as #1104** — not
-yet in a release (0.60.0 is the latest tag), so the ledger stays until we can pin
-a build that carries it.
+released in **synth 0.61.0** (2026-09-02) as RQ-61-DANGLE.
+
+Measured against 0.61.0, the fix changes the failure mode and not the outcome:
+
+| | 0.58 / 0.60 | 0.61.0 |
+|---|---|---|
+| emitted an unlinkable object at exit 0 | 12 of 13 | **0** |
+| refused at exit 1, no object written | 1 | **13** |
+
+```
+Error: #1102: 8 retained function(s) relocate against declined function(s)
+```
+
+The silent-truncation class is closed: nothing that cannot link is emitted. But
+no driver crosses RV32, because the RV32 selector gaps are untouched (immediate
+too large for memory offset; `GlobalGet` unsupported by the RV32 skeleton). The
+ledger stays at 13, for a better reason.
+
+We remain pinned to 0.58.0; the above was measured against a downloaded 0.61.0.
 
 **The fix corrected our framing, and it is worth stating plainly.** This report
 described the defect as rv32-specific, on the strength of the ARM column being
