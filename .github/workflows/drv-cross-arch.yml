@@ -51,8 +51,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  SYNTH_VERSION: "0.58.0"
-  LOOM_VERSION: "1.4.0"
+  # KEEP IN SYNC WITH varve.toml. This workflow downloads its own synth/loom
+  # rather than resolving them through varve, so the pin exists twice and can
+  # drift. It just did: the gate passes --embedder-data-init/--embedder-global-init,
+  # which synth 0.58.0 does not have, so leaving this at 0.58.0 while varve.toml
+  # moved to layer 2026.09.0 would fail the gate with "unexpected argument".
+  # Matching layer 2026.09.0.
+  SYNTH_VERSION: "0.60.0"
+  LOOM_VERSION: "1.4.1"
 
 jobs:
   cross-arch:

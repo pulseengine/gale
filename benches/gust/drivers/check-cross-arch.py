@@ -131,6 +131,31 @@ def undefined(obj, nm):
             if re.match(r"^\s*U\s", ln) or re.search(r"\sU\s", ln)}
 
 
+# Drivers whose emitted ARM code READS the globals table, so the
+# --embedder-global-init declaration would be a real promise rather than a
+# vacuous one. These must go through --native-pointer-abi instead;
+# build-iso-core.sh does that, with meld --pack-rebase ahead of it so the
+# linear memory packs to its used extent (a bare --native-pointer-abi on a
+# standalone thin driver reserves ~1 MB of .bss, which does not fit an 8 KiB
+# part).
+NEEDS_NATIVE_PTR = {"mpu-thin", "switch-thin"}
+
+
+def globals_or_data_refs(obj, objdump="arm-none-eabi-objdump"):
+    """(r9_refs, data_region_refs) in the emitted code.
+
+    This is the assumption the two --embedder-*-init flags rest on. r9 is the
+    globals-table base; 0x100000 is the wasm data region's base address. Zero
+    of both means nothing can read an unmaterialized region, so the flags are
+    checked rather than trusted.
+    """
+    p = run([objdump, "-d", str(obj)])
+    if p.returncode != 0:
+        return None, None
+    return (len(re.findall(r"\br9\b", p.stdout)),
+            len(re.findall(r"\b100000\b", p.stdout)))
+
+
 def build(driver, synth, nm):
     """Return (imports, arm_undefined_or_None, riscv_undefined_or_None)."""
     d = HERE / driver
@@ -144,7 +169,20 @@ def build(driver, synth, nm):
     for p in (arm, rv):
         if os.path.exists(p):
             os.unlink(p)
-    run([synth, "compile", w, "--target", "cortex-m3", "--all-exports", "--relocatable", "-o", arm])
+    # synth 0.60.0 refuses this path unless the caller accepts responsibility for
+    # data segments (#1041) and global initializers (#1052): the ARM relocatable
+    # lowering materializes neither, so a load from either region would read
+    # whatever the embedder's memory happens to hold.
+    #
+    # We accept it, and then CHECK the assumption rather than promising it —
+    # see globals_or_data_refs() and NEEDS_NATIVE_PTR below. For 11 of the 13
+    # drivers the emitted code touches neither region, so the declaration is
+    # vacuously true and verifiably so. mpu-thin and switch-thin DO read the
+    # globals table; they are built through build-iso-core.sh with
+    # --native-pointer-abi (meld --pack-rebase first, so the linear memory packs
+    # to its used extent instead of reserving a full 1 MB of .bss).
+    run([synth, "compile", w, "--target", "cortex-m3", "--all-exports", "--relocatable",
+         "--embedder-data-init", "--embedder-global-init", "-o", arm])
     run([synth, "compile", w, "-b", "riscv", "--target", "esp32c3", "--all-exports", "--relocatable", "-o", rv])
     return (imports(w),
             undefined(arm, nm) if os.path.exists(arm) else None,
@@ -197,6 +235,21 @@ def main():
         good = arm is not None and arm == imp
         if not good:
             arm_fail.append(d)
+        # Check what --embedder-data-init / --embedder-global-init assume.
+        if arm is not None:
+            r9, dref = globals_or_data_refs(f"/tmp/xa-{d}.o")
+            if r9 is None:
+                pass                      # objdump unavailable; not a verdict
+            elif d in NEEDS_NATIVE_PTR:
+                if r9 == 0:
+                    print(f"  {d}: NO r9 refs, but it is on NEEDS_NATIVE_PTR --")
+                    print("     it no longer needs the native-pointer path; drop it from the set")
+                    arm_fail.append(d)
+            elif r9 or dref:
+                print(f"  {d}: reads globals (r9 x{r9}) or data (0x100000 x{dref}),")
+                print("     so --embedder-*-init is a real promise here, not a vacuous one.")
+                print("     Move it to NEEDS_NATIVE_PTR and build it via build-iso-core.sh.")
+                arm_fail.append(d)
         shown = " ".join(sorted(imp)) or "(none)"
         got = "(no object)" if arm is None else (" ".join(sorted(arm)) or "(none)")
         print(f"{d:<13} {shown:<34} {got:<34} {'ok' if good else 'MISMATCH'}")
