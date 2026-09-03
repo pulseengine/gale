@@ -17,6 +17,20 @@ name: Compliance report
 # schema needs a newer rivet.
 
 on:
+  # `release: published` alone does NOT fire here. release.yml creates the
+  # release with GITHUB_TOKEN, and GitHub does not start workflow runs from
+  # GITHUB_TOKEN-raised events — so this workflow ran once, for v0.4.0, and
+  # v0.5.0/v0.6.0/v0.7.0 all published with no compliance report (gale#333).
+  #
+  # The tag push IS a human action (checked: v0.4.0..v0.7.0 all tagged by a
+  # person, and release.yml itself triggers on `push: tags` and has run for
+  # every one of them). So triggering on the same push restores the report
+  # without touching release.yml — which matters, because the header above
+  # says this workflow is decoupled on purpose and must not be able to affect
+  # the release flow. Adding a dispatch step to release.yml would have coupled
+  # them; this does not.
+  push:
+    tags: ['v*']
   release:
     types: [published]
   workflow_dispatch:
@@ -41,7 +55,9 @@ jobs:
           INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${INPUT_TAG:-$REL_TAG}"
+          # push:tags sets neither inputs.tag nor event.release.tag_name;
+          # GITHUB_REF_NAME is the tag on that event.
+          TAG="${INPUT_TAG:-${REL_TAG:-$GITHUB_REF_NAME}}"
           case "$TAG" in v*) ;; *) echo "::error::tag '$TAG' must start with v"; exit 1 ;; esac
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
