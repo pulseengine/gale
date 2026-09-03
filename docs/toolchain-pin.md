@@ -146,6 +146,44 @@ Since the synth version is pinned per-script and the dependency versions are
 pinned by committed lockfiles, rustc is the remaining unpinned variable in the
 path from source to committed object.
 
+### CORRECTION (2026-09-03): rustc is NOT the cause
+
+The section above named rustc as the remaining unpinned variable and said so was
+not the same as proving it. It is now ruled out. Completing the bisect:
+
+| rustc | `os-ts-cm3.o` |
+|---|---|
+| 1.90.0 | 9293 B |
+| 1.94.0 | 9317 B |
+| 1.97.0 (stable) | 8857 B |
+| **committed** | **3638 B** |
+
+Going *back* three versions makes the object larger, not smaller. No rustc
+reproduces 3638.
+
+**The real cause is source drift.** Every one of the four objects predates weeks
+of changes to its own inputs:
+
+| object | committed | inputs changed through |
+|---|---|---|
+| `breadth-cm3.o` | 2026-07-09 | 2026-08-28 |
+| `os-time-cm3.o` | 2026-07-09 | 2026-08-28 |
+| `os-tl-cm3.o` | 2026-07-23 | 2026-08-28 |
+| `os-ts-cm3.o` | 2026-07-23 | 2026-08-28 |
+
+For `os-ts-cm3.o` specifically, committed 2026-07-23: `build-os-ts.sh` changed
+07-29, `time-provider` and `exec-provider` 08-07, `timer-provider` 08-26,
+`wit-os` 08-28. Five to seven weeks of input changes, never regenerated.
+
+So this is not a toolchain-pinning problem. **Nothing rebuilds a committed object
+when its sources change, and nothing notices.** That is a simpler defect and a
+more tractable one: it is mechanically checkable — for each committed `*-cm3.o`,
+is any input newer in git history than the object itself?
+
+The rustc observation stands on its own (`channel = "stable"` does float, and
+that is worth deciding about), but it is not what made these four drift, and this
+document previously implied it was.
+
 ### Stated precisely
 
 rustc is the remaining *unpinned* variable. That is not the same as having proved
