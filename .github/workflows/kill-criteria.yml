@@ -81,3 +81,25 @@ jobs:
         run: |
           cd benches/gust/drivers
           python3 check-data-overlap.py measurements/wcet-fixture/gustos.loom.wasm
+
+  object-freshness:
+    name: "committed objects are not older than their sources"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0        # the gate compares git commit dates
+
+      # Four objects went stale for 5-7 weeks unnoticed (gale#334). First
+      # misdiagnosed as toolchain drift; the rustc bisect ruled that out. The
+      # actual cause is that nothing rebuilds a committed object when its
+      # sources change. This is that check.
+      - name: Negative control — the ledger must bite in both directions
+        run: |
+          cd benches/gust/drivers
+          python3 check-object-freshness.py --self-test
+
+      - name: Committed objects are not older than their sources
+        run: |
+          cd benches/gust/drivers
+          python3 check-object-freshness.py
