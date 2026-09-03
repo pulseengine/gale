@@ -54,6 +54,31 @@ BUILDERS = {
 # Always an input: the seam definitions every builder consumes.
 ALWAYS = ["wit", "wit-os"]
 
+# Objects that are not produced by a build-*.sh but sit next to their own source.
+# Inputs are that crate's BUILD files plus the seam it generates against.
+#
+# The input list is deliberately narrow. A first draft used the whole directory
+# and flagged gpio-thin because I had edited its RESULTS.md — a doc change does
+# not invalidate an object. A second draft added wit-os for everything and
+# flagged all 13 thin drivers; thin drivers do not reference wit-os at all
+# (checked: no Cargo.toml or src file mentions it). Each widening produced false
+# positives, so the sets below are per class.
+CRATE_BUILD_FILES = ["src", "Cargo.toml", "Cargo.lock", ".cargo"]
+
+# thin drivers generate against gust:hal only
+THIN_SEAMS = ["wit"]
+# providers and dma-own also generate against the gust:os world
+OS_SEAMS = ["wit", "wit-os"]
+
+# Composed/fused objects: produced from a component GRAPH rather than one crate,
+# so "the directory next to it" is not their input set. Listed, not gated —
+# same treatment as the composed artifacts in check-driver-components.py. A new
+# object here fails the census below rather than escaping silently.
+UNCOVERED = {
+    "os-node/exec-cm3.o",
+    "os-node/gustos-dissolved-cm3.o",
+}
+
 # KNOWN-STALE LEDGER. These four are already stale and cannot be refreshed here:
 # regenerating a committed object is a change that the precedent for a toolchain
 # re-pin (963e5c9, "every thin driver shrinks, both dies re-validated") settled by
@@ -63,10 +88,20 @@ ALWAYS = ["wit", "wit-os"]
 # stale, and it FAILS if one of these stops being stale — so the list shrinks to
 # empty when they are regenerated, instead of quietly outliving the problem.
 KNOWN_STALE = {
+    # script-built
     "breadth/breadth-cm3.o",
     "os-node/os-time-cm3.o",
     "os-node/os-tl-cm3.o",
     "os-node/os-ts-cm3.o",
+    # crate-adjacent: object predates the 2026-08-27 gust:hal seam change
+    "hm-thin/hm-thin-cm3.o",
+    "mpu-thin/mpu-thin-cm3.o",
+    "switch-thin/switch-thin-cm3.o",
+    "wdg-thin/wdg-thin-cm3.o",
+    # crate-adjacent: object predates its own source
+    "dma-own/dma-own-cm3.o",
+    "spawn-provider/spawn-provider-cm3.o",
+    "timer-provider/timer-provider-cm3.o",
 }
 
 
@@ -126,8 +161,63 @@ def main():
     if git("rev-parse", "--git-dir") is None:
         print("FATAL: not a git repository", file=sys.stderr); return 2
 
+    rel = "benches/gust/drivers"
+
+    def crate_objects():
+        """Objects that live beside their own crate, with per-class inputs."""
+        out = {}
+        for o in sorted(HERE.glob("*/*-cm3.o")):
+            d = o.parent.name
+            key = f"{d}/{o.name}"
+            if key in UNCOVERED or key in {v for v in BUILDERS.values()}:
+                continue
+            # Only a real crate directory gets auto-covered. Without this the
+            # census below can never fire: every object would be auto-included
+            # with its own directory as the input set, so a composed artifact
+            # dropped into a non-crate directory would be silently mis-gated
+            # against the wrong inputs instead of flagged. (My own negative
+            # control caught this — the first version passed a planted object.)
+            if not (o.parent / "Cargo.toml").exists():
+                continue
+            seams = THIN_SEAMS if d.endswith("-thin") else OS_SEAMS
+            out[key] = ([f"{rel}/{d}/{b}" for b in CRATE_BUILD_FILES]
+                        + [f"{rel}/{sm}" for sm in seams])
+        return out
+
+    # census: an object that is neither gated nor listed must not pass silently
+    known = set(BUILDERS.values()) | UNCOVERED | set(crate_objects())
+    found = {f"{o.parent.name}/{o.name}" for o in HERE.glob("*/*-cm3.o")}
+    stray = sorted(found - known)
+    if stray:
+        print("FAIL: committed object(s) neither gated nor listed:")
+        for x in stray:
+            print(f"  {x}")
+        return 5
+    vanished = sorted(UNCOVERED - found)
+    if vanished:
+        print("FAIL: UNCOVERED lists object(s) that no longer exist:")
+        for x in vanished:
+            print(f"  {x}")
+        return 5
+
     stale = []
-    print(f"  {'object':<22} {'committed':<12} {'newest input':<12} verdict")
+    print(f"  {'object':<26} {'committed':<12} {'newest input':<12} verdict")
+    for obj, inputs in sorted(crate_objects().items()):
+        obj_t = last_commit_epoch(f"{rel}/{obj}")
+        if obj_t is None:
+            continue
+        newest_t, newest_p = 0, None
+        for inp in inputs:
+            t = last_commit_epoch(inp)
+            if t and t > newest_t:
+                newest_t, newest_p = t, inp
+        import datetime as _dt
+        g = lambda t: _dt.datetime.fromtimestamp(t, _dt.timezone.utc).strftime("%Y-%m-%d") if t else "-"
+        if newest_t > obj_t:
+            stale.append((obj, g(obj_t), g(newest_t), newest_p))
+        print(f"  {obj:<26} {g(obj_t):<12} {g(newest_t):<12} "
+              f"{'STALE' if newest_t > obj_t else 'ok'}")
+
     for script, obj in sorted(BUILDERS.items()):
         obj_rel = f"benches/gust/drivers/{obj}"
         obj_t = last_commit_epoch(obj_rel)
