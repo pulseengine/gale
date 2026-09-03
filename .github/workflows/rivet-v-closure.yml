@@ -17,10 +17,16 @@ on:
       - ".github/workflows/rivet-v-closure.yml"
   pull_request:
     branches: [main]
+    # NO `paths:` FILTER — this gate must be REQUIRABLE (gale#294).
+    #
+    # A filtered workflow does not run when a PR touches nothing it cares about,
+    # so GitHub never creates its check, and a required context that never
+    # reports blocks the PR forever. This workflow carries verification claims,
+    # which makes it one of the ones most worth requiring — so the filter moves
+    # off the trigger and into the job as a step-level early exit (pattern from
+    # gale#319). The job always runs and always reports; when nothing relevant
+    # changed it exits in seconds without building anything.
     paths:
-      - "artifacts/**"
-      - "tools/check-v-closure.py"
-      - ".github/workflows/rivet-v-closure.yml"
 
 permissions:
   contents: read
@@ -30,14 +36,42 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  guard:
+    # The path filter that used to live on the trigger. Kept here so the gate
+    # below still REPORTS its check on every PR (gale#294) while doing no work
+    # when nothing relevant changed.
+    name: "V-closure needed?"
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.q.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: q
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}"...HEAD)"
+          if printf '%s\n' "$changed" | grep -qE '^artifacts/|^tools/check-v-closure\.py$|^\.github/workflows/rivet-v-closure\.yml$'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "artifacts or the checker changed"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "no relevant path changed — reporting without running"
+          fi
+
   v-closure:
     name: "no requirement lags its closed V"
+    needs: guard
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
+        if: needs.guard.outputs.run == 'true'
         with:
           python-version: "3.12"
       - name: Traceability-completeness gate
+        if: needs.guard.outputs.run == 'true'
         run: python3 tools/check-v-closure.py

@@ -29,17 +29,15 @@ on:
       - '.github/workflows/formal-verification.yml'
   pull_request:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'plain/**'
-      - 'ffi/**'
-      - 'tests/**'
-      - 'proofs/**'
-      # BUILD/MODULE were on the push filter but NOT here, so a PR touching
-      # bazel deps skipped the proofs it could break
-      - 'BUILD.bazel'
-      - 'MODULE.bazel'
-      - '.github/workflows/formal-verification.yml'
+    # NO `paths:` FILTER — this gate must be REQUIRABLE (gale#294).
+    #
+    # A filtered workflow does not run when a PR touches nothing it cares about,
+    # so GitHub never creates its check, and a required context that never
+    # reports blocks the PR forever. This workflow carries verification claims,
+    # which makes it one of the ones most worth requiring — so the filter moves
+    # off the trigger and into the job as a step-level early exit (pattern from
+    # gale#319). The job always runs and always reports; when nothing relevant
+    # changed it exits in seconds without building anything.
   schedule:
     - cron: '0 2 * * 0'
 
@@ -48,56 +46,97 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  guard:
+    # Cheap always-run job that decides whether the proofs need to run at all.
+    # The path filter that used to live on the trigger lives here instead, so
+    # every verification job below still REPORTS its check (gale#294) while the
+    # expensive Nix / Rust / Kani installs are skipped when nothing relevant
+    # changed. Same globs as the old filter, plus BUILD/MODULE which were on the
+    # push filter but not the pull_request one.
+    name: "proofs needed?"
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.q.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: q
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "not a PR — run"; exit 0
+          fi
+          changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}"...HEAD)"
+          if printf '%s\n' "$changed" | grep -qE '^src/|^plain/|^ffi/|^tests/|^proofs/|^BUILD\.bazel$|^MODULE\.bazel$|^\.github/workflows/formal-verification\.yml$'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "proof-relevant paths changed"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "no proof-relevant path changed — reporting without building"
+          fi
+
   verus:
     name: Verus SMT (39 modules)
+    needs: guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
       - uses: cachix/install-nix-action@v31
+        if: needs.guard.outputs.run == 'true'
 
       - name: Install Rust toolchain
+        if: needs.guard.outputs.run == 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Run Verus verification
+        if: needs.guard.outputs.run == 'true'
         run: |
           bazel test //:verus_test --test_output=errors
         timeout-minutes: 30
 
   kani:
     name: Kani BMC (185 harnesses)
+    needs: guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@nightly
+        if: needs.guard.outputs.run == 'true'
 
       - name: Install Kani
+        if: needs.guard.outputs.run == 'true'
         run: |
           cargo install --locked kani-verifier
           cargo kani setup
 
       - name: Run Kani model harnesses (main crate)
+        if: needs.guard.outputs.run == 'true'
         run: cargo kani --tests
         timeout-minutes: 45
 
       - name: Run Kani FFI harnesses
+        if: needs.guard.outputs.run == 'true'
         run: cargo kani --tests --all-features
         working-directory: ffi
         timeout-minutes: 45
 
   rocq:
     name: Rocq Proofs (14 files)
+    needs: guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
       - uses: cachix/install-nix-action@v31
+        if: needs.guard.outputs.run == 'true'
 
       - name: Install Rust toolchain
+        if: needs.guard.outputs.run == 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Run Rocq proof verification
+        if: needs.guard.outputs.run == 'true'
         run: |
           bazel test \
             //proofs:sem_proofs_test \
@@ -119,13 +158,16 @@ jobs:
 
   lean:
     name: Lean Proofs
+    needs: guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
       - uses: cachix/install-nix-action@v31
+        if: needs.guard.outputs.run == 'true'
 
       - name: Install Rust toolchain
+        if: needs.guard.outputs.run == 'true'
         uses: dtolnay/rust-toolchain@stable
 
       # These targets existed in proofs/lean/BUILD.bazel but no workflow ever
@@ -135,6 +177,7 @@ jobs:
       # one-time download of 7869 prebuilt mathlib files from the upstream
       # Azure cache, not elaboration (critical path 13.89s).
       - name: Run Lean proof verification
+        if: needs.guard.outputs.run == 'true'
         run: |
           bazel test //proofs/lean:all --test_output=errors
         timeout-minutes: 45
