@@ -973,56 +973,26 @@ artifacts:
 
   - id: REQ-DRV-COMPONENT-001
     type: sw-req
-    title: "Every thin-seam driver SHALL be a wasm COMPONENT importing gust:hal — no raw env import may survive in the graph"
-    status: proposed
+    title: Every thin-seam driver is a wasm component with no raw env import, and its committed object agrees with its source
+    status: verified
     release: v0.7.1
     tags: [gust, driver, component-model, seam]
     links:
       - type: derives-from
         target: SYSREQ-BYOOS-001
-    description: >
-      As of v0.6.0 the composition is typed from application through OS and then stops:
-      all eight thin-seam drivers are core modules importing env.mmio_read32 /
-      env.mmio_write32 directly, while gust:hal already declares nine interfaces (mmio,
-      irq, gpio, spi, timer, dma, uart, uart-byte, uart-block) that nothing speaks. Each
-      driver SHALL instead be a component whose imports are gust:hal interfaces, so the
-      graph is typed all the way to the hardware seam: app -> OS -> drivers -> gust:hal.
-      After composition the residual SHALL still be exactly the gust:hal mmio seam, and no
-      `env` import SHALL survive in any core module of the graph.
-      Precondition for REQ-OS-PARTITION-TENANT-001: a driver cannot be a partition's
-      component tenant while it is not a component.
+    description: "Scope: the 13 thin-seam drivers, per driver. The graph-wide clause this requirement used to also carry is now REQ-DRV-GRAPH-001, and the silicon-observation clause its verification carried is now REQ-DRV-SILICON-001 — the two clauses disagreed about dma-own, which is in the graph but is an ownership FSM rather than a thin-seam driver. Each driver SHALL be a wasm component whose capability dependencies arrive as WIT-typed imports rather than undefined symbols nobody declared, SHALL componentize and validate, and its committed dissolved .o undefined-symbol set SHALL equal its wasm's imported field names — that last clause because the probes link the COMMITTED object rather than a freshly built one, so source and object can diverge silently, and did (gale#307: 8 of 9 objects still carried pre-conversion mmio_read32 names after their drivers had moved to WIT-typed imports). The rule is 'no raw env', NOT 'imports gust:hal': hm-thin imports nothing (pure scalar predicates), mpu-thin imports gust:mpu/regs, switch-thin imports gust:switch/ctx. An earlier draft required gust:hal specifically and failed all three — a gate wrong about what it is checking is worse than no gate. VERIFIED on main at 681c0dc: 13 of 13, 0 raw env, all componentize, 13 committed objects compared against source, and both negative controls bite (planted env import rejected with exit 3; comparator distinguishes read32 from mmio_read32). Kill-criterion: a driver componentizes but its dissolved object's undefined set no longer matches its wasm's imports."
 
   - id: VER-DRV-COMPONENT-001
     type: sw-verification
-    title: "Per-driver componentization gate + whole-graph no-env-import sweep, both negative-tested"
+    title: "Per-driver componentization gate: no raw env, componentizes, committed object agrees with source — negative-tested"
     method: automated-test
-    status: proposed
+    status: verified
     release: v0.7.1
     tags: [gust, driver, component-model, gate]
     links:
       - type: verifies
         target: REQ-DRV-COMPONENT-001
-    description: >
-      Planned evidence for REQ-DRV-COMPONENT-001. A componentized driver is NOT done when
-      it composes; it is done when the object built from it has been OBSERVED driving
-      hardware. The first four through this axis (gpio, timer, spi, uart) were chosen for
-      having pre-existing WIT contracts, which turned out to be exactly the four with NO
-      silicon runner — so the migration was validating its output nowhere, and the probes
-      cited as passing link the COMMITTED pre-change objects. Silicon runners exist for wdg
-      (STM32G474 + STM32F100) and adc (F100); those SHALL be componentized and re-run on
-      hardware, with the observed effect compared against the pre-change baseline in
-      silicon/RESULTS-wdg-*.md. A driver whose only gate is Renode or qemu SHALL say so
-      rather than count as hardware-validated.
-      Per driver: wasm-tools component new
-      succeeds, component wit decodes, imports are gust:hal only. Across the composed
-      graph: a sweep asserting no core module imports `env`, negative-tested against a
-      pre-change driver so the sweep is OBSERVED to fail. WIT-typing a driver changes its
-      dissolved object's undefined-symbol shape (mmio_read32 -> the WIT-typed name), as
-      exec-provider demonstrated in v0.6.0; each driver's symbol contract SHALL be re-pinned
-      and the change recorded, not absorbed silently.
-      Kill-criterion: a driver that componentizes but whose composed residual gains an
-      import outside gust:hal, or a dissolved object whose undefined set no longer matches
-      its recorded contract.
+    description: "benches/gust/drivers/check-driver-components.py, wired by .github/workflows/drv-components.yml. Per driver: no raw env import; wasm-tools component new + validate succeed; the component's WIT decodes; and the committed .o's undefined symbols equal the wasm's imported field names. Distinct exit codes per property (3 env, 4 componentize, 5 not introspectable, 7 object disagrees, 6 the negative control passed when it must fail) so a CI log says WHICH property failed. --self-test plants a module with a raw env import and requires rejection, and plants read32-vs-mmio_read32 to prove the comparator distinguishes. Run on main at 681c0dc: 13 of 13 gated, PASS, both controls bite. NOT in scope here, deliberately: the 9 composed/fused objects listed as UNGATED (a fusion of a whole component graph with native atoms is not a 1:1 lowering, so this gate's rule would produce false failures) — that is REQ-DRV-GRAPH-001; and hardware observation — that is REQ-DRV-SILICON-001."
 
   - id: REQ-OS-COMPOSITE-EXEC-001
     type: sw-req
@@ -1305,3 +1275,75 @@ artifacts:
       running past its planned window boundary on hardware; a region-swap observed applied
       after the entering partition has already resumed; or a component tenant able to reach
       another partition's memory or another partition's scheduler state.
+
+  - id: REQ-DRV-GRAPH-001
+    type: sw-req
+    title: No raw env import survives in any core module of the composed graph
+    status: proposed
+    description: "Split out of REQ-DRV-COMPONENT-001, whose two clauses disagreed about the same artifact: clause 1 bound every thin-seam DRIVER, clause 2 bound the whole GRAPH, and dma-own is in the graph but is an ownership FSM rather than a thin-seam driver. The per-driver clause is discharged (REQ-DRV-COMPONENT-001, 13/13). This is the graph clause, which is not. Measured on main at 681c0dc by check-driver-components.py: dma-own carries 3 raw env imports (dma_barrier, dma_irq_poll, dma_program) because its three TCB atoms are raw extern C symbols rather than a typed WIT interface, and 9 composed/fused objects are LISTED but not gated, because that gate's rule (a committed .o undefined set equals its wasm imports) applies to a 1:1 component-to-object lowering while a fusion of a whole component graph with native atoms is a different shape. So nothing currently asserts the composed graph is env-free. SHALL: a sweep over every core module of the composed graph asserts none imports env, negative-tested against a pre-change module so the sweep is OBSERVED to fail. Kill-criterion: a composed image ships with an env import and the sweep stays green."
+    tags: [gust, driver, component-model, seam, graph]
+    fields:
+      release: v0.7.1
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5
+      timestamp: 2026-09-04T11:49:28Z
+    release: v0.7.1
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+
+      - type: related-to
+        target: REQ-DRV-COMPONENT-001
+  - id: VER-DRV-GRAPH-001
+    type: sw-verification
+    title: Whole-graph env sweep over composed and fused objects, negative-tested
+    status: proposed
+    description: "Planned evidence for the graph clause. Extends check-driver-components.py past the 1:1 lowering it gates today: a sweep over every core module inside the composed and fused artifacts (the 9 currently listed as UNGATED), asserting none imports env, with a negative control that plants a pre-conversion module and MUST fail. Also decides dma-own: either its 3 TCB atoms become a typed WIT interface, or it is declared out of scope by name with the reason recorded. What the gate does today is report dma-own's state as an assertion so a change cannot pass silently, which is a ledger, not verification."
+    tags: [gust, driver, component-model, gate, graph]
+    fields:
+      release: v0.7.1
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5
+      timestamp: 2026-09-04T11:49:28Z
+    release: v0.7.1
+    links:
+      - type: verifies
+        target: REQ-DRV-GRAPH-001
+
+  - id: REQ-DRV-SILICON-001
+    type: sw-req
+    title: Componentized drivers are re-observed on silicon against their pre-change baseline
+    status: proposed
+    description: "Split out of VER-DRV-COMPONENT-001, which conflated a static property with a hardware one. A componentized driver is not done when it composes; it is done when the object built from it has been OBSERVED driving hardware. The first four through the componentization axis (gpio, timer, spi, uart) were chosen for having pre-existing WIT contracts, which turned out to be exactly the four with NO silicon runner, so that migration was validating its output nowhere. Silicon runners exist for wdg (STM32G474 + STM32F100) and adc (F100). Those SHALL be componentized and re-run on hardware, with the observed effect compared against the pre-change baseline in silicon/RESULTS-wdg-*.md. A driver whose only gate is Renode or qemu SHALL say so rather than count as hardware-validated. Kill-criterion: a driver counted as silicon-validated whose only evidence is emulation."
+    tags: [gust, driver, silicon, component-model]
+    fields:
+      release: v0.9.0
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5
+      timestamp: 2026-09-04T11:50:11Z
+    release: v0.9.0
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+
+      - type: related-to
+        target: REQ-DRV-COMPONENT-001
+  - id: VER-DRV-SILICON-001
+    type: sw-verification
+    title: Hardware re-run of componentized wdg and adc against the pre-change baseline
+    status: proposed
+    description: "Planned evidence. wdg-thin on STM32G474 and STM32F100, adc-thin on F100: flash the componentized build, capture the observed effect, and diff against the pre-change baseline recorded in silicon/RESULTS-wdg-*.md. Blocked on physical hardware access, which CI does not have; this is therefore evidence gale can produce only on the maintainer's bench, not a gate CI can close."
+    tags: [gust, driver, silicon, gate]
+    fields:
+      release: v0.9.0
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5
+      timestamp: 2026-09-04T11:50:11Z
+    release: v0.9.0
+    links:
+      - type: verifies
+        target: REQ-DRV-SILICON-001
