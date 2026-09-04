@@ -23,6 +23,10 @@ kiln-async = { git = "https://github.com/pulseengine/kiln", rev = "6966abcdeb1c8
 # expected MemManage does NOT fire and the probe must FAIL. See REQ-OS-MPU-001
 # (kill-criterion) and VER-OS-ISO-001 (the oracle this makes non-vacuous).
 grant-hole = []
+# gust_iso_unpriv_probe: drop to CONTROL.nPRIV=1 before attempting the PPB write,
+# to establish whether unprivileged execution blocks the escape (REQ-OS-UNPRIV-001's
+# mechanism) BEFORE gust's architecture adopts it.
+drop-priv = []
 # Silicon-firmware target selection (gust_wdg_silicon). Exactly one is active;
 # each pulls the matching generated constants module (benches/gust/targets/
 # generated/). G4 is the default (the directly-attached NUCLEO board); F1 is

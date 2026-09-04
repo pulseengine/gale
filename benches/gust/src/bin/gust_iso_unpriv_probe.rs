@@ -28,7 +28,7 @@
 #![no_main]
 
 use core::ptr::{read_volatile, write_volatile};
-use cortex_m_rt::{entry, exception};
+use cortex_m_rt::{entry, exception, ExceptionFrame};
 use cortex_m_semihosting::{debug, hprintln};
 use gale::mpu_switch::{RegionTable, MPU_CTRL_ENABLE, MPU_CTRL_ID, REQUIRED_DREGION};
 use panic_halt as _;
@@ -67,18 +67,54 @@ pub extern "C" fn mpu_write(rnr: u32, rbar: u32, rasr: u32) {
 /// fault probe uses, so the two agree on what "denied" means).
 const DENIED_ADDR: u32 = 0x2000_8000;
 
-/// A MemManage here is the FUTURE state, not this probe's expected one: it means
-/// the tenant could not reach the PPB, i.e. REQ-OS-UNPRIV-001 has landed.
+/// Under `drop-priv` a fault here is the DESIRED outcome: the tenant was
+/// unprivileged and could not reach the PPB. Without it, a fault means somebody
+/// closed the gap and this ledger is stale.
+///
+/// Which fault fires is MEASURED, not assumed. ARMv7-M routes an unprivileged
+/// System Control Space access to a BusFault rather than a MemManage, and it
+/// escalates to HardFault if BusFault is not enabled -- so all three are handled
+/// and each reports itself by name. Guessing one and catching nothing would look
+/// exactly like "no fault happened", which is the wrong conclusion.
+macro_rules! blocked {
+    ($which:expr) => {{
+        #[cfg(feature = "drop-priv")]
+        {
+            hprintln!(
+                "gust-iso-unpriv-probe OK(mechanism-works): unprivileged tenant could NOT \
+                 write MPU_CTRL -- {} raised. Dropping to CONTROL.nPRIV=1 blocks the PPB \
+                 escape, so REQ-OS-UNPRIV-001's mechanism is available on this core.",
+                $which
+            );
+            debug::exit(debug::EXIT_SUCCESS);
+        }
+        #[cfg(not(feature = "drop-priv"))]
+        {
+            hprintln!(
+                "gust-iso-unpriv-probe FAIL(stale-ledger): a PRIVILEGED tenant could not \
+                 write MPU_CTRL -- {} raised. That is the DESIRED state; REQ-OS-UNPRIV-001 \
+                 appears to have landed. Update VER-OS-ISO-001's scope note and this probe.",
+                $which
+            );
+            debug::exit(debug::EXIT_FAILURE);
+        }
+        loop {}
+    }};
+}
+
 #[exception]
 unsafe fn MemoryManagement() -> ! {
-    hprintln!(
-        "gust-iso-unpriv-probe FAIL(stale-ledger): the tenant could NOT disable the MPU. \
-         That is the DESIRED state — REQ-OS-UNPRIV-001 appears to have landed. Update \
-         VER-OS-ISO-001's scope note (it still says security-containment is absent) and \
-         retire or invert this probe."
-    );
-    debug::exit(debug::EXIT_FAILURE);
-    loop {}
+    blocked!("MemManage")
+}
+
+#[exception]
+unsafe fn BusFault() -> ! {
+    blocked!("BusFault")
+}
+
+#[exception]
+unsafe fn HardFault(_ef: &ExceptionFrame) -> ! {
+    blocked!("HardFault (escalated)")
 }
 
 #[entry]
@@ -115,6 +151,15 @@ fn main() -> ! {
     // On a Cortex-M the System Control Space is never MPU-checked. Tenant code
     // running privileged can therefore simply switch enforcement off. If
     // REQ-OS-UNPRIV-001 had landed this write would MemManage-fault.
+    // Under `drop-priv`, become unprivileged FIRST. CONTROL.nPRIV=1 with an ISB
+    // so the change is in effect before the next instruction is fetched.
+    #[cfg(feature = "drop-priv")]
+    unsafe {
+        let ctrl: u32;
+        core::arch::asm!("mrs {}, CONTROL", out(reg) ctrl);
+        core::arch::asm!("msr CONTROL, {}", in(reg) ctrl | 1);
+        cortex_m::asm::isb();
+    }
     unsafe {
         write_volatile(MPU_CTRL, 0);
         cortex_m::asm::dsb();
@@ -127,6 +172,19 @@ fn main() -> ! {
     let readback = unsafe { read_volatile(DENIED_ADDR as *const u32) };
 
     let escaped = (after & MPU_CTRL_ENABLE == 0) && readback == 0xC0FF_EE00;
+    #[cfg(feature = "drop-priv")]
+    {
+        hprintln!(
+            "gust-iso-unpriv-probe FAIL(mechanism-absent): unprivileged tenant STILL \
+             disabled the MPU (CTRL {:#010x} -> {:#010x}, readback {:#010x}). No fault \
+             was raised, so CONTROL.nPRIV does not protect the PPB on this core and \
+             REQ-OS-UNPRIV-001 needs a different mechanism.",
+            armed, after, readback
+        );
+        debug::exit(debug::EXIT_FAILURE);
+        loop {}
+    }
+    #[cfg(not(feature = "drop-priv"))]
     if escaped {
         hprintln!(
             "gust-iso-unpriv-probe OK(gap-open): privileged tenant cleared MPU_CTRL \

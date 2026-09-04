@@ -215,3 +215,17 @@ jobs:
       - name: "Ledger: a privileged tenant can still disable its own MPU (gap open)"
         working-directory: benches/gust
         run: cargo run --release --bin gust_iso_unpriv_probe
+
+      # The other half: does the FIX work? Establishing that CONTROL.nPRIV=1 blocks
+      # the PPB escape de-risks REQ-OS-UNPRIV-001 before gust's architecture adopts
+      # it -- and it means the ledger step above is measuring an open gap with a
+      # known remedy rather than an open question.
+      #
+      # Which fault fires is measured, not assumed: this core raises MemManage,
+      # where the ARMv7-M rules for System Control Space access had me expecting
+      # BusFault. The probe handles MemManage, BusFault and HardFault and names the
+      # one it got, so a different core reports the difference instead of looking
+      # like "no fault happened".
+      - name: "Mechanism: dropping to unprivileged blocks the same escape"
+        working-directory: benches/gust
+        run: cargo run --release --features drop-priv --bin gust_iso_unpriv_probe
