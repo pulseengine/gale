@@ -55,6 +55,53 @@
         "properties": []
       },
       {
+        "name": "Mpu",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#E000ED90#",
+            "typed_value": {
+              "Integer": [
+                3758157200,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "false",
+            "typed_value": {
+              "Boolean": false
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Dregion",
+            "value": "0",
+            "typed_value": {
+              "Integer": [
+                0,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
         "name": "Iwdg",
         "category": "device",
         "extends": null,
@@ -650,6 +697,14 @@
             "properties": []
           },
           {
+            "name": "mpu",
+            "category": "device",
+            "classifier": "Mpu",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
             "name": "iwdg",
             "category": "device",
             "classifier": "Iwdg",
@@ -750,6 +805,53 @@
         "modes": [],
         "mode_transitions": [],
         "properties": []
+      },
+      {
+        "name": "Mpu",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#E000ED90#",
+            "typed_value": {
+              "Integer": [
+                3758157200,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "true",
+            "typed_value": {
+              "Boolean": true
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Dregion",
+            "value": "8",
+            "typed_value": {
+              "Integer": [
+                8,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
       },
       {
         "name": "Iwdg",
@@ -969,6 +1071,14 @@
             "name": "sram",
             "category": "memory",
             "classifier": "Ram.i",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "mpu",
+            "category": "device",
+            "classifier": "Mpu",
             "is_refined": false,
             "in_modes": [],
             "properties": []

@@ -15,12 +15,29 @@ GEN="$HERE/generated"
 FIXTURE="$REPO/tools/gust-target-gen/tests/golden/f100.items.json"
 mkdir -p "$GEN"
 
+# spar resolves through the varve pin when it is not on PATH. Without this the
+# script silently fell back to the COMMITTED fixture and regenerated from stale
+# items — a model edit would appear to regenerate cleanly and change nothing.
 if command -v spar >/dev/null 2>&1; then
-  echo "regen: spar found — refreshing $FIXTURE from the .aadl models"
-  spar items --format json "$HERE"/*.aadl > "$FIXTURE"
+  SPAR=(spar)
+elif command -v varve >/dev/null 2>&1 && varve which spar >/dev/null 2>&1; then
+  SPAR=(varve run spar)
+else
+  SPAR=()
+fi
+if [ ${#SPAR[@]} -gt 0 ]; then
+  echo "regen: spar found (${SPAR[*]}) — refreshing $FIXTURE from the .aadl models"
+  "${SPAR[@]}" items --format json "$HERE"/*.aadl > "$FIXTURE"
 else
   echo "regen: spar not found — using the committed spar-items fixture"
 fi
+
+# Run the HOST generator from the repo root. benches/gust/.cargo/config.toml sets
+# target = thumbv7m-none-eabi, so invoking cargo with the cwd anywhere under
+# benches/gust cross-compiles this host tool and dies in a dependency
+# ("can't find crate", E0463). The script was cwd-sensitive and only worked when
+# run from outside that tree.
+cd "$REPO"
 
 for BOARD in \
   "STM32F100::Board.vldiscovery" \
