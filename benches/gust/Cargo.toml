@@ -19,6 +19,10 @@ panic-halt = "0.2"
 kiln-async = { git = "https://github.com/pulseengine/kiln", rev = "6966abcdeb1c88edaa86facdccf6cba8712640e9" }
 
 [features]
+# Negative control for gust_iso_fault_probe: grants the denied hole so the
+# expected MemManage does NOT fire and the probe must FAIL. See REQ-OS-MPU-001
+# (kill-criterion) and VER-OS-ISO-001 (the oracle this makes non-vacuous).
+grant-hole = []
 # Silicon-firmware target selection (gust_wdg_silicon). Exactly one is active;
 # each pulls the matching generated constants module (benches/gust/targets/
 # generated/). G4 is the default (the directly-attached NUCLEO board); F1 is
