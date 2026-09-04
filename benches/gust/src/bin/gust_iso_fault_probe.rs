@@ -236,21 +236,24 @@ fn main() -> ! {
     // three grants satisfy table_inv: power-of-2 sizes >= 32, size-aligned
     // bases, pairwise-disjoint ranges.)
     let mut t = RegionTable::new();
-    // region 0: flash 256K, read-only (writable=false → AP=0b110).
-    t.base[0] = 0x0000_0000;
-    t.size[0] = 0x0004_0000;
-    t.enabled[0] = true;
-    t.writable[0] = false;
-    // region 1: SRAM low 32K, RW (.data/.bss).
-    t.base[1] = 0x2000_0000;
-    t.size[1] = 0x0000_8000;
-    t.enabled[1] = true;
-    t.writable[1] = true;
-    // region 2: SRAM stack window 16K at 0x2000_C000, RW.
-    t.base[2] = 0x2000_C000;
-    t.size[2] = 0x0000_4000;
-    t.enabled[2] = true;
-    t.writable[2] = true;
+    // Per-board, because the map must describe the actual part. See
+    // gust_iso_unpriv_probe for the same split and why it exists.
+    #[cfg(not(feature = "silicon-g474"))]
+    {
+        // qemu lm3s6965evb: FLASH 0x0000_0000 256K, RAM 0x2000_0000 64K.
+        t.base[0] = 0x0000_0000; t.size[0] = 0x0004_0000; t.enabled[0] = true; t.writable[0] = false;
+        t.base[1] = 0x2000_0000; t.size[1] = 0x0000_8000; t.enabled[1] = true; t.writable[1] = true;
+        t.base[2] = 0x2000_C000; t.size[2] = 0x0000_4000; t.enabled[2] = true; t.writable[2] = true;
+    }
+    #[cfg(feature = "silicon-g474")]
+    {
+        // NUCLEO-G474RE: FLASH 0x0800_0000 512K, RAM 0x2000_0000 96K, stack top
+        // 0x2001_8000. Leaves [0x2000_8000, 0x2001_4000) granted to nobody, so
+        // DENIED_ADDR is physically-backed SRAM the table denies.
+        t.base[0] = 0x0800_0000; t.size[0] = 0x0008_0000; t.enabled[0] = true; t.writable[0] = false;
+        t.base[1] = 0x2000_0000; t.size[1] = 0x0000_8000; t.enabled[1] = true; t.writable[1] = true;
+        t.base[2] = 0x2001_4000; t.size[2] = 0x0000_4000; t.enabled[2] = true; t.writable[2] = true;
+    }
 
     // NEGATIVE CONTROL (feature `grant-hole`). The oracle's whole claim is that
     // the denied write faults BECAUSE the region table does not grant it. That
