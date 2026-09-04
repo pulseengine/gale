@@ -32,6 +32,16 @@ fn interfaces_for(device_class: &str) -> &'static [&'static str] {
         "tim2" => &["mmio", "timer"],
         "spi1" => &["mmio", "spi"],
         "usart1" => &["mmio", "uart"],
+        // The MPU is register-programmed like any other block, so at the TARGET-WORLD
+        // level what it requires is `mmio`. Deliberately NOT gust:mpu/regs: that is
+        // mpu-thin's own import (its object's undefined set is exactly ['mpu-write']),
+        // a driver-level seam rather than something a board world offers. Emitting it
+        // here would put an interface in the world that drivers/wit/gust-hal.wit does
+        // not define, and check-wit-resolve.sh would rightly reject it.
+        //
+        // A target that DECLARES no MPU never reaches this arm -- absent devices are
+        // filtered out above -- so the STM32F100 world is unchanged.
+        "mpu" => &["mmio"],
         other => panic!(
             "gust-target-gen: no gust:hal interface mapping for device class `{other}` \
              — add it to interfaces_for()"

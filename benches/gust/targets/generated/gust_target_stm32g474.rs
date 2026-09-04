@@ -9,3 +9,5 @@ pub const FLASH_BASE: u32 = 0x0800_0000;
 pub const FLASH_LEN: u32 = 524288;
 pub const SRAM_BASE: u32 = 0x2000_0000;
 pub const SRAM_LEN: u32 = 98304;
+pub const MPU_PRESENT: bool = true;
+pub const MPU_DREGION: u32 = 8;

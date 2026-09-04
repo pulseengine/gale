@@ -12,6 +12,19 @@ public
     properties Gust_Target_Props::Base => 16#20000000#; Gust_Target_Props::Length => 8192;
   end Ram.i;
 
+  -- MEASURED 2026-09-04 over the VLDISCOVERY's ST-LINK/V1: MPU_TYPE (0xE000ED90)
+  -- reads 0x00000000, so DREGION = 0 and this part has NO MPU (it is optional on
+  -- Cortex-M3). Declared rather than omitted so a consumer asking "can this target
+  -- isolate?" gets an answer instead of a missing key.
+  device Mpu
+    properties
+      -- The MPU register block is ARCHITECTURAL (ARMv7-M PPB), identical on every
+      -- Cortex-M, so this Base is not board-specific. MPU_TYPE lives at Base+0.
+      Gust_Target_Props::Base    => 16#E000ED90#;
+      Gust_Target_Props::Present => false;
+      Gust_Target_Props::Dregion => 0;
+  end Mpu;
+
   device Iwdg
     properties Gust_Target_Props::Base => 16#40003000#; Gust_Target_Props::Present => true;
   end Iwdg;
@@ -117,6 +130,7 @@ public
       cpu    : processor Cortex_M::CortexM3;
       flash  : memory Flag_Flash.i;
       sram   : memory Ram.i;
+      mpu    : device Mpu;
       iwdg   : device Iwdg;
       rcc    : device Rcc;
       adc    : device Adc;

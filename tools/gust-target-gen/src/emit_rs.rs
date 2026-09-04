@@ -134,6 +134,34 @@ pub fn emit_rs(t: &Target) -> String {
         }
     }
 
+    // MPU presence is a HARDWARE FACT, not a build option, and it decides whether a
+    // target can host REQ-OS-MPU-001 / REQ-OS-UNPRIV-001 / REQ-OS-MULTITENANT-001 at
+    // all. It is emitted for every board that declares an Mpu device, INCLUDING one
+    // that declares it absent: "this part has no MPU" is an answer, and a missing
+    // const is not. Measured, not assumed -- the STM32F100 reads MPU_TYPE == 0.
+    // REQUIRED, not optional. A target that simply omits the device would emit no
+    // const at all, and a consumer asking "can this target isolate?" would get a
+    // compile error it could paper over rather than an answer. Same stance as
+    // interfaces_for()'s unknown-class panic: a new board must SAY, and "no MPU" is
+    // a perfectly good thing to say (the STM32F100 says it).
+    let mpu = device_opt(t, "Mpu").unwrap_or_else(|| {
+        panic!(
+            "gust-target-gen: target `{}` declares no Mpu device. MPU presence decides \
+             whether it can host REQ-OS-MPU-001 / REQ-OS-UNPRIV-001 / \
+             REQ-OS-MULTITENANT-001 at all, so it must be declared explicitly — \
+             `Present => false; Dregion => 0;` if the part has none.",
+            t.name
+        )
+    });
+    {
+        let dregion = mpu.props.get("Dregion").copied().unwrap_or(0);
+        out.push_str(&format!(
+            "pub const MPU_PRESENT: bool = {present};\n\
+             pub const MPU_DREGION: u32 = {dregion};\n",
+            present = mpu.present,
+        ));
+    }
+
     // Peripherals whose bases the board's model carries (see PERIPHERALS).
     for (dev, prefix, regs) in PERIPHERALS {
         if let Some(d) = device_opt(t, dev) {
