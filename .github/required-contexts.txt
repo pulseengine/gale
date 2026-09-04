@@ -18,3 +18,5 @@ Lean Proofs
 V-closure needed?
 no requirement lags its closed V
 every required context can actually report
+no raw env import survives in the composed graph
+a denied write really faults (REQ-OS-MPU-001 kill-criterion)
