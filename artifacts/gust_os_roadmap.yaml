@@ -372,15 +372,8 @@ artifacts:
     title: "MPU-per-component isolation: a fault in one tenant cannot corrupt another"
     status: proposed
     release: v0.5.0
-    description: >
-      A composed image hosting two or more components SHALL place each component's
-      linear memory in a distinct MPU-protected region, such that an out-of-bounds
-      access by one tenant faults rather than silently corrupting a sibling or the
-      TCB. This requires the meld multi-memory path lowered to per-region layout
-      (blocked on synth#404). The isolation boundary SHALL be the wasm memory model
-      enforced by hardware, not a trusted check. Kill-criterion: a crafted tenant
-      writes outside its region without a fault.
-    tags: [gust, isolation, mpu, multi-tenant, byo-os, blocked-synth-404]
+    description: "A composed image hosting two or more components SHALL place each component's linear memory in a distinct MPU-protected region, such that an out-of-bounds access by one tenant faults rather than silently corrupting a sibling or the TCB. The isolation boundary SHALL be the wasm memory model enforced by hardware, not a trusted check. Kill-criterion: a crafted tenant writes outside its region without a fault. BLOCKED on synth#1145 (multi-memory phase 2), NOT on synth#404 as previously recorded — #404 was the design question and closed as answered on 2026-07-15 (Model A: N memories lower to N distinct MPU/PMP-protectable native bases). Phase 1 of that shipped in synth v0.44.0 and is verified present in the pinned toolchain (layer 2026.09.0, synth 0.60.0): a 2-memory module compiles and emits a per-memory region symbol __synth_wasm_data_1. What is missing is the isolation itself: synth refuses --safety-bounds mpu on any multi-memory module because multi-memory compiles only on --relocatable, where the host owns startup and synth emits no MPU_RBAR/RASR programming, while the self-contained path that does emit that startup declines multi-memory. The two halves are on mutually exclusive paths, so per-memory MPU isolation is unreachable by construction rather than merely unimplemented."
+    tags: [gust, isolation, mpu, multi-tenant, byo-os, blocked-synth-1145]
     links:
       - type: derives-from
         target: SYSREQ-BYOOS-001
