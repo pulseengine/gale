@@ -26,7 +26,6 @@ on:
     # off the trigger and into the job as a step-level early exit (pattern from
     # gale#319). The job always runs and always reports; when nothing relevant
     # changed it exits in seconds without building anything.
-    paths:
 
 permissions:
   contents: read
