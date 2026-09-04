@@ -76,3 +76,32 @@ STM32F100 (VLDISCOVERY) is reached through the Raspberry Pi rather than this hos
 the F100 leg is deferred to that route. The F100 is Cortex-M3 and its `MPU_TYPE.DREGION`
 must be checked before anything is concluded — the probe refuses to start if it is not
 8, so a wrong part reports itself rather than producing a misleading pass.
+
+## F100 leg: the part has no MPU, measured
+
+Reached through the Raspberry Pi (`ssh pi@192.168.178.88`, ST-LINK/V1 `0483:3744`,
+the VLDISCOVERY's onboard probe), using the same openocd route as
+`run-wdg-f100.sh`. No firmware needed — two register reads answer it:
+
+```
+0xe000ed90 (MPU_TYPE): 00000000     <- DREGION = 0, i.e. NO MPU
+0xe000ed00 (CPUID)   : 411fc231     <- Cortex-M3 r1p1
+```
+
+**The STM32F100 has no MPU.** It is optional on Cortex-M3 and this part does not
+implement it. So on the F100 there is nothing to program, nothing to escape from, and
+no unprivileged remedy to apply: `REQ-OS-MPU-001`, `REQ-OS-UNPRIV-001` and
+`REQ-OS-MULTITENANT-001` are **unachievable on this target by hardware**, not by
+missing work.
+
+That is worth stating plainly because the F100 is one of gust's two silicon targets —
+it has a Renode device class (`gust-f100-renode`), a generated memory map, a target
+model entry and its own silicon results. The isolation milestone excludes it.
+
+Note the qemu evidence is **not** transferable here: `VER-OS-ISO-001`'s fault-injection
+oracle runs on qemu's `lm3s6965evb`, which is a Cortex-M3 *with* a v7-M PMSA MPU. Same
+core family, different option — an M3 result does not imply an M3-with-MPU result.
+
+The probe would have reported this rather than mislead: it refuses to start unless
+`MPU_TYPE.DREGION == 8`. Reading the register directly just made the answer cheaper
+than a flash cycle.
