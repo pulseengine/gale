@@ -186,6 +186,21 @@ fn main() -> ! {
         // Direction 2: write into the physically-backed but ungranted hole.
         // If Renode enforces, this never falls through.
         out(OUT_STEP, STEP_DENIED_ISSUED);
+        // Under `unpriv`, drop to CONTROL.nPRIV=1 first. This distinguishes two
+        // very different failure modes that look identical from outside: "the MPU
+        // is not enforced at all" versus "PRIVDEFENA is ignored, so a PRIVILEGED
+        // access outside every region silently gets the ARMv7-M default map".
+        // tlib only sets ARM_FEATURE_PMSA for Cortex-R, so on Cortex-M the
+        // privileged background path lands in cortexm_check_default_mapping and
+        // grants RWX over 0x20000000-0x3FFFFFFF regardless of PRIVDEFENA; the
+        // unprivileged branch is a plain TRANSLATE_FAIL and should deny.
+        #[cfg(feature = "unpriv")]
+        {
+            let ctrl: u32;
+            core::arch::asm!("mrs {}, CONTROL", out(reg) ctrl);
+            core::arch::asm!("msr CONTROL, {}", in(reg) ctrl | 1);
+            cortex_m::asm::isb();
+        }
         write_volatile(DENIED_ADDR as *mut u32, 0xDEAD_BEEF);
         // Fell through: no fault -> Renode does NOT enforce the MPU.
         write_volatile(MPU_CTRL, 0);

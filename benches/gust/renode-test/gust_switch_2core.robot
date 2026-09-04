@@ -8,13 +8,31 @@ Documentation     v0.6.0 MULTI-CORE placement demo for the outer partition switc
 ...               programmed ONLY via the VERIFIED switch_to_partition; core 1 runs
 ...               the estimator partition concurrently under its own
 ...               verified-programmed map. Content-gated per line on each core's
-...               OWN UART. HONEST SCOPE (spike mpu_spike_renode.rs): Renode's M3
-...               holds MPU registers as readable STATE but does NOT enforce them —
-...               this gate asserts window sequence + save->swap->resume order +
+...               OWN UART. HONEST SCOPE (spike mpu_spike_renode.rs): this gate
+...               asserts window sequence + save->swap->resume order +
 ...               map-live-at-resume via RBAR readback + multi-core placement;
 ...               map-ENFORCEMENT evidence (real MemManage denials, CFSR=0x82) is
-...               the merged qemu demonstrator (gust_switch_probe.rs). ELFs +
-...               platform injected by renode_test.
+...               the merged qemu demonstrator (gust_switch_probe.rs) and, since
+...               2026-09-04, the STM32G474 silicon run.
+...
+...               CORRECTED 2026-09-04. This note previously read "Renode's M3
+...               holds MPU registers as readable STATE but does NOT enforce
+...               them". That is too broad and was wrong. Renode DOES enforce the
+...               v7-M MPU: the same spike dropped to CONTROL.nPRIV=1 before the
+...               denied store returns RESULT=0x600D0082 ENFORCED with
+...               CFSR=0x82 DACCVIOL+MMARVALID, on cortex-m3 and cortex-m7 alike.
+...               What Renode does not do is honour MPU_CTRL.PRIVDEFENA on the
+...               PMSAv7 path: a PRIVILEGED access matching no enabled region
+...               takes cortexm_check_default_mapping and is granted the ARMv7-M
+...               default map. The bit never reaches the CPU — the NVIC forwards
+...               only bit 0 of MPU_CTRL. The v8-M path forwards the whole word
+...               and denies correctly, which is the control that isolates it.
+...
+...               The spike ran privileged, so it could not distinguish "no
+...               enforcement" from "PRIVDEFENA ignored", and the note asserted
+...               the broader of the two. A downstream reached the same wrong
+...               conclusion independently from the same blind spot (gale#348).
+...               ELFs + platform injected by renode_test.
 Resource          ${RENODEKEYWORDS}
 
 *** Test Cases ***
