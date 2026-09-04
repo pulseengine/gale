@@ -30,6 +30,9 @@ drop-priv = []
 # gust_iso_unpriv_probe on the NUCLEO-G474RE: FLASH 0x08000000 / RAM 0x20000000 96K,
 # instead of the qemu lm3s6965evb map. Wrong map = deny-by-default kills the image.
 silicon-g474 = []
+# mpu_spike_renode: drop to unprivileged before the denied store, to tell
+# "no enforcement at all" apart from "PRIVDEFENA ignored on the privileged path".
+unpriv = []
 # Silicon-firmware target selection (gust_wdg_silicon). Exactly one is active;
 # each pulls the matching generated constants module (benches/gust/targets/
 # generated/). G4 is the default (the directly-attached NUCLEO board); F1 is
