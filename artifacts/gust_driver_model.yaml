@@ -270,12 +270,32 @@ artifacts:
     type: finding
     title: "gust:hal WIT is hand-authored — spar->WIT not wired for the wasm-component layer"
     status: active
-    description: >
-      The feature-loop ideal is spar (AADL) -> generated WIT. In this repo spar
-      models the kernel primitives (safety/aadl/*.aadl) but the wasm-component
-      layer's WIT (gale.wit, gale-app-demo) is hand-derived. gust:hal follows that
-      established pattern (hand-authored). Logged as friction toward eventually
-      generating the capability WIT from a spar model of the driver/host seam.
+    description: |-
+      The feature-loop ideal is spar (AADL) -> generated WIT. In this repo spar models the kernel primitives (safety/aadl/*.aadl) but the wasm-component layer's WIT (gale.wit, gale-app-demo) is hand-derived. gust:hal follows that established pattern (hand-authored). Logged as friction toward eventually generating the capability WIT from a spar model of the driver/host seam.
+
+      INCIDENT (2026-09-04): this stopped being a prediction. A feature loop was
+      attempted on the gust:os layer — promoting gust:sched/tasks to a public contract,
+      requested by a downstream consumer on gale#223 — and steps 1 and 2 of the loop
+      were both unavailable:
+
+        step 1 (model in spar)     no AADL models gust:os, the executor or the
+                                   scheduler. The 34 .aadl files in the repo cover the
+                                   Zephyr primitives and the target/board layer only,
+                                   so there was nothing to edit.
+        step 2 (spar -> WIT)       not wired for the wasm-component layer, per this
+                                   finding. Proceeding would have meant hand-writing
+                                   WIT, which the feature loop names as an anti-pattern.
+
+      The feature was dropped for an unrelated and better reason (the architecture
+      already exposes the needed capability via gust:os/exec, and the rest is internal
+      by a documented isolation property), so nothing was blocked in practice this
+      time. But the loop's first two steps are structurally inapplicable to every
+      gust:os change, and that is now observed rather than inferred.
+
+      Consequence worth stating: every WIT file under drivers/wit and drivers/wit-os is
+      hand-authored, including the isolation-relevant gust:sched header whose wording
+      carries the tenant-mutation argument. A hand-written interface can drift from the
+      architecture with nothing to detect it.
     tags: [gust, driver, spar, wit, friction]
     links:
       - type: related-to
