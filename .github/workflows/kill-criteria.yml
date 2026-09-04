@@ -163,3 +163,40 @@ jobs:
 
       - name: No core module of the composed graph imports env
         run: python3 benches/gust/drivers/check-graph-env.py
+
+  # REQ-OS-MPU-001's kill-criterion, executed. VER-OS-ISO-001 recorded this oracle
+  # as evidence but noted "local qemu, not yet CI-gated" -- so the only MPU
+  # ENFORCEMENT evidence gale had ran on someone's laptop. The neighbouring Renode
+  # iso gate (gust_iso.robot) executes the region programmer's computation and the
+  # seam order; it asserts no fault at all. This is the enforcement half.
+  mpu-enforcement:
+    name: "a denied write really faults (REQ-OS-MPU-001 kill-criterion)"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install thumbv7m target and qemu
+        run: |
+          set -euo pipefail
+          rustup target add thumbv7m-none-eabi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-arm
+          qemu-system-arm --version | head -1
+
+      # Control FIRST. The oracle claims the write faults BECAUSE the region table
+      # does not grant it; that is only evidence if granting it removes the fault.
+      # `grant-hole` adds region 3 over exactly the denied range, still through the
+      # verified switch_to_partition, so the probe MUST fail.
+      - name: Negative control -- granting the hole must make the probe FAIL
+        working-directory: benches/gust
+        run: |
+          set -uo pipefail
+          if cargo run --release --features grant-hole --bin gust_iso_fault_probe; then
+            echo "::error::control PASSED with the hole granted -- the oracle is vacuous"
+            exit 1
+          fi
+          echo "control failed as required: the denial is caused by the region table"
+
+      - name: A write outside the granted region takes a real MemManage fault
+        working-directory: benches/gust
+        run: cargo run --release --bin gust_iso_fault_probe

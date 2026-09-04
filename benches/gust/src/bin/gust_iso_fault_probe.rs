@@ -252,6 +252,25 @@ fn main() -> ! {
     t.enabled[2] = true;
     t.writable[2] = true;
 
+    // NEGATIVE CONTROL (feature `grant-hole`). The oracle's whole claim is that
+    // the denied write faults BECAUSE the region table does not grant it. That
+    // is only evidence if granting it makes the fault go away -- otherwise the
+    // FAIL could come from anything (a bad address, a stray handler, an MPU that
+    // is not on). The artifact recorded this as checked, but by a MANUAL EDIT,
+    // which CI cannot run. Region 3 is free (the verified core emits 3-7
+    // disabled), so the control grants exactly the hole and nothing else, still
+    // through switch_to_partition rather than by hand.
+    //
+    // With the feature on, the expected MemManage never arrives and this probe
+    // MUST exit FAILURE. CI asserts both directions.
+    #[cfg(feature = "grant-hole")]
+    {
+        t.base[3] = 0x2000_8000;
+        t.size[3] = 0x0000_4000;
+        t.enabled[3] = true;
+        t.writable[3] = true;
+    }
+
     // THE verified path: program_partition (P1–P4 proven) → apply_program →
     // mpu_write seam. No hand-programming anywhere in this probe.
     t.switch_to_partition(0);
