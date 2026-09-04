@@ -66,28 +66,59 @@ jobs:
           ref: ${{ steps.tag.outputs.tag }}
 
       - name: Release readiness burn-down (rivet release status)
-        # rivet 0.23 release-handling (#516 + #612): burn-down of the artifacts
-        # scoped to `release: <tag>`. With `release.require: coverage` in rivet.yaml
-        # the cuttability verdict is now MEANINGFUL for gale's V-model (an artifact
-        # is ready when its validate coverage rules pass — the V is closed — not when
-        # a status flips). Still reported (not `exit 1`-gated) here because this
-        # workflow runs POST-publish; the pre-cut gate is `rivet release status`
-        # + `rivet validate` run before tagging.
+        # Burn-down of the artifacts scoped to `release: <tag>` (rivet #516).
+        #
+        # READ THE VERDICT NARROWLY. gale sets `release.require: coverage` in
+        # rivet.yaml, which counts an artifact release-ready when its validate
+        # coverage rules pass -- i.e. when a `verifies` link EXISTS -- regardless
+        # of the state of the artifact on the other end of that link. rivet says
+        # so itself: `release status --help` notes this "is NOT the same as
+        # 'every verification level present'".
+        #
+        # So "Cuttable" here means the V is STRUCTURALLY closed, not that the
+        # verification was performed. As of gale#342 that is not academic:
+        # v0.7.1 and v0.7.2 both report Cuttable with zero verified artifacts,
+        # greened by VER-* artifacts that are themselves `proposed`.
+        #
+        # (An earlier version of this comment claimed the verdict was MEANINGFUL
+        # because "the V is closed", and called it pending rivet#612. rivet#612
+        # closed 2026-07-03 -- by documenting that the semantics are weaker than
+        # that claim. gale#342 tracks whether to keep `require: coverage`.)
+        #
+        # Not `exit 1`-gated because this workflow runs POST-publish; the pre-cut
+        # gate is `rivet release status` + `rivet validate` run before tagging.
         env:
           TAG: ${{ steps.tag.outputs.tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -uo pipefail
+          set -euo pipefail
           d=$(mktemp -d)
-          gh release download v0.28.0 --repo pulseengine/rivet \
-            -p '*x86_64-unknown-linux-gnu*' -D "$d" 2>/dev/null || true
-          tar xzf "$d"/*x86_64-unknown-linux-gnu*.tar.gz -C "$d" 2>/dev/null || true
-          RV=$(find "$d" -name rivet -type f | head -1); chmod +x "$RV" 2>/dev/null || true
-          echo "## Release readiness — \`$TAG\` (rivet release status)" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          # No `|| true` on acquisition: a failed download used to leave $RV empty
+          # and the step still passed, writing an empty burn-down that looked like
+          # a clean one. Pinned to the same rivet the compliance action below uses.
+          gh release download v0.35.0 --repo pulseengine/rivet \
+            -p '*x86_64-unknown-linux-gnu*' -D "$d"
+          tar xzf "$d"/*x86_64-unknown-linux-gnu*.tar.gz -C "$d"
+          # No pipe: `find | head -1` under `set -e -o pipefail` aborts when head
+          # closes the pipe and find takes SIGPIPE (141). -print -quit stops at
+          # the first match with no second process to signal.
+          RV=$(find "$d" -name rivet -type f -print -quit)
+          test -n "$RV" || { echo "::error::rivet binary not found after download"; exit 1; }
+          chmod +x "$RV"
+          "$RV" --version
+          {
+            echo "## Release readiness — \`$TAG\` (rivet release status)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # The verdict itself stays advisory (see above), so this one keeps its
+          # `|| true` -- deliberately, and it is the only one left in this step.
           "$RV" release status "$TAG" >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "_Burn-down is advisory; cuttability verdict pending rivet#612 (link-based V verification). Blocking gate = rivet validate._" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo '```'
+            echo "_Advisory. With \`require: coverage\` a \"Cuttable\" verdict means every"
+            echo "artifact has a verifying LINK, not that the verification was performed —"
+            echo "see gale#342. Blocking gate = \`rivet validate\`._"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Generate compliance report
         id: report
