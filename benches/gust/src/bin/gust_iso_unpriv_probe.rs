@@ -130,14 +130,46 @@ fn main() -> ! {
         debug::exit(debug::EXIT_FAILURE);
         loop {}
     }
-    unsafe { write_volatile(SHCSR, read_volatile(SHCSR) | (1 << 16)) };
+    // Enable MemManage (16), BusFault (17) AND UsageFault (18). Enabling only
+    // MemManage was a qemu-shaped assumption: qemu's cortex-m3 answers an
+    // unprivileged PPB write with a MemManage, so one bit was enough there. The
+    // STM32G474 answers with a BUSFAULT -- "Precise data access error at location
+    // 0xe000ed94" (MPU_CTRL) -- which with BUSFAULTENA clear escalates straight to
+    // HardFault, and the debugger catches that before any handler of ours reports
+    // anything. Same protection, different exception; the probe must be able to
+    // observe either or it will mistake a caught HardFault for a crash.
+    unsafe { write_volatile(SHCSR, read_volatile(SHCSR) | (1 << 16) | (1 << 17) | (1 << 18)) };
 
     // Program the same deny-by-default map through the VERIFIED path — no
     // hand-programming, so the escape is measured against the real table.
     let mut t = RegionTable::new();
-    t.base[0] = 0x0000_0000; t.size[0] = 0x0004_0000; t.enabled[0] = true; t.writable[0] = false;
-    t.base[1] = 0x2000_0000; t.size[1] = 0x0000_8000; t.enabled[1] = true; t.writable[1] = true;
-    t.base[2] = 0x2000_C000; t.size[2] = 0x0000_4000; t.enabled[2] = true; t.writable[2] = true;
+    // The map is PER-BOARD, and finding that out took real silicon. The qemu
+    // lm3s6965evb map below puts flash at 0x0000_0000; the STM32G474 puts it at
+    // 0x0800_0000, so on the G474 the first version of this probe granted a range
+    // the code was not in and died in memcpy before reaching the escape:
+    //
+    //   HardFault <Cause: Escalated MemManage Fault <Cause: Derived fault on
+    //   exception entry>> in compiler_builtins::mem::memcpy
+    //
+    // "Derived fault on exception entry" means the handler could not even be
+    // entered. A deny-by-default MPU is unforgiving about a map that does not
+    // describe the part, which is the whole point of it.
+    #[cfg(not(feature = "silicon-g474"))]
+    {
+        // qemu lm3s6965evb: FLASH 0x0000_0000 256K, RAM 0x2000_0000 64K.
+        t.base[0] = 0x0000_0000; t.size[0] = 0x0004_0000; t.enabled[0] = true; t.writable[0] = false;
+        t.base[1] = 0x2000_0000; t.size[1] = 0x0000_8000; t.enabled[1] = true; t.writable[1] = true;
+        t.base[2] = 0x2000_C000; t.size[2] = 0x0000_4000; t.enabled[2] = true; t.writable[2] = true;
+    }
+    #[cfg(feature = "silicon-g474")]
+    {
+        // NUCLEO-G474RE: FLASH 0x0800_0000 512K, RAM 0x2000_0000 96K (stack top
+        // 0x2001_8000). Region 2 is the 16K window the stack actually lives in --
+        // 0x2001_4000 is 16K-aligned, as the MPU requires.
+        t.base[0] = 0x0800_0000; t.size[0] = 0x0008_0000; t.enabled[0] = true; t.writable[0] = false;
+        t.base[1] = 0x2000_0000; t.size[1] = 0x0000_8000; t.enabled[1] = true; t.writable[1] = true;
+        t.base[2] = 0x2001_4000; t.size[2] = 0x0000_4000; t.enabled[2] = true; t.writable[2] = true;
+    }
     t.switch_to_partition(0);
 
     let armed = unsafe { read_volatile(MPU_CTRL) };
