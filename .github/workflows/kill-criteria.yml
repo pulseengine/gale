@@ -144,3 +144,22 @@ jobs:
           else
             python3 tools/check-required-contexts.py
           fi
+
+  # VER-DRV-GRAPH-001 (gale#345): the graph half of the old REQ-DRV-COMPONENT-001.
+  # Its per-driver half is gated by drv-components.yml; this asserts the property
+  # that one deliberately does not cover -- that no core module of a committed
+  # composed/fused wasm imports from `env`.
+  graph-env:
+    name: "no raw env import survives in the composed graph"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install wasm-tools
+        run: cargo install wasm-tools --version 1.245.1 --locked
+
+      - name: Negative control -- a raw env import must be caught
+        run: python3 benches/gust/drivers/check-graph-env.py --self-test
+
+      - name: No core module of the composed graph imports env
+        run: python3 benches/gust/drivers/check-graph-env.py
