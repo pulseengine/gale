@@ -28,7 +28,7 @@
 #![no_main]
 
 use core::ptr::{read_volatile, write_volatile};
-use cortex_m_rt::{entry, exception};
+use cortex_m_rt::{entry, exception, ExceptionFrame};
 use cortex_m_semihosting::{debug, hprintln};
 use gale::mpu_switch::{RegionTable, MPU_CTRL_ENABLE, MPU_CTRL_ID, REQUIRED_DREGION};
 use panic_halt as _;
@@ -67,18 +67,54 @@ pub extern "C" fn mpu_write(rnr: u32, rbar: u32, rasr: u32) {
 /// fault probe uses, so the two agree on what "denied" means).
 const DENIED_ADDR: u32 = 0x2000_8000;
 
-/// A MemManage here is the FUTURE state, not this probe's expected one: it means
-/// the tenant could not reach the PPB, i.e. REQ-OS-UNPRIV-001 has landed.
+/// Under `drop-priv` a fault here is the DESIRED outcome: the tenant was
+/// unprivileged and could not reach the PPB. Without it, a fault means somebody
+/// closed the gap and this ledger is stale.
+///
+/// Which fault fires is MEASURED, not assumed. ARMv7-M routes an unprivileged
+/// System Control Space access to a BusFault rather than a MemManage, and it
+/// escalates to HardFault if BusFault is not enabled -- so all three are handled
+/// and each reports itself by name. Guessing one and catching nothing would look
+/// exactly like "no fault happened", which is the wrong conclusion.
+macro_rules! blocked {
+    ($which:expr) => {{
+        #[cfg(feature = "drop-priv")]
+        {
+            hprintln!(
+                "gust-iso-unpriv-probe OK(mechanism-works): unprivileged tenant could NOT \
+                 write MPU_CTRL -- {} raised. Dropping to CONTROL.nPRIV=1 blocks the PPB \
+                 escape, so REQ-OS-UNPRIV-001's mechanism is available on this core.",
+                $which
+            );
+            debug::exit(debug::EXIT_SUCCESS);
+        }
+        #[cfg(not(feature = "drop-priv"))]
+        {
+            hprintln!(
+                "gust-iso-unpriv-probe FAIL(stale-ledger): a PRIVILEGED tenant could not \
+                 write MPU_CTRL -- {} raised. That is the DESIRED state; REQ-OS-UNPRIV-001 \
+                 appears to have landed. Update VER-OS-ISO-001's scope note and this probe.",
+                $which
+            );
+            debug::exit(debug::EXIT_FAILURE);
+        }
+        loop {}
+    }};
+}
+
 #[exception]
 unsafe fn MemoryManagement() -> ! {
-    hprintln!(
-        "gust-iso-unpriv-probe FAIL(stale-ledger): the tenant could NOT disable the MPU. \
-         That is the DESIRED state — REQ-OS-UNPRIV-001 appears to have landed. Update \
-         VER-OS-ISO-001's scope note (it still says security-containment is absent) and \
-         retire or invert this probe."
-    );
-    debug::exit(debug::EXIT_FAILURE);
-    loop {}
+    blocked!("MemManage")
+}
+
+#[exception]
+unsafe fn BusFault() -> ! {
+    blocked!("BusFault")
+}
+
+#[exception]
+unsafe fn HardFault(_ef: &ExceptionFrame) -> ! {
+    blocked!("HardFault (escalated)")
 }
 
 #[entry]
@@ -94,14 +130,46 @@ fn main() -> ! {
         debug::exit(debug::EXIT_FAILURE);
         loop {}
     }
-    unsafe { write_volatile(SHCSR, read_volatile(SHCSR) | (1 << 16)) };
+    // Enable MemManage (16), BusFault (17) AND UsageFault (18). Enabling only
+    // MemManage was a qemu-shaped assumption: qemu's cortex-m3 answers an
+    // unprivileged PPB write with a MemManage, so one bit was enough there. The
+    // STM32G474 answers with a BUSFAULT -- "Precise data access error at location
+    // 0xe000ed94" (MPU_CTRL) -- which with BUSFAULTENA clear escalates straight to
+    // HardFault, and the debugger catches that before any handler of ours reports
+    // anything. Same protection, different exception; the probe must be able to
+    // observe either or it will mistake a caught HardFault for a crash.
+    unsafe { write_volatile(SHCSR, read_volatile(SHCSR) | (1 << 16) | (1 << 17) | (1 << 18)) };
 
     // Program the same deny-by-default map through the VERIFIED path — no
     // hand-programming, so the escape is measured against the real table.
     let mut t = RegionTable::new();
-    t.base[0] = 0x0000_0000; t.size[0] = 0x0004_0000; t.enabled[0] = true; t.writable[0] = false;
-    t.base[1] = 0x2000_0000; t.size[1] = 0x0000_8000; t.enabled[1] = true; t.writable[1] = true;
-    t.base[2] = 0x2000_C000; t.size[2] = 0x0000_4000; t.enabled[2] = true; t.writable[2] = true;
+    // The map is PER-BOARD, and finding that out took real silicon. The qemu
+    // lm3s6965evb map below puts flash at 0x0000_0000; the STM32G474 puts it at
+    // 0x0800_0000, so on the G474 the first version of this probe granted a range
+    // the code was not in and died in memcpy before reaching the escape:
+    //
+    //   HardFault <Cause: Escalated MemManage Fault <Cause: Derived fault on
+    //   exception entry>> in compiler_builtins::mem::memcpy
+    //
+    // "Derived fault on exception entry" means the handler could not even be
+    // entered. A deny-by-default MPU is unforgiving about a map that does not
+    // describe the part, which is the whole point of it.
+    #[cfg(not(feature = "silicon-g474"))]
+    {
+        // qemu lm3s6965evb: FLASH 0x0000_0000 256K, RAM 0x2000_0000 64K.
+        t.base[0] = 0x0000_0000; t.size[0] = 0x0004_0000; t.enabled[0] = true; t.writable[0] = false;
+        t.base[1] = 0x2000_0000; t.size[1] = 0x0000_8000; t.enabled[1] = true; t.writable[1] = true;
+        t.base[2] = 0x2000_C000; t.size[2] = 0x0000_4000; t.enabled[2] = true; t.writable[2] = true;
+    }
+    #[cfg(feature = "silicon-g474")]
+    {
+        // NUCLEO-G474RE: FLASH 0x0800_0000 512K, RAM 0x2000_0000 96K (stack top
+        // 0x2001_8000). Region 2 is the 16K window the stack actually lives in --
+        // 0x2001_4000 is 16K-aligned, as the MPU requires.
+        t.base[0] = 0x0800_0000; t.size[0] = 0x0008_0000; t.enabled[0] = true; t.writable[0] = false;
+        t.base[1] = 0x2000_0000; t.size[1] = 0x0000_8000; t.enabled[1] = true; t.writable[1] = true;
+        t.base[2] = 0x2001_4000; t.size[2] = 0x0000_4000; t.enabled[2] = true; t.writable[2] = true;
+    }
     t.switch_to_partition(0);
 
     let armed = unsafe { read_volatile(MPU_CTRL) };
@@ -115,6 +183,15 @@ fn main() -> ! {
     // On a Cortex-M the System Control Space is never MPU-checked. Tenant code
     // running privileged can therefore simply switch enforcement off. If
     // REQ-OS-UNPRIV-001 had landed this write would MemManage-fault.
+    // Under `drop-priv`, become unprivileged FIRST. CONTROL.nPRIV=1 with an ISB
+    // so the change is in effect before the next instruction is fetched.
+    #[cfg(feature = "drop-priv")]
+    unsafe {
+        let ctrl: u32;
+        core::arch::asm!("mrs {}, CONTROL", out(reg) ctrl);
+        core::arch::asm!("msr CONTROL, {}", in(reg) ctrl | 1);
+        cortex_m::asm::isb();
+    }
     unsafe {
         write_volatile(MPU_CTRL, 0);
         cortex_m::asm::dsb();
@@ -127,6 +204,19 @@ fn main() -> ! {
     let readback = unsafe { read_volatile(DENIED_ADDR as *const u32) };
 
     let escaped = (after & MPU_CTRL_ENABLE == 0) && readback == 0xC0FF_EE00;
+    #[cfg(feature = "drop-priv")]
+    {
+        hprintln!(
+            "gust-iso-unpriv-probe FAIL(mechanism-absent): unprivileged tenant STILL \
+             disabled the MPU (CTRL {:#010x} -> {:#010x}, readback {:#010x}). No fault \
+             was raised, so CONTROL.nPRIV does not protect the PPB on this core and \
+             REQ-OS-UNPRIV-001 needs a different mechanism.",
+            armed, after, readback
+        );
+        debug::exit(debug::EXIT_FAILURE);
+        loop {}
+    }
+    #[cfg(not(feature = "drop-priv"))]
     if escaped {
         hprintln!(
             "gust-iso-unpriv-probe OK(gap-open): privileged tenant cleared MPU_CTRL \
