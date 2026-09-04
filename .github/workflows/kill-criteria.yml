@@ -103,3 +103,44 @@ jobs:
         run: |
           cd benches/gust/drivers
           python3 check-object-freshness.py
+
+  # gale#294 put 19 contexts on main; gale#340 was one of them quietly acquiring
+  # the shape where it can never report. Nothing was watching that invariant --
+  # it had been checked once, by hand, with a script that could not see the very
+  # failure mode that had occurred. This is that check, made mechanical.
+  required-contexts:
+    name: "every required context can actually report"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Negative control -- the gate catches each way a check stops arriving
+        run: python3 tools/check-required-contexts.py --self-test
+
+      # Whether the default GITHUB_TOKEN can read branch protection decides how
+      # much this gate covers, so ASK rather than assume. If it can, the check
+      # also confirms the committed list still matches what main actually
+      # requires; if it cannot, the run says so in as many words instead of
+      # passing as though it had checked.
+      - name: Can this token read branch protection?
+        id: prot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/branches/main/protection" > /tmp/protection.json 2>/tmp/protection.err; then
+            echo "readable=true" >> "$GITHUB_OUTPUT"
+            echo "GITHUB_TOKEN CAN read branch protection -- list/protection drift is checked."
+          else
+            echo "readable=false" >> "$GITHUB_OUTPUT"
+            rm -f /tmp/protection.json
+            echo "GITHUB_TOKEN CANNOT read branch protection. Reported, not assumed:"
+            cat /tmp/protection.err
+          fi
+
+      - name: Every required context maps to a job that reports on every PR
+        run: |
+          if [ "${{ steps.prot.outputs.readable }}" = "true" ]; then
+            python3 tools/check-required-contexts.py --protection /tmp/protection.json
+          else
+            python3 tools/check-required-contexts.py
+          fi
