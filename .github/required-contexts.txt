@@ -1,0 +1,19 @@
+Verus-Strip Gate
+FFI Feature Sizes
+Rust Coverage
+Zephyr C Coverage
+seam survives lowering on ARM and RISC-V (all thin drivers)
+gust dissolved on Renode (M3: kernel 8K / control 64K / F100)
+gust target model (generator + drift gate)
+VER-OS-WCET-001 kill-criterion can still fail
+fused data segments are disjoint (gale#266)
+committed objects are not older than their sources
+LLVM LTO build + size comparison
+Binary size comparison
+proofs needed?
+Verus SMT (39 modules)
+Kani BMC (185 harnesses)
+Rocq Proofs (14 files)
+Lean Proofs
+V-closure needed?
+no requirement lags its closed V
