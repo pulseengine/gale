@@ -200,3 +200,18 @@ jobs:
       - name: A write outside the granted region takes a real MemManage fault
         working-directory: benches/gust
         run: cargo run --release --bin gust_iso_fault_probe
+
+      # REQ-OS-UNPRIV-001, as a LEDGER WITH TEETH rather than a prose note.
+      # VER-OS-ISO-001 says in words that gale has fault-containment and not
+      # security-containment: the tenant runs privileged and the PPB is not
+      # MPU-checked. This asserts that state, so closing the gap cannot pass
+      # silently -- when tenant code runs unprivileged the MPU_CTRL write will
+      # fault, this step will FAIL, and the failure is the signal to update the
+      # scope note and the probe together. Same shape as dma-own's raw-env
+      # assertion in check-driver-components.py.
+      #
+      # A GREEN step here means the gap is still OPEN. That reads backwards on
+      # purpose; the probe's header explains why.
+      - name: "Ledger: a privileged tenant can still disable its own MPU (gap open)"
+        working-directory: benches/gust
+        run: cargo run --release --bin gust_iso_unpriv_probe
