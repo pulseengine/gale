@@ -971,3 +971,37 @@ artifacts:
         target: REQ-TARGET-MODEL-001
       - type: related-to
         target: VER-DRV-WDG-001
+
+  - id: REQ-OS-UNPRIV-001
+    type: sw-req
+    title: Tenants run unprivileged and cannot reach the PPB — a compromised tenant cannot reprogram the MPU
+    status: proposed
+    description: "The gap named in VER-OS-ISO-001's own SCOPE note and tracked by nothing until now: gale's isolation evidence is FAULT-containment, not SECURITY-containment. The demo tenant runs PRIVILEGED and the PPB is not MPU-checked, so a tenant can write MPU_CTRL and reprogram its own regions. That is sufficient for containing an accidental out-of-grant access (a compiler miscompile, a coding error) and is NOT sufficient for containing a hostile or compromised one. This is a prerequisite of REQ-OS-MULTITENANT-001, which requires two independently-authored MUTUALLY-DISTRUSTING components: mutual distrust is a security-containment claim, so v0.5.0 cannot honestly close on fault-containment evidence. It also bears on a downstream safety case (gale#348): jess's flight memory-safety argument resolves AFD-028 onto gale's verified MPU primitive, which holds for accidental corruption and not for a hostile tenant. SHALL: tenant code executes unprivileged (CONTROL.nPRIV), the System Control Space is unreachable from tenant execution, and a tenant attempting to write MPU_CTRL/RBAR/RASR faults rather than succeeding. Kill-criterion: a tenant reprograms its own MPU region and the write succeeds."
+    tags: [gust, os, isolation, mpu, security, multi-tenant]
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5
+      timestamp: 2026-09-04T16:20:19Z
+    release: v0.5.0
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+
+      - type: related-to
+        target: REQ-OS-MULTITENANT-001
+  - id: REQ-OS-MPUSHIP-001
+    type: sw-req
+    title: The memory-protection primitive ships as a consumable artifact with its embedder obligation named
+    status: proposed
+    description: "Requested downstream in gale#348, verified accurate: v0.7.0 ships gale-wasm-{sem,mutex,msgq} only — all synchronization, all cortex-m4f — and neither the manifest nor gale-nano exposes any memory-protection surface, so a downstream safety case resting on gale's verified MPU primitive cites source it cannot link. SHALL ship gale-wasm-mpu-vX{.wasm,.wat,-cortex-m7dp.o} (cortex-m7dp is a supported synth target profile) plus a manifest entry and a consume line. CRITICAL SHAPE CONSTRAINT: unlike sem/mutex/msgq, which dissolve ENTIRELY to a wasm-and-object, MPU enforcement is a privileged PPB register write that no wasm component can perform — gale's design puts it behind exactly one trusted atom (mpu-thin's committed object has undefined set exactly ['mpu-write']). The artifact therefore ships the VERIFIED region-table computation and FSM, and the register write remains the EMBEDDER'S obligation. The manifest SHALL name that obligation explicitly rather than leaving it implicit; an artifact a reader can mistake for a drop-in enforcement box is the same unstated-envelope defect synth recorded for multi-memory. gale ships a reference implementation of the atom with its platform contract (DSB+ISB after every MPU_CTRL write; init-time MPU_TYPE.DREGION==8 refuse-to-start) in gust_iso_fault_probe.rs, CI-gated with a mechanical non-vacuous control. SEQUENCING: after REQ-OS-UNPRIV-001. Shipping the artifact while the primitive is fault-containment-only invites exactly the reading the manifest is meant to prevent. Kill-criterion: the artifact ships and its manifest entry does not name the mpu-write obligation."
+    tags: [gust, mpu, packaging, consumer, safety-case]
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5
+      timestamp: 2026-09-04T16:20:20Z
+    release: v0.9.0
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-UNPRIV-001
