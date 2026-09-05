@@ -37,4 +37,10 @@ cargo build --release --bin silicon_bench --target "$TARGET" $EXTRA
 ELF="target/$TARGET/release/silicon_bench"
 
 echo "== flash + capture on $BOARD via probe-rs (Ctrl-C after 'silicon_bench: done') =="
-probe-rs run --chip "$CHIP" --catch-hardfault "$ELF"
+# Claim the probe first (gale#356 / jess#226). jess and gale share this bench; two
+# agents on one probe fails as a corrupted session that reads like a hardware fault.
+# The claim is an flock held for exactly this command, so a crash cannot wedge the bench.
+# shellcheck source=./bench-claim.sh
+. "$HERE/bench-claim.sh"
+claim "$(probe_device)" "gale: silicon_bench $BOARD" -- \
+    probe-rs run --chip "$CHIP" --catch-hardfault "$ELF"
