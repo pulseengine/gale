@@ -13,7 +13,15 @@
 #
 # TWO THINGS THIS ADDS OVER CALLING with-device DIRECTLY:
 #
-# 1. DEVICE NAME IS THE PROBE SERIAL, not a friendly name. This host has had two
+# 1. DEVICE NAMES COME FROM THE HOST'S REGISTRY, and must match it exactly. jess
+#    registered the Pi's probe as `stlink-v1` -- deliberately not `stlink-v3`, which is a
+#    different physical probe still on the Mac. If gale claimed `stlink-v1-f100` and jess
+#    claimed `stlink-v1`, both would succeed and neither would exclude the other: a lock
+#    whose name does not match the hardware is the vacuous-gate failure in a new costume.
+#    with-device now refuses unregistered names outright (exit 2), which turns that class
+#    of mistake from silent into loud.
+#
+#    For the LOCAL Mac probe the serial is still the right key. This host has had two
 #    ST-LINKs attached at once (the G474's V3 and the VLDISCOVERY's V1) -- they are
 #    different physical devices. A shared name like "stlink" would either serialise two
 #    independent probes for nothing, or, after a replug, name a DIFFERENT board than the
@@ -42,9 +50,18 @@ _resolve_with_device() {
     # ${BASH_SOURCE[0]} is unset outside bash, and `set -u` turns that into a hard
     # error mid-resolution — guard it rather than assume the caller is bash.
     local here="${BASH_SOURCE[0]:-${0:-.}}"
-    for sib in "$(dirname "$here")/../../../../jess/tools/bench/with-device" \
-               "$HOME/.local/bin/with-device"; do
-        [ -x "$sib" ] && { echo "$sib"; return 0; }
+    # A jess SOURCE checkout no longer provides a runnable tool (it is a Rust crate now),
+    # so these are binary locations only. Pin the signed release rather than building:
+    #   release:pulseengine/jess@v0.7.1!with-device-0.2.1-<triple>.tar.gz!with-device
+    for sib in "$HOME/bench/with-device" \
+               "$HOME/.local/bin/with-device" \
+               "$(dirname "$here")/../../../../jess/target/release/with-device"; do
+        # -f AND -x: `[ -x dir ]` is TRUE for any traversable directory, and
+        # jess/tools/bench/with-device became a DIRECTORY when the tool was
+        # rewritten in Rust. Testing -x alone resolved to that directory and
+        # failed later with "permission denied" (exit 126) — a confusing error
+        # far from its cause.
+        [ -f "$sib" ] && [ -x "$sib" ] && { echo "$sib"; return 0; }
     done
     return 1
 }
@@ -68,17 +85,22 @@ claim() {
             "$@"; return $?
         fi
         echo "bench-claim: with-device not found, refusing to touch '$dev' unclaimed." >&2
-        echo "  install it (jess tools/bench/with-device), set WITH_DEVICE=/path," >&2
+        echo "  pin the signed release and put the binary on PATH:\n    release:pulseengine/jess@v0.7.1!with-device-0.2.1-<triple>.tar.gz!with-device\n  or set WITH_DEVICE=/path/to/binary," >&2
         echo "  or set BENCH_UNCLAIMED=1 if you are certain you are alone." >&2
         return 4
     fi
-    "$wd" "$dev" "$purpose" -- "$@"
+    # v0.2.1 takes the purpose as a FLAG. The 0.2.0 python prototype took it
+    # positionally, and passing it that way now makes with-device read it as a
+    # second DEVICE NAME and refuse with "UNKNOWN DEVICE".
+    "$wd" "$dev" --purpose "$purpose" -- "$@"
 }
 
 # Claim on a REMOTE host — the one the probe is plugged into.
 claim_remote() {
     local host="$1" dev="$2" purpose="$3"; shift 3
     [ "${1:-}" = "--" ] && shift
-    local remote_wd="${BENCH_REMOTE_WITH_DEVICE:-\$HOME/.local/bin/with-device}"
-    ssh "$host" "BENCH_WHO=$(printf %q "$BENCH_WHO") $remote_wd $(printf %q "$dev") $(printf %q "$purpose") -- $*"
+    # Installed by jess at ~/bench on fourpi. NOT ~/.local/bin — a stale 0.2.0
+    # prototype lived there and reported exit 0 for commands it never ran.
+    local remote_wd="${BENCH_REMOTE_WITH_DEVICE:-\$HOME/bench/with-device}"
+    ssh "$host" "BENCH_WHO=$(printf %q "$BENCH_WHO") $remote_wd $(printf %q "$dev") --purpose $(printf %q "$purpose") -- $*"
 }

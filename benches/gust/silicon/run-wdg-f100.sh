@@ -33,7 +33,9 @@ OCD=(openocd -f interface/stlink-hla.cfg -c "transport select swd"
 
 # shellcheck source=./bench-claim.sh
 . "$(dirname "$0")/bench-claim.sh"
-BENCH_DEV="${BENCH_DEV:-stlink-v1-f100}"
+# MUST match fourpi's registry exactly (`stlink-v1`). A name gale invents locks
+# nothing that jess is also holding. with-device refuses unknown names (exit 2).
+BENCH_DEV="${BENCH_DEV:-stlink-v1}"
 
 run_ocd() {  # run_ocd <extra -c args...>
     if [ -n "${OCD_HOST:-}" ]; then
