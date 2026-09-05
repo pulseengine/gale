@@ -31,12 +31,24 @@ cargo build --release --bin gust_wdg_silicon \
 OCD=(openocd -f interface/stlink-hla.cfg -c "transport select swd"
      -f target/stm32f1x.cfg -c "reset_config none separate")
 
+# shellcheck source=./bench-claim.sh
+. "$(dirname "$0")/bench-claim.sh"
+# MUST match fourpi's registry exactly (`stlink-v1`). A name gale invents locks
+# nothing that jess is also holding. with-device refuses unknown names (exit 2).
+BENCH_DEV="${BENCH_DEV:-stlink-v1}"
+
 run_ocd() {  # run_ocd <extra -c args...>
     if [ -n "${OCD_HOST:-}" ]; then
+        # The claim must be taken ON THE HOST THAT OWNS THE PROBE, not here --
+        #   WRONG: with-device ... -- ssh $OCD_HOST openocd    (locks this laptop)
+        #   RIGHT: ssh $OCD_HOST with-device ... -- openocd    (locks the Pi)
+        # Two agents on two different laptops can both ssh in and collide on the Pi's
+        # probe, so a local lock would protect nothing. See gale#356.
         # shellcheck disable=SC2029
-        ssh "$OCD_HOST" "sudo timeout 25 $(printf '%q ' "${OCD[@]}" "$@")"
+        claim_remote "$OCD_HOST" "$BENCH_DEV" "gale: wdg-f100" -- \
+            "sudo timeout 25 $(printf '%q ' "${OCD[@]}" "$@")"
     else
-        sudo timeout 25 "${OCD[@]}" "$@"
+        claim "$BENCH_DEV" "gale: wdg-f100" -- sudo timeout 25 "${OCD[@]}" "$@"
     fi
 }
 
