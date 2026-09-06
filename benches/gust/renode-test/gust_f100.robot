@@ -13,6 +13,20 @@ Resource          ${RENODEKEYWORDS}
 Dissolved gust kernel boots and runs on STM32F100RB (8K SRAM)
     Execute Command           mach create "gust-f100"
     Execute Command           machine LoadPlatformDescription @${REPL}
+
+    # FIDELITY, not function: the model must not be MORE CAPABLE than the part.
+    # The real STM32F100 has NO MPU -- MPU_TYPE reads 0x00000000 over SWD on the
+    # halted part. Renode DEFAULTS a Cortex-M to EIGHT regions when the platform
+    # description is silent, and this platform WAS silent: it read 0x00000800 until
+    # `numberOfMPURegions: 0` was added.
+    #
+    # Assert it here because the defect is invisible in the SOURCE -- the .repl says
+    # nothing either way, and "we never declared an MPU" is not the same sentence as
+    # "there is no MPU here". Read the model, not the file.
+    ${mpu}=                   Execute Command    sysbus ReadDoubleWord 0xE000ED90
+    Should Contain            ${mpu}    0x00000000
+    ...                       msg=STM32F100 model reports an MPU it does not have (MPU_TYPE=${mpu})
+
     Execute Command           sysbus LoadELF @${ELF}
     Execute Command           emulation RunFor "2"
     ${instr}=                 Execute Command    sysbus.cpu ExecutedInstructions
