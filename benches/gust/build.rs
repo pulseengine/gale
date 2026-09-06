@@ -84,6 +84,25 @@ fn main() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let obj = Path::new(&manifest).join("wasm-kernel/fused.o");
     if obj.exists() {
+        // Two-tenant demonstrator (#1145). Object comes from an UNPINNED synth 0.62.0 --
+        // no varve layer carries it yet -- so it is built on demand, never committed.
+        if let Ok(tt) = std::env::var("GUST_TWO_TENANT_O") {
+            println!("cargo:rustc-link-arg-bin=gust_two_tenant={tt}");
+            // PMSAv7 wants a region base aligned to its size, and synth emits
+            // .synth.wasm_mem_k with sh_addralign = 4 by design — "your linker script
+            // owns this" (docs/embedder-abi-relocatable-arm.md). Place memory 1 on a
+            // 64 KiB boundary here.
+            //
+            // Via build.rs and NOT via RUSTFLAGS: RUSTFLAGS *replaces* the rustflags in
+            // .cargo/config.toml rather than appending, which drops `-C link-arg=-Tlink.x`
+            // and links a 1032-byte ELF with no sections — at exit 0. A silent empty
+            // binary is a worse failure than a link error.
+            let at = std::env::var("GUST_TWO_TENANT_MEM1_AT")
+                .unwrap_or_else(|_| "0x20030000".to_string());
+            println!("cargo:rustc-link-arg-bin=gust_two_tenant=--section-start=.synth.wasm_mem_1={at}");
+            println!("cargo:rerun-if-env-changed=GUST_TWO_TENANT_O");
+            println!("cargo:rerun-if-env-changed=GUST_TWO_TENANT_MEM1_AT");
+        }
         println!("cargo:rustc-link-arg-bin=gust_fused={}", obj.display());
         // gust_stack drives the same dissolved composition (run-demo) as a kiln task.
         println!("cargo:rustc-link-arg-bin=gust_stack={}", obj.display());

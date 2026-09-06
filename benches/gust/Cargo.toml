@@ -33,6 +33,9 @@ silicon-g474 = []
 # mpu_spike_renode: drop to unprivileged before the denied store, to tell
 # "no enforcement at all" apart from "PRIVDEFENA ignored on the privileged path".
 unpriv = []
+# gust_two_tenant negative control: skip region programming, so the escape must be
+# OBSERVED landing in tenant B. A fault with no control proves the platform, not us.
+no-regions = []
 # Silicon-firmware target selection (gust_wdg_silicon). Exactly one is active;
 # each pulls the matching generated constants module (benches/gust/targets/
 # generated/). G4 is the default (the directly-attached NUCLEO board); F1 is
