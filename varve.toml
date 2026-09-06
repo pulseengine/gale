@@ -5,5 +5,5 @@ manifest-version = 1
 [toolchain]
 realm   = "pulseengine"
 channel = "rolling"
-layer   = "2026.09.0"
-digest  = "sha256:cf4dbdc2498b89ded7d564b3ad230d90dd23433073a06c63081b1cc35fe64bbc"
+layer   = "2026.09.1"
+digest  = "sha256:893dbbf4c4f0bcdf67d1b0bc0a9b68919881cba436c5021c58e4a9ddbf1bd498"
