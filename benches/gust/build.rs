@@ -84,6 +84,12 @@ fn main() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let obj = Path::new(&manifest).join("wasm-kernel/fused.o");
     if obj.exists() {
+        // Two-tenant demonstrator (#1145). Object comes from an UNPINNED synth 0.62.0 --
+        // no varve layer carries it yet -- so it is built on demand, never committed.
+        if let Ok(tt) = std::env::var("GUST_TWO_TENANT_O") {
+            println!("cargo:rustc-link-arg-bin=gust_two_tenant={tt}");
+            println!("cargo:rerun-if-env-changed=GUST_TWO_TENANT_O");
+        }
         println!("cargo:rustc-link-arg-bin=gust_fused={}", obj.display());
         // gust_stack drives the same dissolved composition (run-demo) as a kiln task.
         println!("cargo:rustc-link-arg-bin=gust_stack={}", obj.display());
