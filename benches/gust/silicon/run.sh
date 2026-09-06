@@ -42,5 +42,7 @@ echo "== flash + capture on $BOARD via probe-rs (Ctrl-C after 'silicon_bench: do
 # The claim is an flock held for exactly this command, so a crash cannot wedge the bench.
 # shellcheck source=./bench-claim.sh
 . "$HERE/bench-claim.sh"
+SERIAL="$(probe_serial 2>/dev/null || true)"
+[ -n "$SERIAL" ] && PROBE_SEL=(--probe "$SERIAL") || PROBE_SEL=()
 claim "$(probe_device)" "gale: silicon_bench $BOARD" -- \
-    probe-rs run --chip "$CHIP" --catch-hardfault "$ELF"
+    probe-rs run --chip "$CHIP" --catch-hardfault "${PROBE_SEL[@]}" "$ELF"

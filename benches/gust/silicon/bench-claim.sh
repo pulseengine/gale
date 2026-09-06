@@ -52,7 +52,7 @@ _resolve_with_device() {
     local here="${BASH_SOURCE[0]:-${0:-.}}"
     # A jess SOURCE checkout no longer provides a runnable tool (it is a Rust crate now),
     # so these are binary locations only. Pin the signed release rather than building:
-    #   release:pulseengine/jess@v0.7.1!with-device-0.2.1-<triple>.tar.gz!with-device
+    #   release:pulseengine/jess@v0.7.2!with-device-0.2.2-<triple>.tar.gz!with-device
     for sib in "$HOME/bench/with-device" \
                "$HOME/.local/bin/with-device" \
                "$(dirname "$here")/../../../../jess/target/release/with-device"; do
@@ -66,12 +66,32 @@ _resolve_with_device() {
     return 1
 }
 
-# The serial of the attached ST-LINK, as probe-rs reports it. That string is also what
-# `probe-rs --probe` accepts, so the lock name and the device selector cannot drift apart.
-probe_device() {
-    local s
-    s=$(probe-rs list 2>/dev/null | sed -n 's/.*-- \([0-9a-fA-F]*:[0-9a-fA-F]*:[^ ]*\) (ST-LINK).*/\1/p' | head -1)
-    [ -n "$s" ] && echo "stlink-${s##*:}" || echo "stlink-unknown"
+# The REGISTRY's name for this host's ST-LINK, and separately the serial to select it
+# with. These are two different things and conflating them was my mistake, twice.
+#
+# I originally derived the lock name FROM the serial, arguing that a friendly name could
+# drift onto a different board after a replug. jess solved it better: the registry maps a
+# stable name to the serial, so the mapping lives in ONE place instead of in every
+# consumer's string handling. A derived name does not match the registry, and
+# with-device 0.2.2 refuses it outright:
+#
+#   UNKNOWN DEVICE 'stlink-003B001A3235511337333439'. Known: esp-jtag, stlink-v3
+#   Refusing: an unregistered name would create its own lock and exclude nobody.
+#
+# Which is the same vacuous-lock defect I had already hit on the Pi with
+# `stlink-v1-f100`. Registry name for the claim; serial for `probe-rs --probe`.
+probe_device() { echo "${BENCH_DEV:-stlink-v3}"; }
+
+# The serial comes from the registry entry, not from re-deriving it here, so the lock and
+# the probe selector cannot name different boards.
+probe_serial() {
+    local reg="${BENCH_REGISTRY:-$HOME/.config/pulseengine/bench-devices.yaml}"
+    [ -f "$reg" ] || return 1
+    awk -v dev="$(probe_device):" '
+        $1 == dev { in_dev = 1; next }
+        in_dev && $1 == "serial:" { print $2; exit }
+        in_dev && /^  [a-z0-9-]+:/ { exit }
+    ' "$reg"
 }
 
 claim() {
@@ -85,7 +105,7 @@ claim() {
             "$@"; return $?
         fi
         echo "bench-claim: with-device not found, refusing to touch '$dev' unclaimed." >&2
-        echo "  pin the signed release and put the binary on PATH:\n    release:pulseengine/jess@v0.7.1!with-device-0.2.1-<triple>.tar.gz!with-device\n  or set WITH_DEVICE=/path/to/binary," >&2
+        echo "  pin the signed release and put the binary on PATH:\n    release:pulseengine/jess@v0.7.2!with-device-0.2.2-<triple>.tar.gz!with-device\n  or set WITH_DEVICE=/path/to/binary," >&2
         echo "  or set BENCH_UNCLAIMED=1 if you are certain you are alone." >&2
         return 4
     fi
@@ -96,6 +116,23 @@ claim() {
 }
 
 # Claim on a REMOTE host — the one the probe is plugged into.
+# Assert that a claim on <device> is ALREADY held, without taking one. For scripts that
+# run INSIDE someone else's claim and should not silently proceed if that assumption is
+# wrong. with-device 0.2.2+ exports WITH_DEVICE_CLAIM and answers this directly; nesting
+# unions rather than overwrites, so wrapping another claimed command still satisfies it.
+#
+# Holding *a* device is not holding *the* device -- that distinction is the whole point,
+# and it is checked (a claim on the wrong device exits 2).
+require_claim() {
+    local dev="$1" wd
+    if ! wd=$(_resolve_with_device); then
+        [ "${BENCH_UNCLAIMED:-0}" = "1" ] && return 0
+        echo "bench-claim: cannot verify a claim on '$dev' — with-device not found." >&2
+        return 4
+    fi
+    "$wd" --require-claim "$dev"
+}
+
 claim_remote() {
     local host="$1" dev="$2" purpose="$3"; shift 3
     [ "${1:-}" = "--" ] && shift
