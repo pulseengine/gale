@@ -4,8 +4,17 @@
 // (9408 B .bss) — that workload runs on the 64 KB F103RE-class (m3_64k.repl).
 // Flash mapped at 0x0 (the boot alias the dissolved ELF is linked against), size
 // matching the F100RB's 128 KB. SemihostingUart bridges the hprintln heartbeat.
+// MPU: the STM32F100 HAS NONE. Measured over SWD on the real part (halted):
+//   MPU_TYPE (0xE000ED90) = 0x00000000  -> DREGION 0
+// The MPU is OPTIONAL on Cortex-M3 and this part omits it.
+//
+// THIS LINE IS LOad-BEARING. Renode DEFAULTS a Cortex-M to EIGHT MPU regions when the
+// platform says nothing, so silence here does not mean "no MPU" -- it means "8 regions".
+// Verified on this very file before the fix: MPU_TYPE read 0x00000800.
+// Absence in a platform description is not absence in the model.
 cpu: CPU.CortexM @ sysbus
     cpuType: "cortex-m3"
+    numberOfMPURegions: 0
     nvic: nvic
 nvic: IRQControllers.NVIC @ sysbus 0xE000E000
     -> cpu@0
