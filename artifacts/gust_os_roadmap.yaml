@@ -385,13 +385,7 @@ artifacts:
     title: "gust hosts mutually-distrusting components over one TCB — a general OS"
     status: proposed
     release: v0.5.0
-    description: >
-      gust SHALL run two independently-authored, mutually-distrusting components
-      concurrently over the single 4-item TCB: each gets only the gust:os
-      capabilities it imports (least authority), its own MPU region (REQ-OS-MPU-001),
-      and fair kiln scheduling. A misbehaving or crashing tenant SHALL NOT deny the
-      other its scheduled progress beyond its fuel budget. This is the property that
-      distinguishes an OS from a single fused firmware image.
+    description: "gust SHALL run two independently-authored, mutually-distrusting components concurrently over the single 4-item TCB: each gets only the gust:os capabilities it imports (least authority), its own MPU region (REQ-OS-MPU-001), and fair kiln scheduling. A misbehaving or crashing tenant SHALL NOT deny the other its scheduled progress beyond its fuel budget. This is the property that distinguishes an OS from a single fused firmware image. BLOCKER IDENTIFIED 2026-09-06, and it is NOT address space: packing and isolation are currently exclusive in the toolchain. meld's --pack-rebase sizes each component at its ACTUAL USED DATA EXTENT rather than its declared page count — that is how the dissolved gust kernel fits the F100's 8 KiB — but it REQUIRES --memory shared, i.e. one fused memory with no per-tenant regions. --memory multi keeps a memory per component (the shape MPU isolation needs) but synth sizes each one by its DECLARED page count: measured, a memory holding 8 bytes of data emitted a 0x10000 section. So an image can be small OR region-separable, not both, and multi-tenancy on small parts is blocked by PAGE-GRANULAR REGION SIZING rather than by RAM. Correcting an earlier reading of the same measurement: it was first recorded as a 128 KiB RAM floor excluding every gale board, which was wrong — 64 KiB was the declared page from the test module's own (memory 1 1), not a hardware requirement, and gale demonstrably runs wasm in 8 KiB. The fix shape is a per-memory extent BOUND rather than a page count, ideally scry-derived so it is proven rather than asserted — synth already takes an integrator-declared bound of this kind for the shadow stack (--shadow-stack-size / VCR-MEM-001), with the sound version as the layer-2 proof tail. With such a bound, __synth_mem_size_N would report the proven extent and a tenant that never addresses above N would get a region of N."
     tags: [gust, os, multi-tenant, isolation, capability, scheduler]
     links:
       - type: derives-from
