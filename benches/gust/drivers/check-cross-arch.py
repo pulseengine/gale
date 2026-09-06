@@ -88,7 +88,14 @@ RISCV_KNOWN_BAD = {
     "mpu-thin", "pwm-thin", "spi-thin", "switch-thin", "timer-thin",
     "uart-thin", "wdg-thin",
 }
-RISCV_TRACKER = "synth#1102 — rv32 emits a dangling `synth_func_N` for a declined internal, exit 0"
+RISCV_TRACKER = (
+    "synth#1102 — FIXED in synth 0.61.0: rv32 now REFUSES loudly (exit 1) rather than "
+    "emitting an unlinkable object with exit 0. The 13 drivers still do not cross, but "
+    "the failure is now the documented refusal, not the silent defect this ledger was "
+    "opened for. Verified under layer 2026.09.1: `#1102: 5 retained function(s) relocate "
+    "against function(s) this compile DECLINED ... refusing to emit it rather than "
+    "shipping an unlinkable object with exit 0`."
+)
 
 
 def run(cmd, **kw):
