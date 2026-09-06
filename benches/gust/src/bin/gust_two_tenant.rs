@@ -44,6 +44,38 @@ unsafe extern "C" {
 #[inline(always)]
 fn absval(s: &'static u8) -> u32 { core::ptr::from_ref(s) as u32 }
 
+
+// ---------------------------------------------------------------------------
+// TCB shims. synth reserves r9/r10/r11 (globals base / memory-0 size / memory-0
+// base) and requires them set before any export runs; Rust uses r11 as a frame
+// pointer and may allocate r9/r10 freely. So each entry is wrapped: save, set,
+// call, restore — the same 5-instruction shape as gust_control.rs's r11=0
+// trampoline, which exists for exactly this reason.
+core::arch::global_asm!(
+    ".macro TENANT_SHIM name, target",
+    ".section .text.\\name",
+    ".global \\name",
+    ".thumb_func",
+    "\\name:",
+    "    push  {{r9, r10, r11, lr}}",
+    "    ldr   r11, =MEM0_ALIGNED",
+    "    ldr   r10, =__synth_mem_size_0",
+    "    ldr   r9,  =GLOBALS",
+    "    bl    \\target",
+    "    pop   {{r9, r10, r11, pc}}",
+    ".endm",
+    "TENANT_SHIM shim_a_store, a_store",
+    "TENANT_SHIM shim_a_load, a_load",
+    "TENANT_SHIM shim_b_load, b_load",
+    "TENANT_SHIM shim_a_escape, a_escape",
+);
+unsafe extern "C" {
+    fn shim_a_store(addr: u32, val: u32);
+    fn shim_a_load(addr: u32) -> u32;
+    fn shim_b_load(addr: u32) -> u32;
+    fn shim_a_escape(addr: u32, val: u32);
+}
+
 const MPU_TYPE: *mut u32 = 0xE000_ED90 as *mut u32;
 const MPU_CTRL: *mut u32 = 0xE000_ED94 as *mut u32;
 const MPU_RNR: *mut u32 = 0xE000_ED98 as *mut u32;
@@ -56,9 +88,17 @@ const SHCSR: *mut u32 = 0xE000_ED24 as *mut u32;
 // memory were the same bytes. Renode resolves REPORT by symbol instead, so the linker
 // stays the single authority on layout.
 #[unsafe(no_mangle)]
-static mut REPORT: [u32; 5] = [0; 5];
+static mut REPORT: [u32; 8] = [0; 8];
 #[inline(always)]
 fn slot(i: usize) -> *mut u32 { unsafe { (&raw mut REPORT as *mut u32).add(i) } }
+
+/// The stack lives ABOVE tenant B, not below it. With memory 1 forced to 0x20030000 and
+/// the stack growing down from the top of RAM, a 256 KiB map put the stack INSIDE tenant
+/// B's region — the two would have shared bytes and the criterion would have been
+/// measuring stack traffic. RAM is 320 KiB so the stack gets its own 64 KiB region above
+/// every tenant.
+const STACK_REGION_BASE: u32 = 0x2004_0000;
+const STACK_REGION_SIZE: u32 = 0x0001_0000;
 
 const STEP_PROGRAMMED: u32 = 0x51AE_0010;
 const STEP_BENIGN_OK: u32 = 0x51AE_0011;
@@ -138,13 +178,11 @@ fn main() -> ! {
     out(slot(2), mem0);
     out(slot(3), mem1);
 
-    // R11 = memory 0 base, R10 = its size, R9 = globals base. Before any export runs.
-    unsafe {
-        let g = &raw const GLOBALS as u32;
-        core::arch::asm!("mov r11, {}", in(reg) mem0, options(nomem, nostack));
-        core::arch::asm!("mov r10, {}", in(reg) size0, options(nomem, nostack));
-        core::arch::asm!("mov r9,  {}", in(reg) g,     options(nomem, nostack));
-    }
+    // The register contract is established PER CALL by the trampolines below, not once
+    // here. See their comment: setting r9/r10/r11 with inline asm inside a Rust function
+    // clobbers registers the compiler is still using — r11 is its frame pointer — and the
+    // function does not survive it. This cost two wrong diagnoses ("no MPU") before the
+    // register dump showed execution dying between two adjacent stores.
 
     // One region per memory, through the VERIFIED programmer. Region 0 is derived from
     // the same address loaded into R11 -- synth's one-source-of-truth requirement.
@@ -153,41 +191,101 @@ fn main() -> ! {
         let mut t = RegionTable::new();
         t.base[0] = 0x0000_0000; t.size[0] = 0x0004_0000; t.enabled[0] = true; t.writable[0] = false;
         t.base[1] = mem0;        t.size[1] = size0;       t.enabled[1] = true; t.writable[1] = true;
-        t.base[2] = mem1;        t.size[2] = size1;       t.enabled[2] = true; t.writable[2] = true;
+        // TENANT B'S MEMORY IS DELIBERATELY *NOT* GRANTED while tenant A runs.
+        //
+        // This is the correction that makes the demonstrator mean something. The first
+        // version programmed BOTH memories as simultaneously-enabled regions, reasoning
+        // that the region table describes both. But an MPU region is per-CONTEXT, not
+        // per-tenant: granting memory 1 gives it to whoever is executing, which is tenant
+        // A. The escape then succeeded and the run reported ESCAPED — correctly, because
+        // nothing was isolating anything.
+        //
+        // Isolation is a property of the SWITCH, not of the table: each partition grants
+        // only the memory of the tenant about to run. The table supplies base/size;
+        // switch_to_partition decides who gets them. Region 2 stays disabled here and
+        // would carry memory 1 in tenant B's partition.
+        let _ = (mem1, size1);
+        // Region 3: THE STACK. Deny-by-default means a stack the table does not grant is
+        // unreachable the instant enforcement goes live — the first push faults, inside
+        // the programming sequence, before anything can report why. The probe that works
+        // (gust_iso_fault_probe) grants a stack window; this one did not, and reported
+        // "NO_MPU" for what was actually an unreachable stack.
+        // Region 4: the REPORT channel. Unprivileged tenant code must be able to write
+        // its own verdict, and with deny-by-default an ungranted REPORT faults on the
+        // first store after the privilege drop — which is exactly what happened: the run
+        // reached BENIGN_OK and then stalled with no verdict at all.
+        //
+        // Granting it means a tenant could scribble on the report. Acceptable in a
+        // demonstrator and stated rather than hidden; a real design would report through
+        // a syscall the tenant cannot forge.
+        t.base[4] = &raw const REPORT as u32;
+        t.size[4] = 32;
+        t.enabled[4] = true;
+        t.writable[4] = true;
+        t.base[3] = STACK_REGION_BASE;
+        t.size[3] = STACK_REGION_SIZE;
+        t.enabled[3] = true;
+        t.writable[3] = true;
         t.switch_to_partition(0);
+        unsafe {
+            out(slot(5), read_volatile(MPU_TYPE));
+            out(slot(6), read_volatile(MPU_CTRL));
+            write_volatile(MPU_RNR, 1);
+            out(slot(7), read_volatile(MPU_RASR));
+        }
         if unsafe { read_volatile(MPU_CTRL) } & MPU_CTRL_ENABLE == 0 {
             out(slot(0), R_NO_MPU);
             loop {}
         }
     }
+    // Diagnostics BEFORE any verdict: guessing why the MPU did not arm has cost two
+    // wrong hypotheses already (a missing stack region, then stack/tenant overlap).
+    unsafe {
+        out(slot(5), read_volatile(MPU_TYPE));
+        out(slot(6), read_volatile(MPU_CTRL));
+        write_volatile(MPU_RNR, 1);
+        out(slot(7), read_volatile(MPU_RASR));
+    }
     out(slot(1), STEP_PROGRAMMED);
 
     // Benign: tenant A inside its own memory must still work.
-    unsafe { a_store(0x40, 0xA1A1_A1A1) };
-    if unsafe { a_load(0x40) } != 0xA1A1_A1A1 {
+    unsafe { shim_a_store(0x40, 0xA1A1_A1A1) };
+    if unsafe { shim_a_load(0x40) } != 0xA1A1_A1A1 {
         out(slot(0), R_BENIGN_LOST);
         loop {}
     }
     out(slot(1), STEP_BENIGN_OK);
 
-    // Unprivileged BEFORE the escape: Renode grants a privileged background access the
-    // ARMv7-M default map regardless of PRIVDEFENA, so a privileged escape would be
-    // permitted there and faulted on silicon -- the wrong way round for a gate.
+    // THE CRIMINAL: tenant A code addressing tenant A's memory at the offset that lands
+    // exactly on tenant B's base. Computed as (mem1 - mem0), NOT assumed to be size0:
+    // the linker does not place the memories adjacently, and `size0` in fact addressed
+    // the REPORT array — which IS granted, so the escape "succeeded" while touching
+    // nothing it was meant to.
+    let escape_off = mem1.wrapping_sub(mem0);
+    out(slot(1), STEP_ESCAPE_ISSUED);   // marked while still privileged
+
+    // UNPRIVILEGED, and only now. Renode grants a PRIVILEGED background access the
+    // ARMv7-M default map regardless of MPU_CTRL.PRIVDEFENA, so a privileged escape is
+    // permitted there and faults on silicon — it would pass for the wrong reason.
     unsafe {
         let c: u32;
         core::arch::asm!("mrs {}, CONTROL", out(reg) c);
         core::arch::asm!("msr CONTROL, {}", in(reg) c | 1);
         cortex_m::asm::isb();
+        let back: u32;
+        core::arch::asm!("mrs {}, CONTROL", out(reg) back);
+        out(slot(4), back);          // prove nPRIV actually took, do not assume it
     }
 
+    unsafe { shim_a_escape(escape_off, 0xBADD_BADD) };
     // THE CRIMINAL: tenant A writes one word past its own memory -- which is where
     // tenant B begins.
     out(slot(1), STEP_ESCAPE_ISSUED);
-    unsafe { a_escape(size0, 0xBADD_BADD) };
+    unsafe { shim_a_escape(size0, 0xBADD_BADD) };
 
     // Reached only if nothing faulted. Did it land in B?
-    let landed = unsafe { b_load(0) };
-    out(slot(4), landed);
+    let landed = unsafe { shim_b_load(0) };
+    out(slot(3), landed);
     out(slot(0), R_ESCAPED);
     loop {}
 }
