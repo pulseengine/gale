@@ -1,40 +1,19 @@
 project:
   name: gale
-  version: "0.1.0"
+  version: 0.1.0
   schemas:
-    - common
-    - aspice
-    - stpa
-    - safety-case
-    - gale
-  description: >
-    Formally verified Rust port of Zephyr RTOS kernel primitives.
-    ASIL-D targeted. Dual-track verification: Verus (SMT/Z3) + Rocq (theorem proving).
+  - common
+  - aspice
+  - stpa
+  - safety-case
+  - gale
+  description: 'Formally verified Rust port of Zephyr RTOS kernel primitives. ASIL-D
+    targeted. Dual-track verification: Verus (SMT/Z3) + Rocq (theorem proving).
 
+    '
 sources:
-  - path: artifacts
-    format: generic-yaml
-
-# Upstream Zephyr requirements are available via ReqIF import.
-# Currently using curated artifacts/zephyr_upstream_reqs.yaml instead,
-# which has correct ASPICE types (system-req vs sw-req) for the
-# semaphore requirements we care about.
-#
-# To import all upstream requirements:
-#  - path: upstream-reqif/reqif
-#    format: reqif
-#    config:
-#      type-map.requirement: sw-req
-#      type-map.section: documentation
-#      type-map.text: documentation
-
+- path: artifacts
+  format: generic-yaml
 docs:
-  - docs
-
+- docs
 results: results
-
-# Release readiness (rivet 0.23, #612): an artifact is release-ready when its
-# validate coverage rules pass (the V is closed), not when a status string flips —
-# the correct mode for gale's ASPICE V-model (verification is expressed via links).
-release:
-  require: coverage
