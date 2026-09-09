@@ -54,6 +54,22 @@ jobs:
           python3 check-wcet-evt.py --emit-sample-capture pass > /tmp/wcet-pass.txt
           python3 check-wcet-evt.py /tmp/wcet-pass.txt
 
+  retry-loops:
+    name: "no CI retry loop can swallow its own failure"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      # This gate exists BECAUSE a silent failure got through: `west sdk install`
+      # failed three times, its step exited 0, and the NEXT step failed looking
+      # for a toolchain that was never installed. Prove the check bites before
+      # trusting the green.
+      - name: Negative control — the unfailable form must be caught
+        run: python3 tools/check-retry-loops.py --self-test
+
+      - name: Sweep every workflow
+        run: python3 tools/check-retry-loops.py
+
   data-overlap:
     name: "fused data segments are disjoint (gale#266)"
     runs-on: ubuntu-24.04
