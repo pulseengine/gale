@@ -72,6 +72,14 @@ fi
 echo "== region table present:"
 "$NM" -S "$W/two_tenant.o" | grep synth_mem | sed 's/^/   /'
 echo
+# Re-verified against synth 0.64.0 (2026-09-07), two releases past the 0.62.0 the
+# criterion was first established on: same four symbols, same values, and both arms
+# unchanged — CONTAINED with regions programmed, ESCAPED without.
+#
+# BUILD EACH ARM EXPLICITLY AND CHECK THE BINARY CHANGED. Running the two arms in a
+# loop left the negative-control binary on disk when a step failed, and the next run
+# reported ESCAPED for what looked like the programmed arm — a regression that was not
+# one. `md5 -q` on the ELF between arms is cheap and settles it.
 echo "Next: build the probe against \$W/two_tenant.o and run both Renode arms."
 echo "  GUST_TWO_TENANT_O=$W/two_tenant.o cargo build --release --bin gust_two_tenant"
 echo "  (and again with --features no-regions for the negative control)"
