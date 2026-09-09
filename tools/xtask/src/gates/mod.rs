@@ -3,6 +3,7 @@
 //! invoked by nothing -- the failure mode gale#368 was opened to fix.
 
 pub mod data_overlap;
+pub mod graph_env;
 pub mod wit_resolve;
 
 use crate::verdict::Verdict;
@@ -21,6 +22,12 @@ pub const GATES: &[Gate] = &[
         about: "the fused core module's data segments are disjoint",
         run: data_overlap::run,
         self_test: data_overlap::self_test,
+    },
+    Gate {
+        name: graph_env::NAME,
+        about: "no raw `env` import survives in the composed graph (VER-DRV-GRAPH-001)",
+        run: graph_env::run,
+        self_test: graph_env::self_test,
     },
     Gate {
         name: wit_resolve::NAME,
