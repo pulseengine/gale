@@ -3,7 +3,7 @@
 #
 # VARVE IS THE BASE. synth resolves through the pin unless $SYNTH overrides it — the same
 # order check-cross-arch.py uses. The override exists because the region table (#1145 /
-# RQ-62-MEMISOLATE) shipped in synth 0.62.0 and no varve layer carries it yet: 2026.09.1
+# RQ-62-MEMISOLATE) shipped in synth 0.62.0 and no varve layer carries it yet: 2026.09.2
 # is the newest and holds 0.61.0.
 #
 # THE OVERRIDE IS ALWAYS ANNOUNCED. A result produced by a toolchain other than the pinned
