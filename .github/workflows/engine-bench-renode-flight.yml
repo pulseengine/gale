@@ -102,10 +102,8 @@ jobs:
           # on any one of them kills the whole step (seen on openthread, percepio,
           # uoscore-uedhoc, liblc3 — a different project each time, while its neighbours
           # clone fine from the same host). west update is resumable, so retry.
-          for attempt in 1 2 3; do west update --narrow -o=--depth=1 && break || sleep 15; done
-          for attempt in 1 2 3; do
-            west sdk install -t arm-zephyr-eabi && break || sleep 5
-          done
+          n=0; until west update --narrow -o=--depth=1; do n=$((n+1)); if [ $n -ge 3 ]; then echo "::error::west update failed after 3 attempts" >&2; exit 1; fi; sleep $((15*n)); done
+          n=0; until west sdk install -t arm-zephyr-eabi; do n=$((n+1)); if [ $n -ge 3 ]; then echo "::error::west sdk install failed after 3 attempts" >&2; exit 1; fi; sleep $((5*n)); done
 
       - name: Setup SDK paths
         run: |

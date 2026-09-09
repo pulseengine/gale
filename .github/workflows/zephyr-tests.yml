@@ -210,14 +210,14 @@ jobs:
           # on any one of them kills the whole step (seen on openthread, percepio,
           # uoscore-uedhoc, liblc3 — a different project each time, while its neighbours
           # clone fine from the same host). west update is resumable, so retry.
-          for attempt in 1 2 3; do west update --narrow -o=--depth=1 && break || sleep 15; done
+          n=0; until west update --narrow -o=--depth=1; do n=$((n+1)); if [ $n -ge 3 ]; then echo "::error::west update failed after 3 attempts" >&2; exit 1; fi; sleep $((15*n)); done
           # --install-base /mnt: extract the SDK onto the big ephemeral disk, not
           # $HOME (=/root) on the small host fs. The default home-dir extract
           # tips the runner into ENOSPC (writing its own diag log) during the
           # zephyr-sdk download — the residual gale#73 vector left after the
           # workspace was moved to /mnt. The CMake package registry still finds
           # the SDK regardless of install location.
-          for attempt in 1 2 3; do west sdk install --install-base /mnt -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
+          n=0; until west sdk install --install-base /mnt -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}"; do n=$((n+1)); if [ $n -ge 3 ]; then echo "::error::west sdk install failed after 3 attempts" >&2; exit 1; fi; sleep $((5*n)); done
 
       - name: Build and run test
         env:
@@ -329,14 +329,14 @@ jobs:
           # on any one of them kills the whole step (seen on openthread, percepio,
           # uoscore-uedhoc, liblc3 — a different project each time, while its neighbours
           # clone fine from the same host). west update is resumable, so retry.
-          for attempt in 1 2 3; do west update --narrow -o=--depth=1 && break || sleep 15; done
+          n=0; until west update --narrow -o=--depth=1; do n=$((n+1)); if [ $n -ge 3 ]; then echo "::error::west update failed after 3 attempts" >&2; exit 1; fi; sleep $((15*n)); done
           # --install-base /mnt: extract the SDK onto the big ephemeral disk, not
           # $HOME (=/root) on the small host fs. The default home-dir extract
           # tips the runner into ENOSPC (writing its own diag log) during the
           # zephyr-sdk download — the residual gale#73 vector left after the
           # workspace was moved to /mnt. The CMake package registry still finds
           # the SDK regardless of install location.
-          for attempt in 1 2 3; do west sdk install --install-base /mnt -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
+          n=0; until west sdk install --install-base /mnt -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}"; do n=$((n+1)); if [ $n -ge 3 ]; then echo "::error::west sdk install failed after 3 attempts" >&2; exit 1; fi; sleep $((5*n)); done
 
       - name: Build and run test
         env:
@@ -468,9 +468,9 @@ jobs:
           # on any one of them kills the whole step (seen on openthread, percepio,
           # uoscore-uedhoc, liblc3 — a different project each time, while its neighbours
           # clone fine from the same host). west update is resumable, so retry.
-          for attempt in 1 2 3; do west update --narrow -o=--depth=1 && break || sleep 15; done
+          n=0; until west update --narrow -o=--depth=1; do n=$((n+1)); if [ $n -ge 3 ]; then echo "::error::west update failed after 3 attempts" >&2; exit 1; fi; sleep $((15*n)); done
           # --install-base /mnt: SDK onto the big disk, not /root (gale#73 ENOSPC). See arm jobs above.
-          for attempt in 1 2 3; do west sdk install --install-base /mnt -t x86_64-zephyr-elf --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
+          n=0; until west sdk install --install-base /mnt -t x86_64-zephyr-elf --personal-access-token "${GITHUB_TOKEN}"; do n=$((n+1)); if [ $n -ge 3 ]; then echo "::error::west sdk install failed after 3 attempts" >&2; exit 1; fi; sleep $((5*n)); done
 
       - name: Build and run test
         env:
@@ -563,14 +563,14 @@ jobs:
           # on any one of them kills the whole step (seen on openthread, percepio,
           # uoscore-uedhoc, liblc3 — a different project each time, while its neighbours
           # clone fine from the same host). west update is resumable, so retry.
-          for attempt in 1 2 3; do west update --narrow -o=--depth=1 && break || sleep 15; done
+          n=0; until west update --narrow -o=--depth=1; do n=$((n+1)); if [ $n -ge 3 ]; then echo "::error::west update failed after 3 attempts" >&2; exit 1; fi; sleep $((15*n)); done
           # --install-base /mnt: extract the SDK onto the big ephemeral disk, not
           # $HOME (=/root) on the small host fs. The default home-dir extract
           # tips the runner into ENOSPC (writing its own diag log) during the
           # zephyr-sdk download — the residual gale#73 vector left after the
           # workspace was moved to /mnt. The CMake package registry still finds
           # the SDK regardless of install location.
-          for attempt in 1 2 3; do west sdk install --install-base /mnt -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}" && break || sleep 5; done
+          n=0; until west sdk install --install-base /mnt -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}"; do n=$((n+1)); if [ $n -ge 3 ]; then echo "::error::west sdk install failed after 3 attempts" >&2; exit 1; fi; sleep $((5*n)); done
 
       - name: Setup SDK paths
         run: |
