@@ -77,6 +77,14 @@ OS_SEAMS = ["wit", "wit-os"]
 UNCOVERED = {
     "os-node/exec-cm3.o",
     "os-node/gustos-dissolved-cm3.o",
+    # The frozen synth#757 repro pair: a buggy/fixed object captured from one
+    # historical synth to keep the bug reproducible. They are deliberately NOT
+    # refreshed -- refreshing them destroys the reproduction. Listed here so the
+    # census sees them; they escaped it entirely until the sweep found them,
+    # because the old glob reached only one directory deep and only matched
+    # names ending "-cm3.o".
+    "os-node/repro-757/os-tl-buggy.o",
+    "os-node/repro-757/os-tl-fixed.o",
 }
 
 # KNOWN-STALE LEDGER. These four are already stale and cannot be refreshed here:
@@ -103,6 +111,21 @@ KNOWN_STALE = {
     "spawn-provider/spawn-provider-cm3.o",
     "timer-provider/timer-provider-cm3.o",
 }
+
+
+def committed_objects():
+    """Every committed .o under this directory, at ANY depth and under any name.
+
+    Enumerated from git rather than a filesystem glob for two reasons the sweep
+    made concrete: a glob of "*/*-cm3.o" reached only one level and only that
+    one suffix, so os-node/repro-757/*.o escaped the census on both counts; and
+    a filesystem walk would also pick up build outputs that were never
+    committed, which is the opposite error. The census's claim is about
+    COMMITTED objects, so git is the right oracle for it.
+    """
+    rel = "benches/gust/drivers"
+    out = git("ls-files", "--", f"{rel}/**/*.o") or ""
+    return sorted(REPO / line for line in out.splitlines() if line.strip())
 
 
 def git(*args):
@@ -166,9 +189,9 @@ def main():
     def crate_objects():
         """Objects that live beside their own crate, with per-class inputs."""
         out = {}
-        for o in sorted(HERE.glob("*/*-cm3.o")):
+        for o in committed_objects():
             d = o.parent.name
-            key = f"{d}/{o.name}"
+            key = str(o.relative_to(HERE))
             if key in UNCOVERED or key in {v for v in BUILDERS.values()}:
                 continue
             # Only a real crate directory gets auto-covered. Without this the
@@ -186,7 +209,7 @@ def main():
 
     # census: an object that is neither gated nor listed must not pass silently
     known = set(BUILDERS.values()) | UNCOVERED | set(crate_objects())
-    found = {f"{o.parent.name}/{o.name}" for o in HERE.glob("*/*-cm3.o")}
+    found = {str(o.relative_to(HERE)) for o in committed_objects()}
     stray = sorted(found - known)
     if stray:
         print("FAIL: committed object(s) neither gated nor listed:")
