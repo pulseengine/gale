@@ -657,38 +657,7 @@ artifacts:
     title: "T4: sound static-WCET inputs, gale-owned — no partition budget sized from raw DWT high-water-marks"
     status: implemented
     release: v0.7.2
-    description: >
-      Cross-cutting track T4. The per-function cycle bound feeding the
-      track-T3 schedulability analysis SHALL be a SOUND static bound, and
-      on the BUILD (all-from-us) path the natural owner is gale's own
-      compiler: since the compiler emits the exact instructions for a
-      function, it SHALL also emit a sound per-function timing bound from
-      its own instruction-timing model — a gale-owned static-WCET, not a
-      third-party WCET tool integration. This is a BUILD GATE: no
-      partition time budget may be sized directly from a raw cycle-counter
-      high-water-mark; every budget SHALL trace to a sound static bound (or
-      a recognized rigorous complement such as a measurement-based,
-      sound-by-extreme-value-theory statistical WCET method used to
-      cross-check the static bound — categorically above a raw high-water-
-      mark, but not a substitute for the static bound as the primary
-      input).
-      IMPLEMENTED (2026-07-17): synth 0.46.0 ships the emission mechanism
-      (synth#778 → `--emit-wcet`, schema synth-wcet-v1) — a sound
-      worst-case-path × per-instruction-timing-table bound per function,
-      cortex-m3 first, with a stated memory assumption and LOUD declines
-      (reason=call: intra-procedural scope, composition is T3/spar's job;
-      reason=loop: needs a trip count, scry inference follow-on) — and gale
-      exercises + gates it on its reproducible dissolve inputs via
-      benches/gust/drivers/emit-wcet.sh: the frozen os-tl node (4 bounded —
-      time#deadline 42cyc, time#elapsed 71cyc, cabi_realloc 28cyc ×2 — 9
-      declined loud; sidecar committed at os-node/repro-757/os-tl.wcet.json;
-      the .o is byte-identical with/without the flag, sidecar purely
-      additive) and the i2c-thin driver (3 leaf protocol fns bounded:
-      ack_byte 37cyc, addr_ack 37cyc, is_complete 19cyc). Remaining for
-      VER-OS-WCET-001 (stays proposed): the EVT statistical cross-check on
-      silicon, inter-procedural composition via T3 (spar#331), and loop
-      trip-count inference — the trusted-core switch/MPU/HM objects get
-      their bounds once those close.
+    description: "Cross-cutting track T4. The per-function cycle bound feeding the track-T3 schedulability analysis SHALL be a SOUND static bound, and on the BUILD (all-from-us) path the natural owner is gale's own compiler: since the compiler emits the exact instructions for a function, it SHALL also emit a sound per-function timing bound from its own instruction-timing model — a gale-owned static-WCET, not a third-party WCET tool integration. This is a BUILD GATE: no partition time budget may be sized directly from a raw cycle-counter high-water-mark; every budget SHALL trace to a sound static bound (or a recognized rigorous complement such as a measurement-based, sound-by-extreme-value-theory statistical WCET method used to cross-check the static bound — categorically above a raw high-water- mark, but not a substitute for the static bound as the primary input). IMPLEMENTED (2026-07-17): synth 0.46.0 ships the emission mechanism (synth#778 → `--emit-wcet`, schema synth-wcet-v1) — a sound worst-case-path × per-instruction-timing-table bound per function, cortex-m3 first, with a stated memory assumption and LOUD declines (reason=call: intra-procedural scope, composition is T3/spar's job; reason=loop: needs a trip count, scry inference follow-on) — and gale exercises + gates it on its reproducible dissolve inputs via benches/gust/drivers/emit-wcet.sh: the frozen os-tl node (4 bounded — time#deadline 42cyc, time#elapsed 71cyc, cabi_realloc 28cyc ×2 — 9 declined loud; sidecar committed at os-node/repro-757/os-tl.wcet.json; the .o is byte-identical with/without the flag, sidecar purely additive) and the i2c-thin driver (3 leaf protocol fns bounded: ack_byte 37cyc, addr_ack 37cyc, is_complete 19cyc). Remaining for VER-OS-WCET-001 (stays proposed): the EVT statistical cross-check on silicon, inter-procedural composition via T3 (spar#331), and loop trip-count inference — the trusted-core switch/MPU/HM objects get their bounds once those close. T4 STATIC HALF CI-GATED 2026-09-09: emit-wcet.sh had existed since the synth-wcet-v1 sidecar landed (synth#778) and was invoked by NO workflow — it was one of the seven scripts gale#324 catalogued as 'builders, less alarming', which it is not: it is the static half of this track. Run under the pinned toolchain (layer 2026.09.1, synth 0.61.0) it is green: 9 functions bounded, 10 declined LOUDLY, and it gates three properties itself — the emitted bounds, that the .o is byte-identical with and without --emit-wcet so the sidecar is additive, and that an unboundable function declines rather than being silently omitted. Now a job in kill-criteria.yml. NOT YET the whole requirement: VER-OS-WCET-001 asks for the compiler-emitted bound to be cross-checked against a measurement-based EVT statistical bound, and check-wcet-evt.py gates the EVT side separately. Nothing yet joins the two numbers for the same function, which is the remaining work on this track."
     tags: [gust, os, track-t4, wcet, timing, synth, safety, gale63]
     links:
       - type: derives-from

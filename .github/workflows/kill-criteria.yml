@@ -229,3 +229,28 @@ jobs:
       - name: "Mechanism: dropping to unprivileged blocks the same escape"
         working-directory: benches/gust
         run: cargo run --release --features drop-priv --bin gust_iso_unpriv_probe
+
+  # T4 (REQ-OS-WCET-001): synth's own per-function static WCET bounds. emit-wcet.sh has
+  # existed since the sidecar landed (synth#778) and was invoked by NOTHING — it was one
+  # of the seven builders gale#324 catalogued and I set aside as "less alarming". It is
+  # not a builder: it is the static half of a verification track, and an ungated one.
+  #
+  # It gates three things itself: the sidecar's bounds, that the .o is byte-identical
+  # with and without --emit-wcet (the sidecar must be additive), and that every function
+  # it cannot bound DECLINES LOUDLY rather than being omitted.
+  wcet-sidecar:
+    name: "T4: synth emits sound per-function WCET bounds (REQ-OS-WCET-001)"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the pinned toolchain
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/varve-install.sh https://raw.githubusercontent.com/pulseengine/varve/main/install.sh
+          sh /tmp/varve-install.sh
+          echo "$HOME/.varve/bin" >> "$GITHUB_PATH"
+
+      - name: Emit and gate the WCET sidecars
+        working-directory: benches/gust/drivers
+        run: bash emit-wcet.sh
