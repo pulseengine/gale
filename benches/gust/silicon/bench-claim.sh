@@ -45,6 +45,16 @@ export BENCH_WHO
 # Resolve with-device: explicit override, then PATH, then a sibling jess checkout.
 _resolve_with_device() {
     if [ -n "${WITH_DEVICE:-}" ]; then echo "$WITH_DEVICE"; return 0; fi
+    # VARVE FIRST. varve took with-device into the layer (varve#130); 2026.09.1 carries
+    # 0.2.1 as a dispatched tool. Before this, gale resolved from PATH and silently used
+    # whatever copy happened to be installed — `varve verify` flagged exactly that:
+    #   "`with-device` on your PATH is /Users/r/.local/bin/with-device, not the pinned ..."
+    # A bench claim asserted by an unpinned binary is a weaker statement than it looks.
+    if command -v varve >/dev/null 2>&1 && varve which with-device >/dev/null 2>&1; then
+        # stderr suppressed: varve which warns about PATH shadowing, which is real and
+        # is reported properly by `varve verify` — inside a resolver it is just noise.
+        varve which with-device 2>/dev/null | head -1; return 0
+    fi
     if command -v with-device >/dev/null 2>&1; then command -v with-device; return 0; fi
     local sib
     # ${BASH_SOURCE[0]} is unset outside bash, and `set -u` turns that into a hard
@@ -129,6 +139,17 @@ require_claim() {
         [ "${BENCH_UNCLAIMED:-0}" = "1" ] && return 0
         echo "bench-claim: cannot verify a claim on '$dev' — with-device not found." >&2
         return 4
+    fi
+    # --require-claim arrived in 0.2.2; the pinned layer (2026.09.1) carries 0.2.1, whose
+    # usage lists only --purpose and --wait. Passing it there exits 2 "unknown flag",
+    # which reads like the claim check FAILED rather than like it could not be made.
+    # Distinguish the two, because "I checked and you do not hold it" and "I could not
+    # check" are different facts and only one of them should stop a caller.
+    if ! "$wd" --help 2>&1 | grep -q -- "--require-claim"; then
+        echo "bench-claim: this with-device ($("$wd" --version 2>/dev/null)) has no" >&2
+        echo "  --require-claim; the assertion cannot be made. It arrived in 0.2.2 and the" >&2
+        echo "  pinned layer carries 0.2.1. Not treating that as 'claim absent'." >&2
+        return 5
     fi
     "$wd" --require-claim "$dev"
 }
