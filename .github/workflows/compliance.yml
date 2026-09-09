@@ -68,22 +68,15 @@ jobs:
       - name: Release readiness burn-down (rivet release status)
         # Burn-down of the artifacts scoped to `release: <tag>` (rivet #516).
         #
-        # READ THE VERDICT NARROWLY. gale sets `release.require: coverage` in
-        # rivet.yaml, which counts an artifact release-ready when its validate
-        # coverage rules pass -- i.e. when a `verifies` link EXISTS -- regardless
-        # of the state of the artifact on the other end of that link. rivet says
-        # so itself: `release status --help` notes this "is NOT the same as
-        # 'every verification level present'".
+        # The verdict now answers the EVIDENTIARY question. gale#342 removed
+        # `release.require: coverage` from rivet.yaml, so an artifact counts as
+        # release-ready only at verified/accepted — not merely because a `verifies`
+        # link exists pointing at a verification that was itself still `proposed`.
         #
-        # So "Cuttable" here means the V is STRUCTURALLY closed, not that the
-        # verification was performed. As of gale#342 that is not academic:
-        # v0.7.1 and v0.7.2 both report Cuttable with zero verified artifacts,
-        # greened by VER-* artifacts that are themselves `proposed`.
-        #
-        # (An earlier version of this comment claimed the verdict was MEANINGFUL
-        # because "the V is closed", and called it pending rivet#612. rivet#612
-        # closed 2026-07-03 -- by documenting that the semantics are weaker than
-        # that claim. gale#342 tracks whether to keep `require: coverage`.)
+        # What that changed, measured: v0.7.1 and v0.7.2 went from "Cuttable" to NOT
+        # cuttable with 6 unverified artifacts each, which is what they actually are.
+        # v0.8.0 stayed cuttable on all four genuinely verified artifacts — the control
+        # showing the stricter rule discriminates rather than just refusing everything.
         #
         # Not `exit 1`-gated because this workflow runs POST-publish; the pre-cut
         # gate is `rivet release status` + `rivet validate` run before tagging.
@@ -115,9 +108,9 @@ jobs:
           "$RV" release status "$TAG" >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
           {
             echo '```'
-            echo "_Advisory. With \`require: coverage\` a \"Cuttable\" verdict means every"
-            echo "artifact has a verifying LINK, not that the verification was performed —"
-            echo "see gale#342. Blocking gate = \`rivet validate\`._"
+            echo "_Advisory (this workflow runs POST-publish). A \"Cuttable\" verdict now"
+            echo "means every artifact in scope reached verified/accepted — gale#342."
+            echo "Blocking gate = \`rivet validate\` + \`rivet release status\` before tagging._"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Generate compliance report
