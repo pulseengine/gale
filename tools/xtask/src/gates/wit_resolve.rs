@@ -61,7 +61,7 @@ fn resolves(world: &Path, hal: &Path, tag: &str) -> Result<bool, String> {
     Ok(out.status.success())
 }
 
-pub fn run(repo: &Path) -> Verdict {
+pub fn run(repo: &Path, _target: Option<&str>) -> Verdict {
     let hal = repo.join("benches/gust/drivers/wit/gust-hal.wit");
     let gen = repo.join("benches/gust/targets/generated");
 
@@ -118,7 +118,7 @@ pub fn run(repo: &Path) -> Verdict {
 /// naming an interface the seam does not export MUST be rejected, and a world
 /// naming only real ones MUST be accepted. If either half misbehaves the gate
 /// cannot distinguish, and reports so rather than claiming a clean run.
-pub fn self_test(repo: &Path) -> Verdict {
+pub fn self_test(repo: &Path, _target: Option<&str>) -> Verdict {
     let hal = repo.join("benches/gust/drivers/wit/gust-hal.wit");
     if !hal.is_file() {
         return Verdict::Refused(format!("gust:hal seam not found at {}", hal.display()));

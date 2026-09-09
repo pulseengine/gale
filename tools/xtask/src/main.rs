@@ -17,7 +17,7 @@ fn usage() -> String {
     let mut s = String::from(
         "xtask — gale's verdict-bearing gates\n\n\
          USAGE:\n  \
-           cargo xtask check <gate> [--self-test] [--format json]\n  \
+           cargo xtask check <gate> [--self-test] [--module PATH] [--format json]\n  \
            cargo xtask check            list the gates\n\n\
          EXIT CODES:\n  \
            0  the property holds\n  \
@@ -65,10 +65,18 @@ fn main() {
     let mut json = false;
     let mut self_test = false;
     let mut gate_name: Option<String> = None;
+    let mut target: Option<String> = None;
     let mut rest = args[1..].iter();
     while let Some(a) = rest.next() {
         match a.as_str() {
             "--self-test" => self_test = true,
+            "--module" => match rest.next() {
+                Some(v) => target = Some(v.clone()),
+                None => {
+                    eprintln!("xtask: --module needs a path");
+                    exit(EXIT_USAGE);
+                }
+            },
             "--format" => match rest.next().map(String::as_str) {
                 Some("json") => json = true,
                 Some(other) => {
@@ -102,9 +110,9 @@ fn main() {
     };
 
     let v: Verdict = if self_test {
-        (gate.self_test)(&root)
+        (gate.self_test)(&root, target.as_deref())
     } else {
-        (gate.run)(&root)
+        (gate.run)(&root, target.as_deref())
     };
 
     if json {
