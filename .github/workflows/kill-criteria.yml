@@ -54,6 +54,22 @@ jobs:
           python3 check-wcet-evt.py --emit-sample-capture pass > /tmp/wcet-pass.txt
           python3 check-wcet-evt.py /tmp/wcet-pass.txt
 
+  proof-completeness:
+    name: "a Rocq proof that is merely STATED cannot pass as proven"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      # `coqc` succeeds on a file whose every theorem ends in `Admitted.` — an
+      # admit is a deferral, not an error. So the "Rocq Proofs (14 files)" job is
+      # green whether a theorem is proven or merely stated. Prove this check can
+      # tell the difference before trusting its green.
+      - name: Negative control — an admitted proof must be distinguishable
+        run: python3 tools/check-proof-completeness.py --self-test
+
+      - name: Census every proof file against the ledger
+        run: python3 tools/check-proof-completeness.py
+
   retry-loops:
     name: "no CI retry loop can swallow its own failure"
     runs-on: ubuntu-24.04
