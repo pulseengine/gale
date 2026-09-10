@@ -45,11 +45,18 @@ export BENCH_WHO
 # Resolve with-device: explicit override, then PATH, then a sibling jess checkout.
 _resolve_with_device() {
     if [ -n "${WITH_DEVICE:-}" ]; then echo "$WITH_DEVICE"; return 0; fi
-    # VARVE FIRST. varve took with-device into the layer (varve#130); 2026.09.1 carries
-    # 0.2.1 as a dispatched tool. Before this, gale resolved from PATH and silently used
-    # whatever copy happened to be installed — `varve verify` flagged exactly that:
+    # VARVE FIRST, when the layer carries it. varve took with-device into the layer
+    # (varve#130) and 2026.09.1 dispatched 0.2.1; the pin has since moved to 2026.09.2,
+    # which DROPPED it — `varve inspect` lists 44 payloads and with-device is not among
+    # them, held or dispatched (varve#138). So this branch is currently inert and the
+    # resolver falls through to PATH.
+    #
+    # The branch stays, and stays first, deliberately. The reason it was added still
+    # holds: gale used to resolve from PATH and silently use whatever copy happened to
+    # be installed, which `varve verify` flagged —
     #   "`with-device` on your PATH is /Users/r/.local/bin/with-device, not the pinned ..."
     # A bench claim asserted by an unpinned binary is a weaker statement than it looks.
+    # When the layer carries it again this resumes working with no edit.
     if command -v varve >/dev/null 2>&1 && varve which with-device >/dev/null 2>&1; then
         # stderr suppressed: varve which warns about PATH shadowing, which is real and
         # is reported properly by `varve verify` — inside a resolver it is just noise.
@@ -140,7 +147,7 @@ require_claim() {
         echo "bench-claim: cannot verify a claim on '$dev' — with-device not found." >&2
         return 4
     fi
-    # --require-claim arrived in 0.2.2; the pinned layer (2026.09.1) carries 0.2.1, whose
+    # --require-claim arrived in 0.2.2. Layer 2026.09.1 carried 0.2.1, whose
     # usage lists only --purpose and --wait. Passing it there exits 2 "unknown flag",
     # which reads like the claim check FAILED rather than like it could not be made.
     # Distinguish the two, because "I checked and you do not hold it" and "I could not

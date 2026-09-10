@@ -60,7 +60,8 @@ env:
   # Drifted AGAIN on the 2026.09.1 bump: varve.toml resolved synth 0.61.0 while this
   # still said 0.60.0. The comment above predicted exactly this and it still happened,
   # which says the warning is not the control — the two pins want a gate, not a note.
-  # Matching layer 2026.09.1.
+  # Matching layer 2026.09.2 (the root-rotation move; synth is unchanged at 0.61.0
+  # across 2026.09.1 -> 2026.09.2, so this value did not need to move with it).
   SYNTH_VERSION: "0.61.0"
   LOOM_VERSION: "1.4.1"
 
