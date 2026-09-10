@@ -17,3 +17,6 @@ sources:
 docs:
 - docs
 results: results
+release:
+  ready-when:
+  - resolved
