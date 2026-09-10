@@ -134,5 +134,30 @@ jobs:
           if [ -z "${ARCHIVE_PATH:-}" ] || [ ! -f "$ARCHIVE_PATH" ]; then
             echo "::error::compliance action produced no archive-path"; exit 1
           fi
+          # WAIT FOR THE RELEASE TO EXIST. This workflow and release.yml both
+          # trigger on `push: tags` and start in the same second — measured on
+          # v0.8.0: both started 20:54:08, this one generated its report first,
+          # and `gh release upload` failed with "release not found" because
+          # release.yml had not created the Release object yet. gale#333 made
+          # this workflow RUN; it did not order it.
+          #
+          # Polling here rather than adding a dispatch step to release.yml is
+          # deliberate: this workflow's header states it is decoupled on purpose
+          # and must not be able to affect the release flow. A reader here waits;
+          # a writer there would couple them.
+          #
+          # ~5 minutes at 10s. release.yml builds wasm modules and signs them, so
+          # it is minutes, not seconds. If it never appears we exit non-zero and
+          # say which of the two things went wrong.
+          n=0
+          until gh release view "$TAG" >/dev/null 2>&1; do
+            n=$((n+1))
+            if [ $n -ge 30 ]; then
+              echo "::error::release $TAG still does not exist after ~5min — either release.yml failed, or it no longer creates the release"
+              exit 1
+            fi
+            echo "waiting for release $TAG to exist (attempt $n/30)"
+            sleep 10
+          done
           gh release upload "$TAG" "$ARCHIVE_PATH" --clobber
           echo "::notice title=Compliance report::uploaded $(basename "$ARCHIVE_PATH")"
