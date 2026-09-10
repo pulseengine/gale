@@ -4,6 +4,7 @@
 
 pub mod data_overlap;
 pub mod graph_env;
+pub mod object_freshness;
 pub mod wit_resolve;
 
 use crate::verdict::Verdict;
@@ -28,6 +29,12 @@ pub const GATES: &[Gate] = &[
         about: "no raw `env` import survives in the composed graph (VER-DRV-GRAPH-001)",
         run: graph_env::run,
         self_test: graph_env::self_test,
+    },
+    Gate {
+        name: object_freshness::NAME,
+        about: "no committed object is older than the sources that produce it",
+        run: object_freshness::run,
+        self_test: object_freshness::self_test,
     },
     Gate {
         name: wit_resolve::NAME,
