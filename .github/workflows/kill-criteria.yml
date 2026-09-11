@@ -54,6 +54,21 @@ jobs:
           python3 check-wcet-evt.py --emit-sample-capture pass > /tmp/wcet-pass.txt
           python3 check-wcet-evt.py /tmp/wcet-pass.txt
 
+      # THE REAL EVIDENCE. Both steps above feed the checker captures it
+      # GENERATED ITSELF, which proves the checker's controls bite but examines
+      # no measurement. The committed STM32F100 capture — real silicon, DWT
+      # CYCCNT — was never run by CI at all, so the one artifact that actually
+      # cross-checks synth's static bounds against hardware was gated by nobody.
+      #
+      # Verified before wiring: it passes today (exit 0), static dominating both
+      # the statistical bound and every raw DWT sample for both gated functions.
+      # If a toolchain bump ever lowers a static bound under its measured max,
+      # THIS is the step that catches it; the synthetic pair cannot.
+      - name: The committed silicon capture must still be dominated
+        run: |
+          cd benches/gust/drivers
+          python3 check-wcet-evt.py ../silicon/RESULTS-wcet-evt-f100.txt
+
   proof-completeness:
     name: "a Rocq proof that is merely STATED cannot pass as proven"
     runs-on: ubuntu-24.04
