@@ -17,6 +17,7 @@ on:
       - "benches/gust/drivers/app-*/**"
       - "benches/gust/drivers/*-provider/**"
       - "benches/gust/drivers/check-providers.sh"
+      - "tools/xtask/**"
       - ".github/workflows/gust-syscall-seam.yml"
   pull_request:
     branches: [main]
@@ -25,6 +26,7 @@ on:
       - "benches/gust/drivers/app-*/**"
       - "benches/gust/drivers/*-provider/**"
       - "benches/gust/drivers/check-providers.sh"
+      - "tools/xtask/**"
       - ".github/workflows/gust-syscall-seam.yml"
 
 permissions:
@@ -47,4 +49,29 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Build every gust:os provider/app crate for wasm32 (WIT drift gate)
+        id: sh_gate
+        continue-on-error: true
         run: bash benches/gust/drivers/check-providers.sh
+
+      # SHADOW PERIOD (gale#368). Both run; verdicts must agree before the shell
+      # one is retired. See gust-targets.yml for the rationale.
+      - name: Negative control — the ported gate's discovery must bite
+        run: cargo xtask check providers --self-test
+
+      - name: gust:os providers still compile against the WIT (xtask)
+        id: rs_gate
+        continue-on-error: true
+        run: cargo xtask check providers
+
+      - name: The two gates must agree
+        run: |
+          set -euo pipefail
+          s='${{ steps.sh_gate.outcome }}'
+          r='${{ steps.rs_gate.outcome }}'
+          echo "shell=$s  xtask=$r"
+          if [ "$s" != "$r" ]; then
+            echo "::error::shell and xtask gates disagree (shell=$s xtask=$r) — do not retire the shell gate"
+            exit 1
+          fi
+          [ "$s" = "success" ] || { echo "::error::both gates report failure"; exit 1; }
+          echo "gates agree: $s"

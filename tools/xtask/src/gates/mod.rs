@@ -6,6 +6,7 @@ pub mod data_overlap;
 pub mod graph_env;
 pub mod object_freshness;
 pub mod proof_completeness;
+pub mod providers;
 pub mod retry_loops;
 pub mod wit_resolve;
 
@@ -43,6 +44,12 @@ pub const GATES: &[Gate] = &[
         about: "a Rocq proof that is merely STATED cannot pass as proven",
         run: proof_completeness::run,
         self_test: proof_completeness::self_test,
+    },
+    Gate {
+        name: providers::NAME,
+        about: "every gust:os provider still compiles against the current WIT",
+        run: providers::run,
+        self_test: providers::self_test,
     },
     Gate {
         name: retry_loops::NAME,
