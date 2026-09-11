@@ -19,3 +19,11 @@ rustflags = ["-Zsanitizer=address"]
 # TSan profile
 [target.'cfg(sanitizer = "thread")']
 rustflags = ["-Zsanitizer=thread"]
+
+# gale#368: the gates live in one compiled language. xtask is a standalone crate
+# (tools/xtask) rather than a workspace member -- the repo root is a plain
+# package and every bench crate pins its own target/rustflags, so a root
+# workspace would force all of them into a members/exclude list. The alias keeps
+# the conventional `cargo xtask ...` spelling without that restructuring.
+[alias]
+xtask = "run --quiet --manifest-path tools/xtask/Cargo.toml --"
