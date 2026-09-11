@@ -5,6 +5,8 @@
 pub mod data_overlap;
 pub mod graph_env;
 pub mod object_freshness;
+pub mod proof_completeness;
+pub mod retry_loops;
 pub mod wit_resolve;
 
 use crate::verdict::Verdict;
@@ -35,6 +37,18 @@ pub const GATES: &[Gate] = &[
         about: "no committed object is older than the sources that produce it",
         run: object_freshness::run,
         self_test: object_freshness::self_test,
+    },
+    Gate {
+        name: proof_completeness::NAME,
+        about: "a Rocq proof that is merely STATED cannot pass as proven",
+        run: proof_completeness::run,
+        self_test: proof_completeness::self_test,
+    },
+    Gate {
+        name: retry_loops::NAME,
+        about: "no CI retry loop can swallow its own failure",
+        run: retry_loops::run,
+        self_test: retry_loops::self_test,
     },
     Gate {
         name: wit_resolve::NAME,
