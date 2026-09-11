@@ -1,0 +1,20 @@
+# Standalone, like tools/gust-target-gen. NOT a member of a root workspace:
+# the repo root is a plain package and the bench crates each pin their own
+# target/rustflags, so introducing a root workspace would force every one of
+# them into a members/exclude list. An empty [workspace] table keeps this crate
+# self-contained, the same idiom crates/gale-kiln uses.
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "gale's verdict-bearing gates, in one compiled language (gale#368)"
+publish = false
+
+[workspace]
+
+[dependencies]
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
