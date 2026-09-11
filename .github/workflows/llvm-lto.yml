@@ -41,6 +41,21 @@ jobs:
   llvm-lto-build:
     name: "LLVM LTO build + size comparison"
     runs-on: ubuntu-22.04
+    # MEASURED BOUND (gale#382). Job durations over 12 runs:
+    #   LLVM LTO build + size    n=12  median 14.0  p90 69.3  max 149.3
+    #   llvm-lto-test            n=72  median 11.3  p90 31.2  max 157.1
+    # 90 min sits above p90 for BOTH, so no non-pathological run is touched,
+    # and it replaces GitHub's 6-hour default for the 119-157 min outliers that
+    # burned 70% of the clang step's total time while succeeding.
+    #
+    # Bounded HERE and not around the install command: a step-level `timeout`
+    # around `llvm.sh` was tried first and proved INERT — measured on this
+    # branch, the install ran 32.9 min under a 25-minute cap without firing,
+    # because apt-get/dpkg trap SIGTERM to protect package state, so GNU timeout
+    # signals and then waits. Escalating with --kill-after would risk a broken
+    # dpkg state the retry then trips over. A job timeout discards the whole
+    # container, so there is no partial-package state to recover.
+    timeout-minutes: 90
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB). These jobs
@@ -111,32 +126,7 @@ jobs:
             # dash rejects `set -o pipefail` outright ("Illegal option"), which fails
             # every attempt on the option itself. Downloading then running needs no
             # pipefail, works under sh and bash, and removes truncation ambiguity.
-            # PER-ATTEMPT TIMEOUT. The retry above handles a FAILED fetch; it
-            # does nothing for a SLOW one, and slow is the failure mode that
-            # actually costs. Measured across 35 runs of this step: median 8.7
-            # min, 31 runs under 21 min -- and 4 runs at 119/121/130/138 min.
-            # Those four burned 508 of the 728 total minutes this step has ever
-            # consumed, 70% of it, while succeeding. Nothing bounded them,
-            # because neither this job nor its steps set timeout-minutes
-            # (gale#382: 31 of 53 jobs are unbounded, so the ceiling is GitHub's
-            # 6-hour default).
-            #
-            # 25 min is ~3x the median and above every non-pathological run
-            # observed, so a normal install is untouched; a throttled one aborts
-            # and retries against a hopefully different mirror instead of
-            # holding a runner for two hours. Worst case is now 75 min, not 6h.
-            #
-            # `timeout` is coreutils and present in these images; if it ever is
-            # not, `command -v` falls back to the unbounded form rather than
-            # failing the install outright.
-            _run() {
-              if command -v timeout >/dev/null 2>&1; then
-                timeout 1500 bash /tmp/llvm.sh "${RUST_LLVM}" all
-              else
-                bash /tmp/llvm.sh "${RUST_LLVM}" all
-              fi
-            }
-            if wget -qO- https://apt.llvm.org/llvm.sh > /tmp/llvm.sh && _run; then
+            if wget -qO- https://apt.llvm.org/llvm.sh > /tmp/llvm.sh && bash /tmp/llvm.sh "${RUST_LLVM}" all; then
               _ok=1; break
             fi
             echo "::warning::apt.llvm.org install attempt ${_a}/3 failed; retrying" >&2
@@ -381,6 +371,21 @@ jobs:
   llvm-lto-test:
     name: "llvm-lto-test"
     runs-on: ubuntu-22.04
+    # MEASURED BOUND (gale#382). Job durations over 12 runs:
+    #   LLVM LTO build + size    n=12  median 14.0  p90 69.3  max 149.3
+    #   llvm-lto-test            n=72  median 11.3  p90 31.2  max 157.1
+    # 90 min sits above p90 for BOTH, so no non-pathological run is touched,
+    # and it replaces GitHub's 6-hour default for the 119-157 min outliers that
+    # burned 70% of the clang step's total time while succeeding.
+    #
+    # Bounded HERE and not around the install command: a step-level `timeout`
+    # around `llvm.sh` was tried first and proved INERT — measured on this
+    # branch, the install ran 32.9 min under a 25-minute cap without firing,
+    # because apt-get/dpkg trap SIGTERM to protect package state, so GNU timeout
+    # signals and then waits. Escalating with --kill-after would risk a broken
+    # dpkg state the retry then trips over. A job timeout discards the whole
+    # container, so there is no partial-package state to recover.
+    timeout-minutes: 90
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB). These jobs
