@@ -41,6 +41,21 @@ jobs:
   llvm-lto-build:
     name: "LLVM LTO build + size comparison"
     runs-on: ubuntu-22.04
+    # MEASURED BOUND (gale#382). Job durations over 12 runs:
+    #   LLVM LTO build + size    n=12  median 14.0  p90 69.3  max 149.3
+    #   llvm-lto-test            n=72  median 11.3  p90 31.2  max 157.1
+    # 90 min sits above p90 for BOTH, so no non-pathological run is touched,
+    # and it replaces GitHub's 6-hour default for the 119-157 min outliers that
+    # burned 70% of the clang step's total time while succeeding.
+    #
+    # Bounded HERE and not around the install command: a step-level `timeout`
+    # around `llvm.sh` was tried first and proved INERT — measured on this
+    # branch, the install ran 32.9 min under a 25-minute cap without firing,
+    # because apt-get/dpkg trap SIGTERM to protect package state, so GNU timeout
+    # signals and then waits. Escalating with --kill-after would risk a broken
+    # dpkg state the retry then trips over. A job timeout discards the whole
+    # container, so there is no partial-package state to recover.
+    timeout-minutes: 90
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB). These jobs
@@ -356,6 +371,21 @@ jobs:
   llvm-lto-test:
     name: "llvm-lto-test"
     runs-on: ubuntu-22.04
+    # MEASURED BOUND (gale#382). Job durations over 12 runs:
+    #   LLVM LTO build + size    n=12  median 14.0  p90 69.3  max 149.3
+    #   llvm-lto-test            n=72  median 11.3  p90 31.2  max 157.1
+    # 90 min sits above p90 for BOTH, so no non-pathological run is touched,
+    # and it replaces GitHub's 6-hour default for the 119-157 min outliers that
+    # burned 70% of the clang step's total time while succeeding.
+    #
+    # Bounded HERE and not around the install command: a step-level `timeout`
+    # around `llvm.sh` was tried first and proved INERT — measured on this
+    # branch, the install ran 32.9 min under a 25-minute cap without firing,
+    # because apt-get/dpkg trap SIGTERM to protect package state, so GNU timeout
+    # signals and then waits. Escalating with --kill-after would risk a broken
+    # dpkg state the retry then trips over. A job timeout discards the whole
+    # container, so there is no partial-package state to recover.
+    timeout-minutes: 90
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB). These jobs
