@@ -7,6 +7,7 @@ pub mod graph_env;
 pub mod object_freshness;
 pub mod proof_completeness;
 pub mod providers;
+pub mod renode_targets;
 pub mod retry_loops;
 pub mod wit_resolve;
 
@@ -50,6 +51,12 @@ pub const GATES: &[Gate] = &[
         about: "every gust:os provider still compiles against the current WIT",
         run: providers::run,
         self_test: providers::self_test,
+    },
+    Gate {
+        name: renode_targets::NAME,
+        about: "every renode_test target defined is actually run by CI",
+        run: renode_targets::run,
+        self_test: renode_targets::self_test,
     },
     Gate {
         name: retry_loops::NAME,
