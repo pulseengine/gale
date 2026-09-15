@@ -92,7 +92,7 @@ RISCV_TRACKER = (
     "synth#1102 — FIXED in synth 0.61.0: rv32 now REFUSES loudly (exit 1) rather than "
     "emitting an unlinkable object with exit 0. The 13 drivers still do not cross, but "
     "the failure is now the documented refusal, not the silent defect this ledger was "
-    "opened for. Verified under layer 2026.09.1: `#1102: 5 retained function(s) relocate "
+    "opened for. Re-verified under layer 2026.09.3 (synth 0.65.0): all 13 still decline, and the root cause is now identified — the RV32 selector folds a constant memory address into the 12-bit signed load/store immediate, so every driver fails at 0x100000+k (wasm-ld's data base). Filed as synth#1254; one fix would clear the whole leg. Earlier verification under layer 2026.09.1 read: `#1102: 5 retained function(s) relocate "
     "against function(s) this compile DECLINED ... refusing to emit it rather than "
     "shipping an unlinkable object with exit 0`."
 )

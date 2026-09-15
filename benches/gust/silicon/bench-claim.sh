@@ -46,10 +46,10 @@ export BENCH_WHO
 _resolve_with_device() {
     if [ -n "${WITH_DEVICE:-}" ]; then echo "$WITH_DEVICE"; return 0; fi
     # VARVE FIRST, when the layer carries it. varve took with-device into the layer
-    # (varve#130) and 2026.09.1 dispatched 0.2.1; the pin has since moved to 2026.09.2,
-    # which DROPPED it — `varve inspect` lists 44 payloads and with-device is not among
-    # them, held or dispatched (varve#138). So this branch is currently inert and the
-    # resolver falls through to PATH.
+    # (varve#130) and 2026.09.1 dispatched 0.2.1. 2026.09.2 briefly DROPPED it — the
+    # realm's move to layer.toml lost the field distinguishing a release tag from a
+    # payload version, so the payload fell out (varve#138). Restored in 2026.09.3 at
+    # 0.2.2, dispatched on all four platforms, so this branch is live again.
     #
     # The branch stays, and stays first, deliberately. The reason it was added still
     # holds: gale used to resolve from PATH and silently use whatever copy happened to
@@ -147,7 +147,9 @@ require_claim() {
         echo "bench-claim: cannot verify a claim on '$dev' — with-device not found." >&2
         return 4
     fi
-    # --require-claim arrived in 0.2.2. Layer 2026.09.1 carried 0.2.1, whose
+    # --require-claim arrived in 0.2.2, which the pinned layer (2026.09.3) now carries,
+    # so the fallback below should no longer trigger against the pin. It stays because a
+    # PATH-resolved copy can still be older, and 0.2.1's
     # usage lists only --purpose and --wait. Passing it there exits 2 "unknown flag",
     # which reads like the claim check FAILED rather than like it could not be made.
     # Distinguish the two, because "I checked and you do not hold it" and "I could not
