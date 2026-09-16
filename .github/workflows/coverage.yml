@@ -288,14 +288,29 @@ jobs:
           export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
           export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
           cd zephyr-workspace
-          # Run kernel tests on qemu_cortex_m3 with coverage enabled
+          # GALE'S CONFIG GOES IN AS -DCONFIG_* ENTRIES, NOT AS OVERLAY_CONFIG. The first
+          # version passed -x=OVERLAY_CONFIG=gale_overlay.conf, and twister silently
+          # replaced it: cmake_assemble_args (twisterlib/runner.py) appends -x entries
+          # FIRST and its own -DOVERLAY_CONFIG=<build>/twister/testsuite_extra.conf LAST,
+          # and the last -D wins. The run built 205 configs with CONFIG_GALE_KERNEL_SEM=y
+          # in NONE of them — a second upstream run, caught by the .config check below.
+          # The entries are read from gale_overlay.conf so the two cannot drift.
+          set --
+          for c in $(grep -E '^CONFIG_[A-Z0-9_]+=' "${GALE_ROOT}/zephyr/gale_overlay.conf"); do
+            set -- "$@" "-x=${c}"
+          done
+          if [ "$#" -eq 0 ]; then
+            echo "::error::no CONFIG_ lines read from gale_overlay.conf — this leg would build upstream"
+            exit 1
+          fi
+          echo "gale config entries passed to twister: $#"
           "${ZEPHYR_BASE}/scripts/twister" \
             --platform qemu_cortex_m3 \
             --tag kernel \
             --enable-coverage \
             --coverage-tool lcov \
             -x=ZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
-            -x=OVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf" \
+            "$@" \
             --outdir "${GITHUB_WORKSPACE}/twister-out-gale" \
             --enable-slow \
             -v || TWISTER_RC=$?
