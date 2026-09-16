@@ -35,11 +35,30 @@ cargo build --release --bin gust_adc_silicon \
   --no-default-features --features target-f100 --target thumbv7m-none-eabi
 ELF="target/thumbv7m-none-eabi/release/gust_adc_silicon"
 
-echo "== copy ELF to $PI_HOST and flash via openocd (ST-LINK/V1 HLA) =="
+echo "== copy ELF to $PI_HOST and flash via openocd (ST-LINK/V1 HLA), under a claim =="
 scp "$ELF" "$PI_HOST:/tmp/gust_adc_silicon.elf"
+# shellcheck source=./bench-claim.sh
+. "$HERE/bench-claim.sh"
+# CLAIMED. This used to `ssh $PI_HOST openocd` bare: an unclaimed attach to a probe on a
+# host shared with wohl, which is exactly what the claim convention exists to prevent.
+#
+# Pinned to the V1 by VID:PID: the host has four ST-LINKs, and stlink-hla.cfg matches all.
 # Benign 'SRST error' is expected — the V1 has no hardware reset line; openocd
 # falls back to sysresetreq, which works.
-ssh "$PI_HOST" 'timeout 45 openocd -f interface/stlink-hla.cfg -f target/stm32f1x.cfg \
-  -c "init" -c "reset halt" -c "arm semihosting enable" \
-  -c "program /tmp/gust_adc_silicon.elf verify" -c "reset run" \
-  -c "sleep 3000" -c "shutdown" 2>&1 | grep -iE "gust-adc|verified"'
+LOG="$(mktemp)"
+rc=0
+claim_remote "$PI_HOST" "${BENCH_DEV:-stlink-v1}" "gale: adc-f100" -- \
+  "timeout 45 openocd -f interface/stlink-hla.cfg -c \"hla_vid_pid 0x0483 0x3744\" -f target/stm32f1x.cfg \
+     -c init -c \"reset halt\" -c \"arm semihosting enable\" \
+     -c \"program /tmp/gust_adc_silicon.elf verify\" -c \"reset run\" \
+     -c \"sleep 3000\" -c shutdown" >"$LOG" 2>&1 || rc=$?
+grep -iE "gust-adc|verified|error" "$LOG" || true
+
+# THE VERDICT IS THE FIRMWARE'S OWN LINE. This used to be the exit status of
+# `grep -iE "gust-adc|verified"` — and openocd prints "** Verified OK **" after any good
+# flash, so a board that flashed and then printed nothing still exited 0.
+if grep -q "^gust-adc-silicon OK:" "$LOG"; then
+  echo "== PASS (openocd exit $rc)"; exit 0
+fi
+echo "== FAIL: no 'gust-adc-silicon OK:' line (openocd/claim exit $rc). Full log: $LOG" >&2
+exit 1

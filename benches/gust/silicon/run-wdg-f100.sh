@@ -11,7 +11,12 @@
 # Env:
 #   OCD_HOST   run openocd over ssh on this host (e.g. wohl.local); local if unset
 set -euo pipefail
-cd "$(dirname "$0")/.."
+# Resolve BEFORE cd. This was `cd "$(dirname "$0")/.."` followed by
+# `. "$(dirname "$0")/bench-claim.sh"`: with a relative $0 the second path no longer
+# exists. Worse, on macOS bash 3.2 a failed `.` under set -e with an EXIT trap exits 0,
+# so the script stopped before flashing and REPORTED SUCCESS. (bash 5 exits 1.)
+HERE="$(cd "$(dirname "$0")" && pwd)"
+cd "$HERE/.."
 
 ELF=target/thumbv7m-none-eabi/release/gust_wdg_silicon
 RCC_CSR=0x40021024        # STM32F1 reset/clock control — status
@@ -28,11 +33,15 @@ touch src/bin/gust_wdg_silicon.rs
 cargo build --release --bin gust_wdg_silicon \
       --no-default-features --features target-f100 --target thumbv7m-none-eabi
 
-OCD=(openocd -f interface/stlink-hla.cfg -c "transport select swd"
+# PIN THE PROBE TO THE V1 (0483:3744). stlink-hla.cfg lists every ST-LINK VID:PID, and
+# wohl.local carries four: unpinned, this took the `stlink-v1` claim and then attached to
+# the NUCLEO-G031K8's V2-1 — stopped only by the target config's IDCODE check.
+OCD=(openocd -f interface/stlink-hla.cfg -c "hla_vid_pid 0x0483 0x3744" -c "transport select swd"
      -f target/stm32f1x.cfg -c "reset_config none separate")
 
+[ -f "$HERE/bench-claim.sh" ] || { echo "run-wdg-f100: $HERE/bench-claim.sh missing" >&2; exit 4; }
 # shellcheck source=./bench-claim.sh
-. "$(dirname "$0")/bench-claim.sh"
+. "$HERE/bench-claim.sh"
 # MUST match the bench host's registry exactly (`stlink-v1`). A name gale invents locks
 # nothing that jess is also holding. with-device refuses unknown names (exit 2).
 BENCH_DEV="${BENCH_DEV:-stlink-v1}"
@@ -59,8 +68,20 @@ echo "==> flashing"
 run_ocd -c init -c "program $FW verify" -c exit
 
 echo "==> arming (flags cleared first, so IWDGRSTF at boot 2 cannot be stale)"
+LOG="$(mktemp)"
+rc=0
 run_ocd -c init -c "arm semihosting enable" -c halt \
         -c "mww $RCC_CSR $RMVF" -c "mww $AIRCR $SYSRESETREQ" -c halt -c resume \
-    2>&1 | grep --line-buffered "gust-wdg-silicon" || true
+    >"$LOG" 2>&1 || rc=$?
+grep "gust-wdg-silicon" "$LOG" || true
 
 echo "==> expected: RCC_CSR 0x14000000 -> 0x34000000, IWDGRSTF=1"
+
+# THE VERDICT IS THE FIRMWARE'S OWN LINE; this script used to print the expectation and
+# exit 0 whatever the board said. openocd's own exit is not it either: it reports that the
+# SESSION ended, not what the firmware printed.
+if grep -q "^gust-wdg-silicon OK:" "$LOG"; then
+    echo "==> PASS (openocd rc=$rc)"; exit 0
+fi
+echo "==> FAIL: no 'gust-wdg-silicon OK:' line (openocd/claim rc=$rc). Full log: $LOG" >&2
+exit 1
