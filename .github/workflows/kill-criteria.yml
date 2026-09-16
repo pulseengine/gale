@@ -110,6 +110,22 @@ jobs:
           [ "$s" = "success" ] || { echo "::error::both gates report failure"; exit 1; }
           echo "gates agree: $s"
 
+  renode-targets:
+    name: "every renode_test target defined is actually run"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      # gust-renode.yml names its bazel targets in an ENUMERATED list, and that
+      # list silently narrowed: gust-iso-renode was defined by the commit that
+      # added it and never appeared in the workflow. Prove this check bites
+      # before trusting its green.
+      - name: Negative control — an ungated target must be caught
+        run: cargo xtask check renode-targets --self-test
+
+      - name: Every defined target is gated, and its ELF exists
+        run: cargo xtask check renode-targets
+
   retry-loops:
     name: "no CI retry loop can swallow its own failure"
     runs-on: ubuntu-24.04

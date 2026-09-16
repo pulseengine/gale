@@ -60,6 +60,7 @@ jobs:
             //:gust-dac-renode \
             //:gust-pwm-renode \
             //:gust-i2c-renode \
+            //:gust-iso-renode \
             //:gust-can-renode \
             //:gust-dma-renode \
             //:gust-breadth-renode \
