@@ -41,7 +41,10 @@ cd "$REPO"
 
 for BOARD in \
   "STM32F100::Board.vldiscovery" \
-  "STM32G474::Board.nucleo"; do
+  "STM32G474::Board.nucleo" \
+  "STM32WL55::Board.nucleo" \
+  "STM32WB55::Board.nucleo" \
+  "STM32G031::Board.nucleo"; do
   cargo run --quiet --manifest-path "$REPO/tools/gust-target-gen/Cargo.toml" -- \
     --items "$FIXTURE" --board "$BOARD" --out "$GEN"
 done

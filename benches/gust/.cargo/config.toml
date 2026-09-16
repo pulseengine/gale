@@ -11,3 +11,7 @@ rustflags = ["-C", "link-arg=-Tlink.x"]
 # qemu runner (flash via silicon/run.sh g474re → probe-rs).
 [target.thumbv7em-none-eabi]
 rustflags = ["-C", "link-arg=-Tlink.x"]
+
+# NUCLEO-G031K8 (Cortex-M0+, ARMv6-M). Same cortex-m-rt linker script requirement.
+[target.thumbv6m-none-eabi]
+rustflags = ["-C", "link-arg=-Tlink.x"]

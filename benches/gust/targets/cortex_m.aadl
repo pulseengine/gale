@@ -4,4 +4,9 @@ public
   end CortexM3;
   processor CortexM4 extends CortexM3   -- thumbv7em ⊃ thumbv7m; M3 objects run here
   end CortexM4;
+  -- ARMv6-M (thumbv6m). Deliberately NOT a supertype of CortexM3 in this model:
+  -- nothing here consumes that relation, and an M3 object does NOT run on an M0+ —
+  -- the direction that matters is the one that fails (synth#1301).
+  processor CortexM0Plus
+  end CortexM0Plus;
 end Cortex_M;

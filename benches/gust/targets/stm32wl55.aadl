@@ -1,0 +1,79 @@
+package STM32WL55
+public
+  with Cortex_M; with Gust_Target_Props;
+
+  -- NUCLEO-WL55JC1 — STM32WL55JC, application core Cortex-M4 r0p1 (CPUID 0x410fc241,
+  -- DBGMCU 0x10036497). The part is dual-core; only the M4 application core is modelled.
+  -- Every value below was MEASURED over the board's own debug probe on the shared
+  -- bench host (wohl.local, 2026-09-16, gale#397) unless it says otherwise.
+  -- ATTACH ONLY UNDER RESET (connect_assert_srst): the resident firmware drops the
+  -- debug link, and it drops again after any reset that boots back into it.
+  -- No FPU: MVFR0 reads 0x00000000. Reads taken while SRST is still asserted return
+  -- ALL ZEROS (MPU_TYPE, MVFR0, flash size) — measure after `reset halt`.
+  memory Flag_Flash end Flag_Flash;
+  memory implementation Flag_Flash.i
+    -- flash-size register 0x1FFF75E0 reads 256 (KB).
+    properties Gust_Target_Props::Base => 16#08000000#; Gust_Target_Props::Length => 262144;
+  end Flag_Flash.i;
+
+  memory Ram end Ram;
+  memory implementation Ram.i
+    -- 64 KB: 0x2000FFFC reads, 0x20010000 faults — bounded on silicon.
+    properties Gust_Target_Props::Base => 16#20000000#; Gust_Target_Props::Length => 65536;
+  end Ram.i;
+
+  -- MPU_TYPE (0xE000ED90) reads 0x00000800: DREGION = 8, the count the verified
+  -- region programmer requires.
+  device Mpu
+    properties
+      Gust_Target_Props::Base    => 16#E000ED90#;
+      Gust_Target_Props::Present => true;
+      Gust_Target_Props::Dregion => 8;
+  end Mpu;
+
+  -- IWDG at 16#40003000#: writing KR=0xCCCC here over the debugger, then letting the
+  -- core run, reset the chip and set RCC_CSR.IWDGRSTF (see Rcc).
+  device Iwdg
+    properties Gust_Target_Props::Base => 16#40003000#; Gust_Target_Props::Present => true;
+  end Iwdg;
+
+  -- RCC_CSR = Base + Csr_Offset. Before: 0x0C01C600 (BOR+PIN reset). Writing RMVF (bit 23) left 0x00000600
+  -- (reset flags cleared); an IWDG reset then read back 0x2401C600 (IWDGRSTF, bit 29).
+  -- The low bits of this register are LSI/MSI configuration, not flags (here 0xC600
+  -- survived the clear as 0x0600). Clear flags with CSR | RMVF, as gust_wdg_silicon
+  -- does, not by writing RMVF alone.
+  device Rcc
+    properties
+      Gust_Target_Props::Base         => 16#58000000#;
+      Gust_Target_Props::Csr_Offset   => 16#94#;
+      Gust_Target_Props::Iwdgrstf_Bit => 29;
+      Gust_Target_Props::Rmvf_Bit     => 23;
+  end Rcc;
+
+  -- DELIBERATELY EMPTY of peripherals beyond Mpu/Iwdg/Rcc, for the same reason as
+  -- stm32g474.aadl: nothing else on this part has been measured, and a guessed base
+  -- silently writes to the wrong peripheral.
+
+  system Board
+    annex EMV2 {**
+      error types
+        TaskHang    : type;
+        SystemReset : type;
+      end types;
+      error behavior WatchdogBehavior
+        events   Hang : error event;
+        states   Nominal : initial state; Reset : state;
+        transitions Nominal -[ Hang ]-> Reset;   -- unrefreshed hang -> IWDG resets to safe state
+      end behavior;
+    **};
+  end Board;
+  system implementation Board.nucleo
+    subcomponents
+      cpu   : processor Cortex_M::CortexM4;
+      flash : memory Flag_Flash.i;
+      sram  : memory Ram.i;
+      mpu   : device Mpu;
+      iwdg  : device Iwdg;
+      rcc   : device Rcc;
+  end Board.nucleo;
+end STM32WL55;

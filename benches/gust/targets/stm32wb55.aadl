@@ -1,0 +1,76 @@
+package STM32WB55
+public
+  with Cortex_M; with Gust_Target_Props;
+
+  -- NUCLEO-WB55RG — STM32WB55RG, application core Cortex-M4F r0p1 (CPUID 0x410fc241,
+  -- DBGMCU 0x20036495). The radio core (M0+) and its firmware are not modelled.
+  -- Every value below was MEASURED over the board's own debug probe on the shared
+  -- bench host (wohl.local, 2026-09-16, gale#397) unless it says otherwise.
+  -- FPU present: MVFR0 reads 0x10110021 (single precision). gust builds soft-float.
+  memory Flag_Flash end Flag_Flash;
+  memory implementation Flag_Flash.i
+    -- flash-size register reads 1024 (KB). The top of flash holds the radio core's
+    -- secure firmware; gust images link at the base and are far smaller.
+    properties Gust_Target_Props::Base => 16#08000000#; Gust_Target_Props::Length => 1048576;
+  end Flag_Flash.i;
+
+  memory Ram end Ram;
+  memory implementation Ram.i
+    -- SRAM1 = 192 KB. 0x2002FFFC reads, but 0x20030000 ALSO reads (SRAM2a follows,
+    -- owned by the radio core), so this length is the DATASHEET's SRAM1, not a fault bound.
+    properties Gust_Target_Props::Base => 16#20000000#; Gust_Target_Props::Length => 196608;
+  end Ram.i;
+
+  -- MPU_TYPE (0xE000ED90) reads 0x00000800: DREGION = 8, the count the verified
+  -- region programmer requires.
+  device Mpu
+    properties
+      Gust_Target_Props::Base    => 16#E000ED90#;
+      Gust_Target_Props::Present => true;
+      Gust_Target_Props::Dregion => 8;
+  end Mpu;
+
+  -- IWDG at 16#40003000#: writing KR=0xCCCC here over the debugger, then letting the
+  -- core run, reset the chip and set RCC_CSR.IWDGRSTF (see Rcc).
+  device Iwdg
+    properties Gust_Target_Props::Base => 16#40003000#; Gust_Target_Props::Present => true;
+  end Iwdg;
+
+  -- RCC_CSR = Base + Csr_Offset. Before: 0x1C000000. RMVF (bit 23) cleared it to 0x00000000; an IWDG
+  -- reset then read 0x24004000 (IWDGRSTF, bit 29).
+
+  device Rcc
+    properties
+      Gust_Target_Props::Base         => 16#58000000#;
+      Gust_Target_Props::Csr_Offset   => 16#94#;
+      Gust_Target_Props::Iwdgrstf_Bit => 29;
+      Gust_Target_Props::Rmvf_Bit     => 23;
+  end Rcc;
+
+  -- DELIBERATELY EMPTY of peripherals beyond Mpu/Iwdg/Rcc, for the same reason as
+  -- stm32g474.aadl: nothing else on this part has been measured, and a guessed base
+  -- silently writes to the wrong peripheral.
+
+  system Board
+    annex EMV2 {**
+      error types
+        TaskHang    : type;
+        SystemReset : type;
+      end types;
+      error behavior WatchdogBehavior
+        events   Hang : error event;
+        states   Nominal : initial state; Reset : state;
+        transitions Nominal -[ Hang ]-> Reset;   -- unrefreshed hang -> IWDG resets to safe state
+      end behavior;
+    **};
+  end Board;
+  system implementation Board.nucleo
+    subcomponents
+      cpu   : processor Cortex_M::CortexM4;
+      flash : memory Flag_Flash.i;
+      sram  : memory Ram.i;
+      mpu   : device Mpu;
+      iwdg  : device Iwdg;
+      rcc   : device Rcc;
+  end Board.nucleo;
+end STM32WB55;

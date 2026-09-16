@@ -43,10 +43,22 @@ no-regions = []
 default = ["target-g474re"]
 target-g474re = []
 target-f100 = []
+# The shared bench on wohl.local (gale#397). Each model is measured on its board:
+# targets/stm32wl55.aadl, stm32wb55.aadl, stm32g031.aadl.
+#   wl55jc / wb55rg : Cortex-M4, --target thumbv7em-none-eabi
+#   g031k8          : Cortex-M0+, --target thumbv6m-none-eabi — native Rust only; no
+#                     dissolved driver runs there until synth has ARMv6-M (synth#1301)
+target-wl55jc = []
+target-wb55rg = []
+target-g031k8 = []
 
 # gust_adc_silicon reads Vrefint (an F1 internal channel, ch17) — F100-only, so it
 # is built ONLY under target-f100 (otherwise the default target-g474re build would
 # hit its compile_error). All other bins auto-discover from src/bin/ as usual.
+# gust_wdg_silicon links wdg-thin-cm3.o, an ARMv7-M object: an M0+ cannot execute
+# it (synth#1301), so the bin does not exist for target-g031k8. Enforced in the bin
+# by compile_error!, not by required-features, which cannot express "not g031k8".
+
 [[bin]]
 name = "gust_adc_silicon"
 required-features = ["target-f100"]
