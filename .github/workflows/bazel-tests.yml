@@ -106,7 +106,35 @@ jobs:
       - name: Measure per-feature sizes
         run: |
           TARGET="thumbv7m-none-eabi"
-          FEATURES="sem mutex msgq pipe stack timer mem_slab event fifo lifo queue mbox timeout poll futex timeslice kheap thread_lifecycle work fatal mempool dynamic smp_state sched mem_domain userspace heap ring_buf bitarray rbtree"
+          # DERIVED, not enumerated. This was a hardcoded list of 30 beside a Cargo.toml
+          # that defines 43, so 13 features were never built in isolation by this
+          # REQUIRED check: atomic cbprintf condvar cpu_mask ipc ipi mmu net_buf pm
+          # spinlock spinlock_validate usage zms. A #[cfg(feature = "condvar")] block
+          # that only compiles because another feature happens to be on would pass.
+          # Verified before widening: all 13 build clean in isolation, so this closes
+          # the hole without changing what the code has to do.
+          #
+          # The parse is GUARDED. A regex that silently matched nothing would
+          # reintroduce the same narrowing in a new place, so a short list is a hard
+          # failure rather than a quiet pass.
+          FEATURES=$(python3 - <<'PYEOF'
+          import re, sys
+          c = open("ffi/Cargo.toml").read()
+          m = re.search(r"^all\s*=\s*\[(.*?)\]", c, re.S | re.M)
+          if not m:
+              sys.exit("could not find all = [...] in ffi/Cargo.toml")
+          print(" ".join(sorted(set(re.findall(r'"([a-z0-9_]+)"', m.group(1))))))
+          PYEOF
+          )
+          # `printf %s\\n $FEATURES | grep -c .` counts by WORD-SPLITTING, which bash
+          # does and zsh does not — the count read 1 when this was drafted in zsh.
+          # `wc -w` counts words without depending on the shell splitting for us.
+          COUNT=$(printf "%s" "$FEATURES" | wc -w | tr -d " ")
+          echo "features derived from ffi/Cargo.toml: $COUNT"
+          if [ "$COUNT" -lt 40 ]; then
+            echo "::error::only $COUNT features parsed; expected >=40 — the parse broke, refusing to run a narrowed check"
+            exit 1
+          fi
           OUTPUT=""
           BENCH_OUTPUT=""
 
