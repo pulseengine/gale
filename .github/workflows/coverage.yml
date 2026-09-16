@@ -130,7 +130,14 @@ jobs:
             --coverage-tool lcov \
             --outdir "${GITHUB_WORKSPACE}/twister-out" \
             --enable-slow \
-            -v
+            -v || TWISTER_RC=$?
+          # Twister exits 1 on ANY failed suite, ledgered or not, so letting set -e act
+          # on it killed this step before the ledger below was ever consulted (#394's
+          # first ledgered run: red on kernel.timer.starve, the one ledgered failure).
+          # The exit is carried into the assertion, not discarded: non-zero with no
+          # failed suite in twister.json means twister itself broke, and that fails.
+          export TWISTER_RC="${TWISTER_RC:-0}"
+          echo "twister exit: ${TWISTER_RC}"
 
           # THE GATE. `|| true` used to be here, and this REQUIRED context has been
           # green since 2026-03-22 while running ZERO kernel tests:
@@ -167,8 +174,10 @@ jobs:
           # clock across a tight loop is the SUSPECTED mechanism, not a proven one.
           KNOWN_FAILING = {"kernel.timer.starve"}
           failed_names = {t.get("name") for t in tt if t.get("status") in ("failed", "error")}
-          fixed = sorted(n for n in KNOWN_FAILING if n not in failed_names and
-                         any(t.get("name") == n for t in tt))
+          # "now passes" means status == passed. It used to be "present and not failed",
+          # so a ledgered suite that was merely FILTERED or skipped read as fixed.
+          fixed = sorted(n for n in KNOWN_FAILING
+                         if any(t.get("name") == n and t.get("status") == "passed" for t in tt))
           if fixed:
               sys.exit(f"::error::ledgered failure(s) now PASS — prune KNOWN_FAILING: {fixed}")
           bad = [t for t in tt if t.get("status") in ("failed", "error")
@@ -179,6 +188,9 @@ jobs:
           print(f"twister: {len(tt)} suite(s), {len(ran)} executed, {len(bad)} failed/errored")
           if not ran:
               sys.exit("::error::twister executed 0 suites — a green here would mean nothing")
+          rc = int(os.environ.get("TWISTER_RC", "0"))
+          if rc != 0 and not failed_names:
+              sys.exit(f"::error::twister exited {rc} with no failed suite recorded — twister broke, not a test")
           if bad:
               for t in bad[:10]:
                   print(f"  FAILED {t.get('name')}: {t.get('status')}")
