@@ -298,59 +298,38 @@ jobs:
             -x=OVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf" \
             --outdir "${GITHUB_WORKSPACE}/twister-out-gale" \
             --enable-slow \
-            -v
+            -v || TWISTER_RC=$?
+          export TWISTER_RC="${TWISTER_RC:-0}"
+          echo "twister exit: ${TWISTER_RC}"
 
-          # THE GATE. `|| true` used to be here, and this REQUIRED context has been
-          # green since 2026-03-22 while running ZERO kernel tests:
-          # `--coverage-tool gcovr --coverage-formats lcov` is rejected by twister
-          # ("Unsupported coverage report formats:'lcov' for gcovr"), so it exited in
-          # under a second, `|| true` ate the status, Codecov's upload failed under
-          # fail_ci_if_error:false, and the artifact step warned "No files were found"
-          # and succeeded. Four independent swallows in a row, each defensible alone.
-          #
-          # The step is named "Upload LCOV to Codecov" while the tool was gcovr; the
-          # tool now matches the intent. The result is ASSERTED rather than inferred
-          # from an exit code, because the exit code is exactly what was thrown away.
+          # THIS LEG MEASURES; IT DOES NOT JUDGE. Failures here are the data the
+          # coverage-delta job compares against the upstream leg, so no per-suite
+          # ledger lives here. What this step DOES refuse is a measurement that is not
+          # one: no twister.json, zero executed, a twister that broke, or a build that
+          # never compiled gale in. The last is checked in each built .config, not by
+          # grepping the log — the log carries this file's own comments, and a string
+          # match there once "confirmed" an injection that had not been applied.
           if [ ! -s "${GITHUB_WORKSPACE}/twister-out-gale/twister.json" ]; then
             echo "::error::twister produced no twister.json — it did not run"
             exit 1
           fi
           python3 - <<'PYEOF'
-          import json, os, sys
-          p = os.path.join(os.environ["GITHUB_WORKSPACE"], "twister-out-gale", "twister.json")
-          d = json.load(open(p))
-          tt = d.get("testsuites", [])
-          # KNOWN-FAILING LEDGER, by suite name. Deliberately narrow: exactly these
-          # suites may fail, and the gate FAILS if one of them starts passing, so the
-          # ledger cannot silently outlive its reason.
-          #
-          # kernel.timer.starve — first seen when this gate actually ran tests
-          # (#394). Assertion: tests/kernel/timer/starve/src/main.c:68
-          # "(now_diff > 0 is false) / Time went backwards by 0: was 0.000" — two
-          # consecutive uptime reads returned the same value. NOT a gale defect:
-          # this twister run compiles no gale code at all (0 mentions of
-          # ZEPHYR_EXTRA_MODULES, gale_overlay, GALE_KERNEL, gale_timeout or
-          # libgale_ffi in the build log), so it is upstream Zephyr's own timer on
-          # the fork's v4.4.0 base. QEMU without icount returning an unchanged
-          # clock across a tight loop is the SUSPECTED mechanism, not a proven one.
-          KNOWN_FAILING = {"kernel.timer.starve"}
-          failed_names = {t.get("name") for t in tt if t.get("status") in ("failed", "error")}
-          fixed = sorted(n for n in KNOWN_FAILING if n not in failed_names and
-                         any(t.get("name") == n for t in tt))
-          if fixed:
-              sys.exit(f"::error::ledgered failure(s) now PASS — prune KNOWN_FAILING: {fixed}")
-          bad = [t for t in tt if t.get("status") in ("failed", "error")
-                 and t.get("name") not in KNOWN_FAILING]
-          # "not run" = built but not executed; counting it as executed made the
-          # summary read "150 executed" when twister itself reported 147.
+          import glob, json, os, sys
+          out = os.path.join(os.environ["GITHUB_WORKSPACE"], "twister-out-gale")
+          tt = json.load(open(os.path.join(out, "twister.json"))).get("testsuites", [])
           ran = [t for t in tt if t.get("status") not in (None, "filtered", "skipped", "not run")]
-          print(f"twister: {len(tt)} suite(s), {len(ran)} executed, {len(bad)} failed/errored")
+          failed = [t for t in tt if t.get("status") in ("failed", "error")]
+          print(f"twister (gale): {len(tt)} suite(s), {len(ran)} executed, {len(failed)} failed/errored")
           if not ran:
-              sys.exit("::error::twister executed 0 suites — a green here would mean nothing")
-          if bad:
-              for t in bad[:10]:
-                  print(f"  FAILED {t.get('name')}: {t.get('status')}")
-              sys.exit(f"::error::{len(bad)} twister suite(s) failed")
+              sys.exit("::error::gale leg executed 0 suites — nothing to compare")
+          rc = int(os.environ.get("TWISTER_RC", "0"))
+          if rc != 0 and not failed:
+              sys.exit(f"::error::twister exited {rc} with no failed suite recorded — twister broke, not a test")
+          configs = glob.glob(os.path.join(out, "**", "zephyr", ".config"), recursive=True)
+          with_gale = [c for c in configs if "CONFIG_GALE_KERNEL_SEM=y" in open(c, errors="replace").read()]
+          print(f"built configs: {len(configs)}, with CONFIG_GALE_KERNEL_SEM=y: {len(with_gale)}")
+          if not with_gale:
+              sys.exit("::error::no build in the gale leg has CONFIG_GALE_KERNEL_SEM=y — gale was not compiled in; this would be a second upstream run")
           PYEOF
 
       - name: Upload LCOV to Codecov
