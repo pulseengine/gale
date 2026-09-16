@@ -5,6 +5,7 @@
 //! exits 2 with usage on stderr, and structured output is `--format json`.
 
 mod gates;
+mod silicon;
 mod verdict;
 
 use std::path::PathBuf;
@@ -18,7 +19,8 @@ fn usage() -> String {
         "xtask — gale's verdict-bearing gates\n\n\
          USAGE:\n  \
            cargo xtask check <gate> [--self-test] [--module PATH] [--format json]\n  \
-           cargo xtask check            list the gates\n\n\
+           cargo xtask check            list the gates\n  \
+           cargo xtask silicon ...      gust firmware on physical boards (see `xtask silicon`)\n\n\
          EXIT CODES:\n  \
            0  the property holds\n  \
            1  the property does NOT hold\n  \
@@ -57,6 +59,13 @@ fn main() {
         exit(EXIT_PASS);
     }
 
+    if args[0] == "silicon" {
+        let Some(root) = repo_root() else {
+            eprintln!("xtask: not a git repository");
+            exit(EXIT_USAGE);
+        };
+        exit(silicon::main(&root, &args[1..]));
+    }
     if args[0] != "check" {
         eprintln!("xtask: unknown command '{}'\n\n{}", args[0], usage());
         exit(EXIT_USAGE);
