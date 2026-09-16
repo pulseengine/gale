@@ -127,12 +127,75 @@ jobs:
             --platform qemu_cortex_m3 \
             --tag kernel \
             --enable-coverage \
-            --coverage-tool gcovr \
-            --coverage-formats lcov \
+            --coverage-tool lcov \
             --outdir "${GITHUB_WORKSPACE}/twister-out" \
             --enable-slow \
-            -v \
-            || true
+            -v || TWISTER_RC=$?
+          # Twister exits 1 on ANY failed suite, ledgered or not, so letting set -e act
+          # on it killed this step before the ledger below was ever consulted (#394's
+          # first ledgered run: red on kernel.timer.starve, the one ledgered failure).
+          # The exit is carried into the assertion, not discarded: non-zero with no
+          # failed suite in twister.json means twister itself broke, and that fails.
+          export TWISTER_RC="${TWISTER_RC:-0}"
+          echo "twister exit: ${TWISTER_RC}"
+
+          # THE GATE. `|| true` used to be here, and this REQUIRED context has been
+          # green since 2026-03-22 while running ZERO kernel tests:
+          # `--coverage-tool gcovr --coverage-formats lcov` is rejected by twister
+          # ("Unsupported coverage report formats:'lcov' for gcovr"), so it exited in
+          # under a second, `|| true` ate the status, Codecov's upload failed under
+          # fail_ci_if_error:false, and the artifact step warned "No files were found"
+          # and succeeded. Four independent swallows in a row, each defensible alone.
+          #
+          # The step is named "Upload LCOV to Codecov" while the tool was gcovr; the
+          # tool now matches the intent. The result is ASSERTED rather than inferred
+          # from an exit code, because the exit code is exactly what was thrown away.
+          if [ ! -s "${GITHUB_WORKSPACE}/twister-out/twister.json" ]; then
+            echo "::error::twister produced no twister.json — it did not run"
+            exit 1
+          fi
+          python3 - <<'PYEOF'
+          import json, os, sys
+          p = os.path.join(os.environ["GITHUB_WORKSPACE"], "twister-out", "twister.json")
+          d = json.load(open(p))
+          tt = d.get("testsuites", [])
+          # KNOWN-FAILING LEDGER, by suite name. Deliberately narrow: exactly these
+          # suites may fail, and the gate FAILS if one of them starts passing, so the
+          # ledger cannot silently outlive its reason.
+          #
+          # kernel.timer.starve — first seen when this gate actually ran tests
+          # (#394). Assertion: tests/kernel/timer/starve/src/main.c:68
+          # "(now_diff > 0 is false) / Time went backwards by 0: was 0.000" — two
+          # consecutive uptime reads returned the same value. NOT a gale defect:
+          # this twister run compiles no gale code at all (0 mentions of
+          # ZEPHYR_EXTRA_MODULES, gale_overlay, GALE_KERNEL, gale_timeout or
+          # libgale_ffi in the build log), so it is upstream Zephyr's own timer on
+          # the fork's v4.4.0 base. QEMU without icount returning an unchanged
+          # clock across a tight loop is the SUSPECTED mechanism, not a proven one.
+          KNOWN_FAILING = {"kernel.timer.starve"}
+          failed_names = {t.get("name") for t in tt if t.get("status") in ("failed", "error")}
+          # "now passes" means status == passed. It used to be "present and not failed",
+          # so a ledgered suite that was merely FILTERED or skipped read as fixed.
+          fixed = sorted(n for n in KNOWN_FAILING
+                         if any(t.get("name") == n and t.get("status") == "passed" for t in tt))
+          if fixed:
+              sys.exit(f"::error::ledgered failure(s) now PASS — prune KNOWN_FAILING: {fixed}")
+          bad = [t for t in tt if t.get("status") in ("failed", "error")
+                 and t.get("name") not in KNOWN_FAILING]
+          # "not run" = built but not executed; counting it as executed made the
+          # summary read "150 executed" when twister itself reported 147.
+          ran = [t for t in tt if t.get("status") not in (None, "filtered", "skipped", "not run")]
+          print(f"twister: {len(tt)} suite(s), {len(ran)} executed, {len(bad)} failed/errored")
+          if not ran:
+              sys.exit("::error::twister executed 0 suites — a green here would mean nothing")
+          rc = int(os.environ.get("TWISTER_RC", "0"))
+          if rc != 0 and not failed_names:
+              sys.exit(f"::error::twister exited {rc} with no failed suite recorded — twister broke, not a test")
+          if bad:
+              for t in bad[:10]:
+                  print(f"  FAILED {t.get('name')}: {t.get('status')}")
+              sys.exit(f"::error::{len(bad)} twister suite(s) failed")
+          PYEOF
 
       - name: Upload LCOV to Codecov
         if: env.CODECOV_TOKEN != ''
