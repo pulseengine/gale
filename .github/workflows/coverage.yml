@@ -127,12 +127,41 @@ jobs:
             --platform qemu_cortex_m3 \
             --tag kernel \
             --enable-coverage \
-            --coverage-tool gcovr \
-            --coverage-formats lcov \
+            --coverage-tool lcov \
             --outdir "${GITHUB_WORKSPACE}/twister-out" \
             --enable-slow \
-            -v \
-            || true
+            -v
+
+          # THE GATE. `|| true` used to be here, and this REQUIRED context has been
+          # green since 2026-03-22 while running ZERO kernel tests:
+          # `--coverage-tool gcovr --coverage-formats lcov` is rejected by twister
+          # ("Unsupported coverage report formats:'lcov' for gcovr"), so it exited in
+          # under a second, `|| true` ate the status, Codecov's upload failed under
+          # fail_ci_if_error:false, and the artifact step warned "No files were found"
+          # and succeeded. Four independent swallows in a row, each defensible alone.
+          #
+          # The step is named "Upload LCOV to Codecov" while the tool was gcovr; the
+          # tool now matches the intent. The result is ASSERTED rather than inferred
+          # from an exit code, because the exit code is exactly what was thrown away.
+          if [ ! -s "${GITHUB_WORKSPACE}/twister-out/twister.json" ]; then
+            echo "::error::twister produced no twister.json — it did not run"
+            exit 1
+          fi
+          python3 - <<'PYEOF'
+          import json, os, sys
+          p = os.path.join(os.environ["GITHUB_WORKSPACE"], "twister-out", "twister.json")
+          d = json.load(open(p))
+          tt = d.get("testsuites", [])
+          bad = [t for t in tt if t.get("status") in ("failed", "error")]
+          ran = [t for t in tt if t.get("status") not in (None, "filtered", "skipped")]
+          print(f"twister: {len(tt)} suite(s), {len(ran)} executed, {len(bad)} failed/errored")
+          if not ran:
+              sys.exit("::error::twister executed 0 suites — a green here would mean nothing")
+          if bad:
+              for t in bad[:10]:
+                  print(f"  FAILED {t.get('name')}: {t.get('status')}")
+              sys.exit(f"::error::{len(bad)} twister suite(s) failed")
+          PYEOF
 
       - name: Upload LCOV to Codecov
         if: env.CODECOV_TOKEN != ''
