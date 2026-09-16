@@ -152,8 +152,30 @@ jobs:
           p = os.path.join(os.environ["GITHUB_WORKSPACE"], "twister-out", "twister.json")
           d = json.load(open(p))
           tt = d.get("testsuites", [])
-          bad = [t for t in tt if t.get("status") in ("failed", "error")]
-          ran = [t for t in tt if t.get("status") not in (None, "filtered", "skipped")]
+          # KNOWN-FAILING LEDGER, by suite name. Deliberately narrow: exactly these
+          # suites may fail, and the gate FAILS if one of them starts passing, so the
+          # ledger cannot silently outlive its reason.
+          #
+          # kernel.timer.starve — first seen when this gate actually ran tests
+          # (#394). Assertion: tests/kernel/timer/starve/src/main.c:68
+          # "(now_diff > 0 is false) / Time went backwards by 0: was 0.000" — two
+          # consecutive uptime reads returned the same value. NOT a gale defect:
+          # this twister run compiles no gale code at all (0 mentions of
+          # ZEPHYR_EXTRA_MODULES, gale_overlay, GALE_KERNEL, gale_timeout or
+          # libgale_ffi in the build log), so it is upstream Zephyr's own timer on
+          # the fork's v4.4.0 base. QEMU without icount returning an unchanged
+          # clock across a tight loop is the SUSPECTED mechanism, not a proven one.
+          KNOWN_FAILING = {"kernel.timer.starve"}
+          failed_names = {t.get("name") for t in tt if t.get("status") in ("failed", "error")}
+          fixed = sorted(n for n in KNOWN_FAILING if n not in failed_names and
+                         any(t.get("name") == n for t in tt))
+          if fixed:
+              sys.exit(f"::error::ledgered failure(s) now PASS — prune KNOWN_FAILING: {fixed}")
+          bad = [t for t in tt if t.get("status") in ("failed", "error")
+                 and t.get("name") not in KNOWN_FAILING]
+          # "not run" = built but not executed; counting it as executed made the
+          # summary read "150 executed" when twister itself reported 147.
+          ran = [t for t in tt if t.get("status") not in (None, "filtered", "skipped", "not run")]
           print(f"twister: {len(tt)} suite(s), {len(ran)} executed, {len(bad)} failed/errored")
           if not ran:
               sys.exit("::error::twister executed 0 suites — a green here would mean nothing")
