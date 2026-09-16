@@ -63,9 +63,48 @@ pub extern "C" fn mpu_write(rnr: u32, rbar: u32, rasr: u32) {
     }
 }
 
+// The wohl.local boards (gale#397) take their memory map from the GENERATED target
+// constants — measured on each board — instead of a hand-written per-board cfg arm.
+#[cfg(feature = "target-wl55jc")]
+#[path = "../../targets/generated/gust_target_stm32wl55.rs"]
+#[allow(dead_code)]
+mod target;
+#[cfg(feature = "target-wb55rg")]
+#[path = "../../targets/generated/gust_target_stm32wb55.rs"]
+#[allow(dead_code)]
+mod target;
+#[cfg(feature = "target-g031k8")]
+#[path = "../../targets/generated/gust_target_stm32g031.rs"]
+#[allow(dead_code)]
+mod target;
+const BOARD_MAP: bool = cfg!(any(feature = "target-wl55jc", feature = "target-wb55rg", feature = "target-g031k8"));
+
+/// ARMv6-M has no MemManage, BusFault, UsageFault or SHCSR enable bits: every fault
+/// is a HardFault. The NUCLEO-G031K8 is the only such board here.
+const ARMV6M: bool = cfg!(feature = "target-g031k8");
+
 /// Physically-backed SRAM the verified table grants to NOBODY (same hole the
 /// fault probe uses, so the two agree on what "denied" means).
+#[cfg(not(any(feature = "target-wl55jc", feature = "target-wb55rg", feature = "target-g031k8")))]
 const DENIED_ADDR: u32 = 0x2000_8000;
+/// On a board map: the first byte past the low data window (see the map in main).
+#[cfg(any(feature = "target-wl55jc", feature = "target-wb55rg", feature = "target-g031k8"))]
+const DENIED_ADDR: u32 = target::SRAM_BASE + low_window(target::SRAM_LEN);
+
+/// Low data window: half of SRAM, at most 32K. Stack window: a quarter, at most 16K,
+/// ending at the top of SRAM (cortex-m-rt's initial SP). Both are powers of two and
+/// aligned to their own size, as the MPU requires, for every SRAM length that is a
+/// multiple of the stack window (8K, 64K, 96K, 192K all are).
+#[allow(dead_code)]
+const fn low_window(sram_len: u32) -> u32 { if sram_len / 2 < 0x8000 { sram_len / 2 } else { 0x8000 } }
+#[allow(dead_code)]
+const fn stack_window(sram_len: u32) -> u32 { if sram_len / 4 < 0x4000 { sram_len / 4 } else { 0x4000 } }
+
+/// Set for exactly the instructions of the escape. On ARMv6-M every fault is a
+/// HardFault, so "a fault happened" cannot tell the unprivileged-PPB fault this probe
+/// is looking for apart from, say, a stack overflow in semihosting formatting. A
+/// fault outside this window is reported as what it is, never as the mechanism.
+static mut IN_ESCAPE: u32 = 0;
 
 /// Under `drop-priv` a fault here is the DESIRED outcome: the tenant was
 /// unprivileged and could not reach the PPB. Without it, a fault means somebody
@@ -78,6 +117,15 @@ const DENIED_ADDR: u32 = 0x2000_8000;
 /// exactly like "no fault happened", which is the wrong conclusion.
 macro_rules! blocked {
     ($which:expr) => {{
+        if unsafe { read_volatile(core::ptr::addr_of!(IN_ESCAPE)) } != 1 {
+            hprintln!(
+                "gust-iso-unpriv-probe FAIL(unexpected-fault): {} OUTSIDE the escape \
+                 window. This says nothing about the MPU; the probe itself broke.",
+                $which
+            );
+            debug::exit(debug::EXIT_FAILURE);
+            loop {}
+        }
         #[cfg(feature = "drop-priv")]
         {
             hprintln!(
@@ -102,11 +150,13 @@ macro_rules! blocked {
     }};
 }
 
+#[cfg(not(feature = "target-g031k8"))]
 #[exception]
 unsafe fn MemoryManagement() -> ! {
     blocked!("MemManage")
 }
 
+#[cfg(not(feature = "target-g031k8"))]
 #[exception]
 unsafe fn BusFault() -> ! {
     blocked!("BusFault")
@@ -138,7 +188,9 @@ fn main() -> ! {
     // HardFault, and the debugger catches that before any handler of ours reports
     // anything. Same protection, different exception; the probe must be able to
     // observe either or it will mistake a caught HardFault for a crash.
-    unsafe { write_volatile(SHCSR, read_volatile(SHCSR) | (1 << 16) | (1 << 17) | (1 << 18)) };
+    if !ARMV6M {
+        unsafe { write_volatile(SHCSR, read_volatile(SHCSR) | (1 << 16) | (1 << 17) | (1 << 18)) };
+    }
 
     // Program the same deny-by-default map through the VERIFIED path — no
     // hand-programming, so the escape is measured against the real table.
@@ -154,7 +206,7 @@ fn main() -> ! {
     // "Derived fault on exception entry" means the handler could not even be
     // entered. A deny-by-default MPU is unforgiving about a map that does not
     // describe the part, which is the whole point of it.
-    #[cfg(not(feature = "silicon-g474"))]
+    #[cfg(not(any(feature = "silicon-g474", feature = "target-wl55jc", feature = "target-wb55rg", feature = "target-g031k8")))]
     {
         // qemu lm3s6965evb: FLASH 0x0000_0000 256K, RAM 0x2000_0000 64K.
         t.base[0] = 0x0000_0000; t.size[0] = 0x0004_0000; t.enabled[0] = true; t.writable[0] = false;
@@ -170,6 +222,24 @@ fn main() -> ! {
         t.base[1] = 0x2000_0000; t.size[1] = 0x0000_8000; t.enabled[1] = true; t.writable[1] = true;
         t.base[2] = 0x2001_4000; t.size[2] = 0x0000_4000; t.enabled[2] = true; t.writable[2] = true;
     }
+    #[cfg(any(feature = "target-wl55jc", feature = "target-wb55rg", feature = "target-g031k8"))]
+    {
+        // Generated from the board's measured model. Flash is granted whole (its
+        // length is a power of two on every board here); SRAM is granted as a low
+        // data window and a top stack window, leaving DENIED_ADDR between them
+        // physically backed and granted to nobody.
+        use target::{FLASH_BASE, FLASH_LEN, SRAM_BASE, SRAM_LEN};
+        let (lo, st) = (low_window(SRAM_LEN), stack_window(SRAM_LEN));
+        t.base[0] = FLASH_BASE; t.size[0] = FLASH_LEN; t.enabled[0] = true; t.writable[0] = false;
+        t.base[1] = SRAM_BASE; t.size[1] = lo; t.enabled[1] = true; t.writable[1] = true;
+        t.base[2] = SRAM_BASE + SRAM_LEN - st; t.size[2] = st; t.enabled[2] = true; t.writable[2] = true;
+        if DENIED_ADDR + 4 > t.base[2] {
+            hprintln!("gust-iso-unpriv-probe FAIL: no denied gap between the data and stack windows");
+            debug::exit(debug::EXIT_FAILURE);
+            loop {}
+        }
+    }
+    let _ = BOARD_MAP;
     t.switch_to_partition(0);
 
     let armed = unsafe { read_volatile(MPU_CTRL) };
@@ -191,8 +261,23 @@ fn main() -> ! {
         core::arch::asm!("mrs {}, CONTROL", out(reg) ctrl);
         core::arch::asm!("msr CONTROL, {}", in(reg) ctrl | 1);
         cortex_m::asm::isb();
+        // CONTROL.nPRIV is OPTIONAL on ARMv6-M (the unprivileged/privileged
+        // extension). If it did not stick, the "escape succeeded" below would be
+        // reported as the mechanism failing, when the core simply has no mechanism.
+        let now: u32;
+        core::arch::asm!("mrs {}, CONTROL", out(reg) now);
+        if now & 1 == 0 {
+            hprintln!(
+                "gust-iso-unpriv-probe FAIL(no-npriv): CONTROL.nPRIV reads 0 after setting it \
+                 — this core has no unprivileged mode, so REQ-OS-UNPRIV-001's mechanism is \
+                 unavailable here by hardware."
+            );
+            debug::exit(debug::EXIT_FAILURE);
+            loop {}
+        }
     }
     unsafe {
+        write_volatile(core::ptr::addr_of_mut!(IN_ESCAPE), 1);
         write_volatile(MPU_CTRL, 0);
         cortex_m::asm::dsb();
         cortex_m::asm::isb();
@@ -202,6 +287,7 @@ fn main() -> ! {
     // With enforcement off, the address the verified table denied is reachable.
     unsafe { write_volatile(DENIED_ADDR as *mut u32, 0xC0FF_EE00) };
     let readback = unsafe { read_volatile(DENIED_ADDR as *const u32) };
+    unsafe { write_volatile(core::ptr::addr_of_mut!(IN_ESCAPE), 0) };
 
     let escaped = (after & MPU_CTRL_ENABLE == 0) && readback == 0xC0FF_EE00;
     #[cfg(feature = "drop-priv")]
