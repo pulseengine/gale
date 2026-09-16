@@ -79,7 +79,8 @@ must be checked before anything is concluded — the probe refuses to start if i
 
 ## F100 leg: the part has no MPU, measured
 
-Reached through the Raspberry Pi (`ssh pi@192.168.178.88`, ST-LINK/V1 `0483:3744`,
+Reached through the bench host (then `ssh pi@192.168.178.88`; the host has since
+moved to `wohl.local` — ST-LINK/V1 `0483:3744`,
 the VLDISCOVERY's onboard probe), using the same openocd route as
 `run-wdg-f100.sh`. No firmware needed — two register reads answer it:
 

@@ -36,7 +36,21 @@
 #
 # If with-device cannot be found this REFUSES rather than running unclaimed, because a
 # claim you silently skipped is worse than no convention at all. Deliberate override:
-#   BENCH_UNCLAIMED=1   (prints a loud banner; use when you know you are alone)
+#   BENCH_UNCLAIMED=1   (prints a loud banner)
+#
+# THE BENCH IS SHARED. It moved to wohl.local and is shared with wohl. The host
+# carries FOUR boards on a 4-port hub; three enumerate:
+#   1-1.1  ST-LINK/V3    0483:374e  000D000B4142500E20353451
+#   1-1.2  ST-LINK/V1    0483:3744  HÿrPTeVA7  (V1 serials are malformed by design)
+#   1-1.3  -- empty --              the fourth board; suspected bad cable
+#   1-1.4  ST-LINK/V2.1  0483:374b  066BFF565654847087115342
+# Do NOT read an absent probe as an absent board. dmesg shows ZERO enumeration
+# errors for that port: a cable dead on its data lines never begins enumeration,
+# so there is nothing to log and `lsusb` looks complete when it is not.
+# BENCH_UNCLAIMED used to read "use when you know you are alone" — on a host gale
+# had to itself, that was a checkable precondition. It is not any more: another
+# agent can attach at any moment and nothing here would know. The override stays
+# for a probe genuinely nobody else can reach; wohl.local is not that.
 set -uo pipefail
 
 : "${BENCH_WHO:=gale}"
@@ -44,7 +58,15 @@ export BENCH_WHO
 
 # Resolve with-device: explicit override, then PATH, then a sibling jess checkout.
 _resolve_with_device() {
-    if [ -n "${WITH_DEVICE:-}" ]; then echo "$WITH_DEVICE"; return 0; fi
+    # VALIDATE THE OVERRIDE. Every branch below tests [ -f ] && [ -x ]; this one
+    # accepted $WITH_DEVICE unchecked, so a stale or mistyped path resolved fine and
+    # died at the point of use with exit 127 ("No such file or directory") instead of
+    # this script's own refusal (exit 4). A caller branching on 4 mis-handles 127.
+    if [ -n "${WITH_DEVICE:-}" ]; then
+        if [ -f "$WITH_DEVICE" ] && [ -x "$WITH_DEVICE" ]; then echo "$WITH_DEVICE"; return 0; fi
+        echo "bench-claim: \$WITH_DEVICE=$WITH_DEVICE is not an executable file." >&2
+        return 1
+    fi
     # VARVE FIRST, when the layer carries it. varve took with-device into the layer
     # (varve#130) and 2026.09.1 dispatched 0.2.1. 2026.09.2 briefly DROPPED it — the
     # realm's move to layer.toml lost the field distinguishing a release tag from a
@@ -119,11 +141,13 @@ claim() {
         if [ "${BENCH_UNCLAIMED:-0}" = "1" ]; then
             echo "!! BENCH_UNCLAIMED=1 — running WITHOUT a bench claim on '$dev'." >&2
             echo "!! If another agent is on this probe, both measurements are suspect." >&2
+            echo "!! The bench host is SHARED with wohl — you cannot know you are alone." >&2
             "$@"; return $?
         fi
         echo "bench-claim: with-device not found, refusing to touch '$dev' unclaimed." >&2
         echo "  pin the signed release and put the binary on PATH:\n    release:pulseengine/jess@v0.7.2!with-device-0.2.2-<triple>.tar.gz!with-device\n  or set WITH_DEVICE=/path/to/binary," >&2
-        echo "  or set BENCH_UNCLAIMED=1 if you are certain you are alone." >&2
+        echo "  or set BENCH_UNCLAIMED=1 ONLY for a probe nobody else can reach —" >&2
+        echo "  wohl.local is shared with wohl, so that is not it." >&2
         return 4
     fi
     # v0.2.1 takes the purpose as a FLAG. The 0.2.0 python prototype took it
@@ -166,7 +190,7 @@ require_claim() {
 claim_remote() {
     local host="$1" dev="$2" purpose="$3"; shift 3
     [ "${1:-}" = "--" ] && shift
-    # Installed by jess at ~/bench on fourpi. NOT ~/.local/bin — a stale 0.2.0
+    # Installed by jess at ~/bench on the bench host. NOT ~/.local/bin — a stale 0.2.0
     # prototype lived there and reported exit 0 for commands it never ran.
     local remote_wd="${BENCH_REMOTE_WITH_DEVICE:-\$HOME/bench/with-device}"
     ssh "$host" "BENCH_WHO=$(printf %q "$BENCH_WHO") $remote_wd $(printf %q "$dev") --purpose $(printf %q "$purpose") -- $*"

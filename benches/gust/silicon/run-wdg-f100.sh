@@ -9,7 +9,7 @@
 # flash-and-walk-away run.
 #
 # Env:
-#   OCD_HOST   run openocd over ssh on this host (e.g. pi@192.168.178.88); local if unset
+#   OCD_HOST   run openocd over ssh on this host (e.g. wohl.local); local if unset
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -33,7 +33,7 @@ OCD=(openocd -f interface/stlink-hla.cfg -c "transport select swd"
 
 # shellcheck source=./bench-claim.sh
 . "$(dirname "$0")/bench-claim.sh"
-# MUST match fourpi's registry exactly (`stlink-v1`). A name gale invents locks
+# MUST match the bench host's registry exactly (`stlink-v1`). A name gale invents locks
 # nothing that jess is also holding. with-device refuses unknown names (exit 2).
 BENCH_DEV="${BENCH_DEV:-stlink-v1}"
 
