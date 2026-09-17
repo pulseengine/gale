@@ -149,6 +149,10 @@ const BOARDS: &[Board] = &[
 struct Entry {
     bin: &'static str,
     extra: &'static [&'static str],
+    /// An input cargo does not build (an object from a pinned toolchain run), named by the
+    /// environment variable that carries it. Unset -> REFUSED with how to produce it, not a
+    /// link error reported as FAIL.
+    needs_env: Option<(&'static str, &'static str)>,
     boards: &'static [&'static str],
     not_on: &'static [(&'static str, &'static str)],
 }
@@ -157,24 +161,28 @@ const MATRIX: &[Entry] = &[
     Entry {
         bin: "gust_wdg_silicon",
         extra: &[],
+        needs_env: None,
         boards: &["f100", "wl55jc", "wb55rg", "g474re"],
         not_on: &[("g031k8", "dissolved wdg-thin is ARMv7-M; synth has no ARMv6-M target (synth#1301)")],
     },
     Entry {
         bin: "gust_adc_silicon",
         extra: &[],
+        needs_env: None,
         boards: &["f100"],
         not_on: &[],
     },
     Entry {
         bin: "gust_iso_unpriv_probe",
         extra: &[],
+        needs_env: None,
         boards: &["wl55jc", "wb55rg", "g031k8", "g474re"],
         not_on: &[("f100", "the part has no MPU (MPU_TYPE reads 0) — by hardware")],
     },
     Entry {
         bin: "gust_iso_unpriv_probe",
         extra: &["drop-priv"],
+        needs_env: None,
         boards: &["wl55jc", "wb55rg", "g031k8", "g474re"],
         not_on: &[("f100", "the part has no MPU (MPU_TYPE reads 0) — by hardware")],
     },
@@ -184,24 +192,28 @@ const MATRIX: &[Entry] = &[
     Entry {
         bin: "gust_exec_probe",
         extra: &[],
+        needs_env: None,
         boards: &["f100", "wl55jc", "wb55rg", "g474re"],
         not_on: &[("g031k8", "links exec-cm3.o, an ARMv7-M object (synth#1301)")],
     },
     Entry {
         bin: "gust_os_probe",
         extra: &[],
+        needs_env: None,
         boards: &["f100", "wl55jc", "wb55rg", "g474re"],
         not_on: &[("g031k8", "links os-time-cm3.o, an ARMv7-M object (synth#1301)")],
     },
     Entry {
         bin: "gust_os_tl_probe",
         extra: &[],
+        needs_env: None,
         boards: &["f100", "wl55jc", "wb55rg", "g474re"],
         not_on: &[("g031k8", "links an ARMv7-M gust:os object (synth#1301)")],
     },
     Entry {
         bin: "gust_os_ts_probe",
         extra: &[],
+        needs_env: None,
         boards: &["f100", "wl55jc", "wb55rg", "g474re"],
         not_on: &[("g031k8", "links an ARMv7-M gust:os object (synth#1301)")],
     },
@@ -213,6 +225,7 @@ const MATRIX: &[Entry] = &[
     Entry {
         bin: "gust_osfused_probe",
         extra: &[],
+        needs_env: None,
         boards: &["f100", "wl55jc", "wb55rg", "g474re"],
         not_on: &[("g031k8", "links gustos-dissolved-cm3.o, ARMv7-M (synth#1301)")],
     },
@@ -224,6 +237,7 @@ const MATRIX: &[Entry] = &[
     Entry {
         bin: "gust_stack",
         extra: &[],
+        needs_env: None,
         boards: &[],
         not_on: &[("f100", FUSED_SPAN), ("wl55jc", FUSED_SPAN), ("wb55rg", FUSED_SPAN), ("g474re", FUSED_SPAN),
                   ("g031k8", "ARMv7-M object (synth#1301)")],
@@ -231,6 +245,7 @@ const MATRIX: &[Entry] = &[
     Entry {
         bin: "gust_fused",
         extra: &[],
+        needs_env: None,
         boards: &[],
         not_on: &[("f100", FUSED_SPAN), ("wl55jc", FUSED_SPAN), ("wb55rg", FUSED_SPAN), ("g474re", FUSED_SPAN),
                   ("g031k8", "ARMv7-M object (synth#1301)")],
@@ -238,6 +253,7 @@ const MATRIX: &[Entry] = &[
     Entry {
         bin: "gust_control",
         extra: &[],
+        needs_env: None,
         boards: &["wl55jc", "wb55rg", "g474re"],
         not_on: &[("f100", "does not fit: .bss overflows the part's 8 KB SRAM by 2420 bytes (link error, by hardware)"),
                   ("g031k8", "links the dissolved ARMv7-M control_step (synth#1301)")],
@@ -245,27 +261,51 @@ const MATRIX: &[Entry] = &[
     Entry {
         bin: "gust_dma_probe",
         extra: &[],
+        needs_env: None,
         boards: &["f100", "wl55jc", "wb55rg", "g474re"],
         not_on: &[("g031k8", "links dma-own, ARMv7-M (synth#1301)")],
     },
     Entry {
         bin: "gust_breadth",
         extra: &[],
+        needs_env: None,
         boards: &["f100"],
         not_on: &[("wl55jc", "STM32F1 peripheral addresses (GPIOC CRH, TIM2, SPI1, USART1) — no model of those bases on this part"),
                   ("wb55rg", "STM32F1 peripheral addresses — no model of those bases on this part"),
                   ("g474re", "STM32F1 peripheral addresses — the G474 model carries no USART/GPIO/TIM/SPI bases"),
                   ("g031k8", "ARMv7-M object (synth#1301) and F1 peripheral addresses")],
     },
+    // REQ-OS-MPU-001's kill-criterion (synth#1145) on silicon: two synth memories, the
+    // verified region programmer, an unprivileged escape at tenant B's base. The pair is
+    // the evidence — CONTAINED with regions, ESCAPED (landing in B) without.
+    Entry {
+        bin: "gust_two_tenant",
+        extra: &[],
+        needs_env: Some(("GUST_TWO_TENANT_O", "benches/gust/drivers/run-two-tenant.sh (pinned synth) → /tmp/gale-two-tenant/two_tenant.o")),
+        boards: &["wb55rg"],
+        not_on: &[("g474re", "96 KiB SRAM cannot hold two 64 KiB wasm pages plus a stack (needs synth's used-extent symbol, v0.69)"),
+                  ("wl55jc", "64 KiB SRAM cannot hold two 64 KiB wasm pages"),
+                  ("g031k8", "8 KiB SRAM, and ARMv7-M object (synth#1301)"),
+                  ("f100", "no MPU")],
+    },
+    Entry {
+        bin: "gust_two_tenant",
+        extra: &["no-regions"],
+        needs_env: Some(("GUST_TWO_TENANT_O", "benches/gust/drivers/run-two-tenant.sh (pinned synth) → /tmp/gale-two-tenant/two_tenant.o")),
+        boards: &["wb55rg"],
+        not_on: &[],
+    },
     Entry {
         bin: "gust_hm_probe",
         extra: &[],
+        needs_env: None,
         boards: &["f100", "wl55jc", "wb55rg", "g031k8", "g474re"],
         not_on: &[],
     },
     Entry {
         bin: "gust_timer_probe",
         extra: &[],
+        needs_env: None,
         boards: &["f100", "wl55jc", "wb55rg", "g031k8", "g474re"],
         not_on: &[],
     },
@@ -364,10 +404,66 @@ fn build(root: &Path, b: &Board, bin: &str, extra: &[&str]) -> Result<PathBuf, S
     if !elf.is_file() {
         return Err(format!("cargo succeeded but {} does not exist", elf.display()));
     }
-    let staged = std::env::temp_dir().join(format!("gale-silicon-{}-{bin}{}.elf", b.name,
+    let staged = std::env::temp_dir().join(format!("gale-silicon-{}-{bin}{}.hex", b.name,
         if extra.is_empty() { String::new() } else { format!("-{}", extra.join("-")) }));
-    fs::copy(&elf, &staged).map_err(|e| format!("stage ELF: {e}"))?;
+    flash_image(&elf, &staged)?;
     Ok(staged)
+}
+
+/// What actually goes onto the part: an Intel HEX of the FLASH-addressed contents only.
+///
+/// An ELF can carry loadable RAM segments. gust_two_tenant does: synth's
+/// `.synth.wasm_mem_1` is PROGBITS at 0x2002_0000, and lld folds it (with .bss/.uninit)
+/// into one in-file RAM segment. openocd's `program … verify` then fails ("no flash bank
+/// found for address 0x20000020", "Verify Failed"). Renode never sees this — it writes
+/// ELF segments straight into memory. On a part, RAM holds nothing across reset: its
+/// contents are the startup code's and the embedder's job, never the debugger's.
+fn flash_image(elf: &Path, hex: &Path) -> Result<(), String> {
+    let objcopy = ["arm-none-eabi-objcopy", "llvm-objcopy"]
+        .into_iter()
+        .find(|t| Command::new(t).arg("--version").output().is_ok())
+        .ok_or("no arm-none-eabi-objcopy or llvm-objcopy on PATH")?;
+    let objdump = ["arm-none-eabi-objdump", "llvm-objdump"]
+        .into_iter()
+        .find(|t| Command::new(t).arg("--version").output().is_ok())
+        .ok_or("no arm-none-eabi-objdump or llvm-objdump on PATH")?;
+    let hdr = Command::new(objdump).arg("-h").arg(elf).output().map_err(|e| format!("objdump: {e}"))?;
+    let mut remove: Vec<String> = vec![".bss".into(), ".uninit".into()];
+    for l in String::from_utf8_lossy(&hdr.stdout).lines() {
+        if let Some(name) = l.split_whitespace().nth(1) {
+            if name.starts_with(".synth.wasm_mem_") {
+                remove.push(name.to_string());
+            }
+        }
+    }
+    let mut c = Command::new(objcopy);
+    c.args(["-O", "ihex"]);
+    for r in &remove {
+        c.args(["-R", r]);
+    }
+    let st = c.arg(elf).arg(hex).status().map_err(|e| format!("objcopy: {e}"))?;
+    if !st.success() {
+        return Err(format!("objcopy -O ihex failed for {}", elf.display()));
+    }
+    Ok(())
+}
+
+/// Address range [lo, hi) covered by an Intel HEX's data records.
+fn hex_range(hex: &str) -> Option<(u32, u32)> {
+    let (mut base, mut lo, mut hi) = (0u32, u32::MAX, 0u32);
+    for line in hex.lines() {
+        let b: Vec<u8> = (1..line.trim().len()).step_by(2)
+            .filter_map(|i| u8::from_str_radix(line.trim().get(i..i + 2)?, 16).ok()).collect();
+        if b.len() < 4 { continue; }
+        let (len, addr, typ) = (b[0] as u32, ((b[1] as u32) << 8) | b[2] as u32, b[3]);
+        match typ {
+            0 => { let a = base + addr; lo = lo.min(a); hi = hi.max(a + len); }
+            2 if b.len() >= 6 => base = (((b[4] as u32) << 8) | b[5] as u32) << 4,
+            4 if b.len() >= 6 => base = (((b[4] as u32) << 8) | b[5] as u32) << 16,
+            _ => {}
+        }
+    }
+    (lo != u32::MAX).then_some((lo, hi))
 }
 
 /// Run `cmd`, killing it at the deadline. Returns (exit code or None if killed, output).
@@ -424,6 +520,16 @@ pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: 
         Ok(p) => p,
         Err(e) => return Verdict::Fail(vec![e]),
     };
+    // Refuse an image that would write outside the part's flash (from the measured model).
+    let (Some(fbase), Some(flen)) = (generated_u32(&consts, "FLASH_BASE"), generated_u32(&consts, "FLASH_LEN")) else {
+        return Verdict::Refused(format!("FLASH_BASE/FLASH_LEN missing from gust_target_{}.rs", b.stem));
+    };
+    match fs::read_to_string(&elf).ok().as_deref().and_then(hex_range) {
+        Some((lo, hi)) if lo >= fbase && hi <= fbase.wrapping_add(flen) => {}
+        Some((lo, hi)) => return Verdict::Refused(format!(
+            "{}: image data spans {lo:#010x}..{hi:#010x}, outside flash {fbase:#010x}+{flen:#x} — not flashing it", b.name)),
+        None => return Verdict::Refused(format!("{}: flash image has no data records", b.name)),
+    }
 
     let remote_elf = format!("/tmp/{}", elf.file_name().unwrap().to_string_lossy());
     let fw = match b.host {
@@ -632,7 +738,11 @@ pub fn main(root: &Path, args: &[String]) -> i32 {
                 let label = if e.extra.is_empty() { e.bin.to_string() } else { format!("{} +{}", e.bin, e.extra.join("+")) };
                 for bd in e.boards {
                     if boards_filter.as_ref().is_some_and(|f| !f.iter().any(|x| x == bd)) { continue; }
-                    let v = run(root, bd, e.bin, e.extra, timeout_s);
+                    let v = match e.needs_env {
+                        Some((var, how)) if std::env::var_os(var).is_none() =>
+                            Verdict::Refused(format!("{bd}: {var} is not set — produce it with {how}")),
+                        _ => run(root, bd, e.bin, e.extra, timeout_s),
+                    };
                     let (tag, why) = match &v {
                         Verdict::Pass(d) => ("PASS", d.last().cloned().unwrap_or_default()),
                         Verdict::Fail(d) => { fails += 1; ("FAIL", d.last().cloned().unwrap_or_default()) }
@@ -698,6 +808,14 @@ mod tests {
             assert!(b.openocd.iter().any(|a| a.starts_with("adapter usb location") || a.starts_with("hla_vid_pid")),
                 "{} on wohl.local does not pin its probe", b.name);
         }
+    }
+
+    #[test]
+    fn hex_range_follows_extended_linear_address_records() {
+        // :02000004 0800 F2 sets base 0x0800_0000; one 4-byte record at offset 0x0010.
+        let hex = ":020000040800F2\n:0400100001020304E2\n:00000001FF\n";
+        assert_eq!(hex_range(hex), Some((0x0800_0010, 0x0800_0014)));
+        assert_eq!(hex_range(":00000001FF\n"), None);
     }
 
     #[test]
