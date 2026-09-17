@@ -63,20 +63,33 @@ static const char *reason_to_str(unsigned int reason)
 	}
 }
 
+/* Upstream kernel/fatal.c provides this weak default, and gale_fatal.c REPLACES
+ * that file (CONFIG_GALE_KERNEL_FATAL), so the default has to live here too.
+ * Without it, anything that calls arch_system_halt() on an architecture that does
+ * not override it fails to link. tests/kernel/fatal/no-multithreading calls it
+ * directly: all six kernel.no-mt.* suites broke with "undefined reference to
+ * `arch_system_halt'" (gale#401). Body identical to upstream.
+ */
+/* LCOV_EXCL_START */
+FUNC_NORETURN __weak void arch_system_halt(unsigned int reason)
+{
+	ARG_UNUSED(reason);
+
+	(void)arch_irq_lock();
+	for (;;) {
+		/* Spin endlessly */
+	}
+}
+/* LCOV_EXCL_STOP */
+
+/* Same as upstream: always through arch_system_halt(). This used to call it only
+ * on x86 and otherwise spin with interrupts still enabled — so an architecture's
+ * own halt (the QEMU exit, a board reset) was bypassed everywhere else, and a
+ * pending interrupt could still run after a declared fatal halt.
+ */
 FUNC_NORETURN void k_fatal_halt(unsigned int reason)
 {
-#if defined(CONFIG_X86)
-	/* On x86/QEMU, arch_system_halt writes to I/O port 0xf4
-	 * causing QEMU to exit with a visible error code instead
-	 * of silently spinning forever.
-	 */
 	arch_system_halt(reason);
-#else
-	ARG_UNUSED(reason);
-#endif
-	for (;;) {
-		/* spin forever */
-	}
 }
 
 /* Weak default — apps/tests override this for custom fatal handling */
