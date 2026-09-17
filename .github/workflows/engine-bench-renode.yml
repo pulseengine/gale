@@ -100,8 +100,10 @@ jobs:
       - name: West init + update + SDK
         run: |
           pip3 install west robotframework
+          ZEPHYR_FORK_REV="$(grep -v '^#' "${GITHUB_WORKSPACE}/gale/.github/zephyr-fork-pin" | tr -d '[:space:]')"
+          [ -n "$ZEPHYR_FORK_REV" ] || { echo "::error::empty .github/zephyr-fork-pin" >&2; exit 1; }
           west init -m https://github.com/pulseengine/zephyr.git \
-            --mr gale/sem-replacement zephyr-workspace
+            --mr "$ZEPHYR_FORK_REV" zephyr-workspace
           cd zephyr-workspace
           # west update fetches ~60 third-party modules; a single transient TLS failure
           # on any one of them kills the whole step (seen on openthread, percepio,

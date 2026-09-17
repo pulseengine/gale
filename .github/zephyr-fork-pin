@@ -1,0 +1,12 @@
+# The pulseengine/zephyr revision every gale CI job builds against.
+#
+# CI used to clone the BRANCH (`west init --mr gale/sem-replacement`), so a run's
+# Zephyr was whatever that branch held at the time, and no gale commit recorded it —
+# a result was not reproducible from gale's history alone. gale#401's 38 -> 0 kernel
+# delta spanned exactly such a branch change (pulseengine/zephyr#1).
+#
+# Bumping this file is how gale takes a fork change, reviewably, like any other pin.
+# A gate (.github/workflows/compliance.yml) fails if this revision is no longer an
+# ancestor of gale/sem-replacement — i.e. the fork was rebased or force-pushed away
+# from it — because then this pin names a commit the fork no longer contains.
+9550d256a582f4a19bc5bee650310b29a606c64b
