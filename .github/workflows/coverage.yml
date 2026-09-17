@@ -216,3 +216,189 @@ jobs:
             twister-out/twister.json
             twister-out/coverage/
           retention-days: 14
+  zephyr-coverage-gale:
+    name: Zephyr C Coverage (gale-enabled)
+    # MEASUREMENT LEG (gale#395). Identical to zephyr-coverage except gale's
+    # module + overlay are injected. Not a required context: its purpose
+    # is to be compared, and it will likely surface failures gale's
+    # replacements cause under the wider kernel test selection.
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
+      options: --user root --volume /mnt:/mnt
+    env:
+      HOME: /root
+      DOCKER_CONFIG: /tmp/.docker
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout Gale
+        uses: actions/checkout@v7
+        with:
+          path: gale
+
+      - name: Install Rust + ARM target
+        run: |
+          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
+          # RETRY, POSIX-sh SAFE (gale#289).
+          #
+          # Two defects here. (1) Unretried: one transient fetch killed the job.
+          # (2) `curl … | sh` reports SH's status, so a failed download feeds sh
+          # empty stdin, sh exits 0, and the step PASSES with rustup never
+          # installed — surfacing later as an unrelated-looking build error.
+          #
+          # The pipe is REMOVED rather than wrapped in `set -o pipefail`. These
+          # jobs run in containers, and GitHub picks `sh -e {0}` when the image
+          # has no bash — dash rejects pipefail outright:
+          #     set: Illegal option -o pipefail
+          # Downloading to a file and running it needs no pipefail, works under
+          # both sh and bash, and removes the truncation ambiguity entirely:
+          # curl -f fails on HTTP errors, and the installer runs as a plain
+          # command whose status `set -e` already honours.
+          _ok=0
+          for _a in 1 2 3; do
+            if curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh; then
+              _ok=1; break
+            fi
+            echo "::warning::rustup download attempt ${_a}/3 failed; retrying" >&2
+            sleep $((_a * 15))
+          done
+          [ "$_ok" = 1 ] || { echo "::error::rustup download failed after 3 attempts" >&2; exit 1; }
+          sh /tmp/rustup-init.sh -y --default-toolchain stable
+          . /root/.cargo/env
+          rustup target add thumbv7m-none-eabi
+
+      - name: Initialize west workspace
+        run: |
+          pip3 install west gcovr
+          echo "host-root before reclaim:"; df -h / | tail -1
+          rm -rf /opt/toolchains/zephyr-sdk-* 2>/dev/null || true   # reclaim ~14GB image SDK
+          echo "host-root after reclaim:"; df -h / | tail -1
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
+          cd zephyr-workspace
+          # west update fetches ~60 third-party modules; a single transient TLS failure
+          # on any one of them kills the whole step (seen on openthread, percepio,
+          # uoscore-uedhoc, liblc3 — a different project each time, while its neighbours
+          # clone fine from the same host). west update is resumable, so retry.
+          n=0; until west update --narrow -o=--depth=1; do n=$((n+1)); if [ $n -ge 3 ]; then echo "::error::west update failed after 3 attempts" >&2; exit 1; fi; sleep $((15*n)); done
+          n=0; until west sdk install -t arm-zephyr-eabi --personal-access-token "${GITHUB_TOKEN}"; do n=$((n+1)); if [ $n -ge 3 ]; then echo "::error::west sdk install failed after 3 attempts" >&2; exit 1; fi; sleep $((5*n)); done
+
+      - name: Run twister with coverage
+        run: |
+          . /root/.cargo/env
+          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr-workspace/zephyr"
+          export GALE_ROOT="${GITHUB_WORKSPACE}/gale"
+          cd zephyr-workspace
+          # GALE'S CONFIG GOES IN AS -DCONFIG_* ENTRIES, NOT AS OVERLAY_CONFIG. The first
+          # version passed -x=OVERLAY_CONFIG=gale_overlay.conf, and twister silently
+          # replaced it: cmake_assemble_args (twisterlib/runner.py) appends -x entries
+          # FIRST and its own -DOVERLAY_CONFIG=<build>/twister/testsuite_extra.conf LAST,
+          # and the last -D wins. The run built 205 configs with CONFIG_GALE_KERNEL_SEM=y
+          # in NONE of them — a second upstream run, caught by the .config check below.
+          # The entries are read from gale_overlay.conf so the two cannot drift.
+          set --
+          for c in $(grep -E '^CONFIG_[A-Z0-9_]+=' "${GALE_ROOT}/zephyr/gale_overlay.conf"); do
+            set -- "$@" "-x=${c}"
+          done
+          if [ "$#" -eq 0 ]; then
+            echo "::error::no CONFIG_ lines read from gale_overlay.conf — this leg would build upstream"
+            exit 1
+          fi
+          echo "gale config entries passed to twister: $#"
+          "${ZEPHYR_BASE}/scripts/twister" \
+            --platform qemu_cortex_m3 \
+            --tag kernel \
+            --enable-coverage \
+            --coverage-tool lcov \
+            -x=ZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
+            "$@" \
+            --outdir "${GITHUB_WORKSPACE}/twister-out-gale" \
+            --enable-slow \
+            -v || TWISTER_RC=$?
+          export TWISTER_RC="${TWISTER_RC:-0}"
+          echo "twister exit: ${TWISTER_RC}"
+
+          # THIS LEG MEASURES; IT DOES NOT JUDGE. Failures here are the data the
+          # coverage-delta job compares against the upstream leg, so no per-suite
+          # ledger lives here. What this step DOES refuse is a measurement that is not
+          # one: no twister.json, zero executed, a twister that broke, or a build that
+          # never compiled gale in. The last is checked in each built .config, not by
+          # grepping the log — the log carries this file's own comments, and a string
+          # match there once "confirmed" an injection that had not been applied.
+          if [ ! -s "${GITHUB_WORKSPACE}/twister-out-gale/twister.json" ]; then
+            echo "::error::twister produced no twister.json — it did not run"
+            exit 1
+          fi
+          python3 - <<'PYEOF'
+          import glob, json, os, sys
+          out = os.path.join(os.environ["GITHUB_WORKSPACE"], "twister-out-gale")
+          tt = json.load(open(os.path.join(out, "twister.json"))).get("testsuites", [])
+          ran = [t for t in tt if t.get("status") not in (None, "filtered", "skipped", "not run")]
+          failed = [t for t in tt if t.get("status") in ("failed", "error")]
+          print(f"twister (gale): {len(tt)} suite(s), {len(ran)} executed, {len(failed)} failed/errored")
+          if not ran:
+              sys.exit("::error::gale leg executed 0 suites — nothing to compare")
+          rc = int(os.environ.get("TWISTER_RC", "0"))
+          if rc != 0 and not failed:
+              sys.exit(f"::error::twister exited {rc} with no failed suite recorded — twister broke, not a test")
+          configs = glob.glob(os.path.join(out, "**", "zephyr", ".config"), recursive=True)
+          with_gale = [c for c in configs if "CONFIG_GALE_KERNEL_SEM=y" in open(c, errors="replace").read()]
+          print(f"built configs: {len(configs)}, with CONFIG_GALE_KERNEL_SEM=y: {len(with_gale)}")
+          if not with_gale:
+              sys.exit("::error::no build in the gale leg has CONFIG_GALE_KERNEL_SEM=y — gale was not compiled in; this would be a second upstream run")
+          PYEOF
+
+      - name: Upload LCOV to Codecov
+        if: env.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@v7
+        with:
+          directory: twister-out-gale/coverage/
+          flags: zephyr
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload twister results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: twister-results-gale
+          path: |
+            twister-out-gale/twister.json
+            twister-out-gale/coverage/
+          retention-days: 14
+
+  coverage-delta:
+    name: "Upstream vs gale — kernel test delta (gale#395)"
+    needs: [zephyr-coverage, zephyr-coverage-gale]
+    # always(): the delta is most valuable exactly when one leg went red.
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Fetch both legs' results
+        uses: actions/download-artifact@v7
+        with:
+          pattern: twister-results*
+          path: results
+
+      - name: Negative control — the delta must refuse an input that executed nothing
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ctl
+          echo '{"testsuites":[{"name":"a","status":"filtered"}]}' > /tmp/ctl/empty.json
+          echo '{"testsuites":[{"name":"a","status":"passed"}]}'   > /tmp/ctl/ok.json
+          if python3 tools/coverage-delta.py /tmp/ctl/ok.json /tmp/ctl/empty.json >/dev/null; then
+            echo "::error::delta accepted a run that executed nothing — it would report a vacuous comparison"
+            exit 1
+          fi
+          echo "vacuity guard bites"
+
+      - name: Compare upstream vs gale
+        run: |
+          set -euo pipefail
+          UP=results/twister-results/twister.json
+          GA=results/twister-results-gale/twister.json
+          # listing only; the verdict is the script's exit status below
+          ls -R results
+          python3 tools/coverage-delta.py "$UP" "$GA" --summary "$GITHUB_STEP_SUMMARY"
