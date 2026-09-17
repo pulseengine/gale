@@ -54,10 +54,17 @@ extern "C" {
 // ONLY in these baked values (RCC_CSR offset 0x94/0x24, RMVF bit 23/24) — the
 // same verified driver programs both. Swap the target = swap the generated
 // module, not this code.
-#[cfg(all(feature = "target-g474re", feature = "target-f100"))]
-compile_error!("gust_wdg_silicon: pick exactly one of target-g474re / target-f100");
-#[cfg(not(any(feature = "target-g474re", feature = "target-f100")))]
-compile_error!("gust_wdg_silicon: pick a target: --features target-g474re | target-f100");
+// Exactly one target. `default = ["target-g474re"]`, so selecting another board
+// needs --no-default-features; the count below turns forgetting that into a build
+// error instead of an image with the G474's constants.
+const _TARGETS: usize = cfg!(feature = "target-g474re") as usize
+    + cfg!(feature = "target-f100") as usize
+    + cfg!(feature = "target-wl55jc") as usize
+    + cfg!(feature = "target-wb55rg") as usize
+    + cfg!(feature = "target-g031k8") as usize;
+const _: () = assert!(_TARGETS == 1, "gust_wdg_silicon: select exactly one target-* feature (use --no-default-features)");
+#[cfg(feature = "target-g031k8")]
+compile_error!("gust_wdg_silicon: no dissolved driver runs on Cortex-M0+ yet — wdg-thin-cm3.o is ARMv7-M (synth#1301)");
 
 #[cfg(feature = "target-g474re")]
 #[path = "../../targets/generated/gust_target_stm32g474.rs"]
@@ -65,6 +72,14 @@ compile_error!("gust_wdg_silicon: pick a target: --features target-g474re | targ
 mod target;
 #[cfg(feature = "target-f100")]
 #[path = "../../targets/generated/gust_target_stm32f100.rs"]
+#[allow(dead_code)]
+mod target;
+#[cfg(feature = "target-wl55jc")]
+#[path = "../../targets/generated/gust_target_stm32wl55.rs"]
+#[allow(dead_code)]
+mod target;
+#[cfg(feature = "target-wb55rg")]
+#[path = "../../targets/generated/gust_target_stm32wb55.rs"]
 #[allow(dead_code)]
 mod target;
 use target::{BOARD, IWDG_BASE, IWDGRSTF, RCC_CSR, RMVF};

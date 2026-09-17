@@ -22,6 +22,16 @@
         "modes": [],
         "mode_transitions": [],
         "properties": []
+      },
+      {
+        "name": "CortexM0Plus",
+        "category": "processor",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
       }
     ],
     "component_impls": [],
@@ -780,6 +790,337 @@
     "feature_group_types": []
   },
   {
+    "name": "STM32G031",
+    "with_clauses": [
+      "Cortex_M",
+      "Gust_Target_Props"
+    ],
+    "component_types": [
+      {
+        "name": "Flag_Flash",
+        "category": "memory",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      },
+      {
+        "name": "Ram",
+        "category": "memory",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      },
+      {
+        "name": "Mpu",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#E000ED90#",
+            "typed_value": {
+              "Integer": [
+                3758157200,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "true",
+            "typed_value": {
+              "Boolean": true
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Dregion",
+            "value": "8",
+            "typed_value": {
+              "Integer": [
+                8,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Iwdg",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#40003000#",
+            "typed_value": {
+              "Integer": [
+                1073754112,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "true",
+            "typed_value": {
+              "Boolean": true
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Rcc",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#40021000#",
+            "typed_value": {
+              "Integer": [
+                1073876992,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Csr_Offset",
+            "value": "16#60#",
+            "typed_value": {
+              "Integer": [
+                96,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Iwdgrstf_Bit",
+            "value": "29",
+            "typed_value": {
+              "Integer": [
+                29,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Rmvf_Bit",
+            "value": "23",
+            "typed_value": {
+              "Integer": [
+                23,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Board",
+        "category": "system",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      }
+    ],
+    "component_impls": [
+      {
+        "name": "Flag_Flash.i",
+        "category": "memory",
+        "type_name": "Flag_Flash",
+        "impl_name": "i",
+        "extends": null,
+        "subcomponents": [],
+        "connections": [],
+        "flows": [],
+        "e2e_flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#08000000#",
+            "typed_value": {
+              "Integer": [
+                134217728,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Length",
+            "value": "65536",
+            "typed_value": {
+              "Integer": [
+                65536,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Ram.i",
+        "category": "memory",
+        "type_name": "Ram",
+        "impl_name": "i",
+        "extends": null,
+        "subcomponents": [],
+        "connections": [],
+        "flows": [],
+        "e2e_flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#20000000#",
+            "typed_value": {
+              "Integer": [
+                536870912,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Length",
+            "value": "8192",
+            "typed_value": {
+              "Integer": [
+                8192,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Board.nucleo",
+        "category": "system",
+        "type_name": "Board",
+        "impl_name": "nucleo",
+        "extends": null,
+        "subcomponents": [
+          {
+            "name": "cpu",
+            "category": "processor",
+            "classifier": "Cortex_M::CortexM0Plus",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "flash",
+            "category": "memory",
+            "classifier": "Flag_Flash.i",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "sram",
+            "category": "memory",
+            "classifier": "Ram.i",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "mpu",
+            "category": "device",
+            "classifier": "Mpu",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "iwdg",
+            "category": "device",
+            "classifier": "Iwdg",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "rcc",
+            "category": "device",
+            "classifier": "Rcc",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          }
+        ],
+        "connections": [],
+        "flows": [],
+        "e2e_flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      }
+    ],
+    "feature_group_types": []
+  },
+  {
     "name": "STM32G474",
     "with_clauses": [
       "Cortex_M",
@@ -1035,6 +1376,668 @@
             "typed_value": {
               "Integer": [
                 98304,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Board.nucleo",
+        "category": "system",
+        "type_name": "Board",
+        "impl_name": "nucleo",
+        "extends": null,
+        "subcomponents": [
+          {
+            "name": "cpu",
+            "category": "processor",
+            "classifier": "Cortex_M::CortexM4",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "flash",
+            "category": "memory",
+            "classifier": "Flag_Flash.i",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "sram",
+            "category": "memory",
+            "classifier": "Ram.i",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "mpu",
+            "category": "device",
+            "classifier": "Mpu",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "iwdg",
+            "category": "device",
+            "classifier": "Iwdg",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "rcc",
+            "category": "device",
+            "classifier": "Rcc",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          }
+        ],
+        "connections": [],
+        "flows": [],
+        "e2e_flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      }
+    ],
+    "feature_group_types": []
+  },
+  {
+    "name": "STM32WB55",
+    "with_clauses": [
+      "Cortex_M",
+      "Gust_Target_Props"
+    ],
+    "component_types": [
+      {
+        "name": "Flag_Flash",
+        "category": "memory",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      },
+      {
+        "name": "Ram",
+        "category": "memory",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      },
+      {
+        "name": "Mpu",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#E000ED90#",
+            "typed_value": {
+              "Integer": [
+                3758157200,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "true",
+            "typed_value": {
+              "Boolean": true
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Dregion",
+            "value": "8",
+            "typed_value": {
+              "Integer": [
+                8,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Iwdg",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#40003000#",
+            "typed_value": {
+              "Integer": [
+                1073754112,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "true",
+            "typed_value": {
+              "Boolean": true
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Rcc",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#58000000#",
+            "typed_value": {
+              "Integer": [
+                1476395008,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Csr_Offset",
+            "value": "16#94#",
+            "typed_value": {
+              "Integer": [
+                148,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Iwdgrstf_Bit",
+            "value": "29",
+            "typed_value": {
+              "Integer": [
+                29,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Rmvf_Bit",
+            "value": "23",
+            "typed_value": {
+              "Integer": [
+                23,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Board",
+        "category": "system",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      }
+    ],
+    "component_impls": [
+      {
+        "name": "Flag_Flash.i",
+        "category": "memory",
+        "type_name": "Flag_Flash",
+        "impl_name": "i",
+        "extends": null,
+        "subcomponents": [],
+        "connections": [],
+        "flows": [],
+        "e2e_flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#08000000#",
+            "typed_value": {
+              "Integer": [
+                134217728,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Length",
+            "value": "1048576",
+            "typed_value": {
+              "Integer": [
+                1048576,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Ram.i",
+        "category": "memory",
+        "type_name": "Ram",
+        "impl_name": "i",
+        "extends": null,
+        "subcomponents": [],
+        "connections": [],
+        "flows": [],
+        "e2e_flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#20000000#",
+            "typed_value": {
+              "Integer": [
+                536870912,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Length",
+            "value": "196608",
+            "typed_value": {
+              "Integer": [
+                196608,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Board.nucleo",
+        "category": "system",
+        "type_name": "Board",
+        "impl_name": "nucleo",
+        "extends": null,
+        "subcomponents": [
+          {
+            "name": "cpu",
+            "category": "processor",
+            "classifier": "Cortex_M::CortexM4",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "flash",
+            "category": "memory",
+            "classifier": "Flag_Flash.i",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "sram",
+            "category": "memory",
+            "classifier": "Ram.i",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "mpu",
+            "category": "device",
+            "classifier": "Mpu",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "iwdg",
+            "category": "device",
+            "classifier": "Iwdg",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          },
+          {
+            "name": "rcc",
+            "category": "device",
+            "classifier": "Rcc",
+            "is_refined": false,
+            "in_modes": [],
+            "properties": []
+          }
+        ],
+        "connections": [],
+        "flows": [],
+        "e2e_flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      }
+    ],
+    "feature_group_types": []
+  },
+  {
+    "name": "STM32WL55",
+    "with_clauses": [
+      "Cortex_M",
+      "Gust_Target_Props"
+    ],
+    "component_types": [
+      {
+        "name": "Flag_Flash",
+        "category": "memory",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      },
+      {
+        "name": "Ram",
+        "category": "memory",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      },
+      {
+        "name": "Mpu",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#E000ED90#",
+            "typed_value": {
+              "Integer": [
+                3758157200,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "true",
+            "typed_value": {
+              "Boolean": true
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Dregion",
+            "value": "8",
+            "typed_value": {
+              "Integer": [
+                8,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Iwdg",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#40003000#",
+            "typed_value": {
+              "Integer": [
+                1073754112,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Present",
+            "value": "true",
+            "typed_value": {
+              "Boolean": true
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Rcc",
+        "category": "device",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#58000000#",
+            "typed_value": {
+              "Integer": [
+                1476395008,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Csr_Offset",
+            "value": "16#94#",
+            "typed_value": {
+              "Integer": [
+                148,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Iwdgrstf_Bit",
+            "value": "29",
+            "typed_value": {
+              "Integer": [
+                29,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Rmvf_Bit",
+            "value": "23",
+            "typed_value": {
+              "Integer": [
+                23,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Board",
+        "category": "system",
+        "extends": null,
+        "features": [],
+        "flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": []
+      }
+    ],
+    "component_impls": [
+      {
+        "name": "Flag_Flash.i",
+        "category": "memory",
+        "type_name": "Flag_Flash",
+        "impl_name": "i",
+        "extends": null,
+        "subcomponents": [],
+        "connections": [],
+        "flows": [],
+        "e2e_flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#08000000#",
+            "typed_value": {
+              "Integer": [
+                134217728,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Length",
+            "value": "262144",
+            "typed_value": {
+              "Integer": [
+                262144,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          }
+        ]
+      },
+      {
+        "name": "Ram.i",
+        "category": "memory",
+        "type_name": "Ram",
+        "impl_name": "i",
+        "extends": null,
+        "subcomponents": [],
+        "connections": [],
+        "flows": [],
+        "e2e_flows": [],
+        "modes": [],
+        "mode_transitions": [],
+        "properties": [
+          {
+            "name": "Gust_Target_Props::Base",
+            "value": "16#20000000#",
+            "typed_value": {
+              "Integer": [
+                536870912,
+                null
+              ]
+            },
+            "is_append": false,
+            "applies_to": null,
+            "in_modes": []
+          },
+          {
+            "name": "Gust_Target_Props::Length",
+            "value": "65536",
+            "typed_value": {
+              "Integer": [
+                65536,
                 null
               ]
             },

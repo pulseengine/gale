@@ -39,14 +39,16 @@
 #   BENCH_UNCLAIMED=1   (prints a loud banner)
 #
 # THE BENCH IS SHARED. It moved to wohl.local and is shared with wohl. The host
-# carries FOUR boards on a 4-port hub; three enumerate:
-#   1-1.1  ST-LINK/V3    0483:374e  000D000B4142500E20353451
-#   1-1.2  ST-LINK/V1    0483:3744  HÿrPTeVA7  (V1 serials are malformed by design)
-#   1-1.3  -- empty --              the fourth board; suspected bad cable
-#   1-1.4  ST-LINK/V2.1  0483:374b  066BFF565654847087115342
-# Do NOT read an absent probe as an absent board. dmesg shows ZERO enumeration
-# errors for that port: a cable dead on its data lines never begins enumeration,
-# so there is nothing to log and `lsusb` looks complete when it is not.
+# carries FOUR boards on a 4-port hub; all four enumerate and identify (2026-09-16):
+#   1-1.1  ST-LINK/V3    0483:374e  NUCLEO-WL55JC1   registry: stlink-v3
+#   1-1.2  ST-LINK/V1    0483:3744  STM32VLDISCOVERY registry: stlink-v1
+#   1-1.3  ST-LINK/V2.1  0483:374b  NUCLEO-WB55RG    registry: nucleo-wb55rg (provisional)
+#   1-1.4  ST-LINK/V2.1  0483:374b  NUCLEO-G031K8    registry: nucleo-g031k8 (provisional)
+# Port 3 was empty until its cable was replaced. Do NOT read an absent probe as an
+# absent board: dmesg showed ZERO enumeration errors for that port, because a cable
+# dead on its data lines never begins enumeration.
+# Two probes share 0483:374b, so openocd MUST be pinned (`adapter usb location 1-1.N`);
+# unpinned, a claim on one board attaches to the other. That happened, under a claim.
 # BENCH_UNCLAIMED used to read "use when you know you are alone" — on a host gale
 # had to itself, that was a checkable precondition. It is not any more: another
 # agent can attach at any moment and nothing here would know. The override stays
@@ -190,8 +192,29 @@ require_claim() {
 claim_remote() {
     local host="$1" dev="$2" purpose="$3"; shift 3
     [ "${1:-}" = "--" ] && shift
-    # Installed by jess at ~/bench on the bench host. NOT ~/.local/bin — a stale 0.2.0
-    # prototype lived there and reported exit 0 for commands it never ran.
-    local remote_wd="${BENCH_REMOTE_WITH_DEVICE:-\$HOME/bench/with-device}"
+    # RESOLVE THE REMOTE with-device THROUGH THE PIN, not a fixed path. This used to be
+    # `$HOME/bench/with-device`, where jess installed it on the Pi. wohl.local has no such
+    # file, so every remote claim died at exit 127 — not the refusal (4) callers branch on.
+    #
+    # The pin files are copied from THIS checkout on every call, so the remote tool is
+    # the one this commit pins, not whatever the host last installed. If that layer is not
+    # installed there, `varve which` fails and this refuses — it does not fall back to an
+    # unpinned copy. BENCH_REMOTE_WITH_DEVICE still overrides, deliberately and visibly.
+    local pin_dir="${BENCH_REMOTE_PIN_DIR:-gale-bench}"
+    local root; root="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../../.." && pwd)"
+    local remote_wd
+    if [ -n "${BENCH_REMOTE_WITH_DEVICE:-}" ]; then
+        remote_wd="$BENCH_REMOTE_WITH_DEVICE"
+    else
+        ssh "$host" "mkdir -p $(printf %q "$pin_dir")" \
+            && scp -q "$root/varve.toml" "$root/varve-realms.toml" "$host:$pin_dir/" || {
+            echo "bench-claim: could not stage the varve pin on $host:$pin_dir." >&2; return 4; }
+        if ! remote_wd=$(ssh "$host" "cd $(printf %q "$pin_dir") && \$HOME/.varve/bin/varve which with-device 2>/dev/null | head -1") \
+            || [ -z "$remote_wd" ]; then
+            echo "bench-claim: $host has no with-device from the pinned layer." >&2
+            echo "  on $host: cd ~/$pin_dir && varve install" >&2
+            return 4
+        fi
+    fi
     ssh "$host" "BENCH_WHO=$(printf %q "$BENCH_WHO") $remote_wd $(printf %q "$dev") --purpose $(printf %q "$purpose") -- $*"
 }
