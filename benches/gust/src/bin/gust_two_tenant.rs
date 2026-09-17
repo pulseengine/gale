@@ -87,7 +87,12 @@ const SHCSR: *mut u32 = 0xE000_ED24 as *mut u32;
 // 0x20000100, which is exactly where the linker placed MEM0 — the report and tenant A's
 // memory were the same bytes. Renode resolves REPORT by symbol instead, so the linker
 // stays the single authority on layout.
+// NUCLEO-WB55RG (192 KiB SRAM): REPORT goes in .data so it lands at 0x2000_0000,
+// BELOW the 64 KiB-aligned memory 0 — left in .bss the linker put it at 0x2002_0000,
+// exactly where memory 1 must sit for the escape to land in tenant B within this part's
+// RAM. 0x2000_0000 is also aligned to its 32-byte region. Renode build unchanged.
 #[unsafe(no_mangle)]
+#[cfg_attr(feature = "target-wb55rg", unsafe(link_section = ".data.report"))]
 static mut REPORT: [u32; 8] = [0; 8];
 #[inline(always)]
 fn slot(i: usize) -> *mut u32 { unsafe { (&raw mut REPORT as *mut u32).add(i) } }
@@ -97,8 +102,35 @@ fn slot(i: usize) -> *mut u32 { unsafe { (&raw mut REPORT as *mut u32).add(i) } 
 /// B's region — the two would have shared bytes and the criterion would have been
 /// measuring stack traffic. RAM is 320 KiB so the stack gets its own 64 KiB region above
 /// every tenant.
+#[cfg(not(feature = "target-wb55rg"))]
 const STACK_REGION_BASE: u32 = 0x2004_0000;
+#[cfg(not(feature = "target-wb55rg"))]
 const STACK_REGION_SIZE: u32 = 0x0001_0000;
+/// WB55: the stack top is moved to 0x2001_0000 (build.rs --defsym=_stack_start), below
+/// memory 0, and granted as its own 16 KiB region — the default top of RAM would be inside
+/// tenant B.
+#[cfg(feature = "target-wb55rg")]
+const STACK_REGION_BASE: u32 = 0x2000_C000;
+#[cfg(feature = "target-wb55rg")]
+const STACK_REGION_SIZE: u32 = 0x0000_4000;
+
+/// Code region: qemu/Renode run from 0x0; the WB55 executes from its 1 MiB flash.
+#[cfg(not(feature = "target-wb55rg"))]
+const CODE_REGION: (u32, u32) = (0x0000_0000, 0x0004_0000);
+#[cfg(feature = "target-wb55rg")]
+const CODE_REGION: (u32, u32) = (0x0800_0000, 0x0010_0000);
+
+/// Silicon verdict. Renode reads REPORT by symbol; the ST-LINK run has only
+/// semihosting, so on the board the same verdicts are also printed. Nothing is decided
+/// here that REPORT does not already record.
+#[cfg(feature = "target-wb55rg")]
+macro_rules! verdict {
+    ($($t:tt)*) => {{ cortex_m_semihosting::hprintln!($($t)*); }};
+}
+#[cfg(not(feature = "target-wb55rg"))]
+macro_rules! verdict {
+    ($($t:tt)*) => {{}};
+}
 
 const STEP_PROGRAMMED: u32 = 0x51AE_0010;
 const STEP_BENIGN_OK: u32 = 0x51AE_0011;
@@ -122,7 +154,14 @@ const R_BENIGN_LOST: u32 = 0xBAD0_1057;
 /// know which MPU you have ... your linker script owns this".
 #[repr(align(65536))]
 struct Aligned64K([u8; 65536]);
+// WB55: in .uninit, not .bss. A 64 KiB-aligned member raises the whole .bss section's
+// alignment to 64 KiB, which pushed .bss to 0x2001_0000 and semihosting's stdout handle
+// past memory 0 — 8 bytes over this part's 192 KiB. .uninit follows the small .bss, so
+// memory 0 lands at 0x2001_0000 and ends exactly where memory 1 starts. Not zeroed at
+// boot: the object's data segments are written by --embedder-data-init, and the probe
+// reads back only values it wrote first.
 #[unsafe(no_mangle)]
+#[cfg_attr(feature = "target-wb55rg", unsafe(link_section = ".uninit.MEM0_ALIGNED"))]
 static mut MEM0_ALIGNED: Aligned64K = Aligned64K([0; 65536]);
 /// Globals table base (R9). Nothing in this module uses globals; it must still be valid.
 #[unsafe(no_mangle)]
@@ -151,6 +190,21 @@ macro_rules! contained {
     () => {{
         if unsafe { read_volatile(slot(1)) } == STEP_ESCAPE_ISSUED {
             out(slot(0), R_CONTAINED);
+            #[cfg(feature = "target-wb55rg")]
+            let npriv = unsafe { read_volatile(slot(4)) } & 1;
+            #[cfg(all(feature = "target-wb55rg", not(feature = "no-regions")))]
+            {
+                if npriv == 1 {
+                    verdict!("gust-two-tenant OK(contained): unprivileged tenant A's write at tenant B's base FAULTED with regions programmed (CONTROL read back {:#x}, mem0={:#010x} mem1={:#010x})",
+                        unsafe { read_volatile(slot(4)) }, unsafe { read_volatile(slot(2)) }, unsafe { read_volatile(slot(3)) });
+                } else {
+                    verdict!("gust-two-tenant FAIL: faulted, but CONTROL.nPRIV did not read back as 1 — not an unprivileged escape");
+                }
+            }
+            #[cfg(all(feature = "target-wb55rg", feature = "no-regions"))]
+            verdict!("gust-two-tenant FAIL(control): the escape FAULTED with NO regions programmed — the fault is the platform's, so a contained result would prove nothing (nPRIV={})", npriv);
+        } else {
+            verdict!("gust-two-tenant FAIL(unexpected-fault): fault before the escape was issued (step={:#x})", unsafe { read_volatile(slot(1)) });
         }
         loop {}
     }};
@@ -167,6 +221,7 @@ fn main() -> ! {
     let dregion = (unsafe { read_volatile(MPU_TYPE) } >> 8) & 0xFF;
     if dregion != REQUIRED_DREGION {
         out(slot(0), R_NO_MPU);
+        verdict!("gust-two-tenant FAIL: MPU_TYPE.DREGION={}, need {}", dregion, REQUIRED_DREGION);
         loop {}
     }
     unsafe { write_volatile(SHCSR, read_volatile(SHCSR) | (1 << 16) | (1 << 17) | (1 << 18)) };
@@ -189,7 +244,7 @@ fn main() -> ! {
     #[cfg(not(feature = "no-regions"))]
     {
         let mut t = RegionTable::new();
-        t.base[0] = 0x0000_0000; t.size[0] = 0x0004_0000; t.enabled[0] = true; t.writable[0] = false;
+        t.base[0] = CODE_REGION.0; t.size[0] = CODE_REGION.1; t.enabled[0] = true; t.writable[0] = false;
         t.base[1] = mem0;        t.size[1] = size0;       t.enabled[1] = true; t.writable[1] = true;
         // TENANT B'S MEMORY IS DELIBERATELY *NOT* GRANTED while tenant A runs.
         //
@@ -235,6 +290,7 @@ fn main() -> ! {
         }
         if unsafe { read_volatile(MPU_CTRL) } & MPU_CTRL_ENABLE == 0 {
             out(slot(0), R_NO_MPU);
+            verdict!("gust-two-tenant FAIL: switch_to_partition did not arm the MPU (CTRL={:#x}) — check region alignment", unsafe { read_volatile(MPU_CTRL) });
             loop {}
         }
     }
@@ -252,6 +308,7 @@ fn main() -> ! {
     unsafe { shim_a_store(0x40, 0xA1A1_A1A1) };
     if unsafe { shim_a_load(0x40) } != 0xA1A1_A1A1 {
         out(slot(0), R_BENIGN_LOST);
+        verdict!("gust-two-tenant FAIL: tenant A cannot use its own memory");
         loop {}
     }
     out(slot(1), STEP_BENIGN_OK);
@@ -287,5 +344,15 @@ fn main() -> ! {
     let landed = unsafe { shim_b_load(0) };
     out(slot(3), landed);
     out(slot(0), R_ESCAPED);
+    #[cfg(all(feature = "target-wb55rg", feature = "no-regions"))]
+    {
+        if landed == 0xBADD_BADD && unsafe { read_volatile(slot(4)) } & 1 == 1 {
+            verdict!("gust-two-tenant OK(escaped-without-regions): with NO regions the unprivileged escape LANDED in tenant B (b_load(0)={:#010x}) — the negative control discriminates", landed);
+        } else {
+            verdict!("gust-two-tenant FAIL(control): no fault, but tenant B reads {:#010x}, not 0xbaddbadd — the escape did not reach B, so the control proves nothing", landed);
+        }
+    }
+    #[cfg(all(feature = "target-wb55rg", not(feature = "no-regions")))]
+    verdict!("gust-two-tenant FAIL: ESCAPED — regions programmed and tenant A's write landed in tenant B (b_load(0)={:#010x})", landed);
     loop {}
 }

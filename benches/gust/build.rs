@@ -97,12 +97,24 @@ fn main() {
             // .cargo/config.toml rather than appending, which drops `-C link-arg=-Tlink.x`
             // and links a 1032-byte ELF with no sections — at exit 0. A silent empty
             // binary is a worse failure than a link error.
+            let wb55 = std::env::var("CARGO_FEATURE_TARGET_WB55RG").is_ok();
+            // NUCLEO-WB55RG: 192 KiB SRAM. Memory 0 is linked at 0x2001_0000, so memory 1
+            // goes directly above it, and the stack top moves below memory 0 (its own
+            // 16 KiB region in the probe) — the default top of RAM is inside tenant B.
+            if wb55 {
+                println!("cargo:rustc-link-arg-bin=gust_two_tenant=--defsym=_stack_start=0x20010000");
+            }
             let at = std::env::var("GUST_TWO_TENANT_MEM1_AT")
-                .unwrap_or_else(|_| "0x20030000".to_string());
+                .unwrap_or_else(|_| if wb55 { "0x20020000" } else { "0x20030000" }.to_string());
             println!("cargo:rustc-link-arg-bin=gust_two_tenant=--section-start=.synth.wasm_mem_1={at}");
-            println!("cargo:rerun-if-env-changed=GUST_TWO_TENANT_O");
-            println!("cargo:rerun-if-env-changed=GUST_TWO_TENANT_MEM1_AT");
         }
+        // UNCONDITIONALLY. These used to be printed only inside the `if let` above, so a
+        // build without GUST_TWO_TENANT_O registered no interest in it — and the next
+        // build WITH it reused the cached build-script output, linked no tenant object,
+        // and failed with "undefined symbol: a_store". The rerun trigger must exist
+        // before the variable does.
+        println!("cargo:rerun-if-env-changed=GUST_TWO_TENANT_O");
+        println!("cargo:rerun-if-env-changed=GUST_TWO_TENANT_MEM1_AT");
         println!("cargo:rustc-link-arg-bin=gust_fused={}", obj.display());
         // gust_stack drives the same dissolved composition (run-demo) as a kiln task.
         println!("cargo:rustc-link-arg-bin=gust_stack={}", obj.display());
