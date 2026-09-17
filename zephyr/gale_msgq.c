@@ -21,8 +21,19 @@
 #include <string.h>
 #include <ksched.h>
 #include <wait_q.h>
+#include <zephyr/init.h>
+#include <kernel_internal.h>
 
 #include "gale_msgq.h"
+
+/* Object core, as upstream kernel/msg_q.c. gale_msgq.c REPLACES that file and
+ * referenced obj_type_msgq without declaring it or registering the type, so every
+ * CONFIG_OBJ_CORE_MSGQ build failed ('obj_type_msgq' undeclared, gale#401) — and
+ * had it compiled, message queues would never have been tracked.
+ */
+#ifdef CONFIG_OBJ_CORE_MSGQ
+static struct k_obj_type obj_type_msgq;
+#endif /* CONFIG_OBJ_CORE_MSGQ */
 
 /* -----------------------------------------------------------------------
  * Helper: convert between slot indices and byte pointers
@@ -223,16 +234,16 @@ int z_impl_k_msgq_put(struct k_msgq *msgq, const void *data,
 		_current->base.swap_data = (void *)data;
 		int result = z_pend_curr(&msgq->lock, key,
 					 &msgq->wait_q, timeout);
-		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, result);
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, timeout, result);
 		return result;
 	} else {
 		/* RETURN_FULL: queue full, non-blocking. */
-		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, d.ret);
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, timeout, d.ret);
 		k_spin_unlock(&msgq->lock, key);
 		return d.ret;
 	}
 
-	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, 0);
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, timeout, 0);
 
 	if (resched) {
 		z_reschedule(&msgq->lock, key);
@@ -255,7 +266,7 @@ static inline int put_front_in_queue(struct k_msgq *msgq, const void *data)
 	k_spinlock_key_t key = k_spin_lock(&msgq->lock);
 	bool resched = false;
 
-	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_msgq, put, msgq, K_NO_WAIT);
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_msgq, put_front, msgq, K_NO_WAIT);
 
 	if (msgq->used_msgs < msgq->max_msgs) {
 		struct k_thread *pending_thread;
@@ -296,7 +307,7 @@ static inline int put_front_in_queue(struct k_msgq *msgq, const void *data)
 #endif
 		}
 
-		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, 0);
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put_front, msgq, K_NO_WAIT, 0);
 
 		if (resched) {
 			z_reschedule(&msgq->lock, key);
@@ -307,7 +318,7 @@ static inline int put_front_in_queue(struct k_msgq *msgq, const void *data)
 	}
 
 	/* Queue full — non-blocking always. */
-	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put, msgq, -ENOMSG);
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, put_front, msgq, K_NO_WAIT, -ENOMSG);
 	k_spin_unlock(&msgq->lock, key);
 	return -ENOMSG;
 }
@@ -426,16 +437,16 @@ int z_impl_k_msgq_get(struct k_msgq *msgq, void *data,
 		_current->base.swap_data = data;
 		int result = z_pend_curr(&msgq->lock, key,
 					 &msgq->wait_q, timeout);
-		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, get, msgq, result);
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, get, msgq, timeout, result);
 		return result;
 	} else {
 		/* RETURN_EMPTY: queue empty, non-blocking. */
-		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, get, msgq, d.ret);
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, get, msgq, timeout, d.ret);
 		k_spin_unlock(&msgq->lock, key);
 		return d.ret;
 	}
 
-	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, get, msgq, 0);
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, get, msgq, timeout, 0);
 
 	if (resched) {
 		z_reschedule(&msgq->lock, key);
@@ -467,8 +478,6 @@ int z_impl_k_msgq_peek(struct k_msgq *msgq, void *data)
 	k_spinlock_key_t key = k_spin_lock(&msgq->lock);
 	int result;
 
-	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_msgq, peek, msgq);
-
 	if (msgq->used_msgs > 0U) {
 		(void)memcpy(data, msgq->read_ptr, msgq->msg_size);
 		result = 0;
@@ -476,7 +485,7 @@ int z_impl_k_msgq_peek(struct k_msgq *msgq, void *data)
 		result = -ENOMSG;
 	}
 
-	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, peek, msgq, result);
+	SYS_PORT_TRACING_OBJ_FUNC(k_msgq, peek, msgq, result);
 	k_spin_unlock(&msgq->lock, key);
 
 	return result;
@@ -498,8 +507,6 @@ int z_impl_k_msgq_peek_at(struct k_msgq *msgq, void *data, uint32_t idx)
 	k_spinlock_key_t key = k_spin_lock(&msgq->lock);
 	int result;
 
-	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_msgq, peek_at, msgq);
-
 	uint32_t slot;
 
 	int rc = gale_msgq_peek_at(ptr_to_slot(msgq, msgq->read_ptr),
@@ -515,7 +522,7 @@ int z_impl_k_msgq_peek_at(struct k_msgq *msgq, void *data, uint32_t idx)
 		result = -ENOMSG;
 	}
 
-	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, peek_at, msgq, result);
+	SYS_PORT_TRACING_OBJ_FUNC(k_msgq, peek, msgq, result);
 	k_spin_unlock(&msgq->lock, key);
 
 	return result;
@@ -543,8 +550,6 @@ void z_impl_k_msgq_purge(struct k_msgq *msgq)
 	struct k_thread *pending_thread;
 	bool resched = false;
 
-	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_msgq, purge, msgq);
-
 	/* Wake all pending threads with -ENOMSG. */
 	while ((pending_thread = z_unpend_first_thread(&msgq->wait_q))
 	       != NULL) {
@@ -557,7 +562,7 @@ void z_impl_k_msgq_purge(struct k_msgq *msgq)
 	msgq->used_msgs = 0U;
 	msgq->read_ptr = msgq->write_ptr;
 
-	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_msgq, purge, msgq);
+	SYS_PORT_TRACING_OBJ_FUNC(k_msgq, purge, msgq);
 
 	if (resched) {
 		z_reschedule(&msgq->lock, key);
@@ -599,3 +604,25 @@ static inline void z_vrfy_k_msgq_get_attrs(struct k_msgq *msgq,
 }
 #include <zephyr/syscalls/k_msgq_get_attrs_mrsh.c>
 #endif /* CONFIG_USERSPACE */
+
+#ifdef CONFIG_OBJ_CORE_MSGQ
+static int init_msgq_obj_core_list(void)
+{
+	/* Initialize msgq object type */
+
+	z_obj_type_init(&obj_type_msgq, K_OBJ_TYPE_MSGQ_ID,
+			offsetof(struct k_msgq, obj_core));
+
+	/* Initialize and link statically defined message queues */
+
+	STRUCT_SECTION_FOREACH(k_msgq, msgq) {
+		k_obj_core_init_and_link(K_OBJ_CORE(msgq), &obj_type_msgq);
+	}
+
+	return 0;
+};
+
+SYS_INIT(init_msgq_obj_core_list, PRE_KERNEL_1,
+	 CONFIG_KERNEL_INIT_PRIORITY_OBJECTS);
+
+#endif /* CONFIG_OBJ_CORE_MSGQ */
