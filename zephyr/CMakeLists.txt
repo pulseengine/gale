@@ -435,6 +435,12 @@ else()
       ${GALE_CARGO_FEATURE_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    # rustc's objects (compiler_builtins among them) carry .note.GNU-stack. The default
+    # linker script absorbs it; Zephyr's generated linker script does not place it and
+    # treats the orphan as an error, so every linker_generator build with Gale failed
+    # (kernel.device.linker_generator, linker.linker_generator; gale#401). The note only
+    # marks a non-executable stack, meaningless on bare metal — stripped once, here.
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -571,6 +577,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -709,6 +716,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -845,6 +853,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -941,6 +950,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1037,6 +1047,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1133,6 +1144,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1229,6 +1241,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1325,6 +1338,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1420,6 +1434,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1515,6 +1530,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1610,6 +1626,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1664,6 +1681,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -1706,6 +1724,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -1748,6 +1767,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -1790,6 +1810,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -1832,6 +1853,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -1874,6 +1896,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -1916,6 +1939,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -1958,6 +1982,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2000,6 +2025,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2042,6 +2068,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2084,6 +2111,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2126,6 +2154,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2168,6 +2197,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2218,6 +2248,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2260,6 +2291,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2317,6 +2349,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2364,6 +2397,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2411,6 +2445,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2457,6 +2492,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2499,6 +2535,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2544,6 +2581,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2590,6 +2628,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2635,6 +2674,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2680,6 +2720,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2726,6 +2767,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2771,6 +2813,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2820,6 +2863,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2868,6 +2912,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2919,6 +2964,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -3009,6 +3055,7 @@ if(NOT TARGET gale_ffi_build)
       ${GALE_CARGO_FEATURE_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
