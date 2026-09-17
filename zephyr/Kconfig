@@ -234,7 +234,12 @@ config GALE_KERNEL_FUTEX
 
 config GALE_KERNEL_TIMESLICE
 	bool "Use Gale formally verified timeslice"
-	depends on MULTITHREADING
+	# TIMESLICING, not only MULTITHREADING: upstream compiles timeslicing.c only
+	# under CONFIG_TIMESLICING, and CONFIG_TIMESLICE_SIZE (which gale_timeslice.c
+	# reads) exists only then. Without it, every TIMESLICING=n build failed with
+	# "'CONFIG_TIMESLICE_SIZE' undeclared" — 18 of the 38 upstream-passing kernel
+	# suites the gale leg broke (gale#401).
+	depends on MULTITHREADING && TIMESLICING
 	help
 	  Use Gale formally verified tick accounting for
 	  kernel/timeslicing.c. Time-slice reset, tick decrement, and
