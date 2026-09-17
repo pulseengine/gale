@@ -288,7 +288,16 @@ int k_mem_slab_alloc(struct k_mem_slab *slab, void **mem, k_timeout_t timeout)
 			*mem = NULL;
 			result = -ENOMEM;
 		}
-	} else if (d.action == GALE_MEM_SLAB_ACTION_PEND_CURRENT) {
+	} else if (IS_ENABLED(CONFIG_MULTITHREADING) &&
+		   d.action == GALE_MEM_SLAB_ACTION_PEND_CURRENT) {
+		/* IS_ENABLED first, so the compiler drops this branch — and
+		 * its z_pend_curr reference — when CONFIG_MULTITHREADING=n,
+		 * exactly as upstream's constant `|| !IS_ENABLED(...)` does.
+		 * The decision cannot return PEND there anyway (is_no_wait is 1),
+		 * but only the constant makes that visible to the linker:
+		 * kernel.memory_slabs.api.no-mt failed "undefined reference to
+		 * z_pend_curr" (gale#401).
+		 */
 		SYS_PORT_TRACING_OBJ_FUNC_BLOCKING(k_mem_slab, alloc, slab, timeout);
 
 		/* wait for a free block or timeout */

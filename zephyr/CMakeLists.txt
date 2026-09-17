@@ -38,6 +38,19 @@ endif()
 set(GALE_CARGO_RUSTFLAGS_ENV "")
 set(GALE_CARGO_PROFILE_ARGS "--release")
 set(GALE_CARGO_PROFILE_DIR "release")
+# Post-cargo step on libgale_ffi.a, applied in every module block below.
+#
+# rustc's objects (compiler_builtins among them) carry .note.GNU-stack. The default
+# linker script absorbs it; Zephyr's GENERATED linker script does not place it and treats
+# the orphan as an error, so linker_generator builds with Gale failed (gale#401).
+# Stripping it is safe: the note only marks a non-executable stack, meaningless here.
+#
+# NOT under linker-plugin LTO. There the archive members are LLVM BITCODE, and objcopy
+# refuses them — "The file was not recognized as a valid object file", which broke all
+# seven llvm-lto jobs on the first version of this fix. That path links through lld with
+# bitcode inputs and does not use the generated-linker-script configurations that need
+# the strip; if the two are ever combined, this is where it has to be solved.
+set(GALE_FFI_POST_CARGO ${CMAKE_OBJCOPY} --remove-section=.note.GNU-stack)
 if("${ZEPHYR_TOOLCHAIN_VARIANT}" STREQUAL "llvm" AND CONFIG_LTO)
   # Tell rustc to emit LLVM bitcode for linker-plugin-based LTO.
   # The linker (lld) will merge C and Rust bitcode and optimize together.
@@ -102,6 +115,8 @@ if("${ZEPHYR_TOOLCHAIN_VARIANT}" STREQUAL "llvm" AND CONFIG_LTO)
   # to the external linker.
   set(GALE_CARGO_PROFILE_ARGS "--profile" "release-lto")
   set(GALE_CARGO_PROFILE_DIR "release-lto")
+  # bitcode archive: see GALE_FFI_POST_CARGO above.
+  set(GALE_FFI_POST_CARGO ${CMAKE_COMMAND} -E echo "gale: LTO bitcode archive, skipping .note.GNU-stack strip:")
   message(STATUS "Gale: cross-language LTO enabled (LLVM linker-plugin-lto)")
 
   # ------------------------------------------------------------------------
@@ -435,6 +450,7 @@ else()
       ${GALE_CARGO_FEATURE_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -571,6 +587,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -709,6 +726,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -845,6 +863,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -941,6 +960,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1037,6 +1057,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1133,6 +1154,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1229,6 +1251,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1325,6 +1348,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1420,6 +1444,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1515,6 +1540,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1610,6 +1636,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs
@@ -1664,6 +1691,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -1706,6 +1734,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -1748,6 +1777,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -1790,6 +1820,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -1832,6 +1863,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -1874,6 +1906,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -1916,6 +1949,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -1958,6 +1992,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2000,6 +2035,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2042,6 +2078,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2084,6 +2121,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2126,6 +2164,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2168,6 +2207,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2218,6 +2258,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2260,6 +2301,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2317,6 +2359,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2364,6 +2407,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2411,6 +2455,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2457,6 +2502,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2499,6 +2545,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2544,6 +2591,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2590,6 +2638,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2635,6 +2684,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2680,6 +2730,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2726,6 +2777,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2771,6 +2823,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2820,6 +2873,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2868,6 +2922,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -2919,6 +2974,7 @@ if(NOT TARGET gale_ffi_build)
       cargo build ${GALE_CARGO_PROFILE_ARGS} ${CARGO_TARGET_ARGS} ${GALE_CARGO_EXTRA_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS ${GALE_FFI_DIR}/Cargo.toml ${GALE_FFI_DIR}/src/lib.rs
     COMMENT "Building Gale FFI static library for ${RUST_TARGET}"
     VERBATIM
@@ -3009,6 +3065,7 @@ if(NOT TARGET gale_ffi_build)
       ${GALE_CARGO_FEATURE_ARGS}
       --target-dir ${GALE_FFI_TARGET_DIR}
       --manifest-path ${GALE_FFI_DIR}/Cargo.toml
+    COMMAND ${GALE_FFI_POST_CARGO} ${GALE_FFI_LIB}
     DEPENDS
       ${GALE_FFI_DIR}/Cargo.toml
       ${GALE_FFI_DIR}/src/lib.rs

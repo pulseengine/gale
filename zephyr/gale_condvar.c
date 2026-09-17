@@ -117,13 +117,17 @@ int z_impl_k_condvar_broadcast(struct k_condvar *condvar)
 	/* Extract: current wait queue length (bounded by MAX_NUM_THREADS) */
 	uint32_t num_waiters = 0;
 	{
-		sys_dnode_t *node;
+		struct k_thread *waiter;
 
-		/* _wait_q_t wraps a sys_dlist_t (non-scalable config) or
-		 * an rbtree (CONFIG_WAITQ_SCALABLE). We iterate the dlist
-		 * form — the rbtree case is not exercised by this shim.
+		/* _wait_q_t is a sys_dlist_t, or an rbtree under
+		 * CONFIG_WAITQ_SCALABLE. This walked the dlist form only, so
+		 * every CONFIG_WAITQ_SCALABLE build failed to compile
+		 * (kernel.mutex.scalable, benchmark.wait_queues.scalable;
+		 * gale#401). _WAIT_Q_FOR_EACH is wait_q.h's walker for BOTH
+		 * forms; read-only, as its contract requires.
 		 */
-		SYS_DLIST_FOR_EACH_NODE(&condvar->wait_q.waitq, node) {
+		_WAIT_Q_FOR_EACH(&condvar->wait_q, waiter) {
+			ARG_UNUSED(waiter);
 			num_waiters++;
 			/* Safety bound: Zephyr has a finite thread pool */
 			if (num_waiters > 256U) {
@@ -181,8 +185,7 @@ int z_impl_k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mutex,
 		return -ENOTSUP;
 	}
 
-	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_condvar, wait, condvar, mutex,
-					 timeout);
+	SYS_PORT_TRACING_OBJ_FUNC_ENTER(k_condvar, wait, condvar, timeout);
 
 	/* Decide: should we pend or return EAGAIN? */
 	struct gale_condvar_wait_decision d =
@@ -190,8 +193,8 @@ int z_impl_k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mutex,
 			K_TIMEOUT_EQ(timeout, K_NO_WAIT) ? 1U : 0U);
 
 	if (d.action == GALE_CONDVAR_WAIT_RETURN_EAGAIN) {
-		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_condvar, wait, condvar, mutex,
-						timeout, d.ret);
+		SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_condvar, wait, condvar, timeout,
+						d.ret);
 		return d.ret;
 	}
 
@@ -206,8 +209,7 @@ int z_impl_k_condvar_wait(struct k_condvar *condvar, struct k_mutex *mutex,
 		k_mutex_lock(mutex, K_FOREVER);
 	}
 
-	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_condvar, wait, condvar, mutex,
-					timeout, ret);
+	SYS_PORT_TRACING_OBJ_FUNC_EXIT(k_condvar, wait, condvar, timeout, ret);
 
 	return ret;
 }
