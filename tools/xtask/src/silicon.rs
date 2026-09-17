@@ -206,10 +206,10 @@ const MATRIX: &[Entry] = &[
         not_on: &[("g031k8", "links an ARMv7-M gust:os object (synth#1301)")],
     },
     // --- module COMBINATIONS: composed/fused images, verdict by semihosting exit ---
-    // gust_breadth is deliberately absent: it exits SUCCESS unconditionally, because its
-    // real check is Renode reading USART1 — an exit-status verdict there would be vacuous.
-    // gust_two_tenant never exits (Renode-gated). Both need a self-check before they can
-    // be silicon rows.
+    // gust_two_tenant never exits (Renode-gated); it needs a self-check before it can be
+    // a silicon row. gust_breadth used to exit SUCCESS unconditionally (Renode reads its
+    // UART lines); under target-f100 it now clocks its peripherals and reports a
+    // semihosting verdict, and its default Renode image is byte-identical.
     Entry {
         bin: "gust_osfused_probe",
         extra: &[],
@@ -247,6 +247,15 @@ const MATRIX: &[Entry] = &[
         extra: &[],
         boards: &["f100", "wl55jc", "wb55rg", "g474re"],
         not_on: &[("g031k8", "links dma-own, ARMv7-M (synth#1301)")],
+    },
+    Entry {
+        bin: "gust_breadth",
+        extra: &[],
+        boards: &["f100"],
+        not_on: &[("wl55jc", "STM32F1 peripheral addresses (GPIOC CRH, TIM2, SPI1, USART1) — no model of those bases on this part"),
+                  ("wb55rg", "STM32F1 peripheral addresses — no model of those bases on this part"),
+                  ("g474re", "STM32F1 peripheral addresses — the G474 model carries no USART/GPIO/TIM/SPI bases"),
+                  ("g031k8", "ARMv7-M object (synth#1301) and F1 peripheral addresses")],
     },
     Entry {
         bin: "gust_hm_probe",
