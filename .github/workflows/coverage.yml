@@ -109,7 +109,14 @@ jobs:
           echo "host-root after reclaim:"; df -h / | tail -1
           ZEPHYR_FORK_REV="$(grep -v '^#' "${GITHUB_WORKSPACE}/gale/.github/zephyr-fork-pin" | tr -d '[:space:]')"
           [ -n "$ZEPHYR_FORK_REV" ] || { echo "::error::empty .github/zephyr-fork-pin" >&2; exit 1; }
-          west init -m https://github.com/pulseengine/zephyr.git --mr "$ZEPHYR_FORK_REV" zephyr-workspace
+          # west init --mr runs `git clone --branch <rev>`, which does not take a SHA, so the
+          # manifest repo is cloned on the branch and then moved to the PINNED revision
+          # before `west update` reads it. HEAD is asserted: a silent miss here would build
+          # an unpinned Zephyr and look identical in the log.
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
+          git -C zephyr-workspace/zephyr fetch --depth 1 origin "$ZEPHYR_FORK_REV"
+          git -C zephyr-workspace/zephyr checkout --detach FETCH_HEAD
+          [ "$(git -C zephyr-workspace/zephyr rev-parse HEAD)" = "$ZEPHYR_FORK_REV" ] || { echo "::error::zephyr fork not at pinned $ZEPHYR_FORK_REV" >&2; exit 1; }
           cd zephyr-workspace
           # west update fetches ~60 third-party modules; a single transient TLS failure
           # on any one of them kills the whole step (seen on openthread, percepio,
@@ -277,7 +284,14 @@ jobs:
           echo "host-root after reclaim:"; df -h / | tail -1
           ZEPHYR_FORK_REV="$(grep -v '^#' "${GITHUB_WORKSPACE}/gale/.github/zephyr-fork-pin" | tr -d '[:space:]')"
           [ -n "$ZEPHYR_FORK_REV" ] || { echo "::error::empty .github/zephyr-fork-pin" >&2; exit 1; }
-          west init -m https://github.com/pulseengine/zephyr.git --mr "$ZEPHYR_FORK_REV" zephyr-workspace
+          # west init --mr runs `git clone --branch <rev>`, which does not take a SHA, so the
+          # manifest repo is cloned on the branch and then moved to the PINNED revision
+          # before `west update` reads it. HEAD is asserted: a silent miss here would build
+          # an unpinned Zephyr and look identical in the log.
+          west init -m https://github.com/pulseengine/zephyr.git --mr gale/sem-replacement zephyr-workspace
+          git -C zephyr-workspace/zephyr fetch --depth 1 origin "$ZEPHYR_FORK_REV"
+          git -C zephyr-workspace/zephyr checkout --detach FETCH_HEAD
+          [ "$(git -C zephyr-workspace/zephyr rev-parse HEAD)" = "$ZEPHYR_FORK_REV" ] || { echo "::error::zephyr fork not at pinned $ZEPHYR_FORK_REV" >&2; exit 1; }
           cd zephyr-workspace
           # west update fetches ~60 third-party modules; a single transient TLS failure
           # on any one of them kills the whole step (seen on openthread, percepio,
