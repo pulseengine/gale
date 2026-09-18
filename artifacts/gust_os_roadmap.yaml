@@ -906,7 +906,7 @@ artifacts:
   - id: REQ-TARGET-MODEL-001
     type: sw-req
     title: "Board/SoC/device facts are defined once in the spar/AADL target model and generated, never hand-written"
-    status: implemented
+    status: verified
     release: v0.10.0
     description: >
       The per-target hardware facts a driver needs — peripheral base addresses, the
