@@ -126,6 +126,45 @@ jobs:
       - name: Every defined target is gated, and its ELF exists
         run: cargo xtask check renode-targets
 
+  zephyr-fork-pin:
+    # The pinned pulseengine/zephyr revision must still be REACHABLE from the branch
+    # gale takes fork changes on. CI used to clone that branch by name, so a run's
+    # Zephyr was whatever it held at the time and no gale commit recorded it (gale#401's
+    # 38 -> 0 kernel delta spanned exactly such a change). Pinning fixes reproducibility;
+    # this gate catches the pin going stale in the one way that breaks a build silently
+    # later: the fork rebased or force-pushed away from the commit, so `west init --mr
+    # <sha>` would fail in every Zephyr job at once instead of here.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pin is a 40-hex revision, and an ancestor of gale/sem-replacement
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REV="$(grep -v '^#' .github/zephyr-fork-pin | tr -d '[:space:]')"
+          case "$REV" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+            *) echo "::error::.github/zephyr-fork-pin is not a 40-hex revision: '$REV'"; exit 1 ;;
+          esac
+          # compare <base>...<head>: "identical" or "ahead" means the branch CONTAINS the
+          # pin. "behind" or "diverged" means it does not — the pin is unreachable.
+          STATUS="$(gh api "repos/pulseengine/zephyr/compare/${REV}...gale/sem-replacement" --jq .status)"
+          echo "pin ${REV}, branch status: ${STATUS}"
+          case "$STATUS" in
+            identical|ahead) ;;
+            *) echo "::error::pinned revision ${REV} is not an ancestor of gale/sem-replacement (status: ${STATUS}) — the fork was rebased or force-pushed; re-pin deliberately"; exit 1 ;;
+          esac
+          # Self-test: a revision the branch cannot contain must be rejected by the same
+          # query, or this gate would pass on anything.
+          # Branch on the EXIT STATUS, not the output: gh prints the 404 body to stdout,
+          # so capturing "$(gh api ... || echo unreachable)" yields the JSON *and* the
+          # word, and a string compare would fail the gate for the wrong reason.
+          if CTL="$(gh api "repos/pulseengine/zephyr/compare/684c9e8f3e0a7ff0e1c1b0e0a5e8a1f2e0000000...gale/sem-replacement" --jq .status 2>/dev/null)"; then
+            echo "::error::negative control resolved (status ${CTL}) — the ancestry query is not discriminating"
+            exit 1
+          fi
+
   retry-loops:
     name: "no CI retry loop can swallow its own failure"
     runs-on: ubuntu-24.04
