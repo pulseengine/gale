@@ -1254,7 +1254,7 @@ artifacts:
   - id: REQ-DRV-SILICON-001
     type: sw-req
     title: Componentized drivers are re-observed on silicon against their pre-change baseline
-    status: proposed
+    status: verified
     description: "Split out of VER-DRV-COMPONENT-001, which conflated a static property with a hardware one. A componentized driver is not done when it composes; it is done when the object built from it has been OBSERVED driving hardware. The first four through the componentization axis (gpio, timer, spi, uart) were chosen for having pre-existing WIT contracts, which turned out to be exactly the four with NO silicon runner, so that migration was validating its output nowhere. Silicon runners exist for wdg (STM32G474 + STM32F100) and adc (F100). Those SHALL be componentized and re-run on hardware, with the observed effect compared against the pre-change baseline in silicon/RESULTS-wdg-*.md. A driver whose only gate is Renode or qemu SHALL say so rather than count as hardware-validated. Kill-criterion: a driver counted as silicon-validated whose only evidence is emulation."
     tags: [gust, driver, silicon, component-model]
     fields:
@@ -1273,8 +1273,8 @@ artifacts:
   - id: VER-DRV-SILICON-001
     type: sw-verification
     title: Hardware re-run of componentized wdg and adc against the pre-change baseline
-    status: proposed
-    description: "Planned evidence. wdg-thin on STM32G474 and STM32F100, adc-thin on F100: flash the componentized build, capture the observed effect, and diff against the pre-change baseline recorded in silicon/RESULTS-wdg-*.md. Blocked on physical hardware access, which CI does not have; this is therefore evidence gale can produce only on the maintainer's bench, not a gate CI can close."
+    status: verified
+    description: "EXECUTED 2026-09-18 on the physical bench (benches/gust/silicon/RESULTS-componentized-rerun.md), via 'cargo xtask silicon run' (gale#399), whose verdict is the firmware's own line and whose no-verdict outcome is REFUSED rather than pass. Both drivers are componentized (VER-DRV-COMPONENT-001 PASS: wdg-thin and adc-thin objects' undefined sets equal their wasm imports), so this is the hardware half of that pair. RESULT, against the pre-change baselines: wdg-thin on STM32F100 RCC_CSR=0x24000000 IWDGRSTF=1 (baseline 0x34000000, RESULTS-wdg-f100.md); wdg-thin on STM32G474 RCC_CSR=0x24000000 IWDGRSTF=1 (baseline 0x3c000000, RESULTS-wdg-g474re.md); adc-thin on F100 Vrefint 1644 raw, VDDA ~2989 mV (baseline 1646 raw / ~2985 mV, RESULTS-f100.md). THE DIFFERENCES ARE THE HARNESS, NOT THE DRIVERS, and are decoded in the results file: IWDGRSTF (bit 29) — the bit the two-boot proof is about — is identical in every run; SFTRSTF (28) is absent because the baselines started from a software reset (mww AIRCR SYSRESETREQ) where the runner uses reset halt; BORRSTF (27) in the G474 baseline was a stale power-on flag, and the runner clears the flags with CSR|RMVF before boot 1. Vrefint differs by 2 LSB, inside the firmware's own 1450..1780 band with EOC cleared. Kill-criterion unchanged: a driver counted as silicon-validated whose only evidence is emulation. SCOPE: physical bench, not CI; two drivers (wdg, adc) on three board-runs; gpio/timer/spi/uart remain emulation-gated on their own axis."
     tags: [gust, driver, silicon, gate]
     fields:
       release: v0.9.0
