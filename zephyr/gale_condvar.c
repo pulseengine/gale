@@ -126,13 +126,19 @@ int z_impl_k_condvar_broadcast(struct k_condvar *condvar)
 		 * gale#401). _WAIT_Q_FOR_EACH is wait_q.h's walker for BOTH
 		 * forms; read-only, as its contract requires.
 		 */
+		/* NO ARBITRARY CAP. This used to stop counting at 256, which
+		 * under-reports num_waiters — and num_waiters is the INPUT to the
+		 * verified decision whose property C4 is "all waiters woken". With
+		 * more than 256 waiters the shim asked for 256, the apply loop below
+		 * woke 256, and the remainder stayed pending: upstream's
+		 * k_condvar_broadcast wakes every waiter. The verified core caps at
+		 * u32::MAX for overflow (C8) and needs no help from the shim. The walk
+		 * terminates because the wait queue is finite, exactly as upstream's
+		 * own unpend loop relies on.
+		 */
 		_WAIT_Q_FOR_EACH(&condvar->wait_q, waiter) {
 			ARG_UNUSED(waiter);
 			num_waiters++;
-			/* Safety bound: Zephyr has a finite thread pool */
-			if (num_waiters > 256U) {
-				break;
-			}
 		}
 	}
 
