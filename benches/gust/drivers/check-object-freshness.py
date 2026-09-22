@@ -103,7 +103,6 @@ KNOWN_STALE = {
     "os-node/os-ts-cm3.o",
     # crate-adjacent: object predates the 2026-08-27 gust:hal seam change
     "hm-thin/hm-thin-cm3.o",
-    "mpu-thin/mpu-thin-cm3.o",
     "switch-thin/switch-thin-cm3.o",
     "wdg-thin/wdg-thin-cm3.o",
     # crate-adjacent: object predates its own source

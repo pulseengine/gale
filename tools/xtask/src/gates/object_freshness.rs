@@ -66,7 +66,6 @@ const KNOWN_STALE: &[&str] = &[
     "os-node/os-tl-cm3.o",
     "os-node/os-ts-cm3.o",
     "hm-thin/hm-thin-cm3.o",
-    "mpu-thin/mpu-thin-cm3.o",
     "switch-thin/switch-thin-cm3.o",
     "wdg-thin/wdg-thin-cm3.o",
     "dma-own/dma-own-cm3.o",
