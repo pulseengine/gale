@@ -4,6 +4,7 @@
 
 pub mod data_overlap;
 pub mod graph_env;
+pub mod fixture_freshness;
 pub mod object_freshness;
 pub mod proof_completeness;
 pub mod providers;
@@ -33,6 +34,12 @@ pub const GATES: &[Gate] = &[
         about: "no raw `env` import survives in the composed graph (VER-DRV-GRAPH-001)",
         run: graph_env::run,
         self_test: graph_env::self_test,
+    },
+    Gate {
+        name: fixture_freshness::NAME,
+        about: "no committed Renode ELF fixture is older than the sources that produce it",
+        run: fixture_freshness::run,
+        self_test: fixture_freshness::self_test,
     },
     Gate {
         name: object_freshness::NAME,
