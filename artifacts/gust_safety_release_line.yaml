@@ -1338,3 +1338,68 @@ artifacts:
       created-by: ai-assisted
       model: claude-opus-5
       timestamp: 2026-09-22T19:51:29Z
+
+  - id: REQ-OS-PRIVREGION-001
+    type: sw-req
+    title: The verified region model can express supervisor-private memory — a region unreachable from unprivileged code
+    status: verified
+    description: |-
+      Found by an STPA-Sec analysis of REQ-OS-UNPRIV-001's boundary and then verified in source (gale#410). `rasr_for` emitted AP 0b011 or 0b110 and nothing else. Both grant unprivileged code exactly what privileged code gets, so while the supervisor ran — including inside an SVC handler, under the ENTERING tenant's region map — every byte it could reach, the tenant could reach too. Supervisor-private state was not EXPRESSIBLE: not the executor's task table, not the tick counter, not the region table itself. The ARMv7-M encodings that distinguish the modes (1 = priv RW / unpriv none, 2 = priv RW / unpriv RO, 5 = priv RO / unpriv none) were never emitted.
+
+      This was a gap in what the model could EXPRESS, not a defect in any proof. Deny-by-default, disjointness, totality (P1-P4), the builder invariants (B1-B2) and the covers lemmas are about SPATIAL containment between partitions and were all correct. What was missing is a PRIVILEGE axis within one partition's map — a dimension the model never had, because until now every tenant ran privileged and the question could not arise.
+
+      WHY IT OUTRANKED THE SEAM-SHAPE QUESTION (REQ-OS-UNPRIV-001, gale#408): every candidate syscall-seam shape assumes the supervisor has state a tenant cannot touch. Without a privilege axis, validating a request pointer proves nothing if the validated copy lands somewhere the tenant can rewrite; a per-tenant handle-ownership map is itself tenant-writable; and the confused-deputy scenarios collapse into "the tenant did not need a deputy".
+
+      SHALL: a region may be marked so that unprivileged access to it is denied, and the programmed sequence SHALL emit an AP encoding that grants unprivileged code no access for exactly those regions and an unprivileged-permitting encoding for all others.
+
+      Kill-criterion: a region marked supervisor-private is emitted with an AP that grants unprivileged access; or a region NOT so marked is emitted with one that denies it — which would destroy every tenant's own grant while satisfying the first half, and is why the verification carries a negative control rather than a single assertion.
+
+      DESIGN NOTE, because it is what kept the change cheap: the model gained a SECOND axis rather than a replacement. `writable` keeps its meaning (the privileged half) and `unpriv` joins it (UNPRIV_SAME / UNPRIV_RO / UNPRIV_NONE). `try_add_region` is `try_add_region_perm` with UNPRIV_SAME, so no existing caller's behaviour changes by a bit and every clause already phrased over `writable` still means what it meant. `perm_wf` REJECTS the one redundant spelling (unprivileged-RO under privileged-RO is AP 6, which UNPRIV_SAME already names) rather than normalising it: silently rewriting a caller's grant into a different one is how a region ends up meaning something nobody asked for.
+
+      WHAT THIS DOES NOT CLAIM. It does not say gust tenant code runs unprivileged — REQ-OS-UNPRIV-001 remains open and `gust_iso_unpriv_probe` still records that gap with its inverted polarity. It says the model can now express supervisor-private state, and that the hardware has been observed enforcing the encoding it emits (VER-OS-PRIVREGION-001). ARMv6-M is excluded BY HARDWARE: its PMSA has no mode-distinguishing AP encodings, so the G031K8 cannot carry this evidence.
+    tags: [gust, os, isolation, mpu, privilege, multi-tenant]
+    links:
+      - type: related-to
+        target: REQ-OS-UNPRIV-001
+      - type: related-to
+        target: REQ-OS-MPU-001
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5
+      timestamp: 2026-09-23T04:40:53Z
+    release: v0.10.0
+
+  - id: VER-OS-PRIVREGION-001
+    type: sw-verification
+    title: Three tracks agree the AP encoding is emitted, and a WL55 matched pair shows the hardware honours it
+    status: verified
+    description: |-
+      Evidence for REQ-OS-PRIVREGION-001, all against the same region-program source (src/mpu_switch.rs and its verus-strip mirror plain/src/mpu_switch.rs — the SAME executable code, no hand-copied mirror).
+
+      (1) VERUS, SMT/Z3: 1168 verified, 0 errors, first run. P1-P4, the builder invariants B1-B4 and the covers lemmas all RE-DISCHARGED over the wider state — no existing property had to be weakened to admit the new axis. Two additions: B5, that a region asked for as supervisor-private IS supervisor-private in the resulting table (without it a caller has no proof its marking survived the insert), and `lemma_unpriv_none_denies`, that UNPRIV_NONE maps to AP 1 or AP 5 and nothing else.
+
+      (2) KANI, an independent engine (SAT/CBMC rather than SMT): 6 harnesses over `program_partition`, 0 failures, with the AP decoded back OUT of the emitted RASR rather than read from the table. k5 asserts a UNPRIV_NONE slot emits AP 1 or 5 and explicitly NOT one of the four unprivileged-permitting encodings. k6 is k5's NEGATIVE CONTROL and the reason k5 is not vacuous: a slot NOT marked must emit an AP that DOES grant unprivileged access, so an encoder returning AP 1 for everything cannot satisfy k5 while destroying every tenant's grant. k5 was additionally checked for vacuity by sabotaging `rasr_for` back to the old always-accessible AP: it fails with `assertion failed: ap == 1 || ap == 5`.
+
+      (3) THE TEST TRACK, for the first time. tests/mpu_switch_perm.rs, 8 tests: concrete vectors for all five encodings (3, 6, 2, 1, 5) with the ENABLE bit and SIZE field asserted not to move when only permission changes; both directions of the deny/grant property; `try_add_region` compared emission-by-emission against `try_add_region_perm(.., UNPRIV_SAME)` — the compatibility claim the design rests on; ill-formed pairs rejected with the table proven untouched, then the VALID form of the same request accepted, so the rejection is about the permission and not the region; the exec form of B5; P1-P4 discipline under mixed permissions; and permissions not leaking across partitions. Worth recording WHY this track existed to be added: `mpu_switch` had NO coverage from `cargo test` at all — Verus and Kani both exercise it and neither runs under `cargo test`, so the coverage gate on gale#416 was correct and the gap it revealed predated the patch. Sabotaging the encoder fails 5 of the 8, and the 3 that survive are exactly the ones that do not depend on the UNPRIV_NONE encoding.
+
+      (4) SILICON, NUCLEO-WL55JC1 (STM32WL55, Cortex-M4, MPU 8 regions), 2026-09-23 — the half no proof reaches. That the HARDWARE faults an unprivileged access to AP 0b001/0b101 is an ARMv7-M architectural fact, assumed exactly as the `mpu_write` seam contract is. `gust_priv_region_probe` discharges it as a MATCHED PAIR: same image, same three regions, the same `ldr r2, [r0]`, and ONLY the target region's `unpriv` differing.
+        priv-shared  (UNPRIV_SAME, AP 0b011): read returned 0x51572a10, 0 faults
+        priv-private (UNPRIV_NONE, AP 0b001): MemManage at 0x20008000, CFSR=0x00000082
+      CFSR 0x82 decodes as DACCVIOL (bit 1) + MMARVALID (bit 7), and MMFAR is exactly TARGET_BASE. A MemManage rather than an escalated HardFault, which is what distinguishes "the MPU denied this access" from "something else went wrong". THE PAIR IS THE EVIDENCE, not the fault: a read faults just as convincingly when the region was never mapped, when the base was wrong, or when the MPU denied it for an unrelated reason, so priv-shared is what makes the fault attributable to the one field that changed. Same shape as the two-tenant criterion (gale#399). Detail and decode in benches/gust/silicon/RESULTS-priv-region.md.
+
+      THE FIRST SILICON RUN REFUTED THE PROBE, not the model, and did so silently: it flashed, verified and printed NOTHING. The probe programs 32 KiB at 0x2000_0000 and enables the MPU with PRIVDEFENA CLEAR, so everything outside the programmed regions is denied even to PRIVILEGED code — and the WL55's reset stack top is 0x2001_0000, 32 KiB above the region. The first push after the MPU came on faulted and the image never reached its own report. The three MPU-bearing bench boards put their stack at three different addresses (WL55 64 KiB, G474 96 KiB, WB55 192 KiB), so the probe pins its own via build.rs to 0x2000_8000 — the top of the granted region and the base of the target region, so the stack grows DOWN into memory it is granted and never touches the word under test. The runner is the reason this was caught rather than misread: a run that prints no verdict is REFUSED, never a pass.
+
+      SCOPE. One part: the G474 was not attached to the runner host and the WB55's probe was claimed by another job; both arms are registered for wl55jc/wb55rg/g474re and re-run with `cargo xtask silicon matrix --bins gust_priv_region_probe`. g031k8 is excluded BY HARDWARE — ARMv6-M PMSA has no mode-distinguishing AP encodings. Physical bench, not CI: these runs need boards and CI has none. Toolchain: varve layer 2026.09.3 (sha256:5fc6f43f...), synth 0.65.0.
+
+      COST, for the record: the fused isolation core grows text 8460 -> 8756 (+296 B) and SRAM 4332 -> 4588 B of the STM32F100RB's 8192 (52% -> 56%), with data segments still disjoint and the seam set unchanged at ctx-resume/ctx-save/mpu-write/region-swap.
+    tags: [gust, os, isolation, mpu, privilege, verus, kani, silicon, verified]
+    links:
+      - type: verifies
+        target: REQ-OS-PRIVREGION-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5
+      timestamp: 2026-09-23T04:41:27Z
+    release: v0.10.0

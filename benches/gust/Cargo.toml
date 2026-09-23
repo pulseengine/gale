@@ -36,6 +36,12 @@ unpriv = []
 # gust_two_tenant negative control: skip region programming, so the escape must be
 # OBSERVED landing in tenant B. A fault with no control proves the platform, not us.
 no-regions = []
+# gust_priv_region_probe, the MATCHED PAIR for gale#410's privilege axis. Exactly
+# one is built. Same image, same regions, same load instruction; the only
+# difference is the target region's `unpriv`, which is what makes the private
+# arm's fault attributable to the permission rather than to the mapping.
+priv-private = []
+priv-shared = []
 # Silicon-firmware target selection (gust_wdg_silicon). Exactly one is active;
 # each pulls the matching generated constants module (benches/gust/targets/
 # generated/). G4 is the default (the directly-attached NUCLEO board); F1 is
