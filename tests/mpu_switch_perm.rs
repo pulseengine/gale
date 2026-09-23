@@ -10,6 +10,18 @@
 //! encoding, the builder's rejections, and a `program_partition` round-trip
 //! whose AP is decoded back OUT of the emitted RASR.
 
+// Same allow-block as tests/mpu_integration.rs: the repo denies these
+// crate-wide for SHIPPED code, and a test that cannot index a fixed-size array
+// or assert a panic is a test written around the lint rather than the property.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    clippy::cast_possible_truncation
+)]
+
 use gale::mpu_switch::{
     RegionTable, MAX_PARTITIONS, MAX_REGIONS, MPU_CTRL_DISABLE, MPU_CTRL_ENABLE, MPU_CTRL_ID,
     UNPRIV_MAX, UNPRIV_NONE, UNPRIV_RO, UNPRIV_SAME,
