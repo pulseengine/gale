@@ -8,6 +8,12 @@ one has a seam — the single `mpu_write(rnr, rbar, rasr)` atom — so it tests 
 that matters: does the seam survive the dissolve, and what does the module actually
 cost in RAM?
 
+> **Superseded in part (2026-09-22, gale#411):** the module no longer *copies* the
+> verified bodies — it depends on the `gale` crate and exports
+> `plain/src/mpu_switch.rs` itself. Everything below still describes the dissolve
+> and the footprint; see **"The copy is gone"** at the end for what changed and
+> what it cost.
+
 ## It dissolves, and the seam survives exactly
 
     plain/src/mpu_switch.rs + mpu.rs   (Verus + Kani verified — lifted VERBATIM)
@@ -97,3 +103,55 @@ invisible in the tool's output). More than ten times HM's 29 occurrences.
     synth compile mpu.loom.wasm --target cortex-m3 --all-exports --relocatable \
       --native-pointer-abi --shadow-stack-size 2048 -o mpu-thin-cm3.o
     synth verify mpu.loom.wasm mpu-thin-cm3.o      # needs a --features verify build
+
+## The copy is gone (2026-09-22, gale#411)
+
+The header of `src/lib.rs` used to read *"Bodies lifted VERBATIM from
+plain/src/mpu_switch.rs"* — a claim nothing checked. Nothing compared the two
+copies; `verus-strip --check` gates `src/` against `plain/`, not `plain/` against
+this bench driver. A reader had to take the word "VERBATIM" on trust, and a change
+to the verified core would have left this copy behind in silence.
+
+It is now a dependency, not a copy. `Cargo.toml` takes `gale = { path = ... }`, and
+`lib.rs` is a WIT wrapper: `use gale::mpu_switch as iso`, plus the one thing the
+verified code needs from its embedder — a definition for the `extern "C" fn
+mpu_write` seam, forwarded to the typed component import. The verified code's
+trusted surface is unchanged: `emit_write` is still the only `external_body` step,
+and it still carries no `ensures`.
+
+**What it costs**, measured on the pinned layer 2026.09.3
+(`sha256:5fc6f43f…`, synth 0.65.0 / meld 0.55.1 / loom 1.4.1) — both arms built
+today, so this is a comparison and not a toolchain delta:
+
+| | copy (before) | dependency (now) | Δ |
+|---|---|---|---|
+| component | 8 464 B | 8 829 B | +365 B (+4.3%) |
+| `text` | 3 396 | 3 596 | +200 B (+5.9%) |
+| `data` + `bss` (SRAM of 8 192) | 3 324 B — 40.6% | 3 420 B — 41.7% | +96 B |
+| undefined symbols | `[ mpu-write ]` | `[ mpu-write ]` | unchanged |
+
+In the FUSED isolation core (`build-iso-core.sh`, hm-thin + mpu-thin + switch-thin —
+the object that is actually linked and executed):
+
+| | copy (before) | dependency (now) |
+|---|---|---|
+| `text` | 8 260 | 8 460 (+200 B) |
+| SRAM of 8 192 | 4 236 B — 51% | 4 332 B — 52% |
+| data-segment disjointness (gale#266 gate) | PASS | PASS |
+| seam set | `ctx-resume ctx-save mpu-write region-swap` | identical |
+
+The +200 B is the same in both, which is the expected shape: it is the region logic
+compiled from a crate that also carries `#[cfg]`-gated verification scaffolding,
+not a per-composition cost.
+
+### What this does NOT settle
+
+- **Byte-identity with the previous object is not claimed and is not the goal** —
+  this is a different build (different source *and* a newer toolchain; the committed
+  object dated from 2026-08-08 / synth 0.52.0, `text 3744`). The oracles are the
+  Renode `gust_iso` gate and the silicon probes, not a hash.
+- **`synth verify` was not re-run** — it needs a `--features verify` synth build,
+  which the pinned layer does not ship.
+- **The standalone `mpu-thin-cm3.o` is linked into nothing.** It is a
+  reproducibility artifact under the freshness ledger; the executed path is
+  `iso-core-fused-cm3.o`.
