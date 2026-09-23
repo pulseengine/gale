@@ -25,6 +25,7 @@ use std::process::Command;
 pub const NAME: &str = "fixture-freshness";
 
 const REL: &str = "benches/gust/renode-test";
+const BENCH_DIR: &str = "benches/gust";
 const BIN_DIR: &str = "benches/gust/src/bin";
 const BUILD_RS: &str = "benches/gust/build.rs";
 
@@ -151,7 +152,11 @@ fn linked_objects(repo: &Path, bin: &str) -> Vec<String> {
             let Some(end) = rest.find('"') else { continue };
             let rel = &rest[..end];
             if rel.ends_with(".o") {
-                out.push(format!("benches/gust/drivers/{rel}"));
+                // The `.join(..)` paths in build.rs are relative to the CRATE
+                // manifest dir, not to the drivers dir. Prefixing with the
+                // latter produced `benches/gust/drivers/drivers/...`, which
+                // resolves to nothing -- see `run`'s unresolvable-input check.
+                out.push(format!("{BENCH_DIR}/{rel}"));
             }
             break;
         }
@@ -224,6 +229,25 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
         let Some(elf_t) = last_commit_epoch(repo, &format!("{REL}/{elf}")) else {
             return Verdict::Refused(format!("no commit date for {elf} — cannot compare"));
         };
+        // An input path that does not resolve must REFUSE, not silently drop
+        // out of the max. That is exactly how this gate's object half was
+        // vacuous when it landed: a derived path with a doubled directory
+        // segment produced no commit date, `filter_map` discarded it, and every
+        // fixture was compared against its bin source alone while the gate
+        // reported PASS. A gate that cannot see an input is not a gate saying
+        // the input is old enough.
+        for i in inputs {
+            if !repo.join(i).exists() {
+                return Verdict::Refused(format!(
+                    "input {i} (derived for {elf}) does not exist — the gate cannot answer"
+                ));
+            }
+            if last_commit_epoch(repo, i).is_none() {
+                return Verdict::Refused(format!(
+                    "no commit date for input {i} of {elf} — the gate cannot answer"
+                ));
+            }
+        }
         let newest = inputs.iter().filter_map(|i| last_commit_epoch(repo, i)).max();
         let Some(newest) = newest else {
             return Verdict::Refused(format!("no commit date for any input of {elf}"));
@@ -297,6 +321,15 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     ck(
         "linked_objects finds gust_iso's fused object",
         iso.iter().any(|o| o.ends_with("iso-core-fused-cm3.o")),
+    );
+    // THE ASSERTION THAT WAS MISSING, and the reason the object half of this
+    // gate was vacuous on the day it landed: the first version of the check
+    // above passed on `benches/gust/drivers/drivers/iso-core-fused-cm3.o`,
+    // because `ends_with` is true of a path that resolves to nothing. A derived
+    // path must RESOLVE, not merely end in the right name.
+    ck(
+        "every derived object path actually exists",
+        !iso.is_empty() && iso.iter().all(|o| repo.join(o).is_file()),
     );
     // Negative control for the same derivation: a bin that links no object must
     // come back empty, or the parser is matching something it should not. The
