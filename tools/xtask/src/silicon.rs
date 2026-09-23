@@ -186,6 +186,31 @@ const MATRIX: &[Entry] = &[
         boards: &["wl55jc", "wb55rg", "g031k8", "g474re"],
         not_on: &[("f100", "the part has no MPU (MPU_TYPE reads 0) — by hardware")],
     },
+    // gale#410's privilege axis, as a MATCHED PAIR. Both arms run on every
+    // MPU-bearing board; the private arm alone would prove the platform, not the
+    // marking, so a run that reports only one of them has not discharged
+    // anything. g031k8 is ARMv6-M: its MPU has no unprivileged-distinguishing
+    // AP encodings to test, so it is excluded by hardware, not by convenience.
+    Entry {
+        bin: "gust_priv_region_probe",
+        extra: &["priv-private"],
+        needs_env: None,
+        boards: &["wl55jc", "wb55rg", "g474re"],
+        not_on: &[
+            ("f100", "the part has no MPU (MPU_TYPE reads 0) — by hardware"),
+            ("g031k8", "ARMv6-M PMSA has no AP encodings distinguishing the modes"),
+        ],
+    },
+    Entry {
+        bin: "gust_priv_region_probe",
+        extra: &["priv-shared"],
+        needs_env: None,
+        boards: &["wl55jc", "wb55rg", "g474re"],
+        not_on: &[
+            ("f100", "the part has no MPU (MPU_TYPE reads 0) — by hardware"),
+            ("g031k8", "ARMv6-M PMSA has no AP encodings distinguishing the modes"),
+        ],
+    },
     // --- the OS layer: gust:os nodes, the verified executor, the health monitor ---
     // Each was a qemu-only "LOCAL liveness probe". The dissolved ones link an ARMv7-M
     // object, so they cannot run on the G031 (synth#1301); the pure-Rust ones can.
