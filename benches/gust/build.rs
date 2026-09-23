@@ -501,4 +501,23 @@ fn main() {
         println!("cargo:rustc-link-arg-bin=gust_dma_probe={}", dmaobj.display());
         println!("cargo:rerun-if-changed={}", dmaobj.display());
     }
+
+    // gust_priv_region_probe (gale#410): pin the stack INTO the probe's own RAM
+    // region. The probe programs 32 KiB at 0x2000_0000 and enables the MPU with
+    // PRIVDEFENA clear, so anything outside the programmed regions is denied even
+    // to privileged code — including the stack.
+    //
+    // Found by running it, not by reading it: the first WL55 run flashed and
+    // verified, then printed NOTHING. The part's reset stack top is 0x2001_0000
+    // (64 KiB SRAM), 32 KiB above the region, so the first push after the MPU came
+    // on faulted and the image never reached its own report. The three MPU-bearing
+    // boards put their stack at three different addresses (WL55 64 KiB, G474
+    // 96 KiB, WB55 192 KiB), so the probe cannot assume any of them — it pins one.
+    //
+    // 0x2000_8000 is the top of the 32 KiB region and the base of the target
+    // region, so the stack grows DOWN into the region it is granted and never
+    // touches the word under test.
+    println!(
+        "cargo:rustc-link-arg-bin=gust_priv_region_probe=--defsym=_stack_start=0x20008000"
+    );
 }
