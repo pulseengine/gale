@@ -137,7 +137,11 @@ jobs:
     # this gate catches the pin going stale in the one way that breaks a build silently
     # later: the fork rebased or force-pushed away from the commit, so `west init --mr
     # <sha>` would fail in every Zephyr job at once instead of here.
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    # HOSTED, not self-hosted: this job shells out to `gh api` for the ancestry
+    # query and its negative control, and the rust-cpu image has no `gh`
+    # (measured: exit 127, "gh: command not found"). Moves the day `gh` is in
+    # the image — see gale#419.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -345,7 +349,15 @@ jobs:
   # failure mode that had occurred. This is that check, made mechanical.
   required-contexts:
     name: "every required context can actually report"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    # HOSTED, not self-hosted, for a subtler reason than zephyr-fork-pin's: this
+    # job DEGRADES rather than fails when `gh api` cannot read branch
+    # protection, so on a runner with no `gh` it PASSED while silently skipping
+    # the list-vs-protection drift check -- half its coverage, gone, green.
+    # The degradation is deliberate and right for a token that lacks the
+    # permission; it is wrong for an image that lacks the binary. Both are
+    # handled now (see the guard below), but the job stays hosted until `gh` is
+    # in the image (gale#419) so the full check actually runs.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -363,6 +375,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # A MISSING BINARY IS NOT A PERMISSION STORY. Without this, `gh` not
+          # being installed takes the same branch as "the token may not read
+          # protection" and the gate passes having checked half of what it
+          # claims. The degradation below exists for the permission case only.
+          command -v gh >/dev/null 2>&1 || {
+            echo "::error::gh is not installed on this runner — this gate cannot"
+            echo "::error::perform its protection-drift check, and must not report"
+            echo "::error::success as though it had. Install gh (gale#419) or run"
+            echo "::error::this job on a hosted runner."
+            exit 1
+          }
           if gh api "repos/${GITHUB_REPOSITORY}/branches/main/protection" > /tmp/protection.json 2>/tmp/protection.err; then
             echo "readable=true" >> "$GITHUB_OUTPUT"
             echo "GITHUB_TOKEN CAN read branch protection -- list/protection drift is checked."
