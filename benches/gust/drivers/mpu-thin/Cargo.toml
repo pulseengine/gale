@@ -3,11 +3,13 @@
 name = "gust-mpu-thin"
 version = "0.1.0"
 edition = "2021"
-description = "T2 stage 2: the Verus/Kani-verified I-ISO region-programming core as a dissolvable wasm component. Bodies lifted VERBATIM from plain/src/mpu_switch.rs + mpu.rs. ONE native atom (mpu-write) as a typed component import."
+description = "T2 stage 2: the Verus/Kani-verified I-ISO region-programming core as a dissolvable wasm component. Depends on the gale crate and exports plain/src/mpu_switch.rs itself — no copy. ONE native atom (mpu-write) as a typed component import."
 [lib]
 crate-type = ["cdylib", "rlib"]
 [dependencies]
 wit-bindgen = { version = "0.52", default-features = false, features = ["macros"] }
+# The verified I-ISO core itself. Depending on it is what removes the copy.
+gale = { path = "../../../.." }
 [profile.release]
 panic = "abort"
 opt-level = "s"
