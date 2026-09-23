@@ -23,7 +23,7 @@
 )]
 
 use gale::mpu_switch::{
-    RegionTable, MAX_PARTITIONS, MAX_REGIONS, MPU_CTRL_DISABLE, MPU_CTRL_ENABLE, MPU_CTRL_ID,
+    MAX_PARTITIONS, MAX_REGIONS, MPU_CTRL_DISABLE, MPU_CTRL_ENABLE, MPU_CTRL_ID, RegionTable,
     UNPRIV_MAX, UNPRIV_NONE, UNPRIV_RO, UNPRIV_SAME,
 };
 
@@ -85,7 +85,10 @@ fn unpriv_none_never_grants_unprivileged_access() {
 fn unmarked_regions_stay_unprivileged_accessible() {
     for &(writable, unpriv) in &[(true, UNPRIV_SAME), (false, UNPRIV_SAME), (true, UNPRIV_RO)] {
         let ap = ap_of(gale::mpu_switch::rasr_for(4096, writable, unpriv));
-        assert!(ap == 3 || ap == 6 || ap == 2, "unmarked region emitted AP {ap}");
+        assert!(
+            ap == 3 || ap == 6 || ap == 2,
+            "unmarked region emitted AP {ap}"
+        );
         assert!(ap != 1 && ap != 5);
     }
 }
@@ -104,7 +107,10 @@ fn try_add_region_is_unpriv_same() {
     for i in 0..10 {
         assert_eq!(sa.w[i].rnr, sb.w[i].rnr);
         assert_eq!(sa.w[i].rbar, sb.w[i].rbar);
-        assert_eq!(sa.w[i].rasr, sb.w[i].rasr, "emission differs at sequence index {i}");
+        assert_eq!(
+            sa.w[i].rasr, sb.w[i].rasr,
+            "emission differs at sequence index {i}"
+        );
     }
 }
 
@@ -170,7 +176,11 @@ fn sequence_discipline_holds_with_mixed_permissions() {
     assert_eq!(seq.w[0].rnr, MPU_CTRL_ID);
     assert_eq!(seq.w[0].rasr, MPU_CTRL_DISABLE);
     for r in 0..MAX_REGIONS {
-        assert_eq!(seq.w[r + 1].rnr, r as u32, "slot {r} addressed out of order");
+        assert_eq!(
+            seq.w[r + 1].rnr,
+            r as u32,
+            "slot {r} addressed out of order"
+        );
     }
     assert_eq!(seq.w[MAX_REGIONS + 1].rnr, MPU_CTRL_ID);
     assert_eq!(seq.w[MAX_REGIONS + 1].rasr, MPU_CTRL_ENABLE);
@@ -179,7 +189,11 @@ fn sequence_discipline_holds_with_mixed_permissions() {
     assert_eq!(ap_of(seq.w[2].rasr), 2);
     assert_eq!(ap_of(seq.w[3].rasr), 5);
     for r in 3..MAX_REGIONS {
-        assert_eq!(seq.w[r + 1].rasr, 0, "unused slot {r} must be emitted disabled");
+        assert_eq!(
+            seq.w[r + 1].rasr,
+            0,
+            "unused slot {r} must be emitted disabled"
+        );
     }
 }
 
