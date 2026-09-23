@@ -30,7 +30,8 @@ concurrency:
 jobs:
   wcet-evt:
     name: "VER-OS-WCET-001 kill-criterion can still fail"
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, rust-cpu]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -71,7 +72,8 @@ jobs:
 
   proof-completeness:
     name: "a Rocq proof that is merely STATED cannot pass as proven"
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, rust-cpu]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -112,7 +114,8 @@ jobs:
 
   renode-targets:
     name: "every renode_test target defined is actually run"
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, rust-cpu]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -134,7 +137,8 @@ jobs:
     # this gate catches the pin going stale in the one way that breaks a build silently
     # later: the fork rebased or force-pushed away from the commit, so `west init --mr
     # <sha>` would fail in every Zephyr job at once instead of here.
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, rust-cpu]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: Pin is a 40-hex revision, and an ancestor of gale/sem-replacement
@@ -167,7 +171,8 @@ jobs:
 
   retry-loops:
     name: "no CI retry loop can swallow its own failure"
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, rust-cpu]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -208,7 +213,8 @@ jobs:
 
   data-overlap:
     name: "fused data segments are disjoint (gale#266)"
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, rust-cpu]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -267,7 +273,8 @@ jobs:
 
   fixture-freshness:
     name: "committed Renode ELF fixtures are not older than their sources"
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, rust-cpu]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
@@ -286,7 +293,8 @@ jobs:
 
   object-freshness:
     name: "committed objects are not older than their sources"
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, rust-cpu]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
@@ -337,7 +345,8 @@ jobs:
   # failure mode that had occurred. This is that check, made mechanical.
   required-contexts:
     name: "every required context can actually report"
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, rust-cpu]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -378,7 +387,8 @@ jobs:
   # composed/fused wasm imports from `env`.
   graph-env:
     name: "no raw env import survives in the composed graph"
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, rust-cpu]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -497,7 +507,8 @@ jobs:
   # it cannot bound DECLINES LOUDLY rather than being omitted.
   wcet-sidecar:
     name: "T4: synth emits sound per-function WCET bounds (REQ-OS-WCET-001)"
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, rust-cpu]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
