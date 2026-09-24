@@ -51,7 +51,13 @@ fn table() -> &'static mut iso::RegionTable {
 struct P;
 impl exports::gust::mpu::iso::Guest for P {
     fn size_field(size: u32) -> u32 { iso::size_field(size) }
-    fn rasr_for(size: u32, writable: bool) -> u32 { iso::rasr_for(size, writable) }
+    // The WIT seam still carries only the privileged axis, so this maps to
+    // UNPRIV_SAME — the permission this component could express before
+    // gale#410, unchanged. Exposing `unpriv` through WIT is a seam change and
+    // belongs on the spar -> WIT path, not a hand edit here.
+    fn rasr_for(size: u32, writable: bool) -> u32 {
+        iso::rasr_for(size, writable, gale::mpu_switch::UNPRIV_SAME)
+    }
     fn try_add_region(part: u32, base: u32, size: u32, writable: bool) -> bool {
         table().try_add_region(part, base, size, writable)
     }

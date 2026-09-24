@@ -181,8 +181,37 @@ pub struct RegionTable {
     pub base: [u32; TABLE_SLOTS],
     pub size: [u32; TABLE_SLOTS],
     pub enabled: [bool; TABLE_SLOTS],
+    /// The PRIVILEGED access axis: may privileged code write the region?
     pub writable: [bool; TABLE_SLOTS],
+    /// The UNPRIVILEGED access axis (gale#410): `UNPRIV_SAME`, `UNPRIV_RO`
+    /// or `UNPRIV_NONE`. `UNPRIV_NONE` is what makes a region
+    /// supervisor-private — unreachable from tenant code even while the
+    /// supervisor runs under that tenant's map.
+    pub unpriv: [u32; TABLE_SLOTS],
 }
+/// Unprivileged-access axis for a region, beside `writable` (which is the
+/// PRIVILEGED axis). Together the two select one of the five ARMv7-M AP
+/// encodings this model emits. Kept as a separate small integer rather than
+/// folded into one permission enum so every existing clause phrased in terms
+/// of `writable` keeps its meaning unchanged (gale#410).
+///
+/// `UNPRIV_SAME` reproduces the model's behaviour before the axis existed:
+/// AP 3 when writable, AP 6 when not — unprivileged code gets exactly what
+/// privileged code gets.
+pub const UNPRIV_SAME: u32 = 0;
+/// Unprivileged code may READ the region; privileged code may write it.
+/// AP 0b010. Only meaningful with `writable` — privileged-RO + unprivileged-RO
+/// is just `UNPRIV_SAME` with `writable == false` (AP 6), and `perm_wf`
+/// rejects the redundant spelling so one permission has one encoding.
+pub const UNPRIV_RO: u32 = 1;
+/// Unprivileged code has NO ACCESS: any unprivileged load or store to the
+/// region faults. AP 0b001 when writable, 0b101 when not. **This is the
+/// encoding that makes supervisor-private state expressible** — the gap
+/// gale#410 records, and the precondition every syscall-seam shape in
+/// gale#408 assumes.
+pub const UNPRIV_NONE: u32 = 2;
+/// One past the last valid `unpriv` code.
+pub const UNPRIV_MAX: u32 = 3;
 /// Compute the ARMv7-M RASR SIZE field for a well-formed region size.
 /// Exec mirror of `size_field_spec`; the trailing branch is unreachable
 /// under the `requires` (the power-of-2 enumeration minus the sizes below
@@ -247,9 +276,15 @@ pub fn size_field(size: u32) -> u32 {
     }
 }
 /// Encode the RASR value for an ENABLED table entry.
-pub fn rasr_for(size: u32, writable: bool) -> u32 {
+pub fn rasr_for(size: u32, writable: bool, unpriv: u32) -> u32 {
     let f = size_field(size);
-    let ap: u32 = if writable { 3 } else { 6 };
+    let ap: u32 = if unpriv == UNPRIV_NONE {
+        if writable { 1 } else { 5 }
+    } else if unpriv == UNPRIV_RO {
+        2
+    } else {
+        if writable { 3 } else { 6 }
+    };
     1u32 + 2u32 * f + 0x0100_0000u32 * ap
 }
 impl RegionTable {
@@ -261,6 +296,7 @@ impl RegionTable {
             base: [0u32; TABLE_SLOTS],
             size: [0u32; TABLE_SLOTS],
             enabled: [false; TABLE_SLOTS],
+            unpriv: [UNPRIV_SAME; TABLE_SLOTS],
             writable: [false; TABLE_SLOTS],
         }
     }
@@ -284,7 +320,7 @@ impl RegionTable {
         while r < MAX_REGIONS {
             let i = (part as usize) * MAX_REGIONS + r;
             if self.enabled[i] {
-                let rasr = rasr_for(self.size[i], self.writable[i]);
+                let rasr = rasr_for(self.size[i], self.writable[i], self.unpriv[i]);
                 out.w[r + 1] = MpuWrite {
                     rnr: r as u32,
                     rbar: self.base[i],
@@ -335,14 +371,26 @@ impl RegionTable {
     /// building exclusively through `new()` + `try_add_region` cannot
     /// construct an isolation-violating table, and `program_partition`'s
     /// precondition holds on the result by construction.
-    pub fn try_add_region(
+    /// The full-axis builder (gale#410). `unpriv` selects the unprivileged
+    /// half of the permission pair; `UNPRIV_NONE` makes the region
+    /// supervisor-private. `try_add_region` is this function with
+    /// `UNPRIV_SAME`, which is exactly the behaviour that existed before the
+    /// axis did.
+    pub fn try_add_region_perm(
         &mut self,
         part: u32,
         base: u32,
         size: u32,
         writable: bool,
+        unpriv: u32,
     ) -> bool {
         if part >= MAX_PARTITIONS as u32 {
+            return false;
+        }
+        if unpriv >= UNPRIV_MAX {
+            return false;
+        }
+        if unpriv == UNPRIV_RO && !writable {
             return false;
         }
         if !crate::mpu::is_power_of_two(size) {
@@ -375,12 +423,30 @@ impl RegionTable {
                 self.base[i] = base;
                 self.size[i] = size;
                 self.writable[i] = writable;
+                self.unpriv[i] = unpriv;
                 self.enabled[i] = true;
                 return true;
             }
             f += 1;
         }
         false
+    }
+    /// Add a region with unprivileged access IDENTICAL to privileged access
+    /// (AP 3 or AP 6) — the only permission this model could express before
+    /// gale#410, kept so every existing caller and every clause phrased over
+    /// it continues to mean exactly what it meant.
+    ///
+    /// **Use `try_add_region_perm` with `UNPRIV_NONE` for anything the
+    /// supervisor must keep private.** A region added through this function
+    /// is reachable by unprivileged code whenever it is mapped.
+    pub fn try_add_region(
+        &mut self,
+        part: u32,
+        base: u32,
+        size: u32,
+        writable: bool,
+    ) -> bool {
+        self.try_add_region_perm(part, base, size, writable, UNPRIV_SAME)
     }
     /// Exec mirror of `covers`, proven equivalent: does some enabled
     /// region of partition `part` contain `addr`? Post-strip this is the
@@ -447,11 +513,13 @@ mod iso_kani {
         let size: [u32; TABLE_SLOTS] = kani::any();
         let enabled: [bool; TABLE_SLOTS] = kani::any();
         let writable: [bool; TABLE_SLOTS] = kani::any();
+        let unpriv: [u32; TABLE_SLOTS] = kani::any();
         let t = RegionTable {
             base,
             size,
             enabled,
             writable,
+            unpriv,
         };
         let part: u32 = kani::any();
         kani::assume(part < MAX_PARTITIONS as u32);
@@ -460,6 +528,8 @@ mod iso_kani {
             let i = p * MAX_REGIONS + r;
             if t.enabled[i] {
                 kani::assume(validate_region(t.base[i], t.size[i]));
+                kani::assume(t.unpriv[i] < UNPRIV_MAX);
+                kani::assume(!(t.unpriv[i] == UNPRIV_RO) || t.writable[i]);
             }
         }
         for r1 in 0..MAX_REGIONS {
@@ -509,7 +579,15 @@ mod iso_kani {
                 assert!(seq.w[r + 1].rasr & 1 == 1);
                 let expect_field = t.size[i].trailing_zeros() - 1;
                 assert!((seq.w[r + 1].rasr >> 1) & 0x1F == expect_field);
-                let expect_ap = if t.writable[i] { 3u32 } else { 6u32 };
+                let expect_ap = if t.unpriv[i] == UNPRIV_NONE {
+                    if t.writable[i] { 1u32 } else { 5u32 }
+                } else if t.unpriv[i] == UNPRIV_RO {
+                    2u32
+                } else if t.writable[i] {
+                    3u32
+                } else {
+                    6u32
+                };
                 assert!((seq.w[r + 1].rasr >> 24) & 0x7 == expect_ap);
             }
         }
@@ -556,6 +634,49 @@ mod iso_kani {
         assert!(seq.w[MAX_REGIONS + 1].rnr == MPU_CTRL_ID);
         assert!(seq.w[MAX_REGIONS + 1].rasr == MPU_CTRL_ENABLE);
     }
+    /// k5 — supervisor-private slots are EMITTED unprivileged-inaccessible
+    /// (gale#410). The property the whole axis exists for, checked by the
+    /// independent engine and decoded back OUT of the emitted RASR rather
+    /// than read from the table: a slot marked `UNPRIV_NONE` emits AP 0b001
+    /// or 0b101, and in particular NOT one of the four encodings that grant
+    /// unprivileged access.
+    ///
+    /// What this does NOT establish is that the hardware honours those
+    /// encodings. That is an ARMv7-M architectural fact, assumed exactly as
+    /// the `mpu_write` seam contract is, and discharged on silicon by a
+    /// matched pair (`UNPRIV_SAME` succeeds where `UNPRIV_NONE` faults).
+    #[kani::proof]
+    #[kani::unwind(33)]
+    fn iso_supervisor_private_denies_unprivileged() {
+        let (t, part) = arbitrary_table_and_partition();
+        let seq = t.program_partition(part);
+        for r in 0..MAX_REGIONS {
+            let i = part as usize * MAX_REGIONS + r;
+            if t.enabled[i] && t.unpriv[i] == UNPRIV_NONE {
+                let ap = (seq.w[r + 1].rasr >> 24) & 0x7;
+                assert!(ap == 1 || ap == 5);
+                assert!(ap != 3 && ap != 6 && ap != 2 && ap != 0);
+            }
+        }
+    }
+    /// k6 — the NEGATIVE control for k5, and the reason k5 is not vacuous:
+    /// a slot NOT marked `UNPRIV_NONE` must emit an AP that DOES grant
+    /// unprivileged access. Without this, an encoder that returned AP 1 for
+    /// everything would satisfy k5 and destroy every tenant's own grant.
+    #[kani::proof]
+    #[kani::unwind(33)]
+    fn iso_unmarked_slots_stay_unprivileged_accessible() {
+        let (t, part) = arbitrary_table_and_partition();
+        let seq = t.program_partition(part);
+        for r in 0..MAX_REGIONS {
+            let i = part as usize * MAX_REGIONS + r;
+            if t.enabled[i] && t.unpriv[i] != UNPRIV_NONE {
+                let ap = (seq.w[r + 1].rasr >> 24) & 0x7;
+                assert!(ap == 3 || ap == 6 || ap == 2);
+                assert!(ap != 1 && ap != 5);
+            }
+        }
+    }
 }
 /// Kani cross-check of the table builder (Verus-proven above via SMT/Z3)
 /// under Kani's bounded model checker — the same shipped (post-strip)
@@ -575,11 +696,13 @@ mod builder_kani {
         let size: [u32; TABLE_SLOTS] = kani::any();
         let enabled: [bool; TABLE_SLOTS] = kani::any();
         let writable: [bool; TABLE_SLOTS] = kani::any();
+        let unpriv: [u32; TABLE_SLOTS] = kani::any();
         RegionTable {
             base,
             size,
             enabled,
             writable,
+            unpriv,
         }
     }
     /// ASSUME table_inv, exec form, over all slots: every enabled slot
@@ -588,6 +711,8 @@ mod builder_kani {
         for i in 0..TABLE_SLOTS {
             if t.enabled[i] {
                 kani::assume(validate_region(t.base[i], t.size[i]));
+                kani::assume(t.unpriv[i] < UNPRIV_MAX);
+                kani::assume(!(t.unpriv[i] == UNPRIV_RO) || t.writable[i]);
             }
         }
         for i in 0..TABLE_SLOTS {
@@ -608,6 +733,8 @@ mod builder_kani {
         for i in 0..TABLE_SLOTS {
             if t.enabled[i] {
                 assert!(validate_region(t.base[i], t.size[i]));
+                assert!(t.unpriv[i] < UNPRIV_MAX);
+                assert!(! (t.unpriv[i] == UNPRIV_RO) || t.writable[i]);
             }
         }
         for i in 0..TABLE_SLOTS {
