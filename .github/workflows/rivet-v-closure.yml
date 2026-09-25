@@ -40,7 +40,7 @@ jobs:
     # below still REPORTS its check on every PR (gale#294) while doing no work
     # when nothing relevant changed.
     name: "V-closure needed?"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, rust-cpu]
     outputs:
       run: ${{ steps.q.outputs.run }}
     steps:
@@ -63,7 +63,7 @@ jobs:
   v-closure:
     name: "no requirement lags its closed V"
     needs: guard
-    runs-on: ubuntu-22.04
+    runs-on: [self-hosted, linux, x64, rust-cpu]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
