@@ -1,0 +1,19 @@
+package gale:capfix-middle@0.1.0;
+
+/// The RE-EXPORTER, and the reason this fixture has three components.
+///
+/// meld#427 established that handle tables are allocated only for components
+/// that RE-EXPORT a resource interface — which is why the two-component version
+/// of this fixture allocated zero of them, and why the claim "components sharing
+/// a memory domain have mutually addressable handle tables" was read off
+/// allocation code rather than observed.
+///
+/// This component imports `caps` and exports it again, so a table must exist.
+/// It also holds a handle of its own, so the table is populated rather than
+/// merely present.
+world middle {
+    import gale:capfix/caps@0.1.0;
+    export gale:capfix/caps@0.1.0;
+    /// The middle tenant's own entry point, so it is a tenant and not only a pipe.
+    export mid-run: func() -> u32;
+}

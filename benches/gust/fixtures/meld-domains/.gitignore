@@ -2,3 +2,4 @@
 *.comp.wasm
 fused-*.wasm
 target/
+fused3-*.wasm
