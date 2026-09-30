@@ -2,6 +2,7 @@
 //! with no argument lists what exists, so a gate cannot be added and then
 //! invoked by nothing -- the failure mode gale#368 was opened to fix.
 
+pub mod criticality_axis;
 pub mod data_overlap;
 pub mod graph_env;
 pub mod fixture_freshness;
@@ -23,6 +24,12 @@ pub struct Gate {
 }
 
 pub const GATES: &[Gate] = &[
+    Gate {
+        name: criticality_axis::NAME,
+        about: "every coexisting pair of elements has a freedom-from-interference argument",
+        run: criticality_axis::run,
+        self_test: criticality_axis::self_test,
+    },
     Gate {
         name: data_overlap::NAME,
         about: "the fused core module's data segments are disjoint",

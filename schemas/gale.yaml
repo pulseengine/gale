@@ -87,6 +87,101 @@ artifact-types:
         description: Whether we port the entire file or specific functions
     link-fields: []
 
+  - name: criticality-assignment
+    description: >
+      Assigns a criticality level to one architecture element ON one deployment
+      target, and is what makes coexistence decidable: two elements COEXIST when
+      they carry assignments naming the same target. Without this, "which
+      elements share a part" is a question the artifact store cannot answer, and
+      a freedom-from-interference argument has nothing to be an argument about.
+      (REQ-OS-CRITICALITY-001, gale#423.)
+    fields:
+      - name: element
+        type: string
+        required: true
+        description: >
+          Id of the architecture element this assigns a criticality to
+          (normally a sw-arch-component).
+      - name: criticality
+        type: string
+        required: true
+        allowed-values: [ASIL-D, ASIL-C, ASIL-B, ASIL-A, QM]
+        description: >
+          ISO 26262 criticality of the element AS DEPLOYED on this target. QM is
+          a real value, not the absence of one — an element with no assignment is
+          unclassified, which is a different and worse state.
+      - name: target
+        type: string
+        required: true
+        description: >
+          The deployment this assignment is about, e.g. a board id from the
+          target model. Elements sharing a target coexist and therefore owe each
+          other an interference argument.
+      - name: decomposed-from
+        type: string
+        required: false
+        description: >
+          Set when this criticality was reached by ISO 26262 ASIL decomposition
+          rather than assigned directly. Names the requirement whose ASIL was
+          decomposed; the independence claim the decomposition rests on belongs
+          in that requirement, not here.
+    link-fields: []
+
+  - name: ffi-argument
+    description: >
+      The freedom-from-interference argument for ONE ordered pair of coexisting
+      elements, across all three ISO 26262 interference classes (Part 6 Annex D,
+      Part 9 Clause 6). Ordered because interference is not symmetric: that a QM
+      element cannot disturb an ASIL-D one is the claim that matters, and the
+      converse is usually uninteresting.
+
+      Each class records a DISPOSITION rather than a yes/no, because "prevented"
+      and "detected and handled" are different arguments with different evidence,
+      and "accepted" is a legitimate answer that must be visible rather than
+      implied by silence.
+    fields:
+      - name: from-element
+        type: string
+        required: true
+        description: The potentially-interfering element (usually the lower criticality).
+      - name: to-element
+        type: string
+        required: true
+        description: The element that must be protected.
+      - name: target
+        type: string
+        required: true
+        description: The deployment both elements are assigned to.
+      - name: spatial
+        type: string
+        required: true
+        allowed-values: [prevented-by-construction, detected-and-handled, accepted-with-rationale, open]
+        description: Memory interference — one element corrupting another's state.
+      - name: temporal
+        type: string
+        required: true
+        allowed-values: [prevented-by-construction, detected-and-handled, accepted-with-rationale, open]
+        description: Execution-time interference — starvation, blocking, budget overrun.
+      - name: information
+        type: string
+        required: true
+        allowed-values: [prevented-by-construction, detected-and-handled, accepted-with-rationale, open]
+        description: >
+          Exchange of information — corruption, loss, repetition, insertion,
+          resequencing, delay, blocking, masquerade across a channel the two
+          elements deliberately share.
+      - name: construction
+        type: string
+        required: false
+        description: >
+          Required in substance wherever a class is prevented-by-construction:
+          NAME the construction (the canonical-ABI copy, the per-instance handle
+          table, an MPU region marked UNPRIV_NONE, a static port topology).
+          "Prevented by construction" without a named construction is an
+          assertion, and the mechanism it appeals to usually prevents something
+          adjacent to the failure mode rather than the failure mode itself.
+    link-fields: []
+
 link-types:
   - name: informs
     inverse: informed-by
