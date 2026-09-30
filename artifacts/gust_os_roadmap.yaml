@@ -1102,3 +1102,48 @@ artifacts:
       model: claude-opus-5
       timestamp: 2026-09-30T04:48:30Z
     release: v0.13.0
+
+  - id: REQ-OS-INTEGRATION-001
+    type: sw-req
+    title: One composed OS image per board, carrying every feature that board can run, on every board in the bench — the integration test the per-feature probes cannot be
+    status: proposed
+    description: |-
+      WHY THIS EXISTS, in the user's words (2026-09-30): "you can build one thing or the other but never be sure if our full OS part really holds."
+
+      That is the exact gap. gale has 53 passing firmware x board runs across 14 images (gale#399), and every one of them validates a SLICE: the watchdog driver, or the executor, or the MPU containment pair, or the fused gust:os composite. Each is a real oracle and none of them answers whether the parts hold TOGETHER. A per-feature probe that passes on five boards proves five things about one feature; it does not prove the OS composes. The failure modes that only appear in composition are precisely the ones gale has been bitten by — the fused object with four overlapping data-segment pairs (gale#266), the shared cargo target directory that made 43 parallel builds overwrite each other (gale#401), the dissolved node addressing wasm data through a register no embedder set, which passed on qemu because unmapped memory reads as zero (gale#398). None of those is visible in a single-feature image.
+
+      SHALL: for each board in the bench, ONE composed firmware image SHALL carry every OS feature that board's hardware can run — the verified executor, the gust:os capability nodes and their fused composite, the health monitor, the timer and deadline FSM, the dissolved drivers the board has peripherals for, the MPU region programmer, the partition switch, and the criticality-tagged tenants of REQ-OS-MCDEMO-001 where the part has an MPU — and that image SHALL run on that board and report its own verdict per feature.
+
+      THE FEATURE SET IS DERIVED, NOT HAND-MAINTAINED. It comes from the spar/AADL target model (REQ-TARGET-MODEL-001, verified), which already defines board/SoC/device facts once and generates them. So "which features does this board get" is a query against the model, and adding a board is a model edit rather than a new hand-written image. A hand-maintained per-board feature list would drift the day a board is added, and gale already has the gate that catches that class (gust-targets drift gate).
+
+      EVERY EXCLUSION IS NAMED WITH ITS HARDWARE REASON, and the reason must be a property of the part rather than of the backlog. Known today:
+        * STM32F100 (VLDISCOVERY): no MPU at all — MPU_TYPE reads 0x00000000, DREGION=0,
+          CPUID 0x411fc231 Cortex-M3 r1p1. The MPU is optional on Cortex-M3 and this part
+          omits it, so isolation, partitioning and the criticality tenants are unreachable
+          BY HARDWARE. 8 KiB SRAM also bounds what fits.
+        * NUCLEO-G031K8: ARMv6-M. No dissolved object runs there until synth has an ARMv6-M
+          profile (synth#1301), and its PMSA has no AP encodings distinguishing privileged
+          from unprivileged access, so it can carry native-Rust features and the region
+          programmer's computation but not the criticality arms.
+        * ESP32-C3: RISC-V; gust has no RV32 silicon target model or runtime yet
+          (REQ-OS-TARGET-RV32-001).
+      An exclusion whose reason is "not built yet" is a gap in this requirement, not an exemption from it — that distinction is the point, because it converts the board matrix from a status table into a falsifiable claim.
+
+      Kill-criterion: a feature the target model says a board supports is absent from that board's image, OR present and not exercised, OR exercised and its verdict not reported. Also: an exclusion with no hardware reason recorded. The middle clause is the one that will catch a real mistake — gale has shipped an object that was built, symbol-gated, size-gated, WCET-measured and linked into NOTHING (gale#269), and a feature compiled into an integration image but never called is the same defect at a larger scale.
+
+      RELATIONSHIP TO THE PER-FEATURE PROBES: this does not replace them and must not. A focused probe localises a fault to one feature; the integration image tells you the composition holds. Losing the first would make every integration failure a bisect. Both run from `cargo xtask silicon matrix`.
+
+      THE SHOWCASE IS THIS, and it is the honest form of the bench showcase this roadmap has wanted since gale#84: a per-board matrix of features attempted, features excluded with their hardware reason, and the firmware's own verdict line for each — published from the run rather than transcribed. What a reader gets is not "gale supports N features" but "on this part, these features ran together and here is what each one said".
+    tags: [gust, os, integration, silicon, showcase, target-model]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-TARGET-MODEL-001
+      - type: related-to
+        target: REQ-OS-MCDEMO-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5
+      timestamp: 2026-09-30T04:51:06Z
+    release: v0.13.0
