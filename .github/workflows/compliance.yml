@@ -146,18 +146,54 @@ jobs:
           # and must not be able to affect the release flow. A reader here waits;
           # a writer there would couple them.
           #
-          # ~5 minutes at 10s. release.yml builds wasm modules and signs them, so
-          # it is minutes, not seconds. If it never appears we exit non-zero and
-          # say which of the two things went wrong.
-          n=0
-          until gh release view "$TAG" >/dev/null 2>&1; do
-            n=$((n+1))
-            if [ $n -ge 30 ]; then
-              echo "::error::release $TAG still does not exist after ~5min — either release.yml failed, or it no longer creates the release"
+          # WAIT FOR THE THING WE DEPEND ON, NOT FOR A CLOCK.
+          #
+          # This used to wait ~5 minutes for the release object. It failed on
+          # v0.10.0 because release.yml took 74 minutes: `create-release` needs
+          # `build-wasm-dist`, which is a `container:` job on the contended
+          # hosted pool (gale#419), so the release cannot exist until that has
+          # queued, built and signed. Five minutes was never a property of
+          # release.yml — it was a guess about how busy CI would be, and a guess
+          # that gets less true as the queue gets deeper.
+          #
+          # So poll release.yml's RUN for this exact commit and wait for it to
+          # reach a conclusion. That is decoupled in the direction that matters:
+          # a reader observing the writer, never a writer touching the release
+          # flow (see this workflow's header). It is also strictly more
+          # informative — when the release is missing we can say whether
+          # release.yml failed, is still running, or succeeded without creating
+          # it, instead of listing those as possibilities.
+          #
+          # The ceiling is 2 hours because it bounds a QUEUE, not a build: the
+          # work itself is minutes. If CI is so backed up that release.yml has
+          # not finished in two hours, a red compliance run is the correct
+          # signal rather than a longer wait.
+          deadline=$(( $(date +%s) + 7200 ))
+          rel_conclusion=""
+          while :; do
+            rel_conclusion="$(gh run list --workflow=release.yml --commit "$GITHUB_SHA" \
+                                --limit 1 --json status,conclusion \
+                                --jq '.[0] | select(.status=="completed") | .conclusion' 2>/dev/null || true)"
+            [ -n "$rel_conclusion" ] && break
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::release.yml for $GITHUB_SHA has not completed in 2h — CI is backed up (gale#419), not necessarily broken. Re-run this workflow with workflow_dispatch once it finishes."
               exit 1
             fi
-            echo "waiting for release $TAG to exist (attempt $n/30)"
-            sleep 10
+            echo "waiting for release.yml on $GITHUB_SHA to complete (currently: $(gh run list --workflow=release.yml --commit "$GITHUB_SHA" --limit 1 --json status --jq '.[0].status // "not started"'))"
+            sleep 30
           done
+
+          if [ "$rel_conclusion" != "success" ]; then
+            echo "::error::release.yml concluded '$rel_conclusion' for $GITHUB_SHA, so there is no release to attach a compliance report to. Fix that run first; this one is a consequence, not a cause."
+            exit 1
+          fi
+
+          # release.yml succeeded, so the release must exist. If it does not,
+          # that is a real defect in release.yml rather than a timing question,
+          # and saying so is the point of having waited for the run.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::release.yml succeeded for $GITHUB_SHA but release $TAG does not exist — it no longer creates the release"
+            exit 1
+          fi
           gh release upload "$TAG" "$ARCHIVE_PATH" --clobber
           echo "::notice title=Compliance report::uploaded $(basename "$ARCHIVE_PATH")"
