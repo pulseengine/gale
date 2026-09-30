@@ -371,7 +371,7 @@ artifacts:
     type: sw-req
     title: "MPU-per-component isolation: a fault in one tenant cannot corrupt another"
     status: proposed
-    release: v0.5.0
+    release: v0.11.0
     description: "A composed image hosting two or more components SHALL place each component's linear memory in a distinct MPU-protected region, such that an out-of-bounds access by one tenant faults rather than silently corrupting a sibling or the TCB. The isolation boundary SHALL be the wasm memory model enforced by hardware, not a trusted check. Kill-criterion: a crafted tenant writes outside its region without a fault. BLOCKED on synth#1145 (multi-memory phase 2), NOT on synth#404 as previously recorded — #404 was the design question and closed as answered on 2026-07-15 (Model A: N memories lower to N distinct MPU/PMP-protectable native bases). Phase 1 of that shipped in synth v0.44.0 and is verified present in the pinned toolchain (layer 2026.09.0, synth 0.60.0): a 2-memory module compiles and emits a per-memory region symbol __synth_wasm_data_1. What is missing is the isolation itself: synth refuses --safety-bounds mpu on any multi-memory module because multi-memory compiles only on --relocatable, where the host owns startup and synth emits no MPU_RBAR/RASR programming, while the self-contained path that does emit that startup declines multi-memory. The two halves are on mutually exclusive paths, so per-memory MPU isolation is unreachable by construction rather than merely unimplemented. SCOPED UPSTREAM 2026-09-04: synth accepted the report as RQ-62-MEMISOLATE (must, synth v0.62) and reproduced every leg on 0.61.0 rather than 0.60.0. Option 3 from the filing — emit __synth_mem_base_N / __synth_mem_size_N as data and let the embedder program the MPU — is accepted as the first move, but SHALL NOT ship before RQ-62-VERIFYEMBED, the mechanical embedder-conformance check, because an unrefused obligation on an isolation control is a control whose violation is invisible. gale's kill-criterion was adopted verbatim: a two-tenant image where tenant A writes outside its region and the write lands in tenant B's memory instead of faulting. gale's consumer for the region table already exists and is verified: mpu-thin is the gust:mpu thin-seam I-ISO region-programming core, bodies lifted verbatim from plain/src/mpu_switch.rs (Verus+Kani verified), with its single native atom arriving WIT-typed (imports gust:mpu/regs@0.1.0; committed object undefined set is exactly ['mpu-write']). EXECUTION BOUNDARY, recorded before the work rather than after: discharging the kill-criterion needs an MPU-bearing part actually running. gale's CI Renode targets are Cortex-M3 device classes and it is NOT established that the pinned Renode models MPU region faults; if it does not, a green Renode run proves nothing about this criterion. The real-silicon path is a STM32G474RE (Cortex-M4, has an MPU) on a physical bench, which is not CI. Per REQ-DRV-SILICON-001 this criterion stays open against silicon rather than being downgraded to passes-in-emulation. CRITERION EXECUTED 2026-09-06, in emulation, as a matched pair: with regions programmed an unprivileged tenant A writing at tenant B's base is DENIED (RESULT=0x600D1145 CONTAINED); with the same image and regions NOT programmed the write LANDS in tenant B (RESULT=0xBADD1145 ESCAPED). Both arms verified unprivileged by reading CONTROL back (=1) rather than assuming the msr executed, and both reached STEP=0x51AE0012 so the escape was actually issued. The denial is therefore caused by the region programming, not by the platform — a single green would not distinguish those. Programmed through the Verus+Kani-verified switch_to_partition from synth 0.62.0's region table (#1145): memory 0's region from the address loaded into R11, memory 1's from __synth_mem_base_1/__synth_mem_size_1. THIS DOES NOT DISCHARGE THE REQUIREMENT. Venue is Renode, not silicon, and per REQ-DRV-SILICON-001 emulation-only evidence must say so; the G474 cannot hold two declared 64 KiB pages (see REQ-OS-MULTITENANT-001's packing-vs-isolation note). The object comes from a synth no varve layer carries, so it is a prototype rather than committed evidence. What it establishes is that synth's option-3 contract is sufficient for an embedder to build real containment from, and that the criterion discriminates. Two embedder lessons recorded in the probe: an MPU region is per-CONTEXT not per-tenant, so granting every memory in the table at once yields an image that looks isolated and is not — isolation is a property of the switch; and an unaligned region base makes switch_to_partition refuse in a way that presents as 'this platform has no MPU'."
     tags: [gust, isolation, mpu, multi-tenant, byo-os, blocked-synth-1145]
     links:
@@ -384,7 +384,7 @@ artifacts:
     type: sw-req
     title: "gust hosts mutually-distrusting components over one TCB — a general OS"
     status: proposed
-    release: v0.5.0
+    release: v0.13.0
     description: "gust SHALL run two independently-authored, mutually-distrusting components concurrently over the single 4-item TCB: each gets only the gust:os capabilities it imports (least authority), its own MPU region (REQ-OS-MPU-001), and fair kiln scheduling. A misbehaving or crashing tenant SHALL NOT deny the other its scheduled progress beyond its fuel budget. This is the property that distinguishes an OS from a single fused firmware image. BLOCKER IDENTIFIED 2026-09-06, and it is NOT address space: packing and isolation are currently exclusive in the toolchain. meld's --pack-rebase sizes each component at its ACTUAL USED DATA EXTENT rather than its declared page count — that is how the dissolved gust kernel fits the F100's 8 KiB — but it REQUIRES --memory shared, i.e. one fused memory with no per-tenant regions. --memory multi keeps a memory per component (the shape MPU isolation needs) but synth sizes each one by its DECLARED page count: measured, a memory holding 8 bytes of data emitted a 0x10000 section. So an image can be small OR region-separable, not both, and multi-tenancy on small parts is blocked by PAGE-GRANULAR REGION SIZING rather than by RAM. Correcting an earlier reading of the same measurement: it was first recorded as a 128 KiB RAM floor excluding every gale board, which was wrong — 64 KiB was the declared page from the test module's own (memory 1 1), not a hardware requirement, and gale demonstrably runs wasm in 8 KiB. The fix shape is a per-memory extent BOUND rather than a page count, ideally scry-derived so it is proven rather than asserted — synth already takes an integrator-declared bound of this kind for the shadow stack (--shadow-stack-size / VCR-MEM-001), with the sound version as the layer-2 proof tail. With such a bound, __synth_mem_size_N would report the proven extent and a tenant that never addresses above N would get a region of N."
     tags: [gust, os, multi-tenant, isolation, capability, scheduler]
     links:
@@ -976,7 +976,7 @@ artifacts:
       created-by: ai-assisted
       model: claude-opus-5
       timestamp: 2026-09-04T16:20:19Z
-    release: v0.5.0
+    release: v0.11.0
     links:
       - type: derives-from
         target: SYSREQ-BYOOS-001
@@ -987,15 +987,168 @@ artifacts:
     type: sw-req
     title: The memory-protection primitive ships as a consumable artifact with its embedder obligation named
     status: proposed
-    description: "Requested downstream in gale#348, verified accurate: v0.7.0 ships gale-wasm-{sem,mutex,msgq} only — all synchronization, all cortex-m4f — and neither the manifest nor gale-nano exposes any memory-protection surface, so a downstream safety case resting on gale's verified MPU primitive cites source it cannot link. SHALL ship gale-wasm-mpu-vX{.wasm,.wat,-cortex-m7dp.o} (cortex-m7dp is a supported synth target profile) plus a manifest entry and a consume line. CRITICAL SHAPE CONSTRAINT: unlike sem/mutex/msgq, which dissolve ENTIRELY to a wasm-and-object, MPU enforcement is a privileged PPB register write that no wasm component can perform — gale's design puts it behind exactly one trusted atom (mpu-thin's committed object has undefined set exactly ['mpu-write']). The artifact therefore ships the VERIFIED region-table computation and FSM, and the register write remains the EMBEDDER'S obligation. The manifest SHALL name that obligation explicitly rather than leaving it implicit; an artifact a reader can mistake for a drop-in enforcement box is the same unstated-envelope defect synth recorded for multi-memory. gale ships a reference implementation of the atom with its platform contract (DSB+ISB after every MPU_CTRL write; init-time MPU_TYPE.DREGION==8 refuse-to-start) in gust_iso_fault_probe.rs, CI-gated with a mechanical non-vacuous control. SEQUENCING: after REQ-OS-UNPRIV-001. Shipping the artifact while the primitive is fault-containment-only invites exactly the reading the manifest is meant to prevent. Kill-criterion: the artifact ships and its manifest entry does not name the mpu-write obligation. DEFERRED TO v0.10.0 on 2026-09-18, deliberately and by its own sequencing rather than for convenience: this artifact's SEQUENCING clause puts it after REQ-OS-UNPRIV-001, which is not implemented (gust tenant code still runs privileged; gust_iso_unpriv_probe demonstrates the escape succeeding on four MPU-bearing parts, and is GREEN precisely because the gap is open). Shipping gale-wasm-mpu while the primitive is fault-containment-only invites exactly the reading its manifest exists to prevent, which is this requirement's own kill-criterion in spirit. v0.9.0 therefore cuts on what is verified — driver breadth, the silicon runner, wdg/adc re-observed against their baselines (VER-DRV-SILICON-001), two-tenant MPU containment on WB55 silicon, and upstream-parity of the Zephyr kernel replacements — and this artifact moves with REQ-OS-UNPRIV-001 rather than ahead of it."
+    description: |-
+      Requested downstream in gale#348, verified accurate: v0.7.0 ships gale-wasm-{sem,mutex,msgq} only — all synchronization, all cortex-m4f — and neither the manifest nor gale-nano exposes any memory-protection surface, so a downstream safety case resting on gale's verified MPU primitive cites source it cannot link. SHALL ship gale-wasm-mpu-vX{.wasm,.wat,-cortex-m7dp.o} (cortex-m7dp is a supported synth target profile) plus a manifest entry and a consume line. CRITICAL SHAPE CONSTRAINT: unlike sem/mutex/msgq, which dissolve ENTIRELY to a wasm-and-object, MPU enforcement is a privileged PPB register write that no wasm component can perform — gale's design puts it behind exactly one trusted atom (mpu-thin's committed object has undefined set exactly ['mpu-write']). The artifact therefore ships the VERIFIED region-table computation and FSM, and the register write remains the EMBEDDER'S obligation. The manifest SHALL name that obligation explicitly rather than leaving it implicit; an artifact a reader can mistake for a drop-in enforcement box is the same unstated-envelope defect synth recorded for multi-memory. gale ships a reference implementation of the atom with its platform contract (DSB+ISB after every MPU_CTRL write; init-time MPU_TYPE.DREGION==8 refuse-to-start) in gust_iso_fault_probe.rs, CI-gated with a mechanical non-vacuous control. SEQUENCING: after REQ-OS-UNPRIV-001. Shipping the artifact while the primitive is fault-containment-only invites exactly the reading the manifest is meant to prevent. Kill-criterion: the artifact ships and its manifest entry does not name the mpu-write obligation. DEFERRED TO v0.10.0 on 2026-09-18, deliberately and by its own sequencing rather than for convenience: this artifact's SEQUENCING clause puts it after REQ-OS-UNPRIV-001, which is not implemented (gust tenant code still runs privileged; gust_iso_unpriv_probe demonstrates the escape succeeding on four MPU-bearing parts, and is GREEN precisely because the gap is open). Shipping gale-wasm-mpu while the primitive is fault-containment-only invites exactly the reading its manifest exists to prevent, which is this requirement's own kill-criterion in spirit. v0.9.0 therefore cuts on what is verified — driver breadth, the silicon runner, wdg/adc re-observed against their baselines (VER-DRV-SILICON-001), two-tenant MPU containment on WB55 silicon, and upstream-parity of the Zephyr kernel replacements — and this artifact moves with REQ-OS-UNPRIV-001 rather than ahead of it.
+
+      DEFERRED AGAIN, v0.10.0 -> v0.11.0 on 2026-09-30, and the reason the first deferral did not stick is worth recording. This artifact's SEQUENCING clause binds it to REQ-OS-UNPRIV-001. On 2026-09-18 it was moved v0.9.0 -> v0.10.0 for exactly that reason — but REQ-OS-UNPRIV-001 was not moved with it, and was itself still scoped to the long-shipped v0.5.0. So the deferral relocated this artifact to a release its own precondition could not be met in, and would have done the same again every cycle. Both now sit in v0.11.0 (gale#423), and the binding is explicit rather than implied by a prose clause: if REQ-OS-UNPRIV-001 slips, this slips with it, because 'after' is a constraint between requirements and not a date.
+
+      What that changes for v0.10.0: with this artifact out of its scope, v0.10.0 is 4/4 verified and cuttable on what it actually holds — the privilege axis in the verified region model, silicon-observed on WL55 (REQ-OS-PRIVREGION-001 / VER-OS-PRIVREGION-001), and the spar/AADL target model with its drift gate (REQ-TARGET-MODEL-001 / VER-TARGET-IWDG-001).
     tags: [gust, mpu, packaging, consumer, safety-case]
     provenance:
       created-by: ai-assisted
       model: claude-opus-5
       timestamp: 2026-09-04T16:20:20Z
-    release: v0.10.0
+    release: v0.11.0
     links:
       - type: derives-from
         target: SYSREQ-BYOOS-001
       - type: related-to
         target: REQ-OS-UNPRIV-001
+
+  - id: REQ-OS-CRITICALITY-001
+    type: sw-req
+    title: Every element carries a criticality level, and every coexisting pair carries a freedom-from-interference argument
+    status: proposed
+    description: |-
+      THE GAP IS IN THE SAFETY CASE, NOT THE CODE, and it was found by being asked the question rather than by an audit (2026-09-29): can gust host ASIL-D, ASIL-B and QM elements together? Measured across all 1063 artifacts at that date: 92 mentions of ASIL-D, ZERO of ASIL-A/B/C, ZERO of QM as a word, and ZERO artifacts addressing coexistence, freedom from interference or ASIL decomposition. The safety case is uniformly ASIL-D by construction, so there is nowhere to even RECORD that a given tenant is QM, let alone argue that it may sit beside an ASIL-D one.
+
+      That makes mixed criticality an ARTIFACT change at least as much as a code change, and it is the half that gets underestimated because the code half sounds harder and is further along. gale's own two layers already differ on this and the difference is easy to miss:
+        * gale (verified Zephyr kernel primitives) applies UNIFORM ASIL-D OR EXCLUDED. docs/safety/asil-d-complete-scope.md carries an FFI matrix whose treatment column reads "Kconfig exclusion verified" for every non-ASIL-D module (thread_monitor, usage, obj_core, spinlock_validate). That removes the lower-criticality code so the question cannot arise; it is not mixed criticality.
+        * gust (the partition OS) is where mixed criticality lives, and its architectural stance is already written and deliberate (docs/superpowers/specs/2026-07-11-gust-partition-scheduler-design.md): "Criticalities live in separate partitions; inner tenants share a partition only at a shared assurance level." The same document rejects Vestal-style mixed-criticality dropping outright — deployable MC is static partition isolation, not dropping the low-criticality tenant on a mode switch.
+
+      SHALL: every element in the architecture carries an explicit criticality level (ASIL-D / ASIL-B / QM at minimum, extensible to A and C), and for every pair of elements that COEXIST on one target there is a recorded freedom-from-interference argument covering all three ISO 26262 interference classes — spatial (memory), temporal (execution time), and exchange of information. Where an element's criticality is achieved by ASIL decomposition, the decomposition rationale and the independence claim it rests on are recorded with it.
+
+      Kill-criterion, and it is a QUERY rather than a review: a `rivet` query can return an element that coexists with a higher-criticality element and has no FFI argument linking them, OR an element with no criticality level at all. Either answer means this requirement is not met. That is deliberately mechanical — the failure mode being guarded against is a coexistence claim that lives in prose and is therefore never checked, which is exactly the shape the gale layer's "excluded from safety path" labelling had before the ASIL-D scope note challenged it.
+
+      SCOPE, stated so it is not over-read: satisfying this requirement produces the ARGUMENT STRUCTURE and makes its completeness checkable. It does not by itself make any coexistence claim TRUE — the spatial leg needs REQ-OS-UNPRIV-001, the temporal leg needs REQ-OS-SCHED-001 and REQ-OS-WCET-001, and the information leg needs REQ-OS-FFI-COMM-001. Nor does it produce certification evidence: unqualified Verus/Z3, Kani/CBMC and Rocq carry no tool-qualification credit on their own (ISO 26262 Part 8 Clause 11 is the relevant tool-confidence clause), so the verified TCB is an input to a safety case and not a substitute for one.
+
+      Independent of REQ-OS-UNPRIV-001 and can proceed in parallel with it; together those two are what decide whether a date for mixed criticality is defensible.
+    tags: [gust, os, asil, mixed-criticality, ffi, safety-case]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-UNPRIV-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5
+      timestamp: 2026-09-30T04:47:36Z
+    release: v0.11.0
+
+  - id: REQ-OS-FFI-COMM-001
+    type: sw-req
+    title: Freedom from interference in the EXCHANGE OF INFORMATION across partition ports, not just in memory and time
+    status: proposed
+    description: |-
+      The third ISO 26262 interference class, and the one gale has a MECHANISM for but no ARGUMENT for (found 2026-09-29 while answering whether gust can host ASIL-D beside ASIL-B and QM).
+
+      The mechanism is real and is arguably gale's strongest structural asset: the Component Model boundary is shared-nothing by construction. Values cross by canonical lift/lower, which COPIES rather than sharing a pointer, and resource handles live in per-instance tables and are unforgeable from outside. meld measured the two shapes on gale's own fixture (gale#412, meld#427): with `--memory multi` the boundaries lower as `memory-copy` with `crosses_memory: true`; with shared memory they inline to `direct`. The partition design adds the discipline on top: "Inter-partition channels use ports, never shared locks."
+
+      What does not exist is the argument an assessor asks for. Spatial containment says a tenant cannot reach another tenant's memory. It says nothing about whether a MESSAGE the two deliberately exchange can be corrupted, lost, repeated, delayed, resequenced, or sent by something impersonating the sender — and a QM element that legitimately holds one end of a port is exactly the case where those questions bite, because the copy at the boundary is doing its job and the bad data is inside the copy.
+
+      SHALL: for every inter-partition channel, the design SHALL state and the verification SHALL discharge which of corruption, loss, unintended repetition, insertion, resequencing, delay, blocking and masquerade are (a) prevented by construction, (b) detected and handled, or (c) accepted with a rationale. Where a mechanism is claimed to prevent a failure mode BY CONSTRUCTION, the claim SHALL name the construction — the canonical-ABI copy, the per-instance handle table, the static port topology — rather than asserting the class is impossible.
+
+      Kill-criterion: an inter-partition channel exists for which one of those failure modes has no disposition, or a disposition of "prevented by construction" whose named construction does not in fact prevent it. The second half matters more than the first: the Component Model's copy prevents SHARING, which is not the same as preventing corruption of the copied value, and conflating the two is the most likely way this requirement gets falsely closed.
+
+      NOT IN SCOPE, deliberately: the per-instance handle table's unforgeability is the subject of the handle-ownership work under REQ-OS-UNPRIV-001 (gale#408) — a tenant sleeping another tenant's task through a bare u32 handle is an AUTHORITY defect, not an information-integrity one, and the two should not be argued as though one covers the other.
+
+      A NOTE ON THE SHARED-MEMORY PATH, because it changes the argument rather than simplifying it: meld's shared-memory fusion inlines handle operations with nothing interposed, which erases the very copy this requirement leans on. That is sound WITHIN one trust domain and unsound ACROSS one, so any use of shared fusion has to stop at a criticality boundary. Recorded here because the measurement exists (gale#412) and the conclusion does not follow from the measurement unless someone writes it down.
+    tags: [gust, os, ffi, mixed-criticality, component-model, ports]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-CRITICALITY-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5
+      timestamp: 2026-09-30T04:47:59Z
+    release: v0.12.0
+
+  - id: REQ-OS-MCDEMO-001
+    type: sw-req
+    title: One image, three criticality levels, all three interference classes exercised on silicon — and it is the showcase
+    status: proposed
+    description: |-
+      THE INTEGRATED CLAIM. Every leg of mixed criticality is verified separately by the requirements above; none of them puts three criticality levels on one part at the same time and tries to break the boundaries. This does, and it is deliberately BOTH the acceptance test and the public demonstrator, because gale has previously built artifacts that were symbol-gated, size-gated and WCET-measured and linked into NOTHING (the fused gust:os composite, gale#269), and a demonstrator nobody runs is the same defect wearing a nicer coat.
+
+      SHALL: one firmware image on one MPU-bearing part hosts three tenants at three declared criticality levels — an ASIL-D safety function, an ASIL-B function, and a QM function — with the QM tenant written to MISBEHAVE, and SHALL show, per interference class, that the misbehaviour is contained:
+
+        SPATIAL   the QM tenant writes at the ASIL-D tenant's base and FAULTS, and reads a
+                  supervisor-private region and FAULTS (the encoding proven in
+                  REQ-OS-PRIVREGION-001 and already silicon-observed on WL55)
+        TEMPORAL  the QM tenant overruns its budget — a busy loop that never yields — and the
+                  ASIL-D tenant still meets its deadline, with the overrun DETECTED and
+                  attributed to the QM partition rather than merely absorbed
+        INFO      the QM tenant sends a malformed and a replayed message on its port and the
+                  ASIL-D tenant neither accepts nor stalls on either
+
+      MATCHED PAIRS, NOT SINGLE GREENS. Each of the three above is only evidence beside a control arm in which the same image, same tenants and same actions are configured WITHOUT the protection, where the escape must be OBSERVED to succeed. A lone fault proves the platform rather than the programming — this is the shape gale already uses for the two-tenant criterion (gale#399) and the privilege axis (gale#410), and the reason both are believable. The controls are part of the deliverable, not an optional extra, and a run that reports only the protected arms has discharged nothing.
+
+      Kill-criterion: any protected arm does NOT contain the misbehaviour, or any CONTROL arm does not reproduce the escape. The second is the one that will actually catch a mistake.
+
+      VENUE. Silicon, on a part with an ARMv7-M MPU — WL55, WB55 or G474 on the existing bench (gale#397); NOT the G031K8, whose ARMv6-M PMSA has no mode-distinguishing AP encodings, and NOT the F100, which has no MPU at all (MPU_TYPE reads 0). Renode may host the functional arms but is NOT a venue for the spatial control: it ignores MPU_CTRL.PRIVDEFENA on the PMSAv7 path, so a privileged background access that silicon denies is granted there, which makes it MORE permissive than the target and would mask exactly the violation the control exists to surface.
+
+      SHOWCASE, and it is the same artifact. The run publishes to the Pages bench showcase: the three tenants, the six arms, the observed fault addresses and CFSR decodes, and the deadline trace — as the measured output of a re-runnable command (`cargo xtask silicon matrix`), never as hand-copied numbers. That is the honest form of a demonstration: a reader can see what was claimed, what was observed, and how to reproduce it. It also supplies what a downstream safety case needs to point at rather than re-derive (jess resolves AFD-028 onto gale's MPU primitive, gale#348, and that resolution is currently for accidental corruption only).
+
+      WHAT IT WILL NOT CLAIM, so the showcase cannot be over-read: this is fault-containment and authority-containment evidence for a specific configuration on a specific part, not certification evidence and not a statement that any element is qualified at its declared ASIL. Tool-qualification credit remains zero for the unqualified provers (ISO 26262 Part 8 Clause 11), and the criticality levels shown are DECLARED for the demonstrator rather than assessed.
+    tags: [gust, os, mixed-criticality, demonstrator, showcase, silicon]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-CRITICALITY-001
+      - type: related-to
+        target: REQ-OS-FFI-COMM-001
+      - type: related-to
+        target: REQ-OS-MULTITENANT-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5
+      timestamp: 2026-09-30T04:48:30Z
+    release: v0.13.0
+
+  - id: REQ-OS-INTEGRATION-001
+    type: sw-req
+    title: One composed OS image per board, carrying every feature that board can run, on every board in the bench — the integration test the per-feature probes cannot be
+    status: proposed
+    description: |-
+      WHY THIS EXISTS, in the user's words (2026-09-30): "you can build one thing or the other but never be sure if our full OS part really holds."
+
+      That is the exact gap. gale has 53 passing firmware x board runs across 14 images (gale#399), and every one of them validates a SLICE: the watchdog driver, or the executor, or the MPU containment pair, or the fused gust:os composite. Each is a real oracle and none of them answers whether the parts hold TOGETHER. A per-feature probe that passes on five boards proves five things about one feature; it does not prove the OS composes. The failure modes that only appear in composition are precisely the ones gale has been bitten by — the fused object with four overlapping data-segment pairs (gale#266), the shared cargo target directory that made 43 parallel builds overwrite each other (gale#401), the dissolved node addressing wasm data through a register no embedder set, which passed on qemu because unmapped memory reads as zero (gale#398). None of those is visible in a single-feature image.
+
+      SHALL: for each board in the bench, ONE composed firmware image SHALL carry every OS feature that board's hardware can run — the verified executor, the gust:os capability nodes and their fused composite, the health monitor, the timer and deadline FSM, the dissolved drivers the board has peripherals for, the MPU region programmer, the partition switch, and the criticality-tagged tenants of REQ-OS-MCDEMO-001 where the part has an MPU — and that image SHALL run on that board and report its own verdict per feature.
+
+      THE FEATURE SET IS DERIVED, NOT HAND-MAINTAINED. It comes from the spar/AADL target model (REQ-TARGET-MODEL-001, verified), which already defines board/SoC/device facts once and generates them. So "which features does this board get" is a query against the model, and adding a board is a model edit rather than a new hand-written image. A hand-maintained per-board feature list would drift the day a board is added, and gale already has the gate that catches that class (gust-targets drift gate).
+
+      EVERY EXCLUSION IS NAMED WITH ITS HARDWARE REASON, and the reason must be a property of the part rather than of the backlog. Known today:
+        * STM32F100 (VLDISCOVERY): no MPU at all — MPU_TYPE reads 0x00000000, DREGION=0,
+          CPUID 0x411fc231 Cortex-M3 r1p1. The MPU is optional on Cortex-M3 and this part
+          omits it, so isolation, partitioning and the criticality tenants are unreachable
+          BY HARDWARE. 8 KiB SRAM also bounds what fits.
+        * NUCLEO-G031K8: ARMv6-M. No dissolved object runs there until synth has an ARMv6-M
+          profile (synth#1301), and its PMSA has no AP encodings distinguishing privileged
+          from unprivileged access, so it can carry native-Rust features and the region
+          programmer's computation but not the criticality arms.
+        * ESP32-C3: RISC-V; gust has no RV32 silicon target model or runtime yet
+          (REQ-OS-TARGET-RV32-001).
+      An exclusion whose reason is "not built yet" is a gap in this requirement, not an exemption from it — that distinction is the point, because it converts the board matrix from a status table into a falsifiable claim.
+
+      Kill-criterion: a feature the target model says a board supports is absent from that board's image, OR present and not exercised, OR exercised and its verdict not reported. Also: an exclusion with no hardware reason recorded. The middle clause is the one that will catch a real mistake — gale has shipped an object that was built, symbol-gated, size-gated, WCET-measured and linked into NOTHING (gale#269), and a feature compiled into an integration image but never called is the same defect at a larger scale.
+
+      RELATIONSHIP TO THE PER-FEATURE PROBES: this does not replace them and must not. A focused probe localises a fault to one feature; the integration image tells you the composition holds. Losing the first would make every integration failure a bisect. Both run from `cargo xtask silicon matrix`.
+
+      THE SHOWCASE IS THIS, and it is the honest form of the bench showcase this roadmap has wanted since gale#84: a per-board matrix of features attempted, features excluded with their hardware reason, and the firmware's own verdict line for each — published from the run rather than transcribed. What a reader gets is not "gale supports N features" but "on this part, these features ran together and here is what each one said".
+    tags: [gust, os, integration, silicon, showcase, target-model]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-TARGET-MODEL-001
+      - type: related-to
+        target: REQ-OS-MCDEMO-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5
+      timestamp: 2026-09-30T04:51:06Z
+    release: v0.13.0
