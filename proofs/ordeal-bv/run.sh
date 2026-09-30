@@ -18,6 +18,63 @@ set -euo pipefail
 ORDEAL="${ORDEAL:-ordeal}"   # `cargo install ordeal` puts it on PATH
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
+# ---------------------------------------------------------------------------
+# SOUNDNESS FLOOR -- ordeal >= 0.22.1 (GHSA-xfxf-qxr3-435x, ordeal#182).
+#
+# Every ordeal from 0.2.0 through 0.22.0 bit-blasted bvshl/bvlshr/bvashr and
+# the rotations with too few barrel-shifter stages when the operand width is
+# NOT a power of two. An affected query could return `Unsat` WITH A CERTIFICATE
+# THAT RE-CHECKS: the LRAT checker certifies the CNF it was handed, and the CNF
+# was the wrong encoding. So the failure is invisible downstream -- a wrong
+# verdict that passes every check this script performs.
+#
+# That is why this REFUSES rather than warns, and why it also refuses a tool
+# whose version cannot be read. A version we cannot establish is not a version
+# we can call sound, and the alternative is a green run that means nothing.
+# (Same shape as the missing-`gh` degradation caught in gale#418: a missing
+# capability must refuse, never fall through to a weaker check.)
+#
+# The comments in this file already said "Need ordeal >= 0.9.1" and ">= 0.12.0"
+# and nothing ever checked either. A tool-version requirement that lives only
+# in prose is how this class of defect arrives unnoticed.
+#
+# Semver comparison is in python, not shell: `[ "$a" \< "$b" ]` is a STRING
+# compare, under which "0.9.1" > "0.22.1". Per the repo rule, verdict-bearing
+# logic does not live in shell.
+# ---------------------------------------------------------------------------
+ORDEAL_FLOOR="0.22.1"
+_ov="$("$ORDEAL" --version 2>/dev/null | awk '{print $2}')" || true
+python3 - "$ORDEAL_FLOOR" "${_ov:-}" "$ORDEAL" <<'PYCHECK'
+import sys
+floor, got, exe = sys.argv[1], sys.argv[2], sys.argv[3]
+def parse(v):
+    core = v.split('+')[0].split('-')[0]
+    parts = core.split('.')
+    if len(parts) < 3 or not all(p.isdigit() for p in parts[:3]):
+        return None
+    return tuple(int(p) for p in parts[:3])
+f, g = parse(floor), (parse(got) if got else None)
+adv = "GHSA-xfxf-qxr3-435x / ordeal#182"
+if g is None:
+    print(f"FATAL: cannot establish the version of `{exe}` (read {got!r}).", file=sys.stderr)
+    print(f"       ordeal >= {floor} is required for SOUNDNESS, not for features:", file=sys.stderr)
+    print(f"       {adv} -- affected versions can return a WRONG `Unsat`", file=sys.stderr)
+    print( "       with a certificate that re-checks, so nothing downstream catches it.", file=sys.stderr)
+    print( "       A version that cannot be read cannot be called sound. Point $ORDEAL", file=sys.stderr)
+    print( "       at an ordeal that reports `ordeal <semver>` for --version.", file=sys.stderr)
+    sys.exit(1)
+if g < f:
+    print(f"FATAL: {exe} is {got}; ordeal >= {floor} is required for SOUNDNESS.", file=sys.stderr)
+    print(f"       {adv}: 0.2.0 through 0.22.0 bit-blast shifts and rotations", file=sys.stderr)
+    print( "       incorrectly at non-power-of-two widths and can return a WRONG", file=sys.stderr)
+    print( "       `Unsat` with a re-checkable certificate.", file=sys.stderr)
+    print( "       NOTE: no varve layer ships >= 0.22.1 yet (2026.09.3 -> 0.19.0,", file=sys.stderr)
+    print( "       2026.09.16 -> 0.22.0), so until one does this needs", file=sys.stderr)
+    print(f"       `cargo install ordeal --version {floor}` or $ORDEAL pointed at it.", file=sys.stderr)
+    sys.exit(1)
+print(f"ordeal {got} >= {floor} -- soundness floor satisfied ({adv}).")
+PYCHECK
+
 echo "############################################################"
 echo "# Section A — TRANSCRIPTION-proof pilots (ordeal check)"
 echo "############################################################"
