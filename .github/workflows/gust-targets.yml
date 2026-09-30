@@ -25,7 +25,7 @@ concurrency:
 jobs:
   gust-targets:
     name: "gust target model (generator + drift gate)"
-    runs-on: ubuntu-22.04
+    runs-on: [self-hosted, linux, x64, rust-cpu]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
