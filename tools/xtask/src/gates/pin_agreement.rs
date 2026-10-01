@@ -101,6 +101,18 @@ fn layer_tools(repo: &Path, layer: &str) -> Option<BTreeMap<String, String>> {
     None
 }
 
+/// The exception reason for `file:line`, if the line above it carries the marker.
+fn exemption(repo: &Path, file: &str, line: usize) -> Option<String> {
+    let text = std::fs::read_to_string(repo.join(".github/workflows").join(file)).ok()?;
+    let lines: Vec<&str> = text.lines().collect();
+    if line < 2 {
+        return None;
+    }
+    let prev = lines.get(line - 2)?.trim();
+    let rest = prev.strip_prefix(EXEMPT)?;
+    Some(rest.trim().to_string())
+}
+
 fn field(obj: &str, key: &str) -> String {
     let pat = format!("\"{key}\":");
     let Some(i) = obj.find(&pat) else { return String::new() };
@@ -111,7 +123,19 @@ fn field(obj: &str, key: &str) -> String {
     rest[1..].split('"').next().unwrap_or("").to_string()
 }
 
-/// Every `<TOOL>_VERSION: "x.y.z"` in every workflow, with where it was found.
+/// A line may hold a version OLDER than the pin if the line above it says why, as
+/// `# pin-agreement: pinned-older <reason>`. That is an exception, not drift: the
+/// difference is that an exception is written down, carries a reason, and shows up
+/// in the gate's own output every run. Silence is what this gate exists to end —
+/// not disagreement, which is sometimes the only correct state while an upstream
+/// incompatibility is open.
+///
+/// The marker is REQUIRED to carry text. `# pin-agreement: pinned-older` with no
+/// reason fails, because an exception nobody justified is drift with a comment.
+const EXEMPT: &str = "# pin-agreement: pinned-older";
+
+/// Every `<TOOL>_VERSION: "x.y.z"` in every workflow, with where it was found and
+/// the exception reason if the preceding line carries one.
 fn hardcoded(repo: &Path) -> Vec<(String, String, String, usize)> {
     let dir = repo.join(".github/workflows");
     let mut out = Vec::new();
@@ -177,11 +201,20 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
             Some(want) if want == ver => {
                 lines.push(format!("  ok     {file}:{line} {var}_VERSION {ver}"));
             }
-            Some(want) => {
-                fail.push(format!(
+            Some(want) => match exemption(repo, file, *line) {
+                Some(reason) if !reason.is_empty() => {
+                    lines.push(format!(
+                        "  EXEMPT {file}:{line} {var}_VERSION {ver} (layer ships {want}) — {reason}"
+                    ));
+                }
+                Some(_) => fail.push(format!(
+                    "{file}:{line} {var}_VERSION is {ver} and carries `{EXEMPT}` with NO REASON. \
+                     An exception nobody justified is drift with a comment."
+                )),
+                None => fail.push(format!(
                     "{file}:{line} {var}_VERSION is {ver}, but layer {layer} ships {tool} {want}"
-                ));
-            }
+                )),
+            },
             None => fail.push(format!(
                 "{file}:{line} {var}_VERSION is {ver}, but layer {layer} ships no {tool} at all"
             )),
@@ -202,7 +235,16 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
         return Verdict::Fail(out);
     }
 
-    lines.push(format!("{} hardcoded version(s), all agreeing with the pin.", found.len()));
+    let exempt = lines.iter().filter(|l| l.contains("EXEMPT")).count();
+    let agreeing = found.len() - exempt;
+    lines.push(format!(
+        "{} hardcoded version(s): {agreeing} agree with the pin, {exempt} exempt with a recorded reason.",
+        found.len()
+    ));
+    if exempt > 0 {
+        lines.push("An exempt line is NOT agreement — it is a disagreement someone justified,".into());
+        lines.push("and it should stop being exempt when the reason stops holding.".into());
+    }
     Verdict::Pass(lines)
 }
 
@@ -240,6 +282,19 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     ck(
         "scanner captures file, var, version and line",
         found.iter().all(|(f, v, ver, l)| !f.is_empty() && !v.is_empty() && !ver.is_empty() && *l > 0),
+    );
+
+    // The exception mechanism's own controls: a marker with a reason is honoured,
+    // one without is not. Without the second, `# pin-agreement: pinned-older` on
+    // its own would be a universal silencer — which is the opposite of the point.
+    ck("EXEMPT marker is the documented spelling", EXEMPT == "# pin-agreement: pinned-older");
+    ck(
+        "a marker with no reason yields an empty string, which `run` rejects",
+        "# pin-agreement: pinned-older".strip_prefix(EXEMPT).map(|r| r.trim().is_empty()).unwrap_or(false),
+    );
+    ck(
+        "a marker with a reason yields that reason",
+        "# pin-agreement: pinned-older because upstream".strip_prefix(EXEMPT).map(|r| r.trim() == "because upstream").unwrap_or(false),
     );
 
     if broken {

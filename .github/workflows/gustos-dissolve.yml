@@ -41,7 +41,8 @@ on:
   workflow_dispatch:
 
 env:
-  MELD_VERSION: "0.59.0"
+  # pin-agreement: pinned-older meld 0.59.0 refuses this composite's --share-stack in CI (gale#434); 0.48.0 is the last version that builds it
+  MELD_VERSION: "0.48.0"
   LOOM_VERSION: "1.4.1"
   SYNTH_VERSION: "0.78.0"
 
