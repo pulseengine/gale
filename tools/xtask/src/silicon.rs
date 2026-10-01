@@ -118,7 +118,13 @@ const BOARDS: &[Board] = &[
     Board {
         name: "g474re",
         what: "NUCLEO-G474RE — STM32G474, Cortex-M4F, MPU 8",
-        host: Host::Local,
+        // MOVED to gale.local (Raspberry Pi) on 2026-10-01. Verified by SERIAL rather
+        // than inferred: the Mac's registry still listed stlink-v3
+        // 003B001A3235511337333439 as local, and that exact serial now enumerates on
+        // gale.local while the Mac has no ST probe at all. Confirmed end to end through
+        // the new host — CPUID 0x410fc241 (Cortex-M4 r0p1), MPU_TYPE 0x00000800
+        // (DREGION=8) read under a with-device claim.
+        host: Host::Ssh("gale.local"),
         claim: "stlink-v3",
         triple: "thumbv7em-none-eabi",
         // target-g474re selects the generated constants; silicon-g474 is the older
