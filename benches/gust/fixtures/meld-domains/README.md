@@ -40,9 +40,65 @@ rebased safely"*. `build.sh` therefore passes `-C link-arg=--emit-relocs` on the
 final link. A consumer that does not is pushed toward the boundary-preserving
 path by default, which is a good failure direction.
 
+## Three components (2026-09-30) — the case meld#427 asked for
+
+meld established that handle tables are allocated only for components that
+**re-export** a resource interface, so the two-component fixture above allocated
+zero of them and the claim *"components sharing a memory domain have mutually
+addressable handle tables"* was read off allocation code rather than observed.
+`middle/` is that missing component: it imports `caps`, **re-exports** `caps`
+(each `Task` owning an imported handle and forwarding to it), and holds a handle
+of its own, so a table must exist and be populated.
+
+Measured on **meld 0.55.1**, the version gale pins:
+
+| | boundaries | memories | size |
+|---|---|---|---|
+| `--memory multi` | 8 × `memory-copy`, cross-memory, **0** interposition-free | **3** | 7588 B |
+| `--memory shared --address-rebase` | 8 × `direct`/`inlined-direct`, same-memory, **8 wired with nothing interposed** | **1** | 7454 B |
+
+Three memories under `multi` — one per component, i.e. three domains — collapsing
+to one under `shared`. The handle operations erase exactly like the scalar `now`,
+as in the two-component case; adding a re-exporter did not create a special case.
+
+### The finding that was not planned, and it is structural
+
+meld warns that `middle.comp.wasm` and `provider.comp.wasm` **carry no relocation
+metadata**, so under shared memory they "may silently alias another component's
+memory" (#326/#339). `consumer.comp.wasm` is not flagged. All three are built by
+`build.sh` with `-C link-arg=--emit-relocs`, and the relocs *do* survive
+componentization — `provider.comp.wasm` carries `reloc.CODE`, `reloc.DATA` and
+`linking`.
+
+The explanation is meld's own caveat, which is easy to read past: *"Names are of
+FUSED components, which include ones synthesized from an input's nested
+structure."* Each component that **exports a resource** contains **three** core
+modules — the crate's own, plus two synthesized by `wasm-tools component new`
+(the dtor/realloc shims) — and only the first carries relocations:
+
+| component | core modules | exports a resource | flagged |
+|---|---|---|---|
+| `consumer.comp.wasm` | 1 | no | no |
+| `middle.comp.wasm` | 3 | yes | **yes** |
+| `provider.comp.wasm` | 3 | yes | **yes** |
+
+So `--emit-relocs` on the final link is **not sufficient**, and the earlier note
+in this file saying it addresses the warning is incomplete. The modules without
+relocations are ones the toolchain synthesizes, not ones the build controls.
+
+**Why this matters beyond the fixture:** the components affected are exactly the
+ones that *carry handles*. The shared-memory path — the one that erases the
+boundary — is flagged unsafe precisely for handle-carrying components, which is
+the case gale's syscall seam depends on (gale#408). That is an argument for
+keeping the boundary rather than a reason to work around the warning.
+
+Correlation is over three components with a plausible mechanism, not an
+established cause; meld owns the question of whether the synthesized modules
+could carry relocations.
+
 ## Not established here
-- What happens to handle tables when **several** components share one domain —
-  that is the case meld#427 is generalising for, and it needs per-domain packing
-  to exist before it can be measured.
+- Whether two components sharing a domain can in fact address each other's handle
+  **tables**. The tables are allocated for the re-exporter, but reading one from
+  the other requires an executable experiment, not an inspection of the artifact.
 - Anything about MCU lowering: `--pack-rebase` refuses outside shared memory, so
   the two-domains-each-packed shape cannot be built yet.

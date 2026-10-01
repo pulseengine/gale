@@ -18,11 +18,22 @@ echo "== meld: $("$M" --version 2>/dev/null | head -1)"
 # --emit-relocs on the FINAL link: without it meld REFUSES the shared path
 # ("carries no relocation metadata … cannot be rebased safely"), which is itself
 # part of what this fixture demonstrates.
-for d in provider consumer; do
+for d in provider middle consumer; do
   ( cd "$d" && RUSTFLAGS="-C link-arg=--emit-relocs" cargo build --release --target wasm32-unknown-unknown >/dev/null 2>&1 ) || { echo "build $d failed"; exit 2; }
   wasm-tools component new "$d/target/wasm32-unknown-unknown/release/capfix_${d}.wasm" -o "$d.comp.wasm" || exit 2
 done
 
+echo "== THREE components: consumer -> middle (re-exporter) -> provider"
+echo "   middle is what forces a handle table to exist at all — meld#427"
+"$M" fuse consumer.comp.wasm middle.comp.wasm provider.comp.wasm --memory multi --explain -o fused3-multi.wasm 2>/dev/null | grep -E "boundaries:"
+"$M" fuse consumer.comp.wasm middle.comp.wasm provider.comp.wasm --memory shared --address-rebase --explain -o fused3-shared.wasm 2>/dev/null | grep -E "boundaries:"
+for f in fused3-multi.wasm fused3-shared.wasm; do
+  printf "   %-18s memories=%s size=%sB\n" "$f" "$(wasm-tools print "$f" | grep -cE '^\s*\(memory ')" "$(wc -c < "$f" | tr -d ' ')"
+done
+echo "   NOTE: components that EXPORT a resource contain synthesized core modules"
+echo "   without relocation metadata, so --emit-relocs on the final link is NOT"
+echo "   sufficient and meld's aliasing warning is correct. See README."
+echo
 echo "== --memory multi  (boundary KEPT: copy + per-component handle tables)"
 "$M" fuse consumer.comp.wasm provider.comp.wasm --memory multi --explain -o fused-multi.wasm | grep -E "lowering|boundaries:"
 echo "== --memory shared (boundary ERASED: same-memory, nothing interposed)"
