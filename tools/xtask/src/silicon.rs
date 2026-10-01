@@ -65,7 +65,13 @@ const BOARDS: &[Board] = &[
     Board {
         name: "f100",
         what: "STM32VLDISCOVERY — STM32F100, Cortex-M3, no MPU",
-        host: Host::Ssh("wohl.local"),
+        // MOVED to gale.local. wohl.local was re-imaged on 2026-10-01 and no
+        // 0483:3744 (ST-LINK/V1) enumerates there any more, while gale.local has
+        // one. fourpi.local's lock directory still holds a Sep-5 `stlink-v1-f100`
+        // lock, so this board has been on at least three hosts — which is the
+        // argument for every entry naming its host and its claim rather than
+        // either alone.
+        host: Host::Ssh("gale.local"),
         claim: "stlink-v1",
         triple: "thumbv7m-none-eabi",
         features: &["target-f100"],
