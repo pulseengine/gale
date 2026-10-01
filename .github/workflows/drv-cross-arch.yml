@@ -60,9 +60,13 @@ env:
   # Drifted AGAIN on the 2026.09.1 bump: varve.toml resolved synth 0.61.0 while this
   # still said 0.60.0. The comment above predicted exactly this and it still happened,
   # which says the warning is not the control — the two pins want a gate, not a note.
-  # Matching layer 2026.09.3, which moved synth 0.61.0 -> 0.65.0. This is the drift the
-  # comment above predicted and it happened again, so the value moves with the layer.
-  SYNTH_VERSION: "0.65.0"
+  # Drifted a THIRD time on the 2026.10.1 bump (synth 0.65.0 -> 0.78.0). The comment
+  # above said "the two pins want a gate, not a note", and it was right: three
+  # warnings prevented nothing. There is now a gate —
+  # `cargo xtask check pin-agreement` compares every hardcoded *_VERSION against
+  # what varve.toml's layer actually ships, and fails on disagreement. This value
+  # still moves with the layer; the difference is that forgetting is now loud.
+  SYNTH_VERSION: "0.78.0"
   LOOM_VERSION: "1.4.1"
 
 jobs:

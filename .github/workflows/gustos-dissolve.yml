@@ -41,9 +41,9 @@ on:
   workflow_dispatch:
 
 env:
-  MELD_VERSION: "0.48.0"
-  LOOM_VERSION: "1.2.0"
-  SYNTH_VERSION: "0.57.0"
+  MELD_VERSION: "0.59.0"
+  LOOM_VERSION: "1.4.1"
+  SYNTH_VERSION: "0.78.0"
 
 jobs:
   dissolve:
