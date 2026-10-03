@@ -1005,6 +1005,16 @@ artifacts:
       - type: related-to
         target: REQ-OS-UNPRIV-001
 
+      - type: related-to
+        target: REQ-OS-PRIVREGION-001
+      - type: related-to
+        target: VER-OS-PRIVREGION-001
+      - type: related-to
+        target: REQ-TARGET-MODEL-001
+      - type: related-to
+        target: VER-TARGET-IWDG-001
+      - type: related-to
+        target: VER-DRV-SILICON-001
   - id: REQ-OS-CRITICALITY-001
     type: sw-req
     title: Every element carries a criticality level, and every coexisting pair carries a freedom-from-interference argument
@@ -1029,6 +1039,12 @@ artifacts:
         target: SYSREQ-BYOOS-001
       - type: related-to
         target: REQ-OS-UNPRIV-001
+      - type: related-to
+        target: REQ-OS-SCHED-001
+      - type: related-to
+        target: REQ-OS-WCET-001
+      - type: related-to
+        target: REQ-OS-FFI-COMM-001
     provenance:
       created-by: ai-assisted
       model: claude-opus-5
@@ -1059,6 +1075,8 @@ artifacts:
         target: SYSREQ-BYOOS-001
       - type: related-to
         target: REQ-OS-CRITICALITY-001
+      - type: related-to
+        target: REQ-OS-UNPRIV-001
     provenance:
       created-by: ai-assisted
       model: claude-opus-5
@@ -1104,6 +1122,8 @@ artifacts:
         target: REQ-OS-FFI-COMM-001
       - type: related-to
         target: REQ-OS-MULTITENANT-001
+      - type: related-to
+        target: REQ-OS-PRIVREGION-001
     provenance:
       created-by: ai-assisted
       model: claude-opus-5
@@ -1149,6 +1169,8 @@ artifacts:
         target: REQ-TARGET-MODEL-001
       - type: related-to
         target: REQ-OS-MCDEMO-001
+      - type: related-to
+        target: REQ-OS-TARGET-RV32-001
     provenance:
       created-by: ai-assisted
       model: claude-opus-5
