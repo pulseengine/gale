@@ -275,6 +275,49 @@ jobs:
           [ "$s" = "success" ] || { echo "::error::both gates report failure"; exit 1; }
           echo "gates agree: $s"
 
+  pin-agreement:
+    name: "a hardcoded tool version matches the toolchain pin"
+    runs-on: [self-hosted, linux, x64, rust-cpu]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      # Two workflows download their own synth/loom/meld instead of resolving
+      # them through varve, so the pin exists in three places. drv-cross-arch.yml
+      # carried a comment about that, extended twice as it drifted twice, ending
+      # "the two pins want a gate, not a note". It then drifted a THIRD time on
+      # the 2026.10.1 bump. Measured at that point: FOUR of five hardcoded
+      # versions disagreed with the pin, gustos-dissolve's synth by 21 minor
+      # versions — and those gates were green, about a toolchain gale does not
+      # use. This is the gate that comment asked for.
+      # The gate asks varve what the pinned layer ships, because varve is the only
+      # authority for that — so CI needs the binary AND the layer. Installing the
+      # binary is not installing the layer: without `varve install` the gate
+      # REFUSES (exit 3, never a pass), which is correct behaviour and a red job.
+      # It failed exactly that way on its first CI run, because I verified it
+      # locally where the layer was already in the store. Same two-step the
+      # wcet-sidecar job below uses, for the same reason.
+      - name: Install the pinned toolchain
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 --retry-connrefused --retry-delay 2 \
+               -o /tmp/varve-install.sh \
+               https://raw.githubusercontent.com/pulseengine/varve/main/install.sh
+          sh /tmp/varve-install.sh
+          echo "$HOME/.varve/bin" >> "$GITHUB_PATH"
+
+      - name: Lay down the pinned layer
+        run: |
+          set -euo pipefail
+          varve install
+          varve inspect --json > /dev/null
+
+      - name: Negative control — the comparison and the scanner must bite
+        run: cargo xtask check pin-agreement --self-test
+
+      - name: Hardcoded tool versions agree with varve.toml
+        run: cargo xtask check pin-agreement
+
   fixture-freshness:
     name: "committed Renode ELF fixtures are not older than their sources"
     runs-on: [self-hosted, linux, x64, rust-cpu]
