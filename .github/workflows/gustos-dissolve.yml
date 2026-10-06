@@ -96,6 +96,12 @@ jobs:
         run: |
           meld --version; loom --version; synth --version
           arm-none-eabi-nm --version | head -1
+          # rustc is the ONE unpinned input to this build (rust-toolchain@stable),
+          # and it is load-bearing: which modules keep a __stack_pointer global is a
+          # codegen decision, and 1.99.0 changed it for four of the five providers
+          # (gale#434). Printed so the next time an output moves without a pin
+          # moving, the log already says what changed.
+          rustc --version
 
       # The gate. Its own negative control runs inside the script: an object with no
       # seam MUST be refused, and if that control ever passes the script exits 4 --

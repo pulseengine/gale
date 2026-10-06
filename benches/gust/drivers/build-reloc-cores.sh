@@ -46,9 +46,17 @@ for crate in "$@"; do
   #                        (1088 KB). The used extent is measured from address 0, so
   #                        that stack — not page granularity — dominates the packed
   #                        total. At 2048 the same three drivers pack into ONE page.
+  #   --export=__stack_pointer  meld --share-stack has to LOCATE each component's
+  #                        shadow stack. wasm-ld DROPS the __stack_pointer global
+  #                        from a module whose code never touches one -- hm-thin is
+  #                        such a module under rustc 1.99.0, and the fuse below then
+  #                        refuses "component 0 module 0 has no __stack_pointer
+  #                        marker" (gale#434). Exporting it makes the marker a
+  #                        property of this build rather than of the runner's rustc.
   ( cd "$crate" && cargo rustc --release --target wasm32-unknown-unknown --lib \
       -- -C link-arg=--emit-relocs \
          -C link-arg=--export=__heap_base \
+         -C link-arg=--export=__stack_pointer \
          -C link-arg=-zstack-size=2048 \
          -C link-arg=--initial-memory=65536 \
          -C link-arg=--max-memory=65536 >/dev/null 2>&1 )
@@ -70,6 +78,10 @@ for crate in "$@"; do
   # drivers passed and switch-thin failed, which reads exactly like a real defect.
   # Bash pattern matching has no pipe and no race.
   wat="$("$WT" print "$comp" 2>/dev/null || true)"
+  if [[ "$wat" != *'(export "__stack_pointer" (global'* ]]; then
+    echo "  $name: FAIL — component has no EXPORTED __stack_pointer (meld --share-stack cannot place a shared shadow stack; gale#434)" >&2
+    fail=1; continue
+  fi
   if [[ "$wat" != *__heap_base* ]]; then
     echo "  $name: FAIL — component lost __heap_base (meld would fall back to page-granular; meld#370)" >&2
     fail=1; continue

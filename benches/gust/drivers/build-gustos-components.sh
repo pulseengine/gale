@@ -77,7 +77,19 @@ for entry in "${PROVIDERS[@]}"; do
   # SRAM, so the object could not be self-contained and could not run (gale#275).
   # At one page (the wasm minimum) the same composite dissolves to
   # data 512 / bss 3096 = 3 608 B of 8 192 (44%) and executes correctly.
-  ( cd "$HERE/$crate" && RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=--emit-relocs -C link-arg=--export=__heap_base -C link-arg=-zstack-size=2048 -C link-arg=--initial-memory=65536 -C link-arg=--max-memory=65536" \
+  # --export=__stack_pointer is NOT cosmetic. meld --share-stack has to LOCATE each
+  # component's shadow stack, and it accepts the marker from the export table or the
+  # name section. Nothing guaranteed it was in either: wasm-ld drops the
+  # __stack_pointer global from a module whose code never touches the shadow stack,
+  # and which modules those are is a codegen decision that moves under us. Measured
+  # on this tree, same sources and same meld, only rustc differing:
+  #   rustc 1.98.1 -> 5 of 5 providers carry the marker, meld fuses, gate green
+  #   rustc 1.99.0 -> 1 of 5 (exec-provider alone), meld refuses component 3
+  # Exporting it makes the marker a property of OUR build rather than of whichever
+  # rustc the runner installed. Free on the native output: the dissolved object comes
+  # out at the same text=5496 data=1580 bss=3620 either way, because the dissolve
+  # discards the wasm export entries (the composite .wasm grows 270 B; the .o does not).
+  ( cd "$HERE/$crate" && RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=--emit-relocs -C link-arg=--export=__heap_base -C link-arg=--export=__stack_pointer -C link-arg=-zstack-size=2048 -C link-arg=--initial-memory=65536 -C link-arg=--max-memory=65536" \
       cargo build --release --target wasm32-unknown-unknown >/dev/null 2>&1 )
   core="$(find "$HERE/$crate/target/wasm32-unknown-unknown/release" -maxdepth 1 -name "$wasm_name.wasm" | head -1)"
   comp="$OUT/$crate.component.wasm"
@@ -98,7 +110,18 @@ for entry in "${PROVIDERS[@]}"; do
   n_inc="$({ grep -rlE "$EXEC_INCLUDE" "$HERE/$crate/src" 2>/dev/null || true; } | wc -l | tr -d ' ')"
   if [ "$n_inc" -gt 0 ]; then owners="$owners $crate"; fi
 
-  if [ "$exports_gustos" -lt 1 ]; then
+  # The shadow-stack marker gate. meld --share-stack must locate a __stack_pointer
+  # in EVERY component; it accepts the export table or the name section, and we
+  # require the export table, which is the half we control and the half no strip
+  # pass removes. Checked here, where the message can name the crate, rather than
+  # at the meld step, whose "component 3" counts the composite's instantiation
+  # order and pointed at the one provider that still HAD a marker.
+  sp_export="$(printf '%s' "$("$WT" print "$comp" 2>/dev/null)" | grep -cE '\(export "__stack_pointer" \(global' || true)"
+
+  if [ "$sp_export" -lt 1 ]; then
+    echo "  FAIL: no exported __stack_pointer — meld --share-stack cannot place a shared shadow stack"
+    fail="$fail $crate"
+  elif [ "$exports_gustos" -lt 1 ]; then
     echo "  FAIL: exports no gust:os/* interface"; fail="$fail $crate"
   elif [ -n "$bad_imports" ]; then
     echo "  FAIL: imports outside gust:hal/gust:os:"; printf '%s\n' "$bad_imports" | sed 's/^/    /'; fail="$fail $crate"
