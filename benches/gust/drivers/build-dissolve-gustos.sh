@@ -61,7 +61,13 @@ SYNTH="${SYNTH:-$HOME/pe-toolchain/synth-0.57.0/synth}"
 NM="${NM:-arm-none-eabi-nm}"
 SIZE="${SIZE:-arm-none-eabi-size}"
 FUSED="$OUT/fused-gustos.component.wasm"
-OBJ="$HERE/os-node/gustos-dissolved-cm3.o"
+# Overridable, because this writes a COMMITTED object IN PLACE. `OUT` moves the
+# components but not this, so merely running the script to VERIFY a change
+# regenerates the committed artifact and `git add -A` then commits it — which
+# is how an unreviewed object regeneration reached a PR and staled gust_iso.elf
+# (gale#438). The default is unchanged; `OBJ=<scratch>/x.o` makes a
+# verification run non-destructive, as build-iso-core.sh already allows via OUT.
+OBJ="${OBJ:-$HERE/os-node/gustos-dissolved-cm3.o}"
 T="$(mktemp -d)"
 
 for t in "$MELD" "$LOOM" "$SYNTH"; do
