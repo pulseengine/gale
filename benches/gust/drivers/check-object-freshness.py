@@ -103,6 +103,13 @@ UNCOVERED = {
 # stale, and it FAILS if one of these stops being stale — so the list shrinks to
 # empty when they are regenerated, instead of quietly outliving the problem.
 KNOWN_STALE = {
+    # Stale since #436 changed build-reloc-cores.sh (the --export=__stack_pointer
+    # fix). Independently confirmed NOT reproducible rather than merely
+    # date-stale: rebuilding from the current pin gives 15050 B against the
+    # committed 15094 B, and two consecutive rebuilds are byte-identical, so
+    # the difference is real. Refreshing it means regenerating gust_iso.elf
+    # with it -- the Renode isolation image -- which is a change of its own.
+    "iso-core-fused-cm3.o",
     # script-built
     "breadth/breadth-cm3.o",
     "os-node/os-time-cm3.o",
@@ -157,7 +164,13 @@ def inputs_for(script_name):
     hardcoding means a new dependency is picked up automatically.
     """
     text = (HERE / script_name).read_text()
-    dirs = sorted(set(re.findall(r"\$HERE/([a-z0-9][a-z0-9-]*)", text)))
+    # `.` is in the class so a reference to a sibling SCRIPT is captured as the
+    # script. Without it, "$HERE/build-reloc-cores.sh" yielded
+    # "build-reloc-cores" -- a path with no file behind it, which resolved to no
+    # commit date and was silently dropped, so the script that actually builds
+    # iso-core-fused-cm3.o's components was not one of its inputs.
+    dirs = sorted(set(re.findall(r"\$HERE/([a-z0-9][a-z0-9.-]*)", text)))
+    dirs = [d.rstrip(".") for d in dirs if d.rstrip(".")]
     # os-node is the OUTPUT directory, not an input; excluding it stops the
     # object from being compared against itself.
     dirs = [d for d in dirs if d != "os-node"]

@@ -69,6 +69,13 @@ const UNCOVERED: &[&str] = &[
 /// object goes stale, AND if one of these stops being stale -- so the list
 /// shrinks to empty when they are regenerated instead of outliving the problem.
 const KNOWN_STALE: &[&str] = &[
+    // Stale since #436 changed build-reloc-cores.sh (the
+    // --export=__stack_pointer fix). Confirmed NOT reproducible rather than
+    // merely date-stale: rebuilding from the current pin gives 15050 B against
+    // the committed 15094 B, and two consecutive rebuilds are byte-identical,
+    // so the difference is real. Refreshing it means regenerating gust_iso.elf
+    // with it -- the Renode isolation image -- which is a change of its own.
+    "iso-core-fused-cm3.o",
     "breadth/breadth-cm3.o",
     "os-node/os-time-cm3.o",
     "os-node/os-tl-cm3.o",
@@ -156,8 +163,19 @@ fn inputs_for(repo: &Path, script: &str) -> Vec<String> {
         if &bytes[i..i + needle.len()] == needle {
             let mut j = i + needle.len();
             let start = j;
+            // `.` is accepted so a reference to a sibling SCRIPT is captured as
+            // the script, not as a directory that does not exist. Before this,
+            // `"$HERE/build-reloc-cores.sh"` yielded `build-reloc-cores`, a path
+            // with no file behind it, which then resolved to no commit date and
+            // was silently dropped — so the script that actually builds
+            // iso-core-fused-cm3.o's components was not one of its inputs.
+            // A derived path that resolves to nothing is the same defect this
+            // repo found in the fixture gate (gale#417).
             while j < bytes.len()
-                && (bytes[j].is_ascii_lowercase() || bytes[j].is_ascii_digit() || bytes[j] == b'-')
+                && (bytes[j].is_ascii_lowercase()
+                    || bytes[j].is_ascii_digit()
+                    || bytes[j] == b'-'
+                    || bytes[j] == b'.')
             {
                 j += 1;
             }
@@ -165,7 +183,9 @@ fn inputs_for(repo: &Path, script: &str) -> Vec<String> {
                 let d = &text[start..j];
                 // os-node is the OUTPUT directory, not an input; excluding it
                 // stops the object from being compared against itself.
-                if d != "os-node" {
+                // Trailing '.' from e.g. "$HERE/foo." is not a real name.
+                let d = d.trim_end_matches('.');
+                if d != "os-node" && !d.is_empty() {
                     dirs.insert(d.to_string());
                 }
             }
