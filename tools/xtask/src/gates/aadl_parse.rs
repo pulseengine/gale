@@ -34,16 +34,50 @@ use std::process::Command;
 
 pub const NAME: &str = "aadl-parse";
 
+/// A scratch directory that removes itself, so the self-test can own its
+/// fixtures instead of borrowing files from the tree.
+struct Scratch(std::path::PathBuf);
+
+impl Scratch {
+    fn new() -> std::io::Result<Self> {
+        let mut p = std::env::temp_dir();
+        p.push(format!(
+            "gale-xtask-aadl-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&p)?;
+        Ok(Scratch(p))
+    }
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 /// Models known not to parse. Each entry is a debt with a reason, not an
 /// exemption -- see gale#441. Fixing one means wrapping its threads in a
 /// `process` and re-running the analyses its header promises, which is a change
 /// of its own rather than a line in this list.
 const KNOWN_UNPARSEABLE: &[&str] = &[
-    // `system implementation Handoff_System.impl` declares `producer` and
-    // `consumer` as `thread` subcomponents directly.
-    "safety/aadl/semaphore.aadl",
-    // Same shape.
-    "safety/aadl/mutex.aadl",
+    // EMPTY, and the gate keeps it that way. Both entries that lived here —
+    // safety/aadl/semaphore.aadl and safety/aadl/mutex.aadl — were repaired in
+    // the same change that emptied this list, and the gate INSISTED on it: with
+    // the models fixed and the names still present it failed with
+    //   FAIL: safety/aadl/semaphore.aadl parses now — remove it from
+    //         KNOWN_UNPARSEABLE so the ledger shrinks instead of outliving the problem
+    // which is the fixed-but-ledgered direction doing its job. A one-directional
+    // ledger would have gone green and carried two stale names forever.
+    //
+    // Adding a name here is a debt with a reason, never an exemption.
 ];
 
 fn git(repo: &Path, args: &[&str]) -> Option<String> {
@@ -230,18 +264,43 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
         }
     };
 
-    // The matched pair, against real committed models: one that must parse and
-    // one that must not. Both halves, because a gate that flags everything and a
-    // gate that flags nothing are both green on a one-sided test.
-    let good = "benches/gust/targets/stm32g474.aadl";
-    let bad = "safety/aadl/semaphore.aadl";
-    ck(
-        "a conforming target model is accepted",
-        matches!(spar_parses(&bin, repo, good), Ok(true)),
-    );
+    // The matched pair, against fixtures this control WRITES ITSELF.
+    //
+    // It used to point at `safety/aadl/semaphore.aadl` as the must-be-rejected
+    // half, because that model really was unparseable. Repairing it — in the
+    // very change this gate demanded — deleted the control: the self-test went
+    // `a thread-in-system model is rejected: WRONG`, not because the gate had
+    // broken but because its fixture had been fixed. **A negative control that
+    // depends on the repository staying broken disappears the moment you fix
+    // the thing.** So the control now owns both fixtures and nothing in the
+    // tree can take them away.
+    //
+    // Both halves, because a gate that flags everything and a gate that flags
+    // nothing are each green on a one-sided test.
+    let scratch = match Scratch::new() {
+        Ok(s) => s,
+        Err(e) => return Verdict::Refused(format!("cannot create scratch dir: {e}")),
+    };
+    const BAD: &str = "package Gate_Self_Test_Bad\npublic\n  thread T\n  end T;\n  thread implementation T.impl\n  end T.impl;\n  system S\n  end S;\n  system implementation S.impl\n    subcomponents\n      t : thread T.impl;\n  end S.impl;\nend Gate_Self_Test_Bad;\n";
+    // Identical but for the one legal difference: the thread sits in a process.
+    const GOOD: &str = "package Gate_Self_Test_Good\npublic\n  thread T\n  end T;\n  thread implementation T.impl\n  end T.impl;\n  process P\n  end P;\n  process implementation P.impl\n    subcomponents\n      t : thread T.impl;\n  end P.impl;\n  system S\n  end S;\n  system implementation S.impl\n    subcomponents\n      app : process P.impl;\n  end S.impl;\nend Gate_Self_Test_Good;\n";
+    let bad_p = scratch.path().join("bad.aadl");
+    let good_p = scratch.path().join("good.aadl");
+    if std::fs::write(&bad_p, BAD).is_err() || std::fs::write(&good_p, GOOD).is_err() {
+        return Verdict::Refused("cannot write self-test fixtures".into());
+    }
     ck(
         "a thread-in-system model is rejected",
-        matches!(spar_parses(&bin, repo, bad), Ok(false)),
+        matches!(spar_parses(&bin, Path::new("/"), bad_p.to_str().unwrap_or("")), Ok(false)),
+    );
+    ck(
+        "the same model with the thread in a process is accepted",
+        matches!(spar_parses(&bin, Path::new("/"), good_p.to_str().unwrap_or("")), Ok(true)),
+    );
+    // And a real committed model, so the fixtures are not the only thing checked.
+    ck(
+        "a committed target model is accepted",
+        matches!(spar_parses(&bin, repo, "benches/gust/targets/stm32g474.aadl"), Ok(true)),
     );
 
     // The enumeration, against the real tree -- the half that was missing from
@@ -250,11 +309,11 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
         ck("enumeration is not vacuous", !found.is_empty());
         ck(
             "enumeration finds the target models",
-            found.iter().any(|f| f == good),
+            found.iter().any(|f| f == "benches/gust/targets/stm32g474.aadl"),
         );
         ck(
             "enumeration finds the safety models",
-            found.iter().any(|f| f == bad),
+            found.iter().any(|f| f == "safety/aadl/semaphore.aadl"),
         );
         // Negative control for the three above: a sweep returning the whole tree
         // would satisfy them while gating nothing.
