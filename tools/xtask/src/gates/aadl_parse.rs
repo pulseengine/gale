@@ -277,6 +277,15 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     //
     // Both halves, because a gate that flags everything and a gate that flags
     // nothing are each green on a one-sided test.
+    // NOTE the cwd: every spar invocation below runs with `repo` as the working
+    // directory, NOT the fixture's own directory and NOT `/`. `$SPAR` in CI is a
+    // varve SHIM, and a shim resolves the pin from the invocation's working
+    // directory and REFUSES outside a pinned project. With cwd `/` both fixture
+    // checks were answered by that refusal: the must-be-rejected half passed FOR
+    // THE WRONG REASON and the must-be-accepted half went WRONG, which is the
+    // only reason the vacuity was visible. Verified both ways — shim with cwd `/`
+    // exits 1, shim with cwd at the repo exits 0 — so the fixtures are absolute
+    // paths while the cwd stays somewhere the pin resolves.
     let scratch = match Scratch::new() {
         Ok(s) => s,
         Err(e) => return Verdict::Refused(format!("cannot create scratch dir: {e}")),
@@ -291,11 +300,11 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     }
     ck(
         "a thread-in-system model is rejected",
-        matches!(spar_parses(&bin, Path::new("/"), bad_p.to_str().unwrap_or("")), Ok(false)),
+        matches!(spar_parses(&bin, repo, bad_p.to_str().unwrap_or("")), Ok(false)),
     );
     ck(
         "the same model with the thread in a process is accepted",
-        matches!(spar_parses(&bin, Path::new("/"), good_p.to_str().unwrap_or("")), Ok(true)),
+        matches!(spar_parses(&bin, repo, good_p.to_str().unwrap_or("")), Ok(true)),
     );
     // And a real committed model, so the fixtures are not the only thing checked.
     ck(
