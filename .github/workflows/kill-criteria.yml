@@ -594,12 +594,29 @@ jobs:
                https://raw.githubusercontent.com/pulseengine/varve/main/install.sh
           sh /tmp/varve-install.sh
           echo "$HOME/.varve/bin" >> "$GITHUB_PATH"
-      - name: Lay down and verify the pinned layer
+      - name: Lay down the pinned layer and expose spar by path
         run: |
           set -euo pipefail
           varve install
+          # The TOOL shims live in $VARVE_ROOT/shims and exist only after
+          # `varve shim install`. `$HOME/.varve/bin` holds ONLY `varve` itself,
+          # which is why a bare `spar` here was "command not found" on the first
+          # run of this job (gale#441) — the sibling wcet-sidecar job never
+          # noticed because it only ever calls `varve which`, never a bare tool.
+          varve shim install
           varve which spar
-          spar --version
+          # Export the concrete shim path instead of relying on PATH ordering.
+          # The gate refuses any binary that does not answer `--version` as a
+          # spar should, and a stale `spar` earlier on PATH is precisely what it
+          # refuses — so naming the path is both safer and the thing the failure
+          # message tells a reader to do.
+          SPAR="$HOME/.varve/shims/spar"
+          test -x "$SPAR" || {
+            echo "::error::no executable spar shim at $SPAR after varve shim install"
+            exit 1
+          }
+          echo "SPAR=$SPAR" >> "$GITHUB_ENV"
+          "$SPAR" --version
       - name: Negative control — the gate must reject a non-conformant model
         run: |
           set -euo pipefail
