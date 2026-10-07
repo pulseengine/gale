@@ -108,7 +108,15 @@ public
       reader_flow : flow path ready_in -> processed;
     properties
       Dispatch_Protocol      => Sporadic;
-      Compute_Execution_Time => 200 ns .. 20 us;
+      -- 20000 ns, NOT `20 us`, and the two are the same number of seconds.
+      -- spar 0.40.0 compares a range's bounds by MAGNITUDE and ignores the
+      -- unit, so `200 ns .. 20 us` is reported as inverted (200 > 20) while a
+      -- genuinely inverted `20 us .. 200 ns` passes clean — filed as
+      -- spar#454 with a 2x2 control matrix. Written in one unit so the
+      -- promised analyses run without a known-false error in their output;
+      -- revert to `20 us` when spar normalises units, since that is the
+      -- natural way to express it.
+      Compute_Execution_Time => 200 ns .. 20000 ns;
       Deadline               => 1 ms;
   end Sem_Reader;
 
@@ -126,21 +134,71 @@ public
       isr_to_handoff : flow path crank_isr -> step_done;
   end Handoff_System;
 
-  system implementation Handoff_System.impl
+  -- ------------------------------------------------------------------------
+  -- Process: the address space the two threads live in.
+  --
+  -- This indirection is REQUIRED, not stylistic. AADL v2 permits `thread`
+  -- subcomponents only inside a `process` implementation; a `system`
+  -- implementation takes process/system/device/processor/memory/bus/data/
+  -- abstract. This model declared both threads directly in
+  -- Handoff_System.impl, which an older spar accepted and the pinned
+  -- spar 0.40.0 correctly rejects (gale#441). Nothing ran `spar parse`, so
+  -- the model had been unparseable for an unrecoverable length of time.
+  --
+  -- The process is a container only: it adds no behaviour, keeps the two
+  -- threads' properties and flows untouched, and re-exposes the same two
+  -- ports so Handoff_System's interface and its end-to-end latency
+  -- contract are unchanged.
+  -- ------------------------------------------------------------------------
+  process Handoff_Process
+    features
+      crank_isr  : in event port;
+      step_done  : out event port;
+      sem_handle : requires data access Sem;
+    flows
+      proc_flow : flow path crank_isr -> step_done;
+  end Handoff_Process;
+
+  process implementation Handoff_Process.impl
     subcomponents
-      sem      : data Sem.binary;
       producer : thread Sem_Caller.impl;
       consumer : thread Sem_Reader.impl;
     connections
       c_isr  : port crank_isr -> producer.isr_tick;
-      c_acc  : data access sem -> producer.sem_handle;
+      c_acc  : data access sem_handle -> producer.sem_handle;
       c_hand : port producer.handoff_done -> consumer.ready_in;
       c_out  : port consumer.processed -> step_done;
     flows
-      isr_to_handoff : end to end flow
-        producer.give_flow -> c_hand -> consumer.reader_flow;
-    properties
-      latency => 100 ns .. 120 us applies to isr_to_handoff;
+      proc_flow : flow path crank_isr -> c_isr -> producer.give_flow
+        -> c_hand -> consumer.reader_flow -> c_out -> step_done;
+  end Handoff_Process.impl;
+
+  system implementation Handoff_System.impl
+    subcomponents
+      sem : data Sem.binary;
+      app : process Handoff_Process.impl;
+    connections
+      c_isr  : port crank_isr -> app.crank_isr;
+      c_acc  : data access sem -> app.sem_handle;
+      c_out  : port app.step_done -> step_done;
+    flows
+      -- The latency contract rides ON the flow declaration rather than a
+      -- separate `applies to isr_to_handoff`. spar resolves the in-flow form;
+      -- the `applies to` form it reports as
+      --   completeness: applies_to path 'isr_to_handoff' could not be resolved
+      -- which is what the pre-existing `properties` block produced the moment
+      -- the file parsed well enough for `spar analyze` to run at all.
+      -- CAVEAT, measured not assumed: spar 0.40.0 computes this flow's latency
+      -- as [0.000 ms .. 0.000 ms] and reports that as INFO, not as a failure to
+      -- meet the budget below. It resolves the flow's elements to the enclosing
+      -- PROCESS and never reads the threads' Compute_Execution_Time, so the
+      -- number is vacuous. Tried both forms: `app.proc_flow` and the nested
+      -- `app.<thread>.<flow> -> app.c_hand -> …`; both give 0.000 ms, the second
+      -- reporting "components without timing properties: app, app". Filed as
+      -- spar#455. So the budget here is a RECORDED CONTRACT, not a discharged
+      -- one — do not cite the latency analysis as evidence for it.
+      isr_to_handoff : end to end flow app.proc_flow
+        { latency => 100 ns .. 120 us; };
   end Handoff_System.impl;
 
   -- ------------------------------------------------------------------------
