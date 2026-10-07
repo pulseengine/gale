@@ -105,10 +105,54 @@ fn git_wasm(bench: &Path) -> Result<Vec<String>, String> {
         .collect())
 }
 
-pub fn run(repo: &Path, _target: Option<&str>) -> Verdict {
+/// Check ONE artifact, by path. `--module` exists so the gate can be aimed at a
+/// crafted input instead of only at the five it already passes — which is the
+/// shape of a control that cannot fail, and the reason `data-overlap` grew the
+/// same flag. Without it this gate is negative-controllable only through its own
+/// self-test, i.e. only by the code under audit.
+fn check_one(w: &Path) -> Verdict {
+    if !w.is_file() {
+        return Verdict::Refused(format!("--module not found: {}", w.display()));
+    }
+    let imps = match imports_of(w) {
+        Ok(i) => i,
+        Err(e) => return Verdict::Refused(e),
+    };
+    let env: Vec<&(String, String)> = imps.iter().filter(|(m, _)| m == "env").collect();
+    let shown = if imps.is_empty() {
+        "(none)".to_string()
+    } else {
+        imps.iter().map(|(m, f)| format!("{m} {f}")).collect::<Vec<_>>().join(", ")
+    };
+    if env.is_empty() {
+        Verdict::Pass(vec![format!(
+            "ok   {}: 0 env, {} import(s): {shown}",
+            w.display(),
+            imps.len()
+        )])
+    } else {
+        let names: Vec<String> = env
+            .iter()
+            .map(|(_, f)| if f.is_empty() { "<anon>".into() } else { f.clone() })
+            .collect();
+        Verdict::Fail(vec![format!(
+            "FAIL {}: {} raw env import(s): {}",
+            w.display(),
+            env.len(),
+            names.join(", ")
+        )])
+    }
+}
+
+pub fn run(repo: &Path, target: Option<&str>) -> Verdict {
     let bench = repo.join("benches/gust");
     if Command::new("wasm-tools").arg("--version").output().is_err() {
         return Verdict::Refused("wasm-tools not on PATH".into());
+    }
+    // Aimed at one artifact: no census, because the census is a claim about the
+    // TREE and this invocation is a claim about one file.
+    if let Some(t) = target {
+        return check_one(Path::new(t));
     }
 
     let mut lines = Vec::new();
@@ -187,7 +231,15 @@ pub fn run(repo: &Path, _target: Option<&str>) -> Verdict {
         failed = true;
     }
 
-    lines.push(format!("swept {} composed artifact(s)", COMPOSED.len()));
+    // Name the root. "swept 5" alone reads as a claim about the repo; the sweep
+    // and its census are both rooted at benches/gust, which is what
+    // VER-DRV-GRAPH-001 specifies, and 4 committed .wasm live outside it.
+    lines.push(format!(
+        "swept {} composed artifact(s), and censused every committed .wasm, under \
+         benches/gust — artifacts outside that tree are out of scope by design \
+         (VER-DRV-GRAPH-001), not checked here",
+        COMPOSED.len()
+    ));
     if failed {
         Verdict::Fail(lines)
     } else {
