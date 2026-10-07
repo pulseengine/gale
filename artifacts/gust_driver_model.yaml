@@ -296,6 +296,35 @@ artifacts:
       hand-authored, including the isolation-relevant gust:sched header whose wording
       carries the tenant-mutation argument. A hand-written interface can drift from the
       architecture with nothing to detect it.
+
+      CORRECTION 2026-10-07, appended rather than edited, because two statements above
+      are false and striking them would hide that they were ever believed.
+
+      (1) "spar models the kernel primitives (safety/aadl/*.aadl)" does NOT hold in any
+      checkable sense. Both models FAIL spar parse with the pinned spar 0.40.0 (varve
+      layer 2026.10.1), so nothing is instantiated, analysed or verified from them. The
+      cause is the models, not spar: system implementation declares thread
+      subcomponents directly, which AADL v2 permits only inside a process
+      implementation. An earlier spar accepted it. Nothing in CI ever ran spar parse --
+      a grep of the workflows for safety/aadl, spar parse or spar analyze returned
+      nothing -- so the day they stopped parsing is not recoverable from CI history.
+      The 7 target models under benches/gust/targets DO parse and remain the source for
+      the generated constants and linker map (REQ-TARGET-MODEL-001).
+
+      (2) "the 34 .aadl files in the repo" is wrong by a factor of nearly four. There
+      are NINE. Measured: git ls-files *.aadl = 9 at HEAD and at HEAD~20, 6 at HEAD~60,
+      and git log --diff-filter=D -- *.aadl is empty, so no AADL file has ever been
+      deleted; there were never 34. The qualitative point of that sentence -- that no
+      AADL model covers gust:os, the executor or the scheduler -- is CORRECT and
+      unaffected, which is why this finding stays active.
+
+      What this changes downstream: the attractive route for REQ-OS-CRITICALITY-001
+      (gale#437) is to DERIVE the criticality axis rather than hand-author it --
+      coexistence on a target is natively an AADL binding question, spar carries
+      allocate and moves, and spar codegen --rivet can emit rivet artifacts from a
+      model. That route requires an AADL layer that parses, so gale#441 is its
+      predecessor. A spar parse gate with both failures ledgered is on
+      feat/aadl-parse-gate.
     tags: [gust, driver, spar, wit, friction]
     links:
       - type: related-to

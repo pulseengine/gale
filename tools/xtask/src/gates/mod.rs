@@ -2,6 +2,7 @@
 //! with no argument lists what exists, so a gate cannot be added and then
 //! invoked by nothing -- the failure mode gale#368 was opened to fix.
 
+pub mod aadl_parse;
 pub mod criticality_axis;
 pub mod data_overlap;
 pub mod graph_env;
@@ -25,6 +26,12 @@ pub struct Gate {
 }
 
 pub const GATES: &[Gate] = &[
+    Gate {
+        name: aadl_parse::NAME,
+        about: "every committed AADL model parses with the pinned spar (gale#441)",
+        run: aadl_parse::run,
+        self_test: aadl_parse::self_test,
+    },
     Gate {
         name: criticality_axis::NAME,
         about: "every coexisting pair of elements has a freedom-from-interference argument",

@@ -571,6 +571,68 @@ jobs:
   # It gates three things itself: the sidecar's bounds, that the .o is byte-identical
   # with and without --emit-wcet (the sidecar must be additive), and that every function
   # it cannot bound DECLINES LOUDLY rather than being omitted.
+  # gale#441. Both safety/aadl models are non-conformant AADL and nothing ran
+  # even `spar parse` on them, so the day they started failing is not recoverable
+  # from CI history. The 7 target models DO parse and generate the firmware
+  # constants and linker map, so this gate protects those as much as it surfaces
+  # the two that are broken.
+  #
+  # Needs the PINNED spar, not whatever is named spar. On a dev machine bare
+  # `spar` can be a stale ~/.cargo/bin build that ACCEPTS both bad models — the
+  # gate refuses rather than answer for the wrong tool, which is why the layer is
+  # laid down here and `varve which spar` is printed.
+  aadl-parse:
+    name: every committed AADL model parses with the pinned spar
+    runs-on: [self-hosted, linux, x64, rust-cpu]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the pinned toolchain
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 --retry-connrefused --retry-delay 2 \
+               -o /tmp/varve-install.sh \
+               https://raw.githubusercontent.com/pulseengine/varve/main/install.sh
+          sh /tmp/varve-install.sh
+          echo "$HOME/.varve/bin" >> "$GITHUB_PATH"
+      - name: Lay down the pinned layer and expose spar by path
+        run: |
+          set -euo pipefail
+          varve install
+          # The TOOL shims live in $VARVE_ROOT/shims and exist only after
+          # `varve shim install`. `$HOME/.varve/bin` holds ONLY `varve` itself,
+          # which is why a bare `spar` here was "command not found" on the first
+          # run of this job (gale#441) — the sibling wcet-sidecar job never
+          # noticed because it only ever calls `varve which`, never a bare tool.
+          varve shim install
+          varve which spar
+          # Export the concrete shim path instead of relying on PATH ordering.
+          # The gate refuses any binary that does not answer `--version` as a
+          # spar should, and a stale `spar` earlier on PATH is precisely what it
+          # refuses — so naming the path is both safer and the thing the failure
+          # message tells a reader to do.
+          SPAR="$HOME/.varve/shims/spar"
+          test -x "$SPAR" || {
+            echo "::error::no executable spar shim at $SPAR after varve shim install"
+            exit 1
+          }
+          echo "SPAR=$SPAR" >> "$GITHUB_ENV"
+          "$SPAR" --version
+      - name: Negative control — the gate must reject a non-conformant model
+        run: |
+          set -euo pipefail
+          if cargo xtask check aadl-parse --module safety/aadl/semaphore.aadl; then
+            echo "::error::the gate ACCEPTED a model the pinned spar rejects —"
+            echo "::error::it is measuring with the wrong binary or not measuring"
+            exit 1
+          fi
+          echo "ok: the gate rejects safety/aadl/semaphore.aadl"
+      - name: Positive control — and it must accept a conforming one
+        run: cargo xtask check aadl-parse --module benches/gust/targets/stm32g474.aadl
+      - name: Negative control — comparator, enumeration and ledger
+        run: cargo xtask check aadl-parse --self-test
+      - name: Every committed AADL model parses, or is on the ledger
+        run: cargo xtask check aadl-parse
+
   wcet-sidecar:
     name: "T4: synth emits sound per-function WCET bounds (REQ-OS-WCET-001)"
     runs-on: [self-hosted, linux, x64, rust-cpu]
