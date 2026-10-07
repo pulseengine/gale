@@ -617,19 +617,20 @@ jobs:
           }
           echo "SPAR=$SPAR" >> "$GITHUB_ENV"
           "$SPAR" --version
-      - name: Negative control — the gate must reject a non-conformant model
-        run: |
-          set -euo pipefail
-          if cargo xtask check aadl-parse --module safety/aadl/semaphore.aadl; then
-            echo "::error::the gate ACCEPTED a model the pinned spar rejects —"
-            echo "::error::it is measuring with the wrong binary or not measuring"
-            exit 1
-          fi
-          echo "ok: the gate rejects safety/aadl/semaphore.aadl"
-      - name: Positive control — and it must accept a conforming one
-        run: cargo xtask check aadl-parse --module benches/gust/targets/stm32g474.aadl
-      - name: Negative control — comparator, enumeration and ledger
+      # The matched pair lives in `--self-test`, which WRITES its own fixtures:
+      # a minimal thread-in-system model that must be rejected and the same
+      # model with the thread in a process that must be accepted.
+      #
+      # It used to be a `--module safety/aadl/semaphore.aadl` step here,
+      # requiring that real model to fail. Repairing that model — which this
+      # gate is what demanded — would have turned this control into a false
+      # RED: the step asserts the gate rejects a file that now legitimately
+      # parses. A control whose fixture is a file someone is expected to fix is
+      # a control with an expiry date, so it owns its fixtures now.
+      - name: Negative control — rejects a bad model, accepts a good one, and the ledger bites both ways
         run: cargo xtask check aadl-parse --self-test
+      - name: Positive control — a committed target model is accepted
+        run: cargo xtask check aadl-parse --module benches/gust/targets/stm32g474.aadl
       - name: Every committed AADL model parses, or is on the ledger
         run: cargo xtask check aadl-parse
 

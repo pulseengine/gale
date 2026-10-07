@@ -144,7 +144,13 @@ public
       consumer_flow : flow path ready_in -> processed;
     properties
       Dispatch_Protocol      => Sporadic;
-      Compute_Execution_Time => 200 ns .. 25 us;
+      -- 25000 ns, NOT `25 us`, and the two are the same number of seconds.
+      -- spar 0.40.0 compares a range's bounds by MAGNITUDE and ignores the
+      -- unit, so `200 ns .. 25 us` is reported as inverted (200 > 25) while a
+      -- genuinely inverted `25 us .. 200 ns` passes clean — spar#454, filed
+      -- with a 2x2 control matrix. One unit here so the promised analyses run
+      -- without a known-false error; revert when spar normalises units.
+      Compute_Execution_Time => 200 ns .. 25000 ns;
       Deadline               => 1 ms;
   end Mutex_Consumer;
 
@@ -165,21 +171,68 @@ public
       req_to_done : flow path request_in -> step_done;
   end Mutex_System;
 
-  system implementation Mutex_System.impl
+  -- ------------------------------------------------------------------------
+  -- Process: the address space the two threads live in.
+  --
+  -- Required, not stylistic: AADL v2 permits `thread` subcomponents only
+  -- inside a `process` implementation. This model declared both threads
+  -- directly in Mutex_System.impl, which an older spar accepted and the
+  -- pinned spar 0.40.0 correctly rejects (gale#441). Nothing in CI ran
+  -- `spar parse`, so the model had been unparseable for an unrecoverable
+  -- length of time and none of the analyses its header promises could run.
+  --
+  -- Container only: no behaviour, the threads' properties and flows are
+  -- untouched, and the same two ports are re-exposed so Mutex_System's
+  -- interface and its H-1 priority-inversion latency budget are unchanged.
+  -- ------------------------------------------------------------------------
+  process Mutex_Process
+    features
+      request_in   : in event port;
+      step_done    : out event port;
+      mutex_handle : requires data access Mutex;
+    flows
+      proc_flow : flow path request_in -> step_done;
+  end Mutex_Process;
+
+  process implementation Mutex_Process.impl
     subcomponents
-      mtx      : data Mutex.reentrant;
       caller   : thread Mutex_Caller.impl;
       consumer : thread Mutex_Consumer.impl;
     connections
       c_req  : port request_in -> caller.lock_request;
-      c_acc  : data access mtx -> caller.mutex_handle;
+      c_acc  : data access mutex_handle -> caller.mutex_handle;
       c_hand : port caller.lock_granted -> consumer.ready_in;
       c_out  : port consumer.processed -> step_done;
     flows
-      req_to_done : end to end flow
-        caller.lock_flow -> c_hand -> consumer.consumer_flow;
-    properties
-      latency => 300 ns .. 250 us applies to req_to_done;
+      proc_flow : flow path request_in -> c_req -> caller.lock_flow
+        -> c_hand -> consumer.consumer_flow -> c_out -> step_done;
+  end Mutex_Process.impl;
+
+  system implementation Mutex_System.impl
+    subcomponents
+      mtx : data Mutex.reentrant;
+      app : process Mutex_Process.impl;
+    connections
+      c_req : port request_in -> app.request_in;
+      c_acc : data access mtx -> app.mutex_handle;
+      c_out : port app.step_done -> step_done;
+    flows
+      -- Latency rides ON the flow declaration. spar resolves the in-flow
+      -- form; `applies to req_to_done` it reports as
+      --   completeness: applies_to path 'req_to_done' could not be resolved
+      -- which is what the pre-existing `properties` block produced the moment
+      -- the file parsed well enough for `spar analyze` to run at all.
+      -- CAVEAT, measured not assumed: spar 0.40.0 computes this flow's latency
+      -- as [0.000 ms .. 0.000 ms] and reports that as INFO, not as a failure to
+      -- meet the budget below. It resolves the flow's elements to the enclosing
+      -- PROCESS and never reads the threads' Compute_Execution_Time, so the
+      -- number is vacuous. Tried both forms: `app.proc_flow` and the nested
+      -- `app.<thread>.<flow> -> app.c_hand -> …`; both give 0.000 ms, the second
+      -- reporting "components without timing properties: app, app". Filed as
+      -- spar#455. So the budget here is a RECORDED CONTRACT, not a discharged
+      -- one — do not cite the latency analysis as evidence for it.
+      req_to_done : end to end flow app.proc_flow
+        { latency => 300 ns .. 250 us; };
   end Mutex_System.impl;
 
   -- ------------------------------------------------------------------------
