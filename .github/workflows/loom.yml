@@ -1,0 +1,102 @@
+# Concurrency permutation testing — tokio-rs/loom
+#
+# gale carries three loom suites (tests/loom_atomic.rs, tests/loom_ring_buf.rs,
+# tests/loom_priority_queue.rs — 502 lines, 7 tests) and nothing ran them. They
+# are gated behind `#![cfg(loom)]` and no workflow ever set `--cfg loom`, so the
+# dependency was declared, the tests were written, and the interleavings were
+# never explored.
+#
+# This is the one axis where the estate is beaten outright by comparable
+# projects: Chromium runs ThreadSanitizer as a REQUIRED check. Across thirteen
+# PulseEngine Rust repos, interleaving testing ran nowhere.
+#
+# WHAT THESE TESTS DO AND DO NOT COVER — read before trusting a green tick.
+# None of them imports gale. Each defines its own model of the pattern under
+# test (`SpscRing` for gale::ring_buf::RingBuf, a Mutex-guarded queue for
+# gale::sched::RunQueue). loom can only explore types built from loom's own
+# atomics and cells, and gale's production types use core/std directly, so the
+# real types cannot run under loom as the tree stands.
+#
+# So this verifies the ALGORITHM across interleavings, not gale's code. Closing
+# that gap means a `cfg(loom)` primitive alias in src/ — production types written
+# against an alias module that resolves to loom::sync under the flag and
+# core::sync otherwise. That is a separate change; this one stops 7 written tests
+# from going unrun.
+
+name: Loom
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/loom_*.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/loom.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/loom_*.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/loom.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  loom:
+    name: Concurrency permutations (loom)
+    runs-on: [self-hosted, linux, x64, rust-cpu]
+    timeout-minutes: 30
+    env:
+      RUSTFLAGS: "--cfg loom"
+      # Bounds the search. Measured locally at this setting the three suites
+      # finish in well under a second each; raise it to deepen the exploration
+      # if that stays cheap.
+      LOOM_MAX_PREEMPTIONS: "2"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # The failure mode this guard exists for, verified before it was written:
+      # `#![cfg(loom)]` means that WITHOUT the flag these files compile to empty
+      # test binaries and the job passes.
+      #
+      #   $ cargo test --test loom_atomic        # no RUSTFLAGS
+      #   running 0 tests
+      #   test result: ok. 0 passed; ...
+      #   exit 0
+      #
+      # So "cargo test succeeded" proves nothing here. The count is the gate: if
+      # the flag is ever dropped, or a suite is deleted, the total falls and this
+      # goes red instead of green-on-nothing.
+      - name: Run the loom suites and prove they actually ran
+        run: |
+          set -uo pipefail
+          EXPECTED=7
+          cargo test --test loom_atomic --test loom_ring_buf \
+                     --test loom_priority_queue 2>&1 | tee loom.out
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::loom suites failed (exit $rc)"
+            exit "$rc"
+          fi
+          RAN=$(grep -oE '^running [0-9]+ tests?' loom.out \
+                | grep -oE '[0-9]+' | paste -sd+ - | bc)
+          RAN=${RAN:-0}
+          echo "::notice::loom tests executed: $RAN (expected at least $EXPECTED)"
+          if [ "$RAN" -lt "$EXPECTED" ]; then
+            echo "::error::only $RAN loom tests ran, expected at least $EXPECTED."
+            echo "::error::Either --cfg loom is not reaching the build, or a suite"
+            echo "::error::was removed. A passing run that explored no interleavings"
+            echo "::error::is not a pass. Raise EXPECTED when you add tests."
+            exit 1
+          fi
