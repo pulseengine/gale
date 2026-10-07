@@ -22,13 +22,21 @@ pub const NAME: &str = "object-freshness";
 const REL: &str = "benches/gust/drivers";
 
 /// Builder -> the object it writes. Only builders whose output is COMMITTED.
-/// build-iso-core.sh and build-dissolve-gustos.sh write to a temp dir, and
-/// build-reloc-cores.sh takes its target as an argument.
+/// build-reloc-cores.sh takes its target as an argument, and
+/// build-dissolve-gustos.sh's object is on UNCOVERED below.
+///
+/// This list previously said build-iso-core.sh "writes to a temp dir". It does
+/// not: its `OUT` defaults to the drivers directory, so it writes the COMMITTED
+/// `iso-core-fused-cm3.o` in place. That false premise is why the object was
+/// left out of this list, and the `**/` glob in committed_objects (see its note)
+/// is why the census could not catch the omission. Two wrong things lined up,
+/// and the gate was green because neither was visible on its own.
 const BUILDERS: &[(&str, &str)] = &[
     ("build-os-ts.sh", "os-node/os-ts-cm3.o"),
     ("build-os-tl.sh", "os-node/os-tl-cm3.o"),
     ("build-os-time.sh", "os-node/os-time-cm3.o"),
     ("build-breadth.sh", "breadth/breadth-cm3.o"),
+    ("build-iso-core.sh", "iso-core-fused-cm3.o"),
 ];
 
 /// Always an input: the seam definitions every builder consumes.
@@ -61,6 +69,13 @@ const UNCOVERED: &[&str] = &[
 /// object goes stale, AND if one of these stops being stale -- so the list
 /// shrinks to empty when they are regenerated instead of outliving the problem.
 const KNOWN_STALE: &[&str] = &[
+    // Stale since #436 changed build-reloc-cores.sh (the
+    // --export=__stack_pointer fix). Confirmed NOT reproducible rather than
+    // merely date-stale: rebuilding from the current pin gives 15050 B against
+    // the committed 15094 B, and two consecutive rebuilds are byte-identical,
+    // so the difference is real. Refreshing it means regenerating gust_iso.elf
+    // with it -- the Renode isolation image -- which is a change of its own.
+    "iso-core-fused-cm3.o",
     "breadth/breadth-cm3.o",
     "os-node/os-time-cm3.o",
     "os-node/os-tl-cm3.o",
@@ -113,8 +128,19 @@ fn ymd(epoch: i64) -> String {
 /// From git, not a filesystem glob: a glob reached one level and one suffix
 /// (the repro-757 pair escaped on both counts), and a filesystem walk would
 /// pick up uncommitted build output, which is the opposite error.
+/// NOTE the TWO pathspecs. git's `**/` requires at least one directory level,
+/// so `drivers/**/*.o` silently excludes any object committed at the ROOT of
+/// `drivers/` -- which is where `iso-core-fused-cm3.o` lives. It was therefore
+/// invisible to this gate from the day it was written: never gated, and unable
+/// to be flagged by the census below, because the census can only report on
+/// what this function returns. Measured: `drivers/**/*.o` = 24 files,
+/// `drivers/*.o` = 25. The missing one is the object behind the Renode
+/// isolation gate.
 fn committed_objects(repo: &Path) -> Option<Vec<String>> {
-    let out = git(repo, &["ls-files", "--", &format!("{REL}/**/*.o")])?;
+    let out = git(
+        repo,
+        &["ls-files", "--", &format!("{REL}/*.o"), &format!("{REL}/**/*.o")],
+    )?;
     Some(
         out.lines()
             .map(str::trim)
@@ -137,8 +163,19 @@ fn inputs_for(repo: &Path, script: &str) -> Vec<String> {
         if &bytes[i..i + needle.len()] == needle {
             let mut j = i + needle.len();
             let start = j;
+            // `.` is accepted so a reference to a sibling SCRIPT is captured as
+            // the script, not as a directory that does not exist. Before this,
+            // `"$HERE/build-reloc-cores.sh"` yielded `build-reloc-cores`, a path
+            // with no file behind it, which then resolved to no commit date and
+            // was silently dropped — so the script that actually builds
+            // iso-core-fused-cm3.o's components was not one of its inputs.
+            // A derived path that resolves to nothing is the same defect this
+            // repo found in the fixture gate (gale#417).
             while j < bytes.len()
-                && (bytes[j].is_ascii_lowercase() || bytes[j].is_ascii_digit() || bytes[j] == b'-')
+                && (bytes[j].is_ascii_lowercase()
+                    || bytes[j].is_ascii_digit()
+                    || bytes[j] == b'-'
+                    || bytes[j] == b'.')
             {
                 j += 1;
             }
@@ -146,7 +183,9 @@ fn inputs_for(repo: &Path, script: &str) -> Vec<String> {
                 let d = &text[start..j];
                 // os-node is the OUTPUT directory, not an input; excluding it
                 // stops the object from being compared against itself.
-                if d != "os-node" {
+                // Trailing '.' from e.g. "$HERE/foo." is not a real name.
+                let d = d.trim_end_matches('.');
+                if d != "os-node" && !d.is_empty() {
                     dirs.insert(d.to_string());
                 }
             }
@@ -297,6 +336,28 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
     let stale_now: BTreeSet<String> = ["a".to_string(), "c".to_string()].into_iter().collect();
     ck("new stale detected", stale_now.difference(&ledger).count() == 1);
     ck("fixed-but-ledgered detected", ledger.difference(&stale_now).count() == 1);
+    // THE ENUMERATION, against the real repo -- the half that was broken. The
+    // census cannot flag an object this function never returns, so asserting
+    // the census works says nothing unless the sweep is complete. Both halves
+    // are checked: a root-level object IS seen, and a nested one still is.
+    if let Some(found) = committed_objects(_repo) {
+        ck(
+            "root-level committed object is enumerated",
+            found.iter().any(|f| f == "iso-core-fused-cm3.o"),
+        );
+        ck(
+            "nested committed object is still enumerated",
+            found.iter().any(|f| f == "os-node/os-tl-cm3.o"),
+        );
+        // The negative control for the two above: a sweep that returned
+        // everything in the tree would satisfy them while gating nothing.
+        ck(
+            "enumeration is objects only, not the whole tree",
+            found.iter().all(|f| f.ends_with(".o")) && found.len() < 100,
+        );
+    } else {
+        ck("committed_objects could not run", false);
+    }
     if broken {
         Verdict::Fail(lines)
     } else {

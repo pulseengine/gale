@@ -42,13 +42,20 @@ HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parents[2]   # benches/gust/drivers -> repo root
 
 # Builder -> the object it writes. Only builders whose output is COMMITTED are
-# listed; build-iso-core.sh and build-dissolve-gustos.sh write into a temp dir or
-# are covered elsewhere, and build-reloc-cores.sh takes its target as an argument.
+# listed; build-dissolve-gustos.sh's object is on UNCOVERED, and
+# build-reloc-cores.sh takes its target as an argument.
+#
+# This comment used to say build-iso-core.sh "writes into a temp dir". It does
+# not: its OUT defaults to the drivers directory, so it writes the COMMITTED
+# iso-core-fused-cm3.o in place. The object was left out on that false premise,
+# and committed_objects' pathspec (see its docstring) meant the census could not
+# report the omission either.
 BUILDERS = {
     "build-os-ts.sh": "os-node/os-ts-cm3.o",
     "build-os-tl.sh": "os-node/os-tl-cm3.o",
     "build-os-time.sh": "os-node/os-time-cm3.o",
     "build-breadth.sh": "breadth/breadth-cm3.o",
+    "build-iso-core.sh": "iso-core-fused-cm3.o",
 }
 
 # Always an input: the seam definitions every builder consumes.
@@ -96,6 +103,13 @@ UNCOVERED = {
 # stale, and it FAILS if one of these stops being stale — so the list shrinks to
 # empty when they are regenerated, instead of quietly outliving the problem.
 KNOWN_STALE = {
+    # Stale since #436 changed build-reloc-cores.sh (the --export=__stack_pointer
+    # fix). Independently confirmed NOT reproducible rather than merely
+    # date-stale: rebuilding from the current pin gives 15050 B against the
+    # committed 15094 B, and two consecutive rebuilds are byte-identical, so
+    # the difference is real. Refreshing it means regenerating gust_iso.elf
+    # with it -- the Renode isolation image -- which is a change of its own.
+    "iso-core-fused-cm3.o",
     # script-built
     "breadth/breadth-cm3.o",
     "os-node/os-time-cm3.o",
@@ -123,7 +137,12 @@ def committed_objects():
     COMMITTED objects, so git is the right oracle for it.
     """
     rel = "benches/gust/drivers"
-    out = git("ls-files", "--", f"{rel}/**/*.o") or ""
+    # TWO pathspecs. git's "**/" requires at least one directory level, so
+    # f"{rel}/**/*.o" silently excludes an object committed at the ROOT of
+    # drivers/ -- and exactly one is: iso-core-fused-cm3.o, the object behind
+    # the Renode isolation gate. Measured: "**/*.o" = 24 files, "*.o" = 25.
+    # The docstring above claimed "at ANY depth"; depth 0 was not any depth.
+    out = git("ls-files", "--", f"{rel}/*.o", f"{rel}/**/*.o") or ""
     return sorted(REPO / line for line in out.splitlines() if line.strip())
 
 
@@ -145,7 +164,13 @@ def inputs_for(script_name):
     hardcoding means a new dependency is picked up automatically.
     """
     text = (HERE / script_name).read_text()
-    dirs = sorted(set(re.findall(r"\$HERE/([a-z0-9][a-z0-9-]*)", text)))
+    # `.` is in the class so a reference to a sibling SCRIPT is captured as the
+    # script. Without it, "$HERE/build-reloc-cores.sh" yielded
+    # "build-reloc-cores" -- a path with no file behind it, which resolved to no
+    # commit date and was silently dropped, so the script that actually builds
+    # iso-core-fused-cm3.o's components was not one of its inputs.
+    dirs = sorted(set(re.findall(r"\$HERE/([a-z0-9][a-z0-9.-]*)", text)))
+    dirs = [d.rstrip(".") for d in dirs if d.rstrip(".")]
     # os-node is the OUTPUT directory, not an input; excluding it stops the
     # object from being compared against itself.
     dirs = [d for d in dirs if d != "os-node"]
