@@ -7,6 +7,7 @@ pub mod data_overlap;
 pub mod graph_env;
 pub mod fixture_freshness;
 pub mod object_freshness;
+pub mod pin_agreement;
 pub mod proof_completeness;
 pub mod providers;
 pub mod renode_targets;
@@ -53,6 +54,12 @@ pub const GATES: &[Gate] = &[
         about: "no committed object is older than the sources that produce it",
         run: object_freshness::run,
         self_test: object_freshness::self_test,
+    },
+    Gate {
+        name: pin_agreement::NAME,
+        about: "a tool version hardcoded in a workflow matches what varve.toml resolves",
+        run: pin_agreement::run,
+        self_test: pin_agreement::self_test,
     },
     Gate {
         name: proof_completeness::NAME,
