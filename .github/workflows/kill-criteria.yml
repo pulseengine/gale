@@ -309,7 +309,23 @@ jobs:
       - name: Lay down the pinned layer
         run: |
           set -euo pipefail
-          varve install
+          # RETRIED. `varve install` fetches the layer over the network, and a bare
+          # invocation under `set -e` turns one transient fetch into a lost job slot —
+          # which is what it did on #447: the step "Lay down the pinned layer" failed,
+          # the gate then correctly REFUSED (it will not answer without the pin), and
+          # the job went red over nothing. The curl that fetches varve's INSTALLER
+          # already has --retry 5; installing the LAYER had none, and the 21-loop sweep
+          # in #442 missed it because that sweep matched the rustup/apt loop shape.
+          #
+          # 5 attempts at _a * 20 ~= 200s of patience, the same budget as #442.
+          # Loud on exhaustion: no `|| true`, so a real outage still fails the job.
+          _ok=
+          for _a in 1 2 3 4 5; do
+            if varve install; then _ok=1; break; fi
+            echo "::warning::varve install attempt ${_a}/5 failed; retrying" >&2
+            sleep $((_a * 20))
+          done
+          [ "$_ok" = 1 ] || { echo "::error::varve install failed after 5 attempts" >&2; exit 1; }
           varve inspect --json > /dev/null
 
       - name: Negative control — the comparison and the scanner must bite
@@ -597,7 +613,23 @@ jobs:
       - name: Lay down the pinned layer and expose spar by path
         run: |
           set -euo pipefail
-          varve install
+          # RETRIED. `varve install` fetches the layer over the network, and a bare
+          # invocation under `set -e` turns one transient fetch into a lost job slot —
+          # which is what it did on #447: the step "Lay down the pinned layer" failed,
+          # the gate then correctly REFUSED (it will not answer without the pin), and
+          # the job went red over nothing. The curl that fetches varve's INSTALLER
+          # already has --retry 5; installing the LAYER had none, and the 21-loop sweep
+          # in #442 missed it because that sweep matched the rustup/apt loop shape.
+          #
+          # 5 attempts at _a * 20 ~= 200s of patience, the same budget as #442.
+          # Loud on exhaustion: no `|| true`, so a real outage still fails the job.
+          _ok=
+          for _a in 1 2 3 4 5; do
+            if varve install; then _ok=1; break; fi
+            echo "::warning::varve install attempt ${_a}/5 failed; retrying" >&2
+            sleep $((_a * 20))
+          done
+          [ "$_ok" = 1 ] || { echo "::error::varve install failed after 5 attempts" >&2; exit 1; }
           # The TOOL shims live in $VARVE_ROOT/shims and exist only after
           # `varve shim install`. `$HOME/.varve/bin` holds ONLY `varve` itself,
           # which is why a bare `spar` here was "command not found" on the first
@@ -664,7 +696,23 @@ jobs:
         # synth, and dies on a missing binary instead of on a verdict.
         run: |
           set -euo pipefail
-          varve install
+          # RETRIED. `varve install` fetches the layer over the network, and a bare
+          # invocation under `set -e` turns one transient fetch into a lost job slot —
+          # which is what it did on #447: the step "Lay down the pinned layer" failed,
+          # the gate then correctly REFUSED (it will not answer without the pin), and
+          # the job went red over nothing. The curl that fetches varve's INSTALLER
+          # already has --retry 5; installing the LAYER had none, and the 21-loop sweep
+          # in #442 missed it because that sweep matched the rustup/apt loop shape.
+          #
+          # 5 attempts at _a * 20 ~= 200s of patience, the same budget as #442.
+          # Loud on exhaustion: no `|| true`, so a real outage still fails the job.
+          _ok=
+          for _a in 1 2 3 4 5; do
+            if varve install; then _ok=1; break; fi
+            echo "::warning::varve install attempt ${_a}/5 failed; retrying" >&2
+            sleep $((_a * 20))
+          done
+          [ "$_ok" = 1 ] || { echo "::error::varve install failed after 5 attempts" >&2; exit 1; }
           varve which synth
           varve which loom
 
