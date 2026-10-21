@@ -1,0 +1,43 @@
+artifacts:
+
+  - id: REQ-OS-MULTICORE-001
+    type: sw-req
+    title: Multiple fused systems run on separate cores of one part and communicate only through WIT-typed cross-core contracts
+    status: proposed
+    description: "The open remainder of gale#63 (downstream flight-stack integration). What that issue asked for and is ALREADY modelled elsewhere is not repeated here: the cooperative async executor (REQ-OS-EXEC-001, verified), the time-partitioned outer switch (REQ-OS-SWITCH-001), and partition tenants (REQ-OS-PARTITION-TENANT-001). What is not modelled is the MULTI-CORE shape: on a part with more than one core (the target is an application core plus a real-time core, with a separate I/O MCU), each core SHALL run its own fused, dissolved system, and the systems SHALL exchange data only through a WIT-typed contract carried over the part's inter-core messaging hardware — never through shared memory both cores write. The downstream project has the inter-core mailbox datapath working firmware-driven in a 3-core emulation model (gale#65 thread); gust's half is a transport its receive path can be wired to. Kill-criterion: a cross-core exchange that bypasses the typed contract (shared writable memory between cores), or a core whose system cannot be dissolved independently of the others."
+    tags: [gust, multicore, ipc, jess]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-EXEC-001
+      - type: related-to
+        target: REQ-OS-SWITCH-001
+      - type: related-to
+        target: REQ-OS-FFI-COMM-001
+
+      - type: related-to
+        target: REQ-OS-PARTITION-TENANT-001
+  - id: REQ-OS-RUNTIME-LOAD-001
+    type: sw-req
+    title: gust can deliver wasm bytes to an on-board interpreter at runtime — the complement of build-time dissolve
+    status: proposed
+    description: "gale#161. gust's model is build-time dissolve: verified wasm becomes native through meld/loom/synth, and nothing is loaded after boot. The kiln no_std interpreter (kiln#415) runs payloads that were never compiled ahead of time — late-loaded, migrated, or untrusted — and needs two things gust does not provide: (1) a path that gets module/component BYTES to the interpreter on-target at runtime, from storage or an uplink, and (2) a hosted interpreter image, either the dissolved kiln or the no_std kiln static library. A runtime-loaded payload never passes through synth, so it does not inherit synth's place in the trust argument; it inherits the interpreter's and the load path's instead, which is why loading MUST be admission-gated (REQ-OS-SECBOOT-001) before anything executes. Kill-criterion: a payload that executes without having passed the admission gate, or a load path that needs a capability the dissolved image does not have."
+    tags: [gust, kiln, interpreter, runtime-load]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+
+      - type: related-to
+        target: REQ-OS-SECBOOT-001
+  - id: REQ-OS-SECBOOT-001
+    type: sw-req
+    title: Signed-artifact verification is the load-admission gate on target — offline, key-based, reject before run
+    status: proposed
+    description: "gale#164 (from the signing tool's cross-repo proposal). On target, a signed artifact SHALL be verified against an embedded public trust anchor before it is admitted to run; a failed or absent verification SHALL reject the load, never run it degraded. Verification is key-based and offline (a keyless scheme needs a network the target does not have). Three open questions the issue asked gale and that this requirement owns answering: (1) hardware-accelerated signature verify is an assurance/speed upgrade only, never a correctness dependency — software verify is complete, so the requirement holds without it; (2) where the trust anchor lives and how it is provisioned and rotated is UNDECIDED and is the substantive gap; (3) the verifier library needs an allocator, and gust's dissolved drivers use none, so the allocation surface the verifier runs in must be stated explicitly rather than assumed. Kill-criterion: an artifact runs whose signature was not verified, or verifies against a key not provisioned through the stated trust-anchor path."
+    tags: [gust, secure-boot, sigil, admission]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-RUNTIME-LOAD-001

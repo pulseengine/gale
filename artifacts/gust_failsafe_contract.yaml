@@ -1,0 +1,31 @@
+artifacts:
+
+  - id: REQ-OS-FAILSAFE-PASSTHRU-001
+    type: sw-req
+    title: The failsafe node forwards actuator commands byte-exact — no re-allocation, no per-motor floors or clamps
+    status: proposed
+    description: "SAFETY MUST from the downstream flight stack's partition contract (gale#65, mirrored from its cross-core health-monitor tier). When gust on the failsafe I/O node forwards the flight core's per-motor actuator commands, it SHALL pass them UNMODIFIED: no re-allocation, no per-motor floors, no clamps that alter an in-range command. The upstream allocator deliberately commands asymmetric motor sets INCLUDING ZEROS for rotor-out recovery; any independent allocation authority in gust reintroduces the parasitic-moment failure class that allocator was changed to remove. INTERACTION TO RESOLVE, not assumed away: REQ-DRV-PWM-001 bounds duty to the period. That is compatible with this requirement only if the bound is the IDENTITY for every command the upstream can legitimately send — so the PWM clamp must be shown to act only outside the command range, never inside it. Kill-criterion: the upstream's conformance fixture (nominal + saturated + rotor-out-asymmetric sequences with byte-exact expected outputs) produces any output byte that differs from the expected one. The fixture is the upstream's to publish; until it exists this requirement has no oracle and stays proposed."
+    tags: [gust, failsafe, safety, jess]
+    links:
+      - type: related-to
+        target: REQ-DRV-PWM-001
+      - type: related-to
+        target: REQ-OS-HM-001
+
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+  - id: REQ-OS-FAILSAFE-SILENCE-001
+    type: sw-req
+    title: Loss of the actuator-command stream drives motors-off autonomously within 100 ms
+    status: proposed
+    description: "SAFETY MUST from the same partition contract (gale#65). On loss of the flight core's actuator-command stream, gust on the failsafe I/O node SHALL autonomously drive all motor outputs to OFF within <= 100 ms of the last valid command — the hardware backstop for the upstream's proven terminate state in the case where the flight core itself is the casualty. Rides the heartbeat-loss trip already demonstrated in the 3-core emulation model (gale#65 thread). Budget: a timer plus a PWM-zero, no allocation, which fits the 8 KiB SRAM node. Kill-criterion: a run in which the command stream stops and any motor output is non-OFF more than 100 ms later. Note what 100 ms must be measured against: the bound is end-to-end (last valid command -> outputs OFF), so detection latency, the trip decision and the PWM update all count, and a DWT high-water mark is evidence of observed behaviour, not a WCET bound."
+    tags: [gust, failsafe, safety, jess, timing]
+    links:
+      - type: related-to
+        target: REQ-OS-HM-001
+      - type: related-to
+        target: REQ-DRV-PWM-001
+      - type: related-to
+        target: REQ-OS-WCET-001
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
