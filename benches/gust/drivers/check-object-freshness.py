@@ -61,6 +61,11 @@ BUILDERS = {
 # Always an input: the seam definitions every builder consumes.
 ALWAYS = ["wit", "wit-os"]
 
+# The toolchain pin, an input to EVERY gated object (gale#438). Every object
+# here is a synth output, so the pin decides its bytes as much as any source
+# does. Repo-relative, unlike the rest, because the pin lives at the root.
+PIN = "varve.toml"
+
 # Objects that are not produced by a build-*.sh but sit next to their own source.
 # Inputs are that crate's BUILD files plus the seam it generates against.
 #
@@ -94,7 +99,7 @@ UNCOVERED = {
     "os-node/repro-757/os-tl-fixed.o",
 }
 
-# KNOWN-STALE LEDGER. These four are already stale and cannot be refreshed here:
+# KNOWN-STALE LEDGER. These are already stale and cannot be refreshed here:
 # regenerating a committed object is a change that the precedent for a toolchain
 # re-pin (963e5c9, "every thin driver shrinks, both dies re-validated") settled by
 # re-validating on silicon, which CI cannot do.
@@ -123,6 +128,20 @@ KNOWN_STALE = {
     "dma-own/dma-own-cm3.o",
     "spawn-provider/spawn-provider-cm3.o",
     "timer-provider/timer-provider-cm3.o",
+    # crate-adjacent: object predates the 2026.10.1 toolchain pin (varve.toml, 2026-10-01) and nothing
+    # else (gale#438). DATE-stale only: not rebuilt, so whether the pinned synth
+    # produces different bytes is NOT measured -- the ledger records that the
+    # repo cannot currently claim these were built by the toolchain it pins.
+    "adc-thin/adc-thin-cm3.o",
+    "can-thin/can-thin-cm3.o",
+    "dac-thin/dac-thin-cm3.o",
+    "gpio-thin/gpio-thin-cm3.o",
+    "i2c-thin/i2c-thin-cm3.o",
+    "mpu-thin/mpu-thin-cm3.o",
+    "pwm-thin/pwm-thin-cm3.o",
+    "spi-thin/spi-thin-cm3.o",
+    "timer-thin/timer-thin-cm3.o",
+    "uart-thin/uart-thin-cm3.o",
 }
 
 
@@ -175,7 +194,7 @@ def inputs_for(script_name):
     # object from being compared against itself.
     dirs = [d for d in dirs if d != "os-node"]
     rel = f"benches/gust/drivers"
-    return [f"{rel}/{script_name}"] + [f"{rel}/{d}" for d in dirs + ALWAYS]
+    return [f"{rel}/{script_name}"] + [f"{rel}/{d}" for d in dirs + ALWAYS] + [PIN]
 
 
 def self_test():
@@ -195,6 +214,11 @@ def self_test():
         print(f"  self-test FAIL: derived only {len(got)} inputs for build-os-ts.sh"); ok = False
     else:
         print(f"  self-test ok: derived {len(got)} inputs for build-os-ts.sh (not vacuous)")
+    # the pin must be an input (gale#438), and must exist where it is looked for
+    if PIN not in got or not (HERE.parents[2] / PIN).is_file():
+        print("  self-test FAIL: the toolchain pin is not a builder input"); ok = False
+    else:
+        print("  self-test ok: the toolchain pin is a builder input")
     return 0 if ok else 5
 
 
@@ -228,7 +252,7 @@ def main():
                 continue
             seams = THIN_SEAMS if d.endswith("-thin") else OS_SEAMS
             out[key] = ([f"{rel}/{d}/{b}" for b in CRATE_BUILD_FILES]
-                        + [f"{rel}/{sm}" for sm in seams])
+                        + [f"{rel}/{sm}" for sm in seams] + [PIN])
         return out
 
     # census: an object that is neither gated nor listed must not pass silently
