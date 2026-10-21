@@ -14,12 +14,30 @@ RegionTable on top of another component's `.data`.
 
 An overlap is never intentional, so this is a hard error regardless of flags.
 
-Usage:  check-data-overlap.py <module.wasm>
-Exit:   0 = disjoint;  5 = overlapping segments;  1 = could not inspect
+Usage:  check-data-overlap.py                 sweep every composed artifact
+        check-data-overlap.py <module.wasm>   check one module
+Exit:   0 = disjoint (or ledgered);  5 = overlapping;  1 = could not inspect
+
+The sweep (gale#439) used to be one hardcoded fixture while the gate's name
+claimed all fused data was disjoint; there were five, and one overlaps. The list
+below MUST match COMPOSED in tools/xtask/src/gates/graph_env.rs -- the CI
+agreement step compares the two implementations' verdicts.
 """
+import pathlib
 import re
 import subprocess
 import sys
+
+BENCH = pathlib.Path(__file__).resolve().parent.parent  # benches/gust
+COMPOSED = [
+    "drivers/measurements/wcet-fixture/gustos.loom.wasm",
+    "drivers/measurements/wcet-fixture/gustos.loom.named.wasm",
+    "drivers/os-node/repro-757/loom.wasm",
+    "wasm-kernel/fused.wasm",
+    "wasm-kernel/gust_kernel.wasm",
+]
+# Deliberate overlaps, each with its reason. Fails in BOTH directions.
+KNOWN_OVERLAP = {}
 
 # (data (;N;) (memory M)? (i32.const OFF) "payload")  -- memory index is elided for 0
 SEG = re.compile(
@@ -76,7 +94,34 @@ def main(path: str) -> int:
     return 5
 
 
+def sweep() -> int:
+    bad = []
+    for x in KNOWN_OVERLAP:
+        if x not in COMPOSED:
+            bad.append(f"{x}: on KNOWN_OVERLAP but not a swept composed artifact")
+    for rel in COMPOSED:
+        print(f"== {rel}")
+        rc = main(str(BENCH / rel))
+        if rc == 1:
+            return 1
+        if rc == 0 and rel in KNOWN_OVERLAP:
+            bad.append(f"{rel}: on KNOWN_OVERLAP but now disjoint -- remove it from the ledger")
+        elif rc == 5 and rel in KNOWN_OVERLAP:
+            print(f"  KNOWN-OVERLAP: {KNOWN_OVERLAP[rel]}")
+        elif rc == 5:
+            bad.append(f"{rel}: overlapping data segments, not on the ledger")
+    if bad:
+        print(f"\nFAIL: {len(bad)} problem(s):")
+        for b in bad:
+            print(f"  {b}")
+        return 5
+    print(f"\nswept all {len(COMPOSED)} composed artifact(s); {len(KNOWN_OVERLAP)} on the ledger")
+    return 0
+
+
 if __name__ == '__main__':
+    if len(sys.argv) == 1:
+        sys.exit(sweep())
     if len(sys.argv) != 2:
         print(__doc__)
         sys.exit(1)

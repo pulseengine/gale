@@ -30,7 +30,10 @@ pub const NAME: &str = "graph-env";
 /// sweep at drivers/ and reached ../wasm-kernel/* from outside the censused
 /// area: those two were checked, but a NEW artifact beside them would not have
 /// been noticed -- precisely how dma-own escaped the sibling gate (gale#316).
-const COMPOSED: &[&str] = &[
+/// Also the sweep of `data-overlap` (gale#439): one list, so the two gates
+/// cannot disagree about what "the composed artifacts" are, and this gate's
+/// census is what keeps it complete.
+pub const COMPOSED: &[&str] = &[
     "drivers/measurements/wcet-fixture/gustos.loom.wasm",
     "drivers/measurements/wcet-fixture/gustos.loom.named.wasm",
     "drivers/os-node/repro-757/loom.wasm",

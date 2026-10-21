@@ -286,8 +286,18 @@ fn check_module(path: &Path) -> Verdict {
     Verdict::Fail(lines)
 }
 
-/// The committed fused core, the same module the shell job checks.
-const FIXTURE: &str = "benches/gust/drivers/measurements/wcet-fixture/gustos.loom.wasm";
+/// The sweep is graph-env's COMPOSED list, relative to benches/gust (gale#439).
+/// This gate used to check ONE hardcoded artifact while being a required
+/// context named "fused data segments are disjoint" -- there were five, it had
+/// no census, and one of the four it never looked at overlaps. Sharing the
+/// list means graph-env's census (every committed .wasm swept or ledgered)
+/// keeps this sweep complete too.
+use super::graph_env::COMPOSED;
+
+/// KNOWN-OVERLAP LEDGER: composed artifacts whose overlap is deliberate, each
+/// with its reason. Fails in BOTH directions: an unledgered overlap fails, and a
+/// ledgered artifact that stops overlapping fails until it is removed.
+const KNOWN_OVERLAP: &[(&str, &str)] = &[];
 
 /// `--module` lets the gate be aimed at an arbitrary wasm. The CI negative
 /// control needs exactly this: it plants a module with known-overlapping
@@ -295,10 +305,53 @@ const FIXTURE: &str = "benches/gust/drivers/measurements/wcet-fixture/gustos.loo
 /// could only ever be run against the one input it already passes, which is the
 /// shape of a control that cannot fail.
 pub fn run(repo: &Path, target: Option<&str>) -> Verdict {
-    match target {
-        Some(t) => check_module(Path::new(t)),
-        None => check_module(&repo.join(FIXTURE)),
+    if let Some(t) = target {
+        return check_module(Path::new(t));
     }
+    let bench = repo.join("benches/gust");
+    let mut lines = Vec::new();
+    let mut fail = Vec::new();
+    let mut problems = 0usize;
+    for (l, _) in KNOWN_OVERLAP {
+        if !COMPOSED.contains(l) {
+            problems += 1;
+            fail.push(format!("{l}: on KNOWN_OVERLAP but not a swept composed artifact"));
+        }
+    }
+    for rel in COMPOSED {
+        let ledger = KNOWN_OVERLAP.iter().find(|(l, _)| l == rel);
+        match (check_module(&bench.join(rel)), ledger) {
+            (Verdict::Refused(r), _) => return Verdict::Refused(format!("{rel}: {r}")),
+            (Verdict::Pass(_), None) => lines.push(format!("ok   {rel}: disjoint")),
+            (Verdict::Pass(_), Some(_)) => {
+                problems += 1;
+                fail.push(format!(
+                    "{rel}: on KNOWN_OVERLAP but its segments are now disjoint -- remove \
+                     it from the ledger"
+                ))
+            }
+            (Verdict::Fail(_), Some((_, why))) => {
+                lines.push(format!("KNOWN-OVERLAP {rel}: {why}"))
+            }
+            (Verdict::Fail(detail), None) => {
+                problems += 1;
+                fail.push(format!("{rel}: overlapping data segments, not on the ledger"));
+                fail.extend(detail.into_iter().filter(|d| d.starts_with("  data")));
+            }
+        }
+    }
+    if !fail.is_empty() {
+        let mut out = vec![format!("FAIL: {problems} problem(s):")];
+        out.extend(fail.into_iter().map(|f| format!("  {f}")));
+        out.extend(lines);
+        return Verdict::Fail(out);
+    }
+    lines.push(format!(
+        "swept all {} composed artifact(s) under benches/gust; {} on the known-overlap ledger",
+        COMPOSED.len(),
+        KNOWN_OVERLAP.len()
+    ));
+    Verdict::Pass(lines)
 }
 
 /// Matched pair, plus the payload-length cases the Python got wrong. A gate
@@ -344,6 +397,25 @@ pub fn self_test(_repo: &Path, _target: Option<&str>) -> Verdict {
     // And a shape nothing understands is Unknown, which drives a refusal.
     let junk = parse_segments("(data (;0;) (f64.const 1) \"AA\")");
     check("unparseable is Unknown", junk.len() == 1 && junk[0] == Parsed::Unknown);
+
+    // The sweep is not the single fixture it used to be (gale#439), and every
+    // ledger entry carries a reason.
+    check("the sweep covers more than one artifact", COMPOSED.len() > 1);
+    // The Python twin carries its own copy of the list; CI's agreement step
+    // compares VERDICTS, which would not notice the twins sweeping different
+    // sets as long as both happened to pass.
+    let py = std::fs::read_to_string(
+        _repo.join("benches/gust/drivers/check-data-overlap.py"),
+    )
+    .unwrap_or_default();
+    check(
+        "the python twin sweeps the same artifacts",
+        !py.is_empty() && COMPOSED.iter().all(|c| py.contains(&format!("\"{c}\""))),
+    );
+    check(
+        "every ledger entry is swept and has a reason",
+        KNOWN_OVERLAP.iter().all(|(l, r)| COMPOSED.contains(l) && !r.trim().is_empty()),
+    );
 
     if broken {
         Verdict::Fail(lines)
