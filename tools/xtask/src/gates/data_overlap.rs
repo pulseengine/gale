@@ -297,7 +297,10 @@ use super::graph_env::COMPOSED;
 /// KNOWN-OVERLAP LEDGER: composed artifacts whose overlap is deliberate, each
 /// with its reason. Fails in BOTH directions: an unledgered overlap fails, and a
 /// ledgered artifact that stops overlapping fails until it is removed.
-const KNOWN_OVERLAP: &[(&str, &str)] = &[];
+const KNOWN_OVERLAP: &[(&str, &str)] = &[(
+    "drivers/os-node/repro-757/loom.wasm",
+    "frozen synth#757 reproduction input (REPRO.md); refreshing it destroys the reproduction. The overlap is very likely the TRIGGER: the miscompiled relocation reads address 1048584, which lies in all three segments; wasm applies them in order so seg_2 wins, and synth 0.45.0 bound it to seg_0",
+)];
 
 /// `--module` lets the gate be aimed at an arbitrary wasm. The CI negative
 /// control needs exactly this: it plants a module with known-overlapping
