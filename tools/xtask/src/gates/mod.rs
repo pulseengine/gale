@@ -6,6 +6,7 @@ pub mod aadl_parse;
 pub mod criticality_axis;
 pub mod data_overlap;
 pub mod graph_env;
+pub mod job_timeouts;
 pub mod fixture_freshness;
 pub mod object_freshness;
 pub mod pin_agreement;
@@ -55,6 +56,12 @@ pub const GATES: &[Gate] = &[
         about: "no committed Renode ELF fixture is older than the sources that produce it",
         run: fixture_freshness::run,
         self_test: fixture_freshness::self_test,
+    },
+    Gate {
+        name: job_timeouts::NAME,
+        about: "every CI job declares a timeout-minutes",
+        run: job_timeouts::run,
+        self_test: job_timeouts::self_test,
     },
     Gate {
         name: object_freshness::NAME,
