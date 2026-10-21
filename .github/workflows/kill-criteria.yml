@@ -257,12 +257,14 @@ jobs:
           fi
           echo "ok: overlap rejected, as required"
 
-      - name: The committed fused core must be disjoint
+      # Every composed artifact, not the one fixture it used to check (gale#439):
+      # there were five, and one of the four it never looked at overlaps.
+      - name: Every composed artifact is disjoint or on the ledger
         id: py_gate
         continue-on-error: true
         run: |
           cd benches/gust/drivers
-          python3 check-data-overlap.py measurements/wcet-fixture/gustos.loom.wasm
+          python3 check-data-overlap.py
 
       # SHADOW PERIOD (gale#368). Both gates run; their verdicts must agree
       # before the Python one is retired. See gust-targets.yml for the rationale.
@@ -275,7 +277,7 @@ jobs:
           fi
           echo "ok: xtask rejects the overlap too"
 
-      - name: The committed fused core must be disjoint (xtask)
+      - name: Every composed artifact is disjoint or on the ledger (xtask)
         id: rs_gate
         continue-on-error: true
         run: cargo xtask check data-overlap
