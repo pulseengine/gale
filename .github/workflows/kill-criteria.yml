@@ -502,6 +502,32 @@ jobs:
   # ENFORCEMENT evidence gale had ran on someone's laptop. The neighbouring Renode
   # iso gate (gust_iso.robot) executes the region programmer's computation and the
   # seam order; it asserts no fault at all. This is the enforcement half.
+  gust-bins-compile:
+    name: "every gust probe binary still compiles"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install thumbv7m target
+        run: rustup target add thumbv7m-none-eabi
+
+      # benches/gust has 52 [[bin]] probes; CI RAN two of them and compiled no
+      # others, while several are cited as verification evidence in rivet
+      # (gale#387). None needs hardware to BUILD, so bit-rot in cited evidence
+      # is one `cargo check` away from being caught. `--bins` is cargo's own
+      # enumeration, not a hand-kept list that could narrow. Both arms, because
+      # gust_priv_region_probe refuses to build without choosing one
+      # (compile_error!: "pick an arm") -- that is not bit-rot, it is the probe
+      # insisting on a matched pair.
+      - name: All probes compile (priv-private arm)
+        working-directory: benches/gust
+        run: cargo check --bins --keep-going --features priv-private
+
+      - name: All probes compile (priv-shared arm)
+        working-directory: benches/gust
+        run: cargo check --bins --keep-going --features priv-shared
+
   mpu-enforcement:
     name: "a denied write really faults (REQ-OS-MPU-001 kill-criterion)"
     runs-on: ubuntu-24.04
