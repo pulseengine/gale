@@ -519,3 +519,33 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-ZMS-003
+
+  - id: SWREQ-ZMS-P-011
+    type: sw-req
+    title: "P11: A safety-block write is read back and compared before it is reported durable"
+    status: proposed
+    description: "Write-back verification (gale#11, from the STPA + automotive NvM/Fee research). After programming a safety-flagged block, ZMS SHALL read the block back from flash and compare it with the source before reporting the write as successful; a mismatch SHALL be reported as a write failure, never as success, and SHALL NOT leave the previous valid copy unreachable. Captured 2026-10-21 because gale#11 was closed once citing artifacts that did not exist, which would have dropped this ASIL-D ask silently. Proposed with no release: the Zephyr ZMS path is not on an active release line; if it resumes, assign one."
+    tags: [zms, write-back, asil-d]
+    fields:
+      priority: must
+      req-type: safety
+      verification-criteria: "Fault-injected flash model in which a program operation silently corrupts one bit: the write SHALL return failure and a subsequent read SHALL return the previous valid value. Control: the same model without corruption returns success."
+    links:
+      - type: derives-from
+        target: SYSREQ-ZMS-005
+
+  - id: SWREQ-ZMS-P-012
+    type: sw-req
+    title: "P12: Safety blocks are stored redundantly, and a single corrupted copy is detected and survived"
+    status: proposed
+    description: "Redundant storage for safety blocks (gale#11). Each safety-flagged block SHALL be stored in at least two independent copies such that corruption or loss of any single copy is DETECTED (not silently returned) and the block remains readable from the surviving copy. Which copies are independent (separate sectors, separate erase units) is part of the requirement, not an implementation detail: two copies in one erase unit share a failure mode and do not count. Proposed with no release, for the same reason as SWREQ-ZMS-P-011."
+    tags: [zms, redundancy, asil-d]
+    fields:
+      priority: must
+      req-type: safety
+      verification-criteria: "Corrupt each copy in turn: every read SHALL return the valid value from the other copy and SHALL report the corruption. Corrupt both: the read SHALL fail rather than return either corrupted value."
+    links:
+      - type: derives-from
+        target: SYSREQ-ZMS-005
+      - type: related-to
+        target: SWREQ-ZMS-P-011
