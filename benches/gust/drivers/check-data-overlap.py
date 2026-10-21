@@ -37,7 +37,11 @@ COMPOSED = [
     "wasm-kernel/gust_kernel.wasm",
 ]
 # Deliberate overlaps, each with its reason. Fails in BOTH directions.
-KNOWN_OVERLAP = {}
+KNOWN_OVERLAP = {
+    "drivers/os-node/repro-757/loom.wasm": (
+        "frozen synth#757 reproduction input (REPRO.md); refreshing it destroys the reproduction. The overlap is very likely the TRIGGER: the miscompiled relocation reads address 1048584, which lies in all three segments; wasm applies them in order so seg_2 wins, and synth 0.45.0 bound it to seg_0"
+    ),
+}
 
 # (data (;N;) (memory M)? (i32.const OFF) "payload")  -- memory index is elided for 0
 SEG = re.compile(
