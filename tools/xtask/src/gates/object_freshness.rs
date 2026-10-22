@@ -42,6 +42,14 @@ const BUILDERS: &[(&str, &str)] = &[
 /// Always an input: the seam definitions every builder consumes.
 const ALWAYS: &[&str] = &["wit", "wit-os"];
 
+/// The toolchain pin, an input to EVERY gated object (gale#438). Every object
+/// here is a synth output, so the pin decides its bytes as much as any source
+/// does -- yet before this the gate compared source dates only, and read `ok`
+/// for an object that the pinned toolchain no longer reproduces
+/// (iso-core-fused-cm3.o: 15094 B committed, 15050 B rebuilt). Repo-relative,
+/// unlike everything else here, because the pin lives at the root.
+const PIN: &str = "varve.toml";
+
 /// The input list is deliberately NARROW. A first draft used the whole crate
 /// directory and flagged gpio-thin over an edited RESULTS.md -- a doc change
 /// does not invalidate an object. A second draft added wit-os for everything
@@ -86,6 +94,20 @@ const KNOWN_STALE: &[&str] = &[
     "dma-own/dma-own-cm3.o",
     "spawn-provider/spawn-provider-cm3.o",
     "timer-provider/timer-provider-cm3.o",
+    // Crate-adjacent; the object predates the 2026.10.1 toolchain pin (varve.toml, 2026-10-01) and nothing
+    // else (gale#438). DATE-stale only: not rebuilt, so whether the pinned synth
+    // produces different bytes is NOT measured -- the ledger records that the
+    // repo cannot currently claim these were built by the toolchain it pins.
+    "adc-thin/adc-thin-cm3.o",
+    "can-thin/can-thin-cm3.o",
+    "dac-thin/dac-thin-cm3.o",
+    "gpio-thin/gpio-thin-cm3.o",
+    "i2c-thin/i2c-thin-cm3.o",
+    "mpu-thin/mpu-thin-cm3.o",
+    "pwm-thin/pwm-thin-cm3.o",
+    "spi-thin/spi-thin-cm3.o",
+    "timer-thin/timer-thin-cm3.o",
+    "uart-thin/uart-thin-cm3.o",
 ];
 
 fn git(repo: &Path, args: &[&str]) -> Option<String> {
@@ -197,6 +219,7 @@ fn inputs_for(repo: &Path, script: &str) -> Vec<String> {
     let mut out = vec![format!("{REL}/{script}")];
     out.extend(dirs.iter().map(|d| format!("{REL}/{d}")));
     out.extend(ALWAYS.iter().map(|s| format!("{REL}/{s}")));
+    out.push(PIN.to_string());
     out
 }
 
@@ -236,6 +259,7 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
         let mut inputs: Vec<String> =
             CRATE_BUILD_FILES.iter().map(|b| format!("{REL}/{dir}/{b}")).collect();
         inputs.extend(seams.iter().map(|s| format!("{REL}/{s}")));
+        inputs.push(PIN.to_string());
         gated.insert(key.clone(), inputs);
     }
 
@@ -336,6 +360,13 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
     let stale_now: BTreeSet<String> = ["a".to_string(), "c".to_string()].into_iter().collect();
     ck("new stale detected", stale_now.difference(&ledger).count() == 1);
     ck("fixed-but-ledgered detected", ledger.difference(&stale_now).count() == 1);
+    // The pin must be an input (gale#438). Without it the gate answered `ok` for
+    // an object the pinned toolchain no longer reproduces.
+    ck(
+        "the toolchain pin is a builder input",
+        inputs_for(_repo, "build-os-ts.sh").iter().any(|i| i == PIN),
+    );
+    ck("the pin file exists where the gate looks", _repo.join(PIN).is_file());
     // THE ENUMERATION, against the real repo -- the half that was broken. The
     // census cannot flag an object this function never returns, so asserting
     // the census works says nothing unless the sweep is complete. Both halves
