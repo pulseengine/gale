@@ -1,0 +1,113 @@
+artifacts:
+
+  - id: SAC-GUST-SUP-001
+    type: sw-arch-component
+    title: gust supervisor — the privileged partition core (switch + health monitor) every tenant runs under
+    status: proposed
+    release: v0.11.0
+    description: "The element a mixed-criticality gust deployment has to protect: the privileged verified core that switches partitions (switch-thin) and supervises them (hm-thin), and owns the MPU. Modelled as an architecture element so a criticality can be assigned to it (gale#437, step 0: before this, none of gust's deployable elements were sw-arch-components, so REQ-OS-CRITICALITY-001 had no population to assign to). Its constituent objects are the switch-thin and hm-thin drivers under benches/gust/drivers."
+    tags: [gust, criticality, supervisor]
+    links:
+      - type: allocated-from
+        target: REQ-OS-MULTITENANT-001
+      - type: allocated-from
+        target: REQ-OS-CRITICALITY-001
+
+  - id: SAC-GUST-TENANT-001
+    type: sw-arch-component
+    title: gust tenant partition — an independently-authored component hosted beside the supervisor
+    status: proposed
+    release: v0.11.0
+    description: "A tenant partition as REQ-OS-MULTITENANT-001 defines it: an independently-authored component that imports only the gust:os capabilities it is granted. The DECLARED instance on the mixed-criticality target is QM (REQ-OS-MCDEMO-001's misbehaving tenant). Today tenant code runs PRIVILEGED (REQ-OS-UNPRIV-001 is blocked on synth#1145), which is why the spatial leg of its interference argument is open."
+    tags: [gust, criticality, tenant]
+    links:
+      - type: allocated-from
+        target: REQ-OS-MULTITENANT-001
+      - type: allocated-from
+        target: REQ-OS-CRITICALITY-001
+
+      - type: related-to
+        target: REQ-OS-MCDEMO-001
+      - type: related-to
+        target: REQ-OS-UNPRIV-001
+  - id: CA-WB55-001
+    type: criticality-assignment
+    title: gust supervisor is ASIL-D on the WB55 mixed-criticality deployment
+    status: proposed
+    release: v0.11.0
+    description: "DECLARED, not assessed (REQ-OS-MCDEMO-001: the criticality levels shown are declared for the demonstrator). WB55 because it is the only bench part whose 192 KiB SRAM fits more than one tenant domain at synth's 64 KiB page granularity (REQ-OS-MCDEMO-001 venue constraint); target id is the AADL package of benches/gust/targets/stm32wb55.aadl."
+    tags: [gust, criticality]
+    fields:
+      criticality: ASIL-D
+      element: SAC-GUST-SUP-001
+      target: STM32WB55
+    links:
+      - type: related-to
+        target: SAC-GUST-SUP-001
+
+      - type: related-to
+        target: REQ-OS-MCDEMO-001
+  - id: CA-WB55-002
+    type: criticality-assignment
+    title: gust tenant is QM on the WB55 mixed-criticality deployment
+    status: proposed
+    release: v0.11.0
+    description: "DECLARED, not assessed. QM is a real classification, not the absence of one: this tenant carries no safety requirement and is the one REQ-OS-MCDEMO-001 writes to misbehave."
+    tags: [gust, criticality]
+    fields:
+      criticality: QM
+      element: SAC-GUST-TENANT-001
+      target: STM32WB55
+    links:
+      - type: related-to
+        target: SAC-GUST-TENANT-001
+
+      - type: related-to
+        target: REQ-OS-MCDEMO-001
+  - id: FFI-WB55-001
+    type: ffi-argument
+    title: "QM tenant -> ASIL-D supervisor on WB55: all three interference classes OPEN, on the known-open ledger"
+    status: proposed
+    release: v0.11.0
+    description: "The argument that matters, and today it is not made. Recorded so the gap is checkable rather than absent (gale#437 decision (b)). SPATIAL open: tenant code runs privileged, so the MPU boundary is fault-containment, not authority-containment; closing it is REQ-OS-UNPRIV-001, blocked on synth#1145 (--native-pointer-abi is memory-0-only). TEMPORAL open: no machine-checked bound on the tenant's effect on the supervisor's deadline until REQ-OS-SCHED-001 / REQ-OS-WCET-001. INFORMATION open: the canonical-ABI copy is the intended construction, but meld's shared-memory fusion inlines it away (REQ-OS-FFI-COMM-001), and no per-failure-mode disposition exists yet. Each leg is on criticality_axis.rs KNOWN_OPEN; the gate fails when a leg closes and is not removed from that ledger."
+    tags: [gust, criticality, ffi]
+    fields:
+      from-element: SAC-GUST-TENANT-001
+      information: open
+      spatial: open
+      target: STM32WB55
+      temporal: open
+      to-element: SAC-GUST-SUP-001
+    links:
+      - type: related-to
+        target: REQ-OS-UNPRIV-001
+      - type: related-to
+        target: REQ-OS-SCHED-001
+      - type: related-to
+        target: REQ-OS-FFI-COMM-001
+
+      - type: related-to
+        target: REQ-OS-WCET-001
+      - type: related-to
+        target: SAC-GUST-TENANT-001
+      - type: related-to
+        target: SAC-GUST-SUP-001
+  - id: FFI-WB55-002
+    type: ffi-argument
+    title: "ASIL-D supervisor -> QM tenant on WB55: accepted — FFI protects the higher-criticality element, and this direction has none to protect"
+    status: proposed
+    release: v0.11.0
+    description: "The converse direction, which the gate demands because interference is ordered. ISO 26262-9 Clause 6 requires freedom from interference so that a LOWER-criticality element cannot cause a HIGHER one to violate a safety requirement; the QM tenant carries no safety requirement, so interference from the supervisor into it cannot violate one. ACCEPTED on that rationale for all three classes. This is NOT the disposition gale#437 option (c) argued against: (c) would have accepted the QM -> ASIL-D spatial leg, which is a real unmitigated hazard. If a tenant on this target is ever reclassified above QM, this argument stops holding and must be rewritten."
+    tags: [gust, criticality, ffi]
+    fields:
+      from-element: SAC-GUST-SUP-001
+      information: accepted-with-rationale
+      spatial: accepted-with-rationale
+      target: STM32WB55
+      temporal: accepted-with-rationale
+      to-element: SAC-GUST-TENANT-001
+    links:
+      - type: related-to
+        target: SAC-GUST-SUP-001
+      - type: related-to
+        target: SAC-GUST-TENANT-001
