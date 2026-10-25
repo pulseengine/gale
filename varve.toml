@@ -6,10 +6,13 @@ manifest-version = 1
 realm   = "pulseengine"
 channel = "rolling"
 # 2026.10.1 is refused by varve's anti-rollback: the layer presents counter 2
-# but the 2026.10 line's high-water mark (signed line-status) is 26. 2026.10.23
-# IS counter 26 — the mark itself, and the pin ordeal already carries. It also
-# sits past both known problems on the line (meld <= 0.61.0 up to 2026.10.15,
-# wsc 0.11.0/rustls up to 2026.10.22). Digest verified against the realm root
-# by `varve install` on 2026-10-25.
-layer   = "2026.10.23"
-digest  = "sha256:af711b5d81e55df7068297bd422d24b527d9d6019baddb9c63cbce0d6d92c285"
+# but the 2026.10 line's high-water mark (signed line-status) is 26. 2026.10.30
+# is the line's greatest counter in the signed index — the most headroom
+# against the mark advancing again. It also sits past both known problems on
+# the line (meld <= 0.61.0 up to 2026.10.15, wsc 0.11.0/rustls up to
+# 2026.10.22), and it carries synth 0.88.0: 0.87.0's static-data validator
+# (VCR-VER-003) refuses gale's own composite — a correct 1-byte access packed
+# next to another segment by meld 0.62.0–0.63.0 --pack-rebase (synth#1563,
+# fixed in 0.88.0). Digest verified against the realm root by `varve install`.
+layer   = "2026.10.30"
+digest  = "sha256:18e9286a2c61267f62d11bf2c3bcddc68198592086db11786eafe2f342127413"
