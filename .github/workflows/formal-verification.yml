@@ -55,6 +55,7 @@ jobs:
     # push filter but not the pull_request one.
     name: "proofs needed?"
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     outputs:
       run: ${{ steps.q.outputs.run }}
     steps:
@@ -78,6 +79,7 @@ jobs:
     name: Verus SMT (39 modules)
     needs: guard
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
@@ -98,6 +100,7 @@ jobs:
     name: Kani BMC (185 harnesses)
     needs: guard
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
@@ -125,6 +128,7 @@ jobs:
     name: Rocq Proofs (14 files)
     needs: guard
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
@@ -160,6 +164,7 @@ jobs:
     name: Lean Proofs
     needs: guard
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 

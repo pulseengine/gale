@@ -19,6 +19,7 @@ jobs:
   build-wasm-dist:
     name: "wasm dist (sem + mutex + msgq, cortex-m4f)"
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       options: --user root --volume /mnt:/mnt

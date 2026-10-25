@@ -66,7 +66,9 @@ env:
   # `cargo xtask check pin-agreement` compares every hardcoded *_VERSION against
   # what varve.toml's layer actually ships, and fails on disagreement. This value
   # still moves with the layer; the difference is that forgetting is now loud.
-  SYNTH_VERSION: "0.78.0"
+  # Moved WITH the 2026.10.30 bump (synth 0.78.0 -> 0.88.0) — the gate caught
+  # nothing because this was updated in the same commit as the pin.
+  SYNTH_VERSION: "0.88.0"
   LOOM_VERSION: "1.4.1"
 
 jobs:
@@ -80,6 +82,7 @@ jobs:
     # does not use synth.
     name: "seam survives lowering on ARM and RISC-V (all thin drivers)"
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:

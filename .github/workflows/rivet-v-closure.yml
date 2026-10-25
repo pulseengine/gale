@@ -41,6 +41,7 @@ jobs:
     # when nothing relevant changed.
     name: "V-closure needed?"
     runs-on: [self-hosted, linux, x64, rust-cpu]
+    timeout-minutes: 30
     outputs:
       run: ${{ steps.q.outputs.run }}
     steps:
