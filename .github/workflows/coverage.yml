@@ -21,6 +21,7 @@ jobs:
   rust-coverage:
     name: Rust Coverage
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
@@ -57,6 +58,7 @@ jobs:
   zephyr-coverage:
     name: Zephyr C Coverage
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       options: --user root --volume /mnt:/mnt
@@ -240,6 +242,7 @@ jobs:
     # is to be compared, and it will likely surface failures gale's
     # replacements cause under the wider kernel test selection.
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       options: --user root --volume /mnt:/mnt
@@ -407,6 +410,7 @@ jobs:
     # always(): the delta is most valuable exactly when one leg went red.
     if: always()
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 

@@ -523,6 +523,7 @@ jobs:
   mpu-enforcement:
     name: "a denied write really faults (REQ-OS-MPU-001 kill-criterion)"
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -602,6 +603,7 @@ jobs:
   aadl-parse:
     name: every committed AADL model parses with the pinned spar
     runs-on: [self-hosted, linux, x64, rust-cpu]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: Install the pinned toolchain

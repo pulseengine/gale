@@ -38,6 +38,7 @@ jobs:
   driver-components:
     name: "no raw env + componentizes + object agrees with source (13 thin drivers)"
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 

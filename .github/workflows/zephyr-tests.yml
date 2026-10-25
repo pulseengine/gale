@@ -46,6 +46,7 @@ jobs:
   zephyr-test:
     name: "${{ matrix.primitive }} (qemu_cortex_m3)"
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB) into the
@@ -265,6 +266,7 @@ jobs:
   zephyr-mpu-test:
     name: "${{ matrix.primitive }} (mps2/an385)"
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB) into the
@@ -416,6 +418,7 @@ jobs:
     continue-on-error: true
     name: "${{ matrix.primitive }} (qemu_x86_64, SMP)"
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB) into the
@@ -550,6 +553,7 @@ jobs:
   size-comparison:
     name: "Binary size comparison"
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       # Mount the runner's large ephemeral scratch disk (/mnt, ~70 GB) into the
