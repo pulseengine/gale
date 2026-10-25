@@ -66,7 +66,9 @@ env:
   # `cargo xtask check pin-agreement` compares every hardcoded *_VERSION against
   # what varve.toml's layer actually ships, and fails on disagreement. This value
   # still moves with the layer; the difference is that forgetting is now loud.
-  SYNTH_VERSION: "0.78.0"
+  # Moved WITH the 2026.10.23 bump (synth 0.78.0 -> 0.87.0) — the gate caught
+  # nothing because this was updated in the same commit as the pin.
+  SYNTH_VERSION: "0.87.0"
   LOOM_VERSION: "1.4.1"
 
 jobs:
