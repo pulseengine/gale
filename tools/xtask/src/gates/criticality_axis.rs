@@ -2,9 +2,11 @@
 //!
 //! REQ-OS-CRITICALITY-001 (gale#423). Asked whether gust can host ASIL-D beside
 //! ASIL-B and QM, the answer was no — and the part that surprised people was not
-//! the code. Across 1063 artifacts there were 92 mentions of ASIL-D, zero of
-//! ASIL-A/B/C, zero of QM, and zero artifacts addressing coexistence, freedom
-//! from interference or ASIL decomposition. The safety case was uniformly
+//! the code. The store carried ASIL-D and nothing else: zero artifacts naming
+//! ASIL-A/B/C or QM, and zero addressing coexistence, freedom from interference
+//! or ASIL decomposition. (gale#423 counted "92 mentions of ASIL-D"; re-measured
+//! uncapped that does not reproduce -- 346 of 1067 artifacts mention it, 6 by
+//! title -- so do not re-cite 92. See gale#437.) The safety case was uniformly
 //! ASIL-D by construction, so there was nowhere to record that an element was QM
 //! — let alone to argue it could sit beside an ASIL-D one.
 //!
@@ -46,6 +48,26 @@ const UNARGUED: &str = "open";
 /// The disposition that requires a named construction to mean anything.
 const BY_CONSTRUCTION: &str = "prevented-by-construction";
 
+/// KNOWN-OPEN LEDGER (gale#437, decision (b)). Each entry is one interference
+/// class of one ffi-argument that is honestly `open` today, with what closes it.
+/// The ledger fails in BOTH directions, like fixture-freshness's KNOWN_STALE: an
+/// `open` leg not listed here fails, and a listed leg that is no longer `open`
+/// (or whose argument no longer exists) fails until it is removed -- so closing
+/// a gap cannot pass silently, and the list cannot outlive the gaps it records.
+///
+/// What this is NOT: an acceptance. `accepted-with-rationale` would have made
+/// the QM -> ASIL-D spatial leg green with no mitigation (gale#437 option (c)),
+/// which is a false claim. A ledgered leg is a recorded, visible gap.
+const KNOWN_OPEN: &[(&str, &str, &str)] = &[
+    ("FFI-WB55-001", "spatial", "REQ-OS-UNPRIV-001 -- tenants run privileged until synth#1145"),
+    ("FFI-WB55-001", "temporal", "REQ-OS-SCHED-001 / REQ-OS-WCET-001 -- no machine-checked bound"),
+    ("FFI-WB55-001", "information", "REQ-OS-FFI-COMM-001 -- no per-failure-mode disposition"),
+];
+
+/// Upper bound passed to `rivet query`. rivet paginates SILENTLY at 100 by
+/// default; a result of exactly this size is treated as possibly truncated.
+const QUERY_LIMIT: usize = 100_000;
+
 #[derive(Debug, Clone)]
 struct Assignment {
     id: String,
@@ -66,49 +88,109 @@ struct FfiArg {
     construction: String,
 }
 
-/// Read the artifact store through rivet's own JSON output. Never parse the
-/// YAML: the tool is the interface, and the schema it validates against is
-/// versioned with the binary while a hand-rolled reader is not.
-fn rivet_json(repo: &Path) -> Option<String> {
-    let out = Command::new("rivet")
-        .arg("list")
-        .arg("--format")
-        .arg("json")
-        .current_dir(repo)
-        .output()
-        .ok()?;
+fn rivet(repo: &Path, args: &[&str]) -> Option<String> {
+    let out = Command::new("rivet").args(args).current_dir(repo).output().ok()?;
     if !out.status.success() {
         return None;
     }
     Some(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
-/// Minimal field lookup over one artifact object's text. The store is small and
-/// the shape is flat; pulling in a JSON crate for four string fields would be
-/// the larger change.
+/// The value of a TOP-LEVEL key of one JSON object: a string's contents
+/// (unescaped), or the raw text of an object/array. Keys inside nested values
+/// are not matched.
+///
+/// That restriction is the fix for the reason this gate never ran. The first
+/// version took the FIRST `"key":` anywhere in the text. `rivet get` sorts its
+/// keys, so `links[].type` ("related-to") precedes the artifact's own `type`,
+/// and the store's `{"artifacts": [...]}` wrapper was split as one object --
+/// every artifact read as "not a criticality-assignment" and the gate REFUSED
+/// as vacuous on a populated store, for a reason it could not tell apart from
+/// an empty one. Nothing noticed, because the store WAS empty until gale#437.
 fn field(obj: &str, key: &str) -> String {
-    let pat = format!("\"{key}\":");
-    let Some(i) = obj.find(&pat) else { return String::new() };
-    let rest = &obj[i + pat.len()..];
-    let rest = rest.trim_start();
-    if !rest.starts_with('"') {
-        return String::new();
+    let b = obj.as_bytes();
+    let mut depth = 0usize;
+    let mut i = 0usize;
+    while i < b.len() {
+        match b[i] {
+            b'{' | b'[' => depth += 1,
+            b'}' | b']' => depth = depth.saturating_sub(1),
+            b'"' => {
+                let (s, after) = read_str(obj, i);
+                // A key is a string at depth 1 followed by ':'.
+                let rest = obj[after..].trim_start();
+                if depth == 1 && rest.starts_with(':') {
+                    let vstart = after + (obj[after..].len() - rest.len()) + 1;
+                    let v = obj[vstart..].trim_start();
+                    let voff = vstart + (obj[vstart..].len() - v.len());
+                    if s == key {
+                        return match v.as_bytes().first() {
+                            Some(b'"') => read_str(obj, voff).0,
+                            Some(b'{') | Some(b'[') => {
+                                obj[voff..voff + balanced(&obj[voff..])].to_string()
+                            }
+                            _ => String::new(),
+                        };
+                    }
+                }
+                i = after;
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
     }
-    let rest = &rest[1..];
+    String::new()
+}
+
+/// Read the JSON string starting at the quote at `at`: (unescaped contents,
+/// index just past the closing quote).
+fn read_str(text: &str, at: usize) -> (String, usize) {
     let mut out = String::new();
-    let mut chars = rest.chars();
-    while let Some(c) = chars.next() {
+    let mut chars = text[at + 1..].char_indices();
+    while let Some((k, c)) = chars.next() {
         match c {
             '\\' => {
-                if let Some(n) = chars.next() {
+                if let Some((_, n)) = chars.next() {
                     out.push(n);
                 }
             }
-            '"' => break,
+            '"' => return (out, at + 1 + k + 1),
             _ => out.push(c),
         }
     }
-    out
+    (out, text.len())
+}
+
+/// Length of the balanced object/array at the start of `text`, strings aware.
+fn balanced(text: &str) -> usize {
+    let mut depth = 0usize;
+    let mut in_str = false;
+    let mut esc = false;
+    for (i, c) in text.char_indices() {
+        if in_str {
+            if esc {
+                esc = false;
+            } else if c == '\\' {
+                esc = true;
+            } else if c == '"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match c {
+            '"' => in_str = true,
+            '{' | '[' => depth += 1,
+            '}' | ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return i + 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    text.len()
 }
 
 /// Split the JSON array into top-level objects without a parser: the store has
@@ -150,37 +232,62 @@ fn objects(json: &str) -> Vec<String> {
     out
 }
 
-fn collect(repo: &Path) -> Option<(Vec<Assignment>, Vec<FfiArg>)> {
-    let json = rivet_json(repo)?;
+/// Ids through `rivet query`, fields through `rivet get`: `list` and `query`
+/// omit custom fields entirely, so `element` / `criticality` / `target` exist
+/// only in `get`'s output. Never parse the YAML -- the tool is the interface.
+fn collect(repo: &Path) -> Result<(Vec<Assignment>, Vec<FfiArg>, BTreeSet<String>), String> {
+    let limit = QUERY_LIMIT.to_string();
+    let q = rivet(
+        repo,
+        &["query", r#"(!= id "")"#, "--format", "json", "--limit", &limit],
+    )
+    .ok_or("rivet query failed -- the gate cannot answer")?;
+    let all = objects(&field(&q, "artifacts"));
+    if all.is_empty() {
+        return Err("rivet query returned no artifacts -- the sweep would be vacuous".into());
+    }
+    if all.len() >= QUERY_LIMIT {
+        return Err(format!("rivet query returned {QUERY_LIMIT} rows -- possibly truncated"));
+    }
+    let ids: BTreeSet<String> = all.iter().map(|o| field(o, "id")).collect();
     let mut asg = Vec::new();
     let mut ffi = Vec::new();
-    for o in objects(&json) {
-        match field(&o, "type").as_str() {
-            "criticality-assignment" => asg.push(Assignment {
-                id: field(&o, "id"),
-                element: field(&o, "element"),
-                criticality: field(&o, "criticality"),
-                target: field(&o, "target"),
-            }),
-            "ffi-argument" => ffi.push(FfiArg {
-                id: field(&o, "id"),
-                from: field(&o, "from-element"),
-                to: field(&o, "to-element"),
-                target: field(&o, "target"),
-                spatial: field(&o, "spatial"),
-                temporal: field(&o, "temporal"),
-                information: field(&o, "information"),
-                construction: field(&o, "construction"),
-            }),
-            _ => {}
+    for o in &all {
+        let ty = field(o, "type");
+        if ty != "criticality-assignment" && ty != "ffi-argument" {
+            continue;
+        }
+        let id = field(o, "id");
+        let g = rivet(repo, &["get", &id, "--format", "json"])
+            .ok_or(format!("rivet get {id} failed -- the gate cannot answer"))?;
+        let f = field(&g, "fields");
+        if ty == "criticality-assignment" {
+            asg.push(Assignment {
+                id,
+                element: field(&f, "element"),
+                criticality: field(&f, "criticality"),
+                target: field(&f, "target"),
+            });
+        } else {
+            ffi.push(FfiArg {
+                id,
+                from: field(&f, "from-element"),
+                to: field(&f, "to-element"),
+                target: field(&f, "target"),
+                spatial: field(&f, "spatial"),
+                temporal: field(&f, "temporal"),
+                information: field(&f, "information"),
+                construction: field(&f, "construction"),
+            });
         }
     }
-    Some((asg, ffi))
+    Ok((asg, ffi, ids))
 }
 
 pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
-    let Some((asg, ffi)) = collect(repo) else {
-        return Verdict::Refused("rivet list --format json failed — the gate cannot answer".into());
+    let (asg, ffi, ids) = match collect(repo) {
+        Ok(v) => v,
+        Err(e) => return Verdict::Refused(e),
     };
 
     // VACUITY FIRST. No assignments means no pairs means nothing to check, and a
@@ -198,6 +305,9 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
     let mut lines: Vec<String> = Vec::new();
     let mut fail: Vec<String> = Vec::new();
 
+    let mut open_seen: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut known_open = 0usize;
+
     // Group assignments by target; elements sharing a target coexist.
     let mut by_target: BTreeMap<String, Vec<&Assignment>> = BTreeMap::new();
     for a in &asg {
@@ -206,6 +316,12 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
                 "{}: criticality-assignment is missing element, criticality or target",
                 a.id
             ));
+            continue;
+        }
+        // A typo in `element` would invent a phantom element whose pairs are
+        // argued about nothing real.
+        if !ids.contains(&a.element) {
+            fail.push(format!("{}: element {} is not an artifact in the store", a.id, a.element));
             continue;
         }
         by_target.entry(a.target.clone()).or_default().push(a);
@@ -244,7 +360,17 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
                     ("temporal", &f.temporal),
                     ("information", &f.information),
                 ] {
-                    if disp.is_empty() || disp == UNARGUED {
+                    if disp == UNARGUED && ledgered(&f.id, class) {
+                        open_seen.insert((f.id.clone(), class.to_string()));
+                        known_open += 1;
+                        lines.push(format!(
+                            "  KNOWN-OPEN {} {class} ({} -> {}): {}",
+                            f.id,
+                            f.from,
+                            f.to,
+                            reason(&f.id, class)
+                        ));
+                    } else if disp.is_empty() || disp == UNARGUED {
                         fail.push(format!(
                             "{}: {class} interference is `{}` for {} -> {}",
                             f.id,
@@ -265,6 +391,16 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
         }
     }
 
+    // The other direction of the ledger: an entry whose leg is no longer open.
+    for (id, class, _) in KNOWN_OPEN {
+        if !open_seen.contains(&(id.to_string(), class.to_string())) {
+            fail.push(format!(
+                "{id}: {class} is on KNOWN_OPEN but is no longer open (or no longer \
+                 demanded) -- remove it from the ledger"
+            ));
+        }
+    }
+
     if !fail.is_empty() {
         let mut out = vec![format!("FAIL: {} unmet obligation(s):", fail.len())];
         out.extend(fail.into_iter().map(|f| format!("  {f}")));
@@ -277,9 +413,27 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
         asg.len(),
         by_target.len()
     ));
-    lines.push("argued across all three interference classes, every by-construction".into());
+    lines.push("dispositioned across all three interference classes, every by-construction".into());
     lines.push("disposition naming its construction.".into());
+    if known_open > 0 {
+        lines.push(format!(
+            "INCOMPLETE: {known_open} leg(s) are OPEN on the known-open ledger. This pass \
+             means every gap is recorded, NOT that the safety argument is made."
+        ));
+    }
     Verdict::Pass(lines)
+}
+
+fn ledgered(id: &str, class: &str) -> bool {
+    KNOWN_OPEN.iter().any(|(i, c, _)| *i == id && *c == class)
+}
+
+fn reason(id: &str, class: &str) -> &'static str {
+    KNOWN_OPEN
+        .iter()
+        .find(|(i, c, _)| *i == id && *c == class)
+        .map(|(_, _, r)| *r)
+        .unwrap_or("")
 }
 
 /// The gate's own controls. Each asserts a way it could be WRONG, not a way it
@@ -302,6 +456,31 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
     ck("field reads a plain value", field(obj, "criticality") == "QM");
     ck("field reads an escaped quote", field(obj, "construction") == "the \"copy\" at the ABI");
     ck("field on a missing key is empty", field(obj, "nope").is_empty());
+
+    // THE SHAPES THAT BROKE THE FIRST VERSION, verbatim in structure. `rivet
+    // get` sorts keys, so links[].type comes before the artifact's own type,
+    // and custom fields live in a nested `fields` object.
+    let get = r#"{"command":"get","fields":{"criticality":"QM","element":"SAC-X","target":"T"},"id":"CA-1","links":[{"target":"SAC-X","type":"related-to"}],"type":"criticality-assignment"}"#;
+    ck("top-level type is not a nested links[].type", field(get, "type") == "criticality-assignment");
+    ck("a nested field is not read as top-level", field(get, "criticality").is_empty());
+    ck("custom fields are read from `fields`", field(&field(get, "fields"), "element") == "SAC-X");
+    // `rivet query` wraps the array; splitting the wrapper must yield artifacts.
+    let q = r#"{"artifacts":[{"id":"A","type":"x","links":[{"type":"y"}]},{"id":"B","type":"z"}],"command":"query"}"#;
+    let arts = objects(&field(q, "artifacts"));
+    ck("the artifacts wrapper splits into its artifacts", arts.len() == 2);
+    ck("each artifact's own type survives the split", field(&arts[0], "type") == "x");
+    // Negative control for the above: splitting the WRAPPER itself (what the
+    // first version did) yields one object, which is how it went vacuous.
+    ck("the wrapper itself is one object (the old defect)", objects(q).len() == 1);
+
+    // The known-open ledger, both directions, over the real entries.
+    ck("a ledgered leg is recognised", ledgered("FFI-WB55-001", "spatial"));
+    ck("an unledgered leg is not", !ledgered("FFI-WB55-002", "spatial"));
+    ck("every ledger entry names what closes it", KNOWN_OPEN.iter().all(|(_, _, r)| !r.is_empty()));
+    ck(
+        "the ledger names only real interference classes",
+        KNOWN_OPEN.iter().all(|(_, c, _)| ["spatial", "temporal", "information"].contains(c)),
+    );
 
     // Object splitting must not be fooled by braces inside strings.
     let json = r#"[{"id":"A","note":"has { and } inside"},{"id":"B"}]"#;
