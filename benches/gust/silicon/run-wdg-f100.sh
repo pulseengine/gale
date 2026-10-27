@@ -9,7 +9,7 @@
 # flash-and-walk-away run.
 #
 # Env:
-#   OCD_HOST   run openocd over ssh on this host (e.g. wohl.local); local if unset
+#   OCD_HOST   run openocd over ssh on this host (e.g. "$GUST_BENCH_HOST"; the host is not recorded in this repo); local if unset
 set -euo pipefail
 # Resolve BEFORE cd. This was `cd "$(dirname "$0")/.."` followed by
 # `. "$(dirname "$0")/bench-claim.sh"`: with a relative $0 the second path no longer
@@ -34,7 +34,7 @@ cargo build --release --bin gust_wdg_silicon \
       --no-default-features --features target-f100 --target thumbv7m-none-eabi
 
 # PIN THE PROBE TO THE V1 (0483:3744). stlink-hla.cfg lists every ST-LINK VID:PID, and
-# wohl.local carries four: unpinned, this took the `stlink-v1` claim and then attached to
+# the bench host carries four: unpinned, this took the `stlink-v1` claim and then attached to
 # the NUCLEO-G031K8's V2-1 — stopped only by the target config's IDCODE check.
 OCD=(openocd -f interface/stlink-hla.cfg -c "hla_vid_pid 0x0483 0x3744" -c "transport select swd"
      -f target/stm32f1x.cfg -c "reset_config none separate")
