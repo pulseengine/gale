@@ -11,6 +11,10 @@
 #
 #   claim "$(probe_device)" "gale: REQ-OS-UNPRIV-001 g474" -- probe-rs run --chip ... elf
 #
+# Remote claims take the host as an argument: claim_remote "$GUST_BENCH_HOST" <device> ...
+#   GUST_BENCH_HOST   ssh destination of the shared bench host. Its address is not
+#                     recorded in this repo; set it in your environment (or ~/.ssh/config).
+#
 # TWO THINGS THIS ADDS OVER CALLING with-device DIRECTLY:
 #
 # 1. DEVICE NAMES COME FROM THE HOST'S REGISTRY, and must match it exactly. jess
@@ -29,8 +33,8 @@
 #
 # 2. REMOTE CLAIMS LOCK ON THE HOST THAT OWNS THE PROBE. gale's F100 lives on a
 #    Raspberry Pi and is driven over ssh, so:
-#        WRONG: with-device ... -- ssh pi@... openocd     (locks this laptop; no probe here)
-#        RIGHT: ssh pi@... with-device ... -- openocd     (locks the Pi)
+#        WRONG: with-device ... -- ssh <bench-host> openocd     (locks this laptop; no probe here)
+#        RIGHT: ssh <bench-host> with-device ... -- openocd     (locks the Pi)
 #    `claim_remote` does the right one. jess's "collisions are necessarily same-machine"
 #    holds for the PROBE and not for the AGENTS: two laptops can both ssh into that Pi.
 #
@@ -38,7 +42,7 @@
 # claim you silently skipped is worse than no convention at all. Deliberate override:
 #   BENCH_UNCLAIMED=1   (prints a loud banner)
 #
-# THE BENCH IS SHARED. It moved to wohl.local and is shared with wohl. The host
+# THE BENCH IS SHARED. It moved to the bench host ($GUST_BENCH_HOST) and is shared with wohl. The host
 # carries FOUR boards on a 4-port hub; all four enumerate and identify (2026-09-16):
 #   1-1.1  ST-LINK/V3    0483:374e  NUCLEO-WL55JC1   registry: stlink-v3
 #   1-1.2  ST-LINK/V1    0483:3744  STM32VLDISCOVERY registry: stlink-v1
@@ -52,7 +56,7 @@
 # BENCH_UNCLAIMED used to read "use when you know you are alone" — on a host gale
 # had to itself, that was a checkable precondition. It is not any more: another
 # agent can attach at any moment and nothing here would know. The override stays
-# for a probe genuinely nobody else can reach; wohl.local is not that.
+# for a probe genuinely nobody else can reach; the bench host is not that.
 set -uo pipefail
 
 : "${BENCH_WHO:=gale}"
@@ -149,7 +153,7 @@ claim() {
         echo "bench-claim: with-device not found, refusing to touch '$dev' unclaimed." >&2
         echo "  pin the signed release and put the binary on PATH:\n    release:pulseengine/jess@v0.7.2!with-device-0.2.2-<triple>.tar.gz!with-device\n  or set WITH_DEVICE=/path/to/binary," >&2
         echo "  or set BENCH_UNCLAIMED=1 ONLY for a probe nobody else can reach —" >&2
-        echo "  wohl.local is shared with wohl, so that is not it." >&2
+        echo "  the bench host is shared with wohl, so that is not it." >&2
         return 4
     fi
     # v0.2.1 takes the purpose as a FLAG. The 0.2.0 python prototype took it
@@ -193,7 +197,7 @@ claim_remote() {
     local host="$1" dev="$2" purpose="$3"; shift 3
     [ "${1:-}" = "--" ] && shift
     # RESOLVE THE REMOTE with-device THROUGH THE PIN, not a fixed path. This used to be
-    # `$HOME/bench/with-device`, where jess installed it on the Pi. wohl.local has no such
+    # `$HOME/bench/with-device`, where jess installed it on the Pi. The current bench host has no such
     # file, so every remote claim died at exit 127 — not the refusal (4) callers branch on.
     #
     # The pin files are copied from THIS checkout on every call, so the remote tool is

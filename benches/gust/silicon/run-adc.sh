@@ -18,10 +18,10 @@
 # VLDISCOVERY → ~1638). A raw near 0 or full-scale = the internal channel was
 # not converted (TSVREFE / clock / calibration problem). See RESULTS-f100.md.
 set -euo pipefail
-# The bench host moved: it is wohl.local now, and the default ssh user resolves
-# (verified: `ssh wohl.local` lands as r@wohl), so no user prefix is needed. The
-# variable keeps its name so existing PI_HOST=... invocations still work.
-PI_HOST="${PI_HOST:-wohl.local}"
+# The bench host is NOT recorded in this repo. Set GUST_BENCH_HOST to it (or set
+# PI_HOST, which keeps its name so existing PI_HOST=... invocations still work). The
+# default ssh user on the bench host resolves, so no user prefix is needed.
+PI_HOST="${PI_HOST:-${GUST_BENCH_HOST:?set GUST_BENCH_HOST (or PI_HOST) to the bench host}}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BENCH="$(dirname "$HERE")"   # benches/gust
 cd "$BENCH"
