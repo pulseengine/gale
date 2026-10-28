@@ -233,6 +233,10 @@ impl Timeout {
             result.active == true,
             result.deadline == K_FOREVER_TICKS,
             result.current_tick == old(self).current_tick,
+            // self is not modified (gale#462): without this a caller lost
+            // everything it knew about self, its invariant included.
+            *self == *old(self),
+            self.inv(),
     {
         Timeout {
             deadline: K_FOREVER_TICKS,
@@ -253,6 +257,10 @@ impl Timeout {
             result.active == true,
             result.deadline == K_NO_WAIT_TICKS,
             result.current_tick == old(self).current_tick,
+            // self is not modified (gale#462): without this a caller lost
+            // everything it knew about self, its invariant included.
+            *self == *old(self),
+            self.inv(),
     {
         Timeout {
             deadline: K_NO_WAIT_TICKS,
@@ -506,19 +514,12 @@ impl Timeout {
 // Compositional proofs
 // ======================================================================
 
-/// TO1/TO3: invariant is inductive across all operations.
-/// The ensures clauses on all functions already prove this; this lemma
-/// documents the property.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv (from init's ensures)
-        // add preserves inv (from add's ensures)
-        // add_absolute preserves inv (from add_absolute's ensures)
-        // abort preserves inv (from abort's ensures)
-        // announce preserves inv (from announce's ensures)
-        true,
-{
-}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// TO2+TO6: add sets deadline correctly.
 /// After add(duration), deadline == current_tick + duration.

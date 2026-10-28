@@ -75,10 +75,78 @@ fn strip_comments(src: &str) -> String {
 #[derive(Debug, PartialEq)]
 struct Header {
     name: String,
+    params: String,
+    requires: String,
     is_proof: bool,
     external_body: bool,
     ensures: String,
     empty_body: bool,
+}
+
+/// Index of the function body's `{`, scanning from `from` (just past the
+/// name). Inner clause blocks are skipped whole.
+fn find_body(b: &[u8], from: usize) -> Option<usize> {
+    let mut depth: i32 = 0;
+    let mut seen_params = false;
+    let mut pending: i32 = 0; // `if` / `match` whose block has not opened yet
+    let mut j = from;
+    let word_at = |j: usize, w: &[u8]| -> bool {
+        j + w.len() <= b.len()
+            && &b[j..j + w.len()] == w
+            && (j == 0 || !(b[j - 1].is_ascii_alphanumeric() || b[j - 1] == b'_'))
+            && (j + w.len() == b.len() || !(b[j + w.len()].is_ascii_alphanumeric() || b[j + w.len()] == b'_'))
+    };
+    while j < b.len() {
+        match b[j] {
+            b'(' => {
+                depth += 1;
+                seen_params = true;
+            }
+            b')' => depth -= 1,
+            b';' if depth == 0 => return None,
+            _ if depth == 0 && seen_params && (word_at(j, b"if") || word_at(j, b"match")) => {
+                pending += 1;
+            }
+            b'{' if depth == 0 && seen_params => {
+                // previous non-whitespace token
+                let mut k = j;
+                while k > 0 && (b[k - 1] as char).is_whitespace() {
+                    k -= 1;
+                }
+                let prev2 = if k >= 2 { &b[k - 2..k] } else { &b[..k] };
+                let after_op = prev2 == b"=>" || prev2 == b"&&" || prev2 == b"||";
+                let after_else = k >= 4 && &b[k - 4..k] == b"else";
+                // No struct-literal case: Verus rejects a bare struct literal in a
+                // clause, so one can only appear inside parens (depth > 0). A
+                // first version guessed "uppercase identifier then `{`" and took
+                // `-> IpcEndpointState {` -- a return type -- for one, swallowing
+                // the functions after it.
+                if after_op || after_else || pending > 0 {
+                    if pending > 0 && !after_else {
+                        pending -= 1;
+                    }
+                    // skip the whole inner block
+                    let mut bd = 0i32;
+                    while j < b.len() {
+                        if b[j] == b'{' {
+                            bd += 1;
+                        } else if b[j] == b'}' {
+                            bd -= 1;
+                            if bd == 0 {
+                                break;
+                            }
+                        }
+                        j += 1;
+                    }
+                } else {
+                    return Some(j);
+                }
+            }
+            _ => {}
+        }
+        j += 1;
+    }
+    None
 }
 
 /// Every `fn` header in one file's (comment-stripped) text.
@@ -110,39 +178,30 @@ fn headers(src: &str) -> Vec<Header> {
         let is_proof = lead.split_whitespace().last() == Some("proof");
         let external_body = lead.contains("verifier::external_body");
         // The body's opening brace: the first `{` at paren depth 0 after the
-        // parameter list. `ensures ({ ... })` has its brace inside parens.
-        let mut depth: i32 = 0;
-        let mut seen_params = false;
-        let mut body = None;
-        let mut j = name_start + name.len();
-        while j < b.len() {
-            match b[j] {
-                b'(' => {
-                    depth += 1;
-                    seen_params = true;
-                }
-                b')' => depth -= 1,
-                b'{' if depth == 0 && seen_params => {
-                    body = Some(j);
-                    break;
-                }
-                b';' if depth == 0 => break, // a declaration without a body
-                _ => {}
-            }
-            j += 1;
-        }
+        // parameter list that is not an INNER block of a clause. Clauses contain
+        // blocks: `ensures ({ .. })` (inside parens), `x ==> { .. }`,
+        // `if c { .. } else { .. }`, `match r { .. }`. A first version took the
+        // first depth-0 `{` and so read `merge_left ==> {` in heap's requires as
+        // the body, losing the ensures (gale#462).
+        let body = find_body(b, name_start + name.len());
         let Some(bo) = body else {
             from = name_start;
             continue;
         };
         let header = &s[name_start..bo];
+        let params = header.find('(').and_then(|o| header.find(')').map(|c| header[o + 1..c].to_string())).unwrap_or_default();
+        let requires = match (header.find("requires"), header.find("ensures")) {
+            (Some(r), Some(e)) if r < e => header[r..e].to_string(),
+            (Some(r), _) => header[r..].to_string(),
+            _ => String::new(),
+        };
         let ensures = match header.find("ensures") {
             Some(k) => header[k + "ensures".len()..].split_whitespace().collect::<Vec<_>>().join(" "),
             None => String::new(),
         };
         let ensures = ensures.trim().trim_end_matches(',').trim().to_string();
         let empty_body = s[bo + 1..].trim_start().starts_with('}');
-        out.push(Header { name, is_proof, external_body, ensures, empty_body });
+        out.push(Header { name, params, requires, is_proof, external_body, ensures, empty_body });
         from = bo + 1;
     }
     out
@@ -189,6 +248,26 @@ fn vacuous_in(src: &str) -> Vec<String> {
     headers(src).into_iter().filter(is_vacuous).map(|h| h.name).collect()
 }
 
+/// P1, checked structurally instead of by a lemma (gale#462). In a module whose
+/// state has an invariant, every operation that takes `&mut self` must
+/// `require old(self).inv()` and `ensure self.inv()` -- Verus then proves P1
+/// operation by operation. The 23 `lemma_invariant_inductive` stubs only
+/// restated that in comments; this catches the real failure, an operation
+/// added (or edited) without the clauses. External-body ops are excluded:
+/// their contracts are assumed, and the `assumed:` ledger tracks them.
+fn p1_gaps(stem: &str, src: &str) -> Vec<String> {
+    if !strip_comments(src).contains("spec fn inv(&self)") {
+        return Vec::new();
+    }
+    headers(src)
+        .into_iter()
+        .filter(|h| !h.is_proof && !h.external_body && h.params.contains("&mut self"))
+        // `inv(..)` with arguments counts: zms's invariant is parameterised.
+        .filter(|h| !(h.requires.contains("old(self).inv(") && h.ensures.contains("self.inv(")))
+        .map(|h| format!("p1:{stem}::{}", h.name))
+        .collect()
+}
+
 fn census(repo: &Path) -> Result<BTreeSet<String>, String> {
     let dir = repo.join("src");
     let rd = std::fs::read_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -202,6 +281,9 @@ fn census(repo: &Path) -> Result<BTreeSet<String>, String> {
         let stem = f.file_stem().unwrap().to_string_lossy().to_string();
         let t = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
         for k in classify(&stem, &t) {
+            set.insert(k);
+        }
+        for k in p1_gaps(&stem, &t) {
             set.insert(k);
         }
     }
@@ -230,9 +312,11 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
     let gone: Vec<&String> = led.difference(&found).collect();
     let nv = found.iter().filter(|k| k.starts_with("vacuous:")).count();
     let na = found.iter().filter(|k| k.starts_with("assumed:")).count();
+    let np = found.iter().filter(|k| k.starts_with("p1:")).count();
     let mut lines = vec![format!(
         "{nv} vacuous proof fn(s) (ensures `true`/absent, empty body) and {na} assumed \
-         contract(s) (external_body with an ensures) in src/; ledger holds {}",
+         contract(s) (external_body with an ensures), {np} &mut-self op(s) not carrying inv \
+         in src/; ledger holds {}",
         led.len()
     )];
     if new.is_empty() && gone.is_empty() {
@@ -242,7 +326,13 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
     for n in &new {
         lines.push(format!(
             "FAIL: {n} is not on the ledger -- {}",
-            if n.starts_with("assumed:") { "prove its contract instead of assuming it" } else { "state its property" }
+            if n.starts_with("assumed:") {
+                "prove its contract instead of assuming it"
+            } else if n.starts_with("p1:") {
+                "require old(self).inv() and ensure self.inv()"
+            } else {
+                "state its property"
+            }
         ));
     }
     for g in &gone {
@@ -294,6 +384,15 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     let ok = "pub fn op2(x: u32) -> (r: u32) ensures r == x, { x }\nfn later() {}\n";
     ck("a checked exec fn is neither", classify("m", ok).is_empty());
     let twin = "#[verifier::external_body]\npub fn new() -> (r: u32) ensures r == 0, { 0 }\n}\n#[verifier::external_body]\npub fn new() -> (r: u32) ensures r == 1, { 1 }\n";
+    let inv_mod = "spec fn inv(&self) -> bool { self.x < 5 }\npub fn good(&mut self) requires old(self).inv(), ensures self.inv(), { }\npub fn bad(&mut self) requires old(self).inv(), ensures self.x == 0, { }\npub fn reader(&self) -> (r: u32) ensures r == 0, { 0 }\n";
+    ck("P1: an &mut op without `ensures self.inv()` is a gap", p1_gaps("m", inv_mod) == ["p1:m::bad"]);
+    ck("P1: no inv in the module, no obligation", p1_gaps("m", "pub fn f(&mut self) { }\n").is_empty());
+    let inner = "pub fn c(&mut self, m: bool) requires old(self).inv(), m ==> { if m { true } else { false } }, ensures self.inv(), match r { Ok(x) => { x > 0 }, Err(e) => { e < 0 } }, { }\nspec fn inv(&self) -> bool { true }\n";
+    ck("inner `==> {`, `if {} else {}` and `match {}` blocks are not the body", p1_gaps("m", inner).is_empty());
+    ck("a parenthesised struct literal in ensures is not the body",
+        vacuous_in("proof fn s() ensures (S { a: 1 }).a == 1, {}").is_empty());
+    ck("an uppercase return type is followed by the real body",
+        classify("m", "pub open spec fn st(self) -> State { State::A }\n#[verifier::external_body]\npub fn d(v: bool) -> (r: i32) ensures v ==> r == 0, { 0 }\n") == ["assumed:m::d"]);
     ck("a duplicated name yields two distinct keys", classify("m", twin) == ["assumed:m::new", "assumed:m::new#2"]);
     let attr_other = "#[verifier::external_body]\npub fn a1() ensures true, {}\n}\npub fn a2(x: u32) -> (r: u32) ensures r == x, { x }\n";
     ck("external_body does not leak past an item boundary", classify("m", attr_other).is_empty());

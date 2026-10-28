@@ -190,19 +190,10 @@ impl Event {
 // Compositional proofs
 // ======================================================================
 
-/// EV7: invariant is inductive across all operations.
-/// The ensures clauses on all operations already prove this; this lemma
-/// documents the property.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv (from init's ensures)
-        // post preserves inv (from post's ensures)
-        // set preserves inv (from set's ensures)
-        // set_masked preserves inv (from set_masked's ensures)
-        // clear preserves inv (from clear's ensures)
-        true,
-{
-}
+// P1 (inv is inductive): no lemma here -- this module's inv() is `true` by
+// definition, so there is nothing to preserve (gale#462; the stub that stood
+// here was `ensures true`).
+
 
 /// EV8: post is monotonic — it never clears bits.
 /// After posting, every bit that was set before is still set.

@@ -216,19 +216,10 @@ impl Timer {
 // Compositional proofs
 // ======================================================================
 
-/// TM1/TM2/TM3/TM4: invariant is inductive across all operations.
-/// The ensures clauses on all functions already prove this; this lemma
-/// documents the property.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv (from init's ensures)
-        // start preserves inv (from start's ensures)
-        // stop preserves inv (from stop's ensures)
-        // expire preserves inv (from expire's ensures)
-        // status_get preserves inv (from status_get's ensures)
-        true,
-{
-}
+// P1 (inv is inductive): no lemma here -- this module's inv() is `true` by
+// definition, so there is nothing to preserve (gale#462; the stub that stood
+// here was `ensures true`).
+
 
 /// TM2+TM5: expire then status_get roundtrip.
 /// After N expiries from status 0, status_get returns N and resets to 0.

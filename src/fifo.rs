@@ -248,17 +248,12 @@ impl Fifo {
 // Compositional proofs
 // ======================================================================
 
-/// FI1/FI5: invariant is inductive across all operations.
-/// The ensures clauses on put/get already prove this; this lemma
-/// documents the property.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv (from init's ensures)
-        // put preserves inv (from put's ensures)
-        // get preserves inv (from get's ensures)
-        true,
-{
-}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// FI2+FI3: put then get returns to original count.
 pub proof fn lemma_put_get_roundtrip(count: u32)

@@ -453,10 +453,12 @@ pub proof fn lemma_advance_monotonic(level: u8)
     ensures level + 1 > level as int,
 {}
 
-/// Invariant is inductive across all operations.
-pub proof fn lemma_invariant_inductive()
-    ensures true,
-{}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// Level ordering roundtrip: from_u8(to_u8(level)) == level.
 /// Each level's to_u8 value is its ordinal; from_u8 maps back.

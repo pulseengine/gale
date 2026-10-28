@@ -382,6 +382,9 @@ impl ZmsSector {
         requires
             old(self).inv(1), // any ate_size > 0, using 1 as minimal witness
         ensures
+            // P1 (gale#462): the invariant survives -- it was required and never
+            // re-established, so a caller lost it after every call.
+            self.inv(1),
             // ZMS5: cycle_cnt has changed
             self.cycle_cnt != old(self).cycle_cnt || old(self).cycle_cnt == close_cycle,
             // cycle_cnt is the incremented value (possibly +2 on collision)

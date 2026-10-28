@@ -680,19 +680,12 @@ impl Heap {
 // Compositional proofs
 // ======================================================================
 
-/// HP1/HP2: invariant is inductive across all operations.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv (from init's ensures)
-        // alloc preserves inv (from alloc's ensures)
-        // free preserves inv (from free's ensures)
-        // split preserves inv (from split's ensures)
-        // merge preserves inv (from merge's ensures)
-        // coalesce_free preserves inv (from coalesce_free's ensures)
-        // realloc preserves inv (from realloc's ensures)
-        true,
-{
-}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// HP2: conservation — free + used == total.
 pub proof fn lemma_chunk_conservation(free_chunks: u32, total_chunks: u32)
