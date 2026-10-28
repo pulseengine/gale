@@ -21,6 +21,7 @@ jobs:
   rust-coverage:
     name: Rust Coverage
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
@@ -57,6 +58,7 @@ jobs:
   zephyr-coverage:
     name: Zephyr C Coverage
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       options: --user root --volume /mnt:/mnt
@@ -72,7 +74,15 @@ jobs:
 
       - name: Install Rust + ARM target
         run: |
-          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
+          # `A && B` does not stop `sh -e` when A fails (only an and-or list's LAST
+          # command is checked), so a failed apt-get update once skipped the curl
+          # install silently and the job died 5 min later as "rustup download failed"
+          # with `curl: not found` (#450 CI, 2026-10-21). Retry the transient mirror
+          # failure, then fail LOUDLY; and prove curl exists before anything needs it.
+          _u=0; for _a in 1 2 3; do if apt-get update -qq; then _u=1; break; fi; sleep 10; done
+          [ "$_u" = 1 ] || { echo "::error::apt-get update failed after 3 attempts" >&2; exit 1; }
+          apt-get install -y -qq curl > /dev/null
+          command -v curl > /dev/null || { echo "::error::curl is not installed" >&2; exit 1; }
           # RETRY, POSIX-sh SAFE (gale#289).
           #
           # Two defects here. (1) Unretried: one transient fetch killed the job.
@@ -232,6 +242,7 @@ jobs:
     # is to be compared, and it will likely surface failures gale's
     # replacements cause under the wider kernel test selection.
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     container:
       image: ghcr.io/zephyrproject-rtos/ci-base:v0.29.0
       options: --user root --volume /mnt:/mnt
@@ -247,7 +258,15 @@ jobs:
 
       - name: Install Rust + ARM target
         run: |
-          apt-get update -qq && apt-get install -y -qq curl > /dev/null 2>&1
+          # `A && B` does not stop `sh -e` when A fails (only an and-or list's LAST
+          # command is checked), so a failed apt-get update once skipped the curl
+          # install silently and the job died 5 min later as "rustup download failed"
+          # with `curl: not found` (#450 CI, 2026-10-21). Retry the transient mirror
+          # failure, then fail LOUDLY; and prove curl exists before anything needs it.
+          _u=0; for _a in 1 2 3; do if apt-get update -qq; then _u=1; break; fi; sleep 10; done
+          [ "$_u" = 1 ] || { echo "::error::apt-get update failed after 3 attempts" >&2; exit 1; }
+          apt-get install -y -qq curl > /dev/null
+          command -v curl > /dev/null || { echo "::error::curl is not installed" >&2; exit 1; }
           # RETRY, POSIX-sh SAFE (gale#289).
           #
           # Two defects here. (1) Unretried: one transient fetch killed the job.
@@ -391,6 +410,7 @@ jobs:
     # always(): the delta is most valuable exactly when one leg went red.
     if: always()
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
