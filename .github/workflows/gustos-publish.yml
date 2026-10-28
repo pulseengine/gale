@@ -121,8 +121,8 @@ jobs:
       packages: write     # ghcr OCI push
       id-token: write     # cosign keyless OIDC
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: wasm32-unknown-unknown
       - name: Install wasm-tools + wkg
@@ -130,7 +130,7 @@ jobs:
           cargo install wasm-tools --version 1.245.1 --locked
           cargo install wac-cli --version 0.10.1 --locked
           cargo install wkg --locked
-      - uses: sigstore/cosign-installer@v3
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
         with:
           cosign-release: 'v2.4.1'
       - name: Build + verify components
