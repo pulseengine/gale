@@ -92,7 +92,8 @@ happens._
 
 Re-flashed the **same committed object** (`gust_mix-esp32c3.o`, md5
 `d3526178…` — still the synth 0.40.0 dissolve) to the same ESP32-C3 rev v0.4 and
-captured a full boot-to-result run: `esp32c3-run-20260804.log`.
+captured a full boot-to-result run: `esp32c3-run-20260804.log`. (The chip MAC in its header was
+later replaced with `<redacted-mac>`; nothing else in the log was changed.)
 
     gust-esp32c3: RISC-V (ESP32-C3, systimer) — native (LLVM) vs dissolved (synth) gust_mix
     # correctness: IDENTICAL ok over [0,2047]

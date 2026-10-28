@@ -5,7 +5,7 @@ public
   -- NUCLEO-WB55RG — STM32WB55RG, application core Cortex-M4F r0p1 (CPUID 0x410fc241,
   -- DBGMCU 0x20036495). The radio core (M0+) and its firmware are not modelled.
   -- Every value below was MEASURED over the board's own debug probe on the shared
-  -- bench host (wohl.local, 2026-09-16, gale#397) unless it says otherwise.
+  -- bench host (2026-09-16, gale#397) unless it says otherwise.
   -- FPU present: MVFR0 reads 0x10110021 (single precision). gust builds soft-float.
   memory Flag_Flash end Flag_Flash;
   memory implementation Flag_Flash.i

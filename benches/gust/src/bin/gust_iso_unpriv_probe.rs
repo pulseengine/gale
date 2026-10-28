@@ -63,7 +63,7 @@ pub extern "C" fn mpu_write(rnr: u32, rbar: u32, rasr: u32) {
     }
 }
 
-// The wohl.local boards (gale#397) take their memory map from the GENERATED target
+// The shared-bench boards (gale#397) take their memory map from the GENERATED target
 // constants — measured on each board — instead of a hand-written per-board cfg arm.
 #[cfg(feature = "target-wl55jc")]
 #[path = "../../targets/generated/gust_target_stm32wl55.rs"]

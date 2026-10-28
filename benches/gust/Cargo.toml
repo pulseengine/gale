@@ -49,7 +49,7 @@ priv-shared = []
 default = ["target-g474re"]
 target-g474re = []
 target-f100 = []
-# The shared bench on wohl.local (gale#397). Each model is measured on its board:
+# The shared bench host (gale#397). Each model is measured on its board:
 # targets/stm32wl55.aadl, stm32wb55.aadl, stm32g031.aadl.
 #   wl55jc / wb55rg : Cortex-M4, --target thumbv7em-none-eabi
 #   g031k8          : Cortex-M0+, --target thumbv6m-none-eabi — native Rust only; no

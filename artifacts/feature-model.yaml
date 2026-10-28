@@ -11,8 +11,8 @@
 # Status: PROTOTYPE. Only 3-5 representative primitives are included; the
 # full 33-primitive tree would enumerate every `CONFIG_GALE_KERNEL_*`.
 #
-# Schema reference: /Users/r/git/pulseengine/rivet/docs/feature-model-schema.md
-#                   /Users/r/git/pulseengine/rivet/docs/feature-model-bindings.md
+# Schema reference: <rivet checkout>/docs/feature-model-schema.md
+#                   <rivet checkout>/docs/feature-model-bindings.md
 
 kind: feature-model
 root: gale

@@ -15,9 +15,9 @@
 
 set -euo pipefail
 
-: "${ZEPHYR_WORKSPACE:=/Users/r/git/pulseengine/z}"
+: "${ZEPHYR_WORKSPACE:=$HOME/git/pulseengine/z}"
 : "${ZEPHYR_BASE:=${ZEPHYR_WORKSPACE}/zephyr}"
-: "${ZEPHYR_SDK_INSTALL_DIR:=/Users/r/zephyr-sdk-1.0.1}"
+: "${ZEPHYR_SDK_INSTALL_DIR:=$HOME/zephyr-sdk-1.0.1}"
 : "${GALE_ROOT:=${ZEPHYR_WORKSPACE}/gale}"
 : "${BUILD_ROOT:=/tmp}"
 : "${BOARD:=qemu_cortex_m3}"

@@ -2,7 +2,7 @@ Chip type:         esp32c3 (revision v0.4)
 Crystal frequency: 40 MHz
 Flash size:        4MB
 Features:          WiFi, BLE
-MAC address:       34:85:18:01:d7:10
+MAC address:       <redacted-mac>
 App/part. size:    74,064/4,128,768 bytes, 1.79%
 ESP-ROM:esp32c3-api1-20210207
 Build:Feb  7 2021
