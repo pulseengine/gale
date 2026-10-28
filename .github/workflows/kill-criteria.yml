@@ -259,6 +259,25 @@ jobs:
       - name: The archive builds twice identically, and alone
         run: cargo xtask check zephyr-module-archive
 
+  vacuous-lemmas:
+    name: "no proof fn proves nothing, and no new contract is assumed"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # gale#462: 117 proof fns had `ensures true` (or none) and an empty body --
+      # the property written as COMMENTS -- and 98 functions were
+      # `#[verifier::external_body]` with an ensures Verus assumes rather than
+      # proves. Ratcheted, not rewritten: the ledger fails in both directions, so
+      # a new one fails and a repaired one must leave the ledger. The self-test
+      # carries the reported shape verbatim (prose comments above `true`).
+      - name: Negative control -- the scanner must catch the reported shape
+        run: cargo xtask check vacuous-lemmas --self-test
+
+      - name: Vacuous and assumed proofs only ever decrease
+        run: cargo xtask check vacuous-lemmas
+
   data-overlap:
     name: "fused data segments are disjoint (gale#266)"
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
