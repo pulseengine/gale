@@ -14,6 +14,7 @@ pub mod proof_completeness;
 pub mod providers;
 pub mod renode_targets;
 pub mod retry_loops;
+pub mod vacuous_lemmas;
 pub mod wit_resolve;
 
 use crate::verdict::Verdict;
@@ -98,6 +99,12 @@ pub const GATES: &[Gate] = &[
         about: "no CI retry loop can swallow its own failure",
         run: retry_loops::run,
         self_test: retry_loops::self_test,
+    },
+    Gate {
+        name: vacuous_lemmas::NAME,
+        about: "no proof fn proves nothing (ratchet over a ledger, gale#462)",
+        run: vacuous_lemmas::run,
+        self_test: vacuous_lemmas::self_test,
     },
     Gate {
         name: wit_resolve::NAME,
