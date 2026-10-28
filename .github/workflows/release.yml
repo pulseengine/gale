@@ -228,6 +228,19 @@ jobs:
           cp "$SBOM_SRC" "release-assets/gale-${BARE}.cdx.json"
           ls -la release-assets/
 
+      # gale#463: the Zephyr module source as a deterministic archive, built
+      # BEFORE SHA256SUMS so the cosign signature covers it. `xtask check
+      # zephyr-module-archive` gates reproducibility and self-containment on
+      # every PR; this step only produces it from the tagged commit.
+      - name: Build the Zephyr module archive
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION="${INPUT_TAG:-${GITHUB_REF#refs/tags/}}"
+          bash scripts/zephyr-module-archive.sh "${VERSION#v}" release-assets
+          ls -la release-assets/gale-zephyr-module-*.tar.gz
+
       - name: Generate SHA256 checksums
         run: |
           set -euo pipefail
@@ -238,7 +251,11 @@ jobs:
       - name: Generate SLSA build provenance
         uses: actions/attest-build-provenance@v4
         with:
-          subject-path: "release-assets/gale-wasm-*-cortex-m4f.o"
+          # The module archive is a subject too: #463 assumed "the existing
+          # provenance covers it", but the subjects were the .o files only.
+          subject-path: |
+            release-assets/gale-wasm-*-cortex-m4f.o
+            release-assets/gale-zephyr-module-*.tar.gz
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3

@@ -140,14 +140,18 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
     } else {
         lines.push("reproducible: two builds byte-identical".into());
     }
-    match std::fs::read_to_string(repo.join("zephyr/module.yml")) {
-        Ok(t) if names_gale(&t) => lines.push("named: zephyr/module.yml declares `name: gale`".into()),
-        Ok(_) => fail.push("zephyr/module.yml has no top-level `name: gale`".into()),
-        Err(e) => return Verdict::Refused(format!("zephyr/module.yml: {e}")),
-    }
     match builds_standalone(&a, &x_dir) {
         Ok(()) => lines.push("self-contained: ffi builds from the extracted archive alone".into()),
         Err(e) => fail.push(format!("NOT SELF-CONTAINED: the extracted archive does not build: {e}")),
+    }
+    // The name is read from the ARCHIVE, not the working tree: the archive is
+    // built from the commit, and it is what a consumer receives. (A first draft
+    // read the working tree and passed with the fix still uncommitted.)
+    let shipped = x_dir.join(format!("gale-zephyr-module-{VERSION}/zephyr/module.yml"));
+    match std::fs::read_to_string(&shipped) {
+        Ok(t) if names_gale(&t) => lines.push("named: the archived zephyr/module.yml declares `name: gale`".into()),
+        Ok(_) => fail.push("the archived zephyr/module.yml has no top-level `name: gale`".into()),
+        Err(e) => return Verdict::Refused(format!("archived module.yml: {e}")),
     }
 
     if fail.is_empty() {
