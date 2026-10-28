@@ -1,8 +1,8 @@
 # Gale
 
-**Gale is a formally-verified Rust reimplementation of the Zephyr RTOS kernel
-primitives** — semaphores, mutexes, queues, scheduler, and more — aimed at ASIL-D
-safety-critical embedded. The same primitives also compile to WebAssembly and
+**Gale is a Rust reimplementation of the Zephyr RTOS kernel primitives, with
+machine-checked proofs on its source** — semaphores, mutexes, queues, scheduler,
+and more — aimed at ASIL-D safety-critical embedded. The same primitives also compile to WebAssembly and
 *dissolve* to bare-metal native code (no runtime ships): that's **gust**, gale's
 smallest mini-OS, which runs on a tiny trusted native shim (just the mmio + irq
 capability). Verification runs on three independent engines — Verus (SMT/Z3), Rocq,
@@ -28,7 +28,7 @@ base, the native code you must trust.</sub>
 [![Fuzz Smoke](https://github.com/pulseengine/gale/actions/workflows/fuzz-smoke.yml/badge.svg)](https://github.com/pulseengine/gale/actions/workflows/fuzz-smoke.yml)
 [![Nightly](https://github.com/pulseengine/gale/actions/workflows/nightly.yml/badge.svg)](https://github.com/pulseengine/gale/actions/workflows/nightly.yml)
 
-Formally verified Rust replacement for Zephyr RTOS kernel primitives. ASIL-D targeted, triple-track verification: Verus (SMT/Z3) + Rocq (theorem proving) + Lean (scheduler/priority proofs).
+Rust replacement for Zephyr RTOS kernel primitives, ASIL-D targeted (not certified). Proofs are on the source: Verus (SMT/Z3) contracts on 39 modules, 10 fully proven Rocq files over abstract models, Lean for scheduling theory. A green formal-verification run certifies the checked subset, not total proof; the limits are below.
 
 > **Honest reading of "formally verified"** (full claims ledger:
 > [docs/safety/verification-honesty.md](docs/safety/verification-honesty.md)):
@@ -43,7 +43,7 @@ Formally verified Rust replacement for Zephyr RTOS kernel primitives. ASIL-D tar
 > translation-validation yet, so "end-to-end verified pipeline" is not claimed. The
 > engineering below is real; these bounds are what make each claim defensible.
 
-Part of the [PulseEngine](https://github.com/pulseengine) toolchain.
+Part of the [PulseEngine](https://github.com/pulseengine) WebAssembly Component Model engine.
 
 ## Modules
 
