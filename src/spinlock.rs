@@ -77,6 +77,45 @@ impl SpinlockState {
         self.owner.is_none()
     }
 
+    /// acquire's contract as a spec fn (gale#462): acquire `ensures` it and the
+    /// lemmas `require` it, so they cannot drift apart.
+    pub open spec fn acquire_post(pre: SpinlockState, post: SpinlockState, tid: u32, rc: i32) -> bool {
+        &&& pre.owner.is_none() ==> {
+            &&& rc == OK
+            &&& post.owner == Some(tid)
+            &&& post.nest_count == 1
+            &&& post.irq_saved
+        }
+        &&& pre.owner.is_some() ==> {
+            &&& rc == EBUSY
+            &&& post.owner == pre.owner
+            &&& post.nest_count == pre.nest_count
+            &&& post.irq_saved == pre.irq_saved
+        }
+    }
+
+    /// release's contract as a spec fn.
+    pub open spec fn release_post(pre: SpinlockState, post: SpinlockState, tid: u32, rc: i32) -> bool {
+        &&& pre.owner != Some(tid) ==> {
+            &&& rc == EPERM
+            &&& post.owner == pre.owner
+            &&& post.nest_count == pre.nest_count
+            &&& post.irq_saved == pre.irq_saved
+        }
+        &&& pre.owner == Some(tid) && pre.nest_count == 1 ==> {
+            &&& rc == OK
+            &&& post.owner.is_none()
+            &&& post.nest_count == 0
+            &&& !post.irq_saved
+        }
+        &&& pre.owner == Some(tid) && pre.nest_count > 1 ==> {
+            &&& rc == OK
+            &&& post.owner == pre.owner
+            &&& post.nest_count == pre.nest_count - 1
+            &&& post.irq_saved == pre.irq_saved
+        }
+    }
+
     // ------------------------------------------------------------------
     // Operations
     // ------------------------------------------------------------------
@@ -113,6 +152,7 @@ impl SpinlockState {
         requires
             self.inv(),
         ensures
+            valid == self.owner.is_none(),
             // SL1: free lock -> valid
             self.owner.is_none() ==> valid,
             // SL5: held by same owner -> invalid (no nesting through this path)
@@ -135,20 +175,7 @@ impl SpinlockState {
             old(self).inv(),
         ensures
             self.inv(),
-            // SL1: free -> acquired, nest_count = 1
-            old(self).owner.is_none() ==> {
-                &&& rc == OK
-                &&& self.owner == Some(tid)
-                &&& self.nest_count == 1
-                &&& self.irq_saved
-            },
-            // Already held -> error, state unchanged
-            old(self).owner.is_some() ==> {
-                &&& rc == EBUSY
-                &&& self.owner == old(self).owner
-                &&& self.nest_count == old(self).nest_count
-                &&& self.irq_saved == old(self).irq_saved
-            },
+            Self::acquire_post(*old(self), *self, tid, rc),
     {
         if self.owner.is_some() {
             EBUSY
@@ -233,27 +260,7 @@ impl SpinlockState {
             old(self).inv(),
         ensures
             self.inv(),
-            // SL2: not the owner -> error, unchanged
-            old(self).owner != Some(tid) ==> {
-                &&& rc == EPERM
-                &&& self.owner == old(self).owner
-                &&& self.nest_count == old(self).nest_count
-                &&& self.irq_saved == old(self).irq_saved
-            },
-            // SL4: last release (nest_count was 1) -> fully unlocked
-            old(self).owner == Some(tid) && old(self).nest_count == 1 ==> {
-                &&& rc == OK
-                &&& self.owner.is_none()
-                &&& self.nest_count == 0
-                &&& !self.irq_saved
-            },
-            // SL3: nested release (nest_count > 1) -> decremented but still held
-            old(self).owner == Some(tid) && old(self).nest_count > 1 ==> {
-                &&& rc == OK
-                &&& self.owner == old(self).owner
-                &&& self.nest_count == old(self).nest_count - 1
-                &&& self.irq_saved == old(self).irq_saved
-            },
+            Self::release_post(*old(self), *self, tid, rc),
     {
         match self.owner {
             None => {
@@ -337,14 +344,21 @@ pub proof fn lemma_invariant_inductive()
 {
 }
 
-/// SL1: acquire-release roundtrip returns to unlocked state.
-pub proof fn lemma_acquire_release_roundtrip()
+/// SL1: acquire then release by the same thread returns a free lock to free --
+/// unowned, depth 0, IRQ state restored -- and both calls succeed.
+pub proof fn lemma_acquire_release_roundtrip(
+    a: SpinlockState, b: SpinlockState, c: SpinlockState, tid: u32, r1: i32, r2: i32,
+)
+    requires
+        a.owner.is_none(),
+        SpinlockState::acquire_post(a, b, tid, r1),
+        SpinlockState::release_post(b, c, tid, r2),
     ensures
-        // After init: owner=None, nest=0
-        // After acquire(tid): owner=Some(tid), nest=1
-        // After release(tid): owner=None, nest=0
-        // Net effect: back to init state.
-        true,
+        r1 == OK,
+        r2 == OK,
+        c.owner.is_none(),
+        c.nest_count == 0,
+        !c.irq_saved,
 {
 }
 
@@ -376,12 +390,19 @@ pub proof fn lemma_n_acquires_n_releases(n: u32)
 {
 }
 
-/// SL5: double-acquire without nesting is rejected.
-pub proof fn lemma_double_acquire_rejected()
+/// SL5: a thread re-acquiring a lock it already holds through the
+/// non-recursive path is rejected with EBUSY, and the lock is left exactly as
+/// it was. acquire_check refuses it too.
+pub proof fn lemma_double_acquire_rejected(a: SpinlockState, b: SpinlockState, tid: u32, rc: i32)
+    requires
+        a.owner == Some(tid),
+        SpinlockState::acquire_post(a, b, tid, rc),
     ensures
-        // acquire(tid) on a lock already held by tid returns EBUSY.
-        // The acquire_check returns false when owner == Some(tid).
-        true,
+        rc == EBUSY,
+        b.owner == a.owner,
+        b.nest_count == a.nest_count,
+        b.irq_saved == a.irq_saved,
+        !a.owner.is_none(),
 {
 }
 

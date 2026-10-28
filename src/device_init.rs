@@ -188,6 +188,29 @@ impl DeviceInitState {
         &&& self.total_devices <= MAX_DEVICES
     }
 
+    /// init_device's contract as a spec fn (gale#462): init_device `ensures`
+    /// it and lemma_no_double_init `requires` it.
+    pub open spec fn init_device_post(
+        pre: DeviceInitState, post: DeviceInitState,
+        dpre: DeviceEntry, dpost: DeviceEntry, rc: i32,
+    ) -> bool {
+        &&& post.total_devices == pre.total_devices
+        &&& dpre.initialized ==> {
+            &&& rc == EBUSY
+            &&& dpost.initialized == dpre.initialized
+            &&& post.num_initialized == pre.num_initialized
+        }
+        &&& !dpre.initialized && dpre.level.to_u8_spec() < pre.current_level ==> {
+            &&& rc == EINVAL
+            &&& post.num_initialized == pre.num_initialized
+        }
+        &&& !dpre.initialized && dpre.level.to_u8_spec() >= pre.current_level
+            && pre.num_initialized < pre.total_devices ==> {
+            &&& dpost.initialized == true
+            &&& post.num_initialized == pre.num_initialized + 1
+        }
+    }
+
     // ------------------------------------------------------------------
     // Operations
     // ------------------------------------------------------------------
@@ -250,6 +273,7 @@ impl DeviceInitState {
                 &&& dev.initialized == true
                 &&& self.num_initialized == old(self).num_initialized + 1
             },
+            Self::init_device_post(*old(self), *self, *old(dev), *dev, rc),
     {
         // DI5: no double-init
         if dev.initialized {
@@ -407,13 +431,20 @@ pub proof fn lemma_level_codes_complete()
         true,
 {}
 
-/// DI5: double-init is rejected.
-/// A device that is already initialized cannot be initialized again.
-pub proof fn lemma_no_double_init()
+/// DI5: once a device has been initialized, a second init_device on it is
+/// rejected with EBUSY, leaves it initialized, and does not count it twice.
+pub proof fn lemma_no_double_init(
+    s0: DeviceInitState, s1: DeviceInitState, s2: DeviceInitState,
+    d0: DeviceEntry, d1: DeviceEntry, d2: DeviceEntry, r1: i32, r2: i32,
+)
+    requires
+        DeviceInitState::init_device_post(s0, s1, d0, d1, r1),
+        DeviceInitState::init_device_post(s1, s2, d1, d2, r2),
+        d1.initialized,
     ensures
-        // Demonstrated by the init_device ensures clause:
-        // old(dev).initialized ==> rc == EBUSY
-        true,
+        r2 == EBUSY,
+        d2.initialized,
+        s2.num_initialized == s1.num_initialized,
 {}
 
 /// DI1: advance_level is monotonically increasing.
@@ -436,11 +467,14 @@ pub proof fn lemma_level_roundtrip()
         true,
 {}
 
-/// Device readiness requires both initialized and zero error.
-pub proof fn lemma_ready_requires_success()
+/// A device whose init failed (non-zero init_res) is not ready, even though it
+/// is marked initialized.
+pub proof fn lemma_ready_requires_success(d: DeviceEntry)
+    requires
+        d.initialized,
+        d.init_res != 0,
     ensures
-        // A device with init_res != 0 is not ready even if initialized
-        true,
+        !d.is_ready_spec(),
 {}
 
 } // verus!
