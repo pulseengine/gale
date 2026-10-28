@@ -109,11 +109,6 @@ vacuous:device_init::lemma_no_double_init
 vacuous:device_init::lemma_ready_requires_success
 vacuous:dynamic::lemma_invariant_inductive
 vacuous:event::lemma_invariant_inductive
-vacuous:fatal::lemma_panic_halts
-vacuous:fatal::lemma_stack_check_always_abort
-vacuous:fatal::lemma_test_mode_permissive
-vacuous:fatal::lemma_thread_faults_recoverable
-vacuous:fatal::lemma_valid_codes_map
 vacuous:fifo::lemma_invariant_inductive
 vacuous:futex::lemma_wait_gating_condition
 vacuous:futex::lemma_wait_wake_roundtrip
