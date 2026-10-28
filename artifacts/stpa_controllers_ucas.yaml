@@ -265,14 +265,7 @@ artifacts:
     type: uca
     title: Fatal handler returns Ignore for KernelPanic in test-mode ISR
     status: approved
-    description: >
-      FatalError::classify (src/fatal.rs:172) returns Ignore for the
-      input (KernelPanic, Isr, test_mode=true), violating the documented
-      FT2 invariant "panics always halt". The `ensures` weakens FT2 to
-      !test_mode and `lemma_panic_halts` is an `ensures true` stub, so
-      the oracle doesn't flag the regression; the differential test
-      replicates the bug on the FFI side, so cross-checking also passes.
-      Confirmed 2026-04-21 (findings/fatal.md).
+    description: "FatalError::classify (src/fatal.rs:172) returns Ignore for the input (KernelPanic, Isr, test_mode=true), violating the documented FT2 invariant \"panics always halt\". The `ensures` weakens FT2 to !test_mode and `lemma_panic_halts` is an `ensures true` stub, so the oracle doesn't flag the regression; the differential test replicates the bug on the FFI side, so cross-checking also passes. Confirmed 2026-04-21 (findings/fatal.md). UPDATE 2026-10-28 (gale#462): lemma_panic_halts is no longer a stub -- it requires e.reason === KernelPanic and ensures e.classify_spec() === Halt, for every context and both modes; classify now ensures result === self.classify_spec() (its whole decision), and a mutation making a test-mode thread fault halt is rejected by Verus where the old contract let it through."
     tags: [stpa, uca, fatal, mythos-2026-04-21]
     links:
       - type: issued-by
@@ -959,12 +952,7 @@ artifacts:
     type: controller-constraint
     title: Fatal handler must halt on KernelPanic regardless of test-mode
     status: approved
-    description: >
-      The fatal handler (C-6) MUST return Halt (never Ignore) for every
-      KernelPanic, in every context (Thread or ISR), irrespective of the
-      ZTEST test-mode flag. FatalError::classify (src/fatal.rs:172) must
-      enforce FT2 unconditionally, and lemma_panic_halts must carry a
-      non-trivial `ensures` that proves the Halt outcome.
+    description: "The fatal handler (C-6) MUST return Halt (never Ignore) for every KernelPanic, in every context (Thread or ISR), irrespective of the ZTEST test-mode flag. FatalError::classify (src/fatal.rs:172) must enforce FT2 unconditionally, and lemma_panic_halts must carry a non-trivial `ensures` that proves the Halt outcome. UPDATE 2026-10-28 (gale#462): lemma_panic_halts is no longer a stub -- it requires e.reason === KernelPanic and ensures e.classify_spec() === Halt, for every context and both modes; classify now ensures result === self.classify_spec() (its whole decision), and a mutation making a test-mode thread fault halt is rejected by Verus where the old contract let it through."
     tags: [stpa, controller-constraint, fatal, mythos-2026-04-21]
     links:
       - type: constrains-controller
