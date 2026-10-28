@@ -198,17 +198,6 @@ vacuous:usage::lemma_stop_accumulates_on_nonzero
 vacuous:usage::lemma_stop_skips_on_zero
 vacuous:usage::lemma_sys_disable_idempotent
 vacuous:usage::lemma_sys_enable_idempotent
-vacuous:userspace::lemma_grant_idempotent
-vacuous:userspace::lemma_grant_revoke_roundtrip
-vacuous:userspace::lemma_grant_then_check
-vacuous:userspace::lemma_invariant_inductive
-vacuous:userspace::lemma_new_no_perms
-vacuous:userspace::lemma_recycle_single_perm
-vacuous:userspace::lemma_revoke_idempotent
-vacuous:userspace::lemma_revoke_then_check
-vacuous:userspace::lemma_supervisor_always_granted
-vacuous:userspace::lemma_type_mismatch_fails
-vacuous:userspace::lemma_uninit_fails_must_be_init
 vacuous:wait_queue::lemma_unpend_preserves_sorted
 vacuous:work::lemma_cancel_clears_queued
 vacuous:work::lemma_cancel_running_lifecycle
