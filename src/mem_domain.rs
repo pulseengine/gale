@@ -494,15 +494,12 @@ impl MemDomain {
 // Compositional proofs
 // ======================================================================
 
-/// MD1-MD6: invariant is inductive across all operations.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv (from init's ensures)
-        // add_partition preserves inv (from add_partition's ensures)
-        // remove_partition preserves inv (from remove_partition's ensures)
-        true,
-{
-}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// MD5: add then remove returns to equivalent state.
 pub proof fn lemma_add_remove_roundtrip(

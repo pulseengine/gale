@@ -245,17 +245,12 @@ impl TimeSlice {
 // Compositional proofs
 // ======================================================================
 
-/// TS1: invariant is inductive across all operations.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init_disabled establishes inv
-        // set_config preserves inv
-        // reset preserves inv
-        // tick preserves inv
-        // consume_expired preserves inv
-        true,
-{
-}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// TS2+TS3: reset then N ticks counts down from max.
 pub proof fn lemma_reset_then_tick(max_ticks: u32)

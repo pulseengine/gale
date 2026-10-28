@@ -333,16 +333,12 @@ impl SpinlockState {
 // Compositional proofs
 // ======================================================================
 
-/// SL1/SL2: invariant is inductive across all operations.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv (from init's ensures)
-        // acquire preserves inv (from acquire's ensures)
-        // acquire_nested preserves inv (from acquire_nested's ensures)
-        // release preserves inv (from release's ensures)
-        true,
-{
-}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// SL1: acquire then release by the same thread returns a free lock to free --
 /// unowned, depth 0, IRQ state restored -- and both calls succeed.

@@ -220,17 +220,12 @@ impl MemSlab {
 // Compositional proofs
 // ======================================================================
 
-/// MS1/MS2/MS3: invariant is inductive across all operations.
-/// The ensures clauses on alloc/free already prove this; this lemma
-/// documents the property.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv (from init's ensures)
-        // alloc preserves inv (from alloc's ensures)
-        // free preserves inv (from free's ensures)
-        true,
-{
-}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// MS4+MS6 roundtrip: alloc then free returns to original num_used.
 pub proof fn lemma_alloc_free_roundtrip(num_used: u32, num_blocks: u32)

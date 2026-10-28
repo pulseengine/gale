@@ -476,19 +476,12 @@ impl Semaphore {
 // Compositional proofs
 // =================================================================
 
-/// P1: The invariant is inductive across all operations.
-/// If inv() holds before any operation, it holds after.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv (from init's ensures)
-        // give preserves inv (from give's ensures)
-        // try_take preserves inv (from try_take's ensures)
-        // take_blocking preserves inv (from take_blocking's ensures)
-        // reset preserves inv (from reset's ensures)
-        // count_get preserves inv (read-only)
-        true,
-{
-}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// Give-take correspondence: give followed by try_take returns to original state.
 /// This is a key liveness property: resources given are acquirable.

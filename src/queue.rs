@@ -284,17 +284,10 @@ impl Queue {
 // Compositional proofs
 // ======================================================================
 
-/// QU1: count >= 0 is trivially true (u32).
-/// The invariant is inductive across all operations.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv
-        // append preserves inv
-        // prepend preserves inv
-        // get preserves inv
-        true,
-{
-}
+// P1 (inv is inductive): no lemma here -- this module's inv() is `true` by
+// definition, so there is nothing to preserve (gale#462; the stub that stood
+// here was `ensures true`).
+
 
 /// QU2/QU3: append and prepend both increment count.
 /// (Symmetric — both call queue_insert internally in Zephyr.)

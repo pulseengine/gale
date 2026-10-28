@@ -216,17 +216,12 @@ impl Stack {
 // Compositional proofs
 // ======================================================================
 
-/// SK1/SK2: invariant is inductive across all operations.
-/// The ensures clauses on push/pop already prove this; this lemma
-/// documents the property.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv (from init's ensures)
-        // push preserves inv (from push's ensures)
-        // pop preserves inv (from pop's ensures)
-        true,
-{
-}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// SK9: push then pop returns to original count.
 pub proof fn lemma_push_pop_roundtrip(count: u32, capacity: u32)

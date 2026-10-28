@@ -323,17 +323,12 @@ impl KHeap {
 // Compositional proofs
 // ======================================================================
 
-/// KH1: invariant is inductive across all operations.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv (from init's ensures)
-        // alloc preserves inv (from alloc's ensures)
-        // free preserves inv (from free's ensures)
-        // aligned_alloc preserves inv (from aligned_alloc's ensures)
-        // calloc preserves inv (from calloc's ensures)
-        true,
-{
-}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// KH2+KH4 roundtrip: alloc(n) then free(n) returns to original state.
 pub proof fn lemma_alloc_free_roundtrip(allocated: u32, capacity: u32, n: u32)

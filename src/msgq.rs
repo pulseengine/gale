@@ -591,17 +591,12 @@ impl MsgQ {
 // Compositional proofs
 // =================================================================
 
-/// MQ1-MQ4 are inductive: the invariant holds across all operations.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv
-        // put preserves inv
-        // put_front preserves inv
-        // get preserves inv
-        // purge preserves inv
-        true,
-{
-}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// Put-get roundtrip: put then get returns to original state.
 pub proof fn lemma_put_get_roundtrip(read_idx: u32, write_idx: u32,

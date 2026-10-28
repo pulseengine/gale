@@ -226,10 +226,12 @@ impl DynamicPool {
 // Compositional proofs
 // ======================================================================
 
-/// DY1: invariant is inductive across all operations.
-pub proof fn lemma_invariant_inductive()
-    ensures true,
-{}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// DY2+DY4: alloc then free returns to original state.
 pub proof fn lemma_alloc_free_roundtrip(active: u32, max_threads: u32)

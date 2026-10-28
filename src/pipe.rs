@@ -336,17 +336,12 @@ impl Pipe {
 // Compositional proofs
 // ======================================================================
 
-/// PP1/PP2: invariant is inductive across all operations.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv (from init's ensures)
-        // write_check preserves inv (from write_check's ensures)
-        // read_check preserves inv (from read_check's ensures)
-        // reset preserves inv (from reset's ensures)
-        // close preserves inv (from close's ensures)
-        true,
-{
-}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// PP9: write-read conservation: write N then read N returns to original used.
 pub proof fn lemma_write_read_roundtrip(used: u32, size: u32, n: u32)
