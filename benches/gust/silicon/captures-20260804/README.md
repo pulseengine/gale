@@ -69,3 +69,7 @@ state carried by the caller).
 Reproduce:
 
     arm-zephyr-eabi-size benches/gust/target/thumbv7m-none-eabi/release/gust_wdg_silicon
+
+The probe serial in the `g474-wdg.log` header lines and the chip MAC in `esp32c3-gust-mix.log`
+were replaced with `<redacted-serial>` / `<redacted-mac>`
+after capture. Nothing else in the logs was changed.

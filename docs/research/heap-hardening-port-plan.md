@@ -6,8 +6,8 @@
 
 ## 1. Upstream feature inventory
 
-Upstream file: `/Users/r/git/pulseengine/z/zephyr/lib/heap/heap.c` (v4.4.0, 794 lines; unchanged rc3→final).
-Header: `/Users/r/git/pulseengine/z/zephyr/lib/heap/heap.h` (350 lines).
+Upstream file: `$ZEPHYR_WORKSPACE/zephyr/lib/heap/heap.c` (v4.4.0, 794 lines; unchanged rc3→final).
+Header: `$ZEPHYR_WORKSPACE/zephyr/lib/heap/heap.h` (350 lines).
 
 Level predicates are defined in `heap.h:23-30` as compile-time `#define`s that
 reduce to `CONFIG_SYS_HEAP_HARDENING_LEVEL >= N`. Dead branches fold at `-O2`.
@@ -59,7 +59,7 @@ arithmetic site that currently omits `CHUNK_TRAILER_SIZE`.
 
 ## 2. Gap against `zephyr/gale_heap.c`
 
-Gale shim file: `/Users/r/git/pulseengine/z/gale/zephyr/gale_heap.c` (576 lines).
+Gale shim file: `$ZEPHYR_WORKSPACE/gale/zephyr/gale_heap.c` (576 lines).
 **Every hardening hook is absent.** Concrete deltas:
 
 | Upstream | Gale shim location | What to change |
@@ -188,7 +188,7 @@ Each PR is independently bisectable and independently CI-green.
 
 **Status: attempted.** PR-1 is small enough (~20 line diff) for a one-pass
 agent edit. The draft lives on throwaway branch `heap-hardening-draft`;
-uncommitted diff is in the working tree of `/Users/r/git/pulseengine/z/gale/`
+uncommitted diff is in the working tree of `$ZEPHYR_WORKSPACE/gale/`
 for human review. Full integration build (`west build`) was not run — this
 agent sandbox cannot reach the Zephyr SDK. Syntax check only; flag a full
 build pending before merge.

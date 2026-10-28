@@ -82,7 +82,7 @@ _resolve_with_device() {
     # The branch stays, and stays first, deliberately. The reason it was added still
     # holds: gale used to resolve from PATH and silently use whatever copy happened to
     # be installed, which `varve verify` flagged —
-    #   "`with-device` on your PATH is /Users/r/.local/bin/with-device, not the pinned ..."
+    #   "`with-device` on your PATH is $HOME/.local/bin/with-device, not the pinned ..."
     # A bench claim asserted by an unpinned binary is a weaker statement than it looks.
     # When the layer carries it again this resumes working with no edit.
     if command -v varve >/dev/null 2>&1 && varve which with-device >/dev/null 2>&1; then
@@ -120,7 +120,7 @@ _resolve_with_device() {
 # consumer's string handling. A derived name does not match the registry, and
 # with-device 0.2.2 refuses it outright:
 #
-#   UNKNOWN DEVICE 'stlink-003B001A3235511337333439'. Known: esp-jtag, stlink-v3
+#   UNKNOWN DEVICE 'stlink-<serial>'. Known: esp-jtag, stlink-v3
 #   Refusing: an unregistered name would create its own lock and exclude nobody.
 #
 # Which is the same vacuous-lock defect I had already hit on the Pi with

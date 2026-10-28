@@ -25,7 +25,7 @@ This is a coverage mapping only — not a recommendation.
   for this config (e.g. `encrypted.c` when `MCUBOOT_ENC_IMAGES` is unset,
   `image_ecdsa.c` / `image_ed25519.c` under RSA default) are counted as
   "0 effective" with the raw file LOC in parentheses.
-- Gale modules inspected at `/Users/r/git/pulseengine/z/gale/src/` (50 `.rs`
+- Gale modules inspected at `$ZEPHYR_WORKSPACE/gale/src/` (50 `.rs`
   files). Grep for `sha|crypt|aes|rsa|ecdsa|ed25519|hash|flash|nvm|partition`
   confirms Gale has no cryptographic primitives and no image-flash driver;
   the only storage-adjacent module is `zms.rs` (Zephyr Memory Storage — a

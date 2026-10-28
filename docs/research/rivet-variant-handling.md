@@ -42,7 +42,7 @@ Driving commands, from rivet's own help output:
   output carries a `variant: { name, resolved_artifacts, bound_artifacts }`
   block.
 
-Docs: `/Users/r/git/pulseengine/rivet/docs/feature-model-schema.md`,
+Docs: `<rivet checkout>/docs/feature-model-schema.md`,
 `feature-model-bindings.md`, `pure-variants-comparison.md`.
 
 ### Smallest valid feature-model + variant that rivet accepts

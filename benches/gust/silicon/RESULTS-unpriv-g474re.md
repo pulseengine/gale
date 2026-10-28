@@ -1,7 +1,7 @@
 # REQ-OS-UNPRIV-001 on silicon — NUCLEO-G474RE
 
 `gust_iso_unpriv_probe`, flashed and run on the physical board via
-`probe-rs run --chip STM32G474RETx` (ST-LINK V3, serial `003B001A3235511337333439`).
+`probe-rs run --chip STM32G474RETx` (ST-LINK V3, serial `<redacted>`).
 Semihosting streamed to the console; both arms exit through `debug::exit`.
 
 ## Result

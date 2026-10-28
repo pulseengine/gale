@@ -4,7 +4,7 @@ public
 
   -- NUCLEO-G031K8 — STM32G031K8, Cortex-M0+ r0p1 (CPUID 0x410cc601, DBGMCU 0x10036466).
   -- Every value below was MEASURED over the board's own debug probe on the shared
-  -- bench host (wohl.local, 2026-09-16, gale#397) unless it says otherwise.
+  -- bench host (2026-09-16, gale#397) unless it says otherwise.
   -- ARMv6-M. No FPU (MVFR0 0x00000000). No dissolved driver can run here yet: synth
   -- has no ARMv6-M profile (synth#1301). Native Rust (thumbv6m-none-eabi) runs.
   memory Flag_Flash end Flag_Flash;
