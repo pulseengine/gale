@@ -58,3 +58,34 @@ GUST_MIX_O=/tmp/gust_mix-cm4-on.o silicon/run.sh g474re
 
 Compare the `ratio_x1000` flag-off vs flag-on on the G474RE — that's the on-silicon
 DWT signal the synth default-on flip is gated on.
+
+## Board hosts for `cargo xtask silicon`
+
+`cargo xtask silicon {list|run|matrix}` (tools/xtask/src/silicon.rs) knows each board's
+public metadata — part, target triple, openocd scripts, claim name — but **not where it is
+plugged in**. The probe host and the USB port that pins a probe are bench topology, kept
+out of the repo and read from the environment, per board:
+
+| variable | needed for | value |
+|---|---|---|
+| `GALE_SILICON_<BOARD>_HOST` | every board | `local`, or an ssh destination (a `~/.ssh/config` alias works) |
+| `GALE_SILICON_<BOARD>_USB_LOCATION` | `wl55jc`, `wb55rg`, `g031k8` | openocd `adapter usb location` path on that host |
+| `BENCH_REGISTRY` | a `local` board | bench registry for the probe serial (default `~/.config/pulseengine/bench-devices.yaml`) |
+
+`<BOARD>` is the board name upper-cased (`f100`, `wl55jc`, `wb55rg`, `g031k8`, `g474re`).
+An unset or empty variable makes that board REFUSED (exit 3) with the variable's name; there
+is no default host, because boards have moved between hosts and a default would attach to
+the wrong one. Keep the exports in an untracked file and source it, for example:
+
+```sh
+# ~/.config/gale/silicon.env — NOT in the repo
+export GALE_SILICON_F100_HOST=bench-a          # ssh alias
+export GALE_SILICON_WL55JC_HOST=bench-b
+export GALE_SILICON_WL55JC_USB_LOCATION=<bus>-<port>.<port>
+export GALE_SILICON_G474RE_HOST=local
+
+. ~/.config/gale/silicon.env && cargo xtask silicon list   # shows each board's resolved host
+```
+
+The shell scripts in this directory (`bench-claim.sh`, `run-adc.sh`, `run-wdg-f100.sh`)
+predate xtask and read `GUST_BENCH_HOST` / `PI_HOST` / `OCD_HOST` instead; see their headers.

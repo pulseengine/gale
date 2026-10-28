@@ -10,9 +10,14 @@
 //! FAIL on its `<bin> FAIL` line, and REFUSED (exit 3) when neither appears — a run
 //! that says nothing is not a run that passed.
 //!
-//! The board table is the one place a board's probe path is written down. Memory
-//! maps and register addresses are NOT here: they come from the measured target
-//! models (benches/gust/targets/*.aadl -> generated/).
+//! The board table holds only PUBLIC board metadata: the part, its target triple, the
+//! openocd interface/target scripts, the claim name, and HOW its probe is pinned. Where a
+//! board is plugged in — the probe host, and the USB port path that pins it there — is
+//! private bench topology and is read at run time from the environment (see
+//! [`resolve`] and benches/gust/silicon/README.md). A board with no configured host is
+//! REFUSED with the variable to set, never run against a default. Memory maps and
+//! register addresses are NOT here either: they come from the measured target models
+//! (benches/gust/targets/*.aadl -> generated/).
 
 use crate::verdict::{Verdict, EXIT_FAIL, EXIT_PASS, EXIT_REFUSED, EXIT_USAGE};
 use std::fs;
@@ -21,14 +26,30 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// Where the probe is plugged in.
-#[derive(Clone, Copy)]
+/// Where the probe is plugged in. Resolved from the environment, never from the table.
+#[derive(Clone, Debug, PartialEq)]
 enum Host {
-    /// This machine.
+    /// This machine (`GALE_SILICON_<BOARD>_HOST=local`).
     Local,
-    /// Over ssh. The claim is taken THERE: a lock on this laptop would exclude nobody
-    /// who ssh'd into the probe host from somewhere else.
-    Ssh(&'static str),
+    /// Over ssh, to this destination. The claim is taken THERE: a lock on this laptop
+    /// would exclude nobody who ssh'd into the probe host from somewhere else.
+    Ssh(String),
+}
+
+/// How the board's probe is told apart from every other probe on its host.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Pin {
+    /// The interface args select a VID:PID no other probe on the host has (public, in
+    /// the table).
+    VidPid,
+    /// `adapter usb location <path>`. The port path is host topology, so it comes from
+    /// `GALE_SILICON_<BOARD>_USB_LOCATION`; a board pinned this way REFUSES without it,
+    /// because an unpinned `interface/stlink.cfg` attached to the wrong board while
+    /// holding another board's claim — twice (gale#397).
+    UsbLocation,
+    /// `adapter serial <s>` from the bench registry, for the claim name. Only applied when
+    /// the host is local; over ssh this board is currently NOT pinned (see run()).
+    RegistrySerial,
 }
 
 /// How to get the core halted at a clean start.
@@ -45,116 +66,153 @@ enum Reset {
 struct Board {
     name: &'static str,
     what: &'static str,
-    host: Host,
     /// Registry name on the probe host. Must match it exactly (with-device refuses others).
     claim: &'static str,
     triple: &'static str,
     features: &'static [&'static str],
     /// Stem of benches/gust/targets/generated/{memory-,gust_target_}<stem>.{x,rs}.
     stem: &'static str,
-    openocd: &'static [&'static str],
+    /// openocd interface args (adapter selection). The pin, if any, goes right after.
+    iface: &'static [&'static str],
+    /// openocd target args.
+    target: &'static [&'static str],
+    pin: Pin,
     reset: Reset,
     /// Some(reason) when nothing can run on this board yet.
     not_yet: Option<&'static str>,
 }
 
-// Two probes on wohl.local share 0483:374b, so every entry there PINS its probe. An
-// unpinned `interface/stlink.cfg` attached to the G031K8 while holding another board's
-// claim — twice (gale#397).
+// Boards have moved between probe hosts more than once, which is why the host is
+// configured PER BOARD (alongside its claim) rather than as one bench-wide default:
+// a shared default would put a board on a host it is no longer attached to.
 const BOARDS: &[Board] = &[
     Board {
         name: "f100",
         what: "STM32VLDISCOVERY — STM32F100, Cortex-M3, no MPU",
-        // MOVED to gale.local. wohl.local was re-imaged on 2026-10-01 and no
-        // 0483:3744 (ST-LINK/V1) enumerates there any more, while gale.local has
-        // one. fourpi.local's lock directory still holds a Sep-5 `stlink-v1-f100`
-        // lock, so this board has been on at least three hosts — which is the
-        // argument for every entry naming its host and its claim rather than
-        // either alone.
-        host: Host::Ssh("gale.local"),
         claim: "stlink-v1",
         triple: "thumbv7m-none-eabi",
         features: &["target-f100"],
         stem: "stm32f100",
-        openocd: &["-f", "interface/stlink-hla.cfg", "-c", "hla_vid_pid 0x0483 0x3744",
-                   "-f", "target/stm32f1x.cfg", "-c", "reset_config none separate"],
+        iface: &["-f", "interface/stlink-hla.cfg", "-c", "hla_vid_pid 0x0483 0x3744"],
+        target: &["-f", "target/stm32f1x.cfg", "-c", "reset_config none separate"],
+        pin: Pin::VidPid,
         reset: Reset::HaltSysreset,
         not_yet: None,
     },
     Board {
         name: "wl55jc",
         what: "NUCLEO-WL55JC1 — STM32WL55, Cortex-M4 (no FPU), MPU 8",
-        host: Host::Ssh("wohl.local"),
         claim: "stlink-v3",
         triple: "thumbv7em-none-eabi",
         features: &["target-wl55jc"],
         stem: "stm32wl55",
-        openocd: &["-f", "interface/stlink.cfg", "-c", "adapter usb location 1-1.1",
-                   "-f", "target/stm32wlx.cfg",
-                   "-c", "reset_config srst_only srst_nogate connect_assert_srst"],
+        iface: &["-f", "interface/stlink.cfg"],
+        target: &["-f", "target/stm32wlx.cfg",
+                  "-c", "reset_config srst_only srst_nogate connect_assert_srst"],
+        pin: Pin::UsbLocation,
         reset: Reset::ResetHalt,
         not_yet: None,
     },
     Board {
         name: "wb55rg",
         what: "NUCLEO-WB55RG — STM32WB55, Cortex-M4F, MPU 8",
-        host: Host::Ssh("wohl.local"),
         claim: "nucleo-wb55rg",
         triple: "thumbv7em-none-eabi",
         features: &["target-wb55rg"],
         stem: "stm32wb55",
-        openocd: &["-f", "interface/stlink.cfg", "-c", "adapter usb location 1-1.3",
-                   "-f", "target/stm32wbx.cfg"],
+        iface: &["-f", "interface/stlink.cfg"],
+        target: &["-f", "target/stm32wbx.cfg"],
+        pin: Pin::UsbLocation,
         reset: Reset::ResetHalt,
         not_yet: None,
     },
     Board {
         name: "g031k8",
         what: "NUCLEO-G031K8 — STM32G031, Cortex-M0+ (ARMv6-M), MPU 8",
-        host: Host::Ssh("wohl.local"),
         claim: "nucleo-g031k8",
         triple: "thumbv6m-none-eabi",
         features: &["target-g031k8"],
         stem: "stm32g031",
-        openocd: &["-f", "interface/stlink.cfg", "-c", "adapter usb location 1-1.4",
-                   "-f", "target/stm32g0x.cfg"],
+        iface: &["-f", "interface/stlink.cfg"],
+        target: &["-f", "target/stm32g0x.cfg"],
+        pin: Pin::UsbLocation,
         reset: Reset::ResetHalt,
         not_yet: None,
     },
     Board {
         name: "g474re",
         what: "NUCLEO-G474RE — STM32G474, Cortex-M4F, MPU 8",
-        // MOVED to gale.local (Raspberry Pi) on 2026-10-01. Verified by SERIAL rather
-        // than inferred: the Mac's registry still listed stlink-v3
-        // 003B001A3235511337333439 as local, and that exact serial now enumerates on
-        // gale.local while the Mac has no ST probe at all. Confirmed end to end through
-        // the new host — CPUID 0x410fc241 (Cortex-M4 r0p1), MPU_TYPE 0x00000800
-        // (DREGION=8) read under a with-device claim.
-        host: Host::Ssh("gale.local"),
+        // When this board last moved hosts, the move was verified by the probe's SERIAL
+        // (the same serial enumerating on the new host and gone from the old one) rather
+        // than inferred, and confirmed end to end through the new host — CPUID 0x410fc241
+        // (Cortex-M4 r0p1), MPU_TYPE 0x00000800 (DREGION=8) read under a with-device claim.
         claim: "stlink-v3",
         triple: "thumbv7em-none-eabi",
         // target-g474re selects the generated constants; silicon-g474 is the older
         // per-bin map switch the iso probes still read on this board.
         features: &["target-g474re", "silicon-g474"],
         stem: "stm32g474",
+        iface: &["-f", "interface/stlink.cfg"],
+        target: &["-f", "target/stm32g4x.cfg"],
         // The probe is selected by the serial in THIS host's registry (see run()).
-        openocd: &["-f", "interface/stlink.cfg", "-f", "target/stm32g4x.cfg"],
+        pin: Pin::RegistrySerial,
         reset: Reset::ResetHalt,
         not_yet: None,
     },
     Board {
         name: "esp32c3",
         what: "ESP32-C3 — RV32IMC, built-in USB-JTAG",
-        host: Host::Local,
         claim: "esp-jtag",
         triple: "riscv32imc-unknown-none-elf",
         features: &[],
         stem: "",
-        openocd: &[],
+        iface: &[],
+        target: &[],
+        pin: Pin::VidPid,
         reset: Reset::ResetHalt,
         not_yet: Some("gust has no RISC-V silicon target model or runtime yet (REQ-OS-TARGET-RV32-001)"),
     },
 ];
+
+/// Where one board is plugged in, as configured on this machine.
+#[derive(Debug, PartialEq)]
+struct Site {
+    host: Host,
+    usb_location: Option<String>,
+}
+
+/// `GALE_SILICON_<BOARD>_<WHAT>`, e.g. `GALE_SILICON_WL55JC_HOST`.
+fn env_key(board: &str, what: &str) -> String {
+    format!("GALE_SILICON_{}_{what}", board.to_ascii_uppercase())
+}
+
+/// Resolve a board's site from `get` (the environment, in production; a fixture in
+/// tests). An unset or empty variable is an error naming it — there is no default host.
+fn resolve(b: &Board, get: impl Fn(&str) -> Option<String>) -> Result<Site, String> {
+    let get = |k: &str| get(k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    let hk = env_key(b.name, "HOST");
+    let host = match get(&hk).as_deref() {
+        None => return Err(format!(
+            "{}: {hk} is not set — set it to `local` or to the ssh destination of the host \
+             this board's probe is plugged into (benches/gust/silicon/README.md)", b.name)),
+        Some("local") => Host::Local,
+        Some(h) => Host::Ssh(h.to_string()),
+    };
+    let usb_location = match b.pin {
+        Pin::UsbLocation => {
+            let lk = env_key(b.name, "USB_LOCATION");
+            match get(&lk) {
+                Some(l) => Some(l),
+                None => return Err(format!(
+                    "{}: {lk} is not set — this board's probe shares its VID:PID with others, so \
+                     it must be pinned by its USB port path on the probe host (`adapter usb \
+                     location` form, e.g. <bus>-<port>.<port>)", b.name)),
+            }
+        }
+        Pin::VidPid | Pin::RegistrySerial => None,
+    };
+    Ok(Site { host, usb_location })
+}
 
 /// What runs where. A pair that cannot run is listed WITH its reason rather than left
 /// out, so the matrix shows the gap instead of hiding it.
@@ -545,6 +603,11 @@ pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: 
     if let Some(why) = b.not_yet {
         return Verdict::Refused(format!("{}: not yet — {why}", b.name));
     }
+    // Before any build: a board with no configured site is REFUSED, not built for nothing.
+    let site = match resolve(b, |k| std::env::var(k).ok()) {
+        Ok(s) => s,
+        Err(e) => return Verdict::Refused(e),
+    };
     let consts = match fs::read_to_string(root.join(format!("benches/gust/targets/generated/gust_target_{}.rs", b.stem))) {
         Ok(t) => t,
         Err(e) => return Verdict::Refused(format!("generated target module for {}: {e}", b.stem)),
@@ -569,7 +632,7 @@ pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: 
     }
 
     let remote_elf = format!("/tmp/{}", elf.file_name().unwrap().to_string_lossy());
-    let fw = match b.host {
+    let fw = match &site.host {
         Host::Local => elf.to_string_lossy().to_string(),
         Host::Ssh(h) => {
             let st = Command::new("scp").args(["-q", &elf.to_string_lossy(), &format!("{h}:{remote_elf}")]).status();
@@ -588,7 +651,7 @@ pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: 
     // `perl -e alarm` is the same contract there (the alarm survives exec, and SIGALRM
     // terminates openocd). Found by the first local run: with-device reported
     // "No such file or directory" for `timeout`, and the matrix recorded REFUSED.
-    let mut ocd: Vec<String> = match b.host {
+    let mut ocd: Vec<String> = match &site.host {
         Host::Ssh(_) => vec!["timeout".into(), timeout_s.to_string()],
         // Forks rather than exec: with-device reports a child killed by a signal as exit 1,
         // which is indistinguishable from openocd's own failure. The parent turns the
@@ -600,8 +663,14 @@ pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: 
             timeout_s.to_string()],
     };
     ocd.push("openocd".into());
-    ocd.extend(b.openocd.iter().map(|s| s.to_string()));
-    if let Host::Local = b.host {
+    ocd.extend(b.iface.iter().map(|s| s.to_string()));
+    if let Some(loc) = &site.usb_location {
+        ocd.extend(["-c".into(), format!("adapter usb location {loc}")]);
+    }
+    ocd.extend(b.target.iter().map(|s| s.to_string()));
+    // Pin::RegistrySerial over ssh adds nothing here: the serial lives in the PROBE host's
+    // registry, which this side does not read. That is the pre-existing behaviour.
+    if let Host::Local = site.host {
         match local_registry_serial(b.claim) {
             Some(serial) => ocd.extend(["-c".into(), format!("adapter serial {serial}")]),
             None => return Verdict::Refused(format!("no serial for '{}' in this host's bench registry", b.claim)),
@@ -625,7 +694,7 @@ pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: 
 
     let purpose = format!("gale silicon: {bin}{} on {}", if extra.is_empty() { String::new() } else { format!(" +{}", extra.join("+")) }, b.name);
     let deadline = Duration::from_secs(timeout_s + 60);
-    let result = match b.host {
+    let result = match &site.host {
         Host::Local => {
             let wd = Command::new("varve").current_dir(root).args(["which", "with-device"]).output();
             let wd = match wd {
@@ -711,7 +780,12 @@ pub fn usage() -> &'static str {
        cargo xtask silicon list\n  \
        cargo xtask silicon run <board> <bin> [--features a,b] [--timeout SECS] [--format json]\n  \
        cargo xtask silicon matrix [--boards a,b] [--bins x,y] [--format json]\n\n\
-     EXIT CODES: 0 pass, 1 fail, 2 usage, 3 could not run (busy probe, no verdict) — NOT a pass\n"
+     CONFIGURATION (per board; nothing about the bench is stored in the repo):\n  \
+       GALE_SILICON_<BOARD>_HOST          `local`, or the ssh destination of the probe host\n  \
+       GALE_SILICON_<BOARD>_USB_LOCATION  openocd `adapter usb location` (wl55jc, wb55rg, g031k8)\n  \
+       BENCH_REGISTRY                     local probe's serial registry (default ~/.config/pulseengine/bench-devices.yaml)\n  \
+       An unset variable REFUSES the board and names the variable. See benches/gust/silicon/README.md.\n\n\
+     EXIT CODES: 0 pass, 1 fail, 2 usage, 3 could not run (busy probe, no verdict, unconfigured board) — NOT a pass\n"
 }
 
 pub fn main(root: &Path, args: &[String]) -> i32 {
@@ -751,8 +825,12 @@ pub fn main(root: &Path, args: &[String]) -> i32 {
     match pos.first().map(String::as_str) {
         Some("list") => {
             for b in BOARDS {
-                let host = match b.host { Host::Local => "local".to_string(), Host::Ssh(h) => h.to_string() };
-                println!("{:<8} {:<11} claim={:<14} {}{}", b.name, host, b.claim, b.what,
+                let host = match resolve(b, |k| std::env::var(k).ok()) {
+                    Ok(Site { host: Host::Local, .. }) => "local".to_string(),
+                    Ok(Site { host: Host::Ssh(h), .. }) => h,
+                    Err(_) => format!("(unset: {})", env_key(b.name, "HOST")),
+                };
+                println!("{:<8} {:<30} claim={:<14} {}{}", b.name, host, b.claim, b.what,
                     b.not_yet.map(|w| format!("  [NOT YET: {w}]")).unwrap_or_default());
             }
             EXIT_PASS
@@ -838,12 +916,52 @@ mod tests {
         }
     }
 
+    fn fixture(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        let m: std::collections::HashMap<String, String> =
+            pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        move |k| m.get(k).cloned()
+    }
+
     #[test]
-    fn wohl_st_links_are_pinned() {
-        // Two probes there share 0483:374b; an unpinned entry attaches to the wrong one.
-        for b in BOARDS.iter().filter(|b| matches!(b.host, Host::Ssh("wohl.local"))) {
-            assert!(b.openocd.iter().any(|a| a.starts_with("adapter usb location") || a.starts_with("hla_vid_pid")),
-                "{} on wohl.local does not pin its probe", b.name);
+    fn site_comes_from_the_environment() {
+        let b = board("wl55jc").unwrap();
+        let got = resolve(b, fixture(&[
+            ("GALE_SILICON_WL55JC_HOST", "board.example.invalid"),
+            ("GALE_SILICON_WL55JC_USB_LOCATION", "9-9.9"),
+        ]));
+        assert_eq!(got, Ok(Site { host: Host::Ssh("board.example.invalid".into()), usb_location: Some("9-9.9".into()) }));
+
+        let f100 = board("f100").unwrap();
+        assert_eq!(resolve(f100, fixture(&[("GALE_SILICON_F100_HOST", "local")])),
+                   Ok(Site { host: Host::Local, usb_location: None }));
+    }
+
+    #[test]
+    fn missing_site_config_names_the_variable() {
+        let b = board("wl55jc").unwrap();
+        let e = resolve(b, fixture(&[])).unwrap_err();
+        assert!(e.contains("GALE_SILICON_WL55JC_HOST"), "{e}");
+        // Empty is unset, not "a host called ''".
+        let e = resolve(b, fixture(&[("GALE_SILICON_WL55JC_HOST", "  ")])).unwrap_err();
+        assert!(e.contains("GALE_SILICON_WL55JC_HOST"), "{e}");
+        // A host without the port pin is refused too: an unpinned ST-LINK attaches to
+        // whichever board enumerates first (gale#397).
+        let e = resolve(b, fixture(&[("GALE_SILICON_WL55JC_HOST", "board.example.invalid")])).unwrap_err();
+        assert!(e.contains("GALE_SILICON_WL55JC_USB_LOCATION"), "{e}");
+    }
+
+    #[test]
+    fn shared_vid_pid_probes_are_pinned() {
+        // Several ST-LINK/V2-1 and V3 probes share a VID:PID; `interface/stlink.cfg` alone
+        // attaches to the first one. Every such board must name how it is pinned.
+        for b in BOARDS.iter().filter(|b| b.not_yet.is_none()) {
+            match b.pin {
+                Pin::VidPid => assert!(b.iface.iter().any(|a| a.starts_with("hla_vid_pid")),
+                    "{} claims a VID:PID pin but its interface args select none", b.name),
+                Pin::UsbLocation | Pin::RegistrySerial => {}
+            }
+            assert!(!b.iface.iter().chain(b.target).any(|a| a.starts_with("adapter usb location") || a.starts_with("adapter serial")),
+                "{}: probe-host topology belongs in the environment, not the table", b.name);
         }
     }
 

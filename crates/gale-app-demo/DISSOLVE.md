@@ -46,7 +46,7 @@ Isolation between dissolved components is the **opt-in** MPU/PMP layer (gale#86)
 ## Reproduce
 
 ```sh
-export PATH="/opt/homebrew/opt/llvm/bin:/Users/r/.cargo/bin:$PATH"
+export PATH="/opt/homebrew/opt/llvm/bin:$HOME/.cargo/bin:$PATH"
 ./run.sh        # hosted backing on wasmtime (run-demo()=53)
 ./dissolve.sh   # lean grow-free MCU library-OS object (972 B / 316 B)
 ```

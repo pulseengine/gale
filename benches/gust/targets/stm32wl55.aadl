@@ -5,7 +5,7 @@ public
   -- NUCLEO-WL55JC1 — STM32WL55JC, application core Cortex-M4 r0p1 (CPUID 0x410fc241,
   -- DBGMCU 0x10036497). The part is dual-core; only the M4 application core is modelled.
   -- Every value below was MEASURED over the board's own debug probe on the shared
-  -- bench host (wohl.local, 2026-09-16, gale#397) unless it says otherwise.
+  -- bench host (2026-09-16, gale#397) unless it says otherwise.
   -- ATTACH ONLY UNDER RESET (connect_assert_srst): the resident firmware drops the
   -- debug link, and it drops again after any reset that boots back into it.
   -- No FPU: MVFR0 reads 0x00000000. Reads taken while SRST is still asserted return

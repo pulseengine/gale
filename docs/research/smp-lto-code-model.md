@@ -17,7 +17,7 @@ LLVM `Code Model` flag values: 1 = Small, 2 = Kernel, 3 = Medium, 4 = Large.
 ## Root cause confirmation
 
 - Gale already overrides the Rust code model for x86 targets at
-  `/Users/r/git/pulseengine/z/gale/zephyr/CMakeLists.txt:90-102`: for any
+  `$ZEPHYR_WORKSPACE/gale/zephyr/CMakeLists.txt:90-102`: for any
   `CONFIG_X86` it injects `-Crelocation-model=static -Ccode-model=small`
   into `RUSTFLAGS`. The comment at lines 90–94 explicitly states the
   `x86_64-unknown-none` target defaults to `code-model=kernel` and this
