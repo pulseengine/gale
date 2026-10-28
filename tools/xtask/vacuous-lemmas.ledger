@@ -105,8 +105,6 @@ vacuous:condvar::lemma_signal_broadcast_equivalence
 vacuous:device_init::lemma_invariant_inductive
 vacuous:device_init::lemma_level_codes_complete
 vacuous:device_init::lemma_level_roundtrip
-vacuous:device_init::lemma_no_double_init
-vacuous:device_init::lemma_ready_requires_success
 vacuous:dynamic::lemma_invariant_inductive
 vacuous:event::lemma_invariant_inductive
 vacuous:fifo::lemma_invariant_inductive
@@ -164,8 +162,6 @@ vacuous:sched::lemma_suspend_idempotent
 vacuous:sched::lemma_suspend_resume_roundtrip
 vacuous:sem::lemma_invariant_inductive
 vacuous:smp_state::lemma_invariant_inductive
-vacuous:spinlock::lemma_acquire_release_roundtrip
-vacuous:spinlock::lemma_double_acquire_rejected
 vacuous:spinlock::lemma_invariant_inductive
 vacuous:stack::lemma_invariant_inductive
 vacuous:thread_lifecycle::lemma_deadline_accepts_positive
@@ -194,9 +190,6 @@ vacuous:usage::lemma_stop_skips_on_zero
 vacuous:usage::lemma_sys_disable_idempotent
 vacuous:usage::lemma_sys_enable_idempotent
 vacuous:wait_queue::lemma_unpend_preserves_sorted
-vacuous:work::lemma_cancel_clears_queued
 vacuous:work::lemma_cancel_running_lifecycle
 vacuous:work::lemma_full_lifecycle
-vacuous:work::lemma_submit_idempotent
-vacuous:work::lemma_submit_rejects_canceling
 vacuous:zms::lemma_zms3_write_ok_no_gc

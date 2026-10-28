@@ -103,6 +103,27 @@ impl WorkItem {
         (self.flags & FLAG_CANCELING) != 0
     }
 
+    /// submit's contract as a spec fn (gale#462). It now includes WK2 -- an
+    /// item that is neither canceling nor queued becomes QUEUED -- which the
+    /// ensures never stated before.
+    pub open spec fn submit_post(pre: WorkItem, post: WorkItem, rc: i32) -> bool {
+        &&& (pre.flags & FLAG_CANCELING) != 0 ==> rc == EBUSY && post.flags == pre.flags
+        &&& ((pre.flags & FLAG_CANCELING) == 0 && (pre.flags & FLAG_QUEUED) != 0)
+            ==> rc == 0 && post.flags == pre.flags
+        &&& ((pre.flags & FLAG_CANCELING) == 0 && (pre.flags & FLAG_QUEUED) == 0) ==> {
+            &&& post.flags == (pre.flags | FLAG_QUEUED)
+            &&& rc == (if (pre.flags & FLAG_RUNNING) != 0 { 2i32 } else { 1i32 })
+        }
+    }
+
+    /// cancel's contract as a spec fn. It now includes the second half of WK5
+    /// -- a RUNNING item is marked CANCELING -- which was only in the comment.
+    pub open spec fn cancel_post(pre: WorkItem, post: WorkItem, r: u8) -> bool {
+        &&& (post.flags & FLAG_QUEUED) == 0
+        &&& (pre.flags & FLAG_RUNNING) != 0 ==> (post.flags & FLAG_CANCELING) != 0
+        &&& r == (post.flags & BUSY_MASK)
+    }
+
     // ------------------------------------------------------------------
     // Operations
     // ------------------------------------------------------------------
@@ -195,6 +216,7 @@ impl WorkItem {
                 &&& result == 0
                 &&& self.flags == old(self).flags
             },
+            Self::submit_post(*old(self), *self, result),
     {
         if (self.flags & FLAG_CANCELING) != 0 {
             return EBUSY;
@@ -285,6 +307,7 @@ impl WorkItem {
             // QUEUED is always cleared
             (self.flags & FLAG_QUEUED) == 0,
             result == (self.flags & BUSY_MASK),
+            Self::cancel_post(*old(self), *self, result),
     {
         let old_flags = self.flags;
         // Clear QUEUED
@@ -296,6 +319,8 @@ impl WorkItem {
             assert(((old_flags & !4u8) & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8) by (bit_vector)
                 requires (old_flags & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8;
             assert(((old_flags & !4u8) & 4u8) == 0u8) by (bit_vector);
+            // RUNNING survives the QUEUED clear, so a running item stays busy.
+            assert(((old_flags & 1u8) != 0u8) ==> (((old_flags & !4u8) & 7u8) != 0u8)) by (bit_vector);
         }
         // If still busy (RUNNING), mark as CANCELING
         let busy = self.flags & BUSY_MASK;
@@ -309,6 +334,7 @@ impl WorkItem {
                 assert(((mid_flags | 2u8) & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8) by (bit_vector)
                     requires (mid_flags & !(1u8 | 2u8 | 4u8 | 16u8)) == 0u8;
                 assert(((mid_flags | 2u8) & 4u8) == (mid_flags & 4u8)) by (bit_vector);
+                assert(((mid_flags | 2u8) & 2u8) != 0u8) by (bit_vector);
             }
         }
         self.flags & BUSY_MASK
@@ -349,23 +375,45 @@ pub proof fn lemma_init_is_idle()
         ({ let w = WorkItem { flags: 0 }; w.flags == 0 }),
 {}
 
-/// WK2+WK4: submit from idle queues, submit when queued is idempotent.
-pub proof fn lemma_submit_idempotent()
+/// WK2+WK4: submitting an item that is not canceling queues it, and
+/// submitting it again changes nothing and returns 0.
+pub proof fn lemma_submit_idempotent(a: WorkItem, b: WorkItem, c: WorkItem, r1: i32, r2: i32)
+    requires
+        (a.flags & FLAG_CANCELING) == 0,
+        WorkItem::submit_post(a, b, r1),
+        WorkItem::submit_post(b, c, r2),
     ensures
-        true,
-{}
+        b.is_queued_spec(),
+        c.flags == b.flags,
+        r2 == 0,
+{
+    let f = a.flags;
+    assert(((f | 4u8) & 4u8) != 0u8) by (bit_vector);
+    assert(((f & 2u8) == 0u8) ==> (((f | 4u8) & 2u8) == 0u8)) by (bit_vector);
+}
 
-/// WK3: submit while canceling returns EBUSY.
-pub proof fn lemma_submit_rejects_canceling()
+/// WK3: submitting an item that is being canceled is rejected with EBUSY and
+/// leaves it unchanged.
+pub proof fn lemma_submit_rejects_canceling(a: WorkItem, b: WorkItem, rc: i32)
+    requires
+        a.is_canceling_spec(),
+        WorkItem::submit_post(a, b, rc),
     ensures
-        true,
-{}
+        rc == EBUSY,
+        b.flags == a.flags,
+{
+}
 
-/// WK5: cancel clears queued, sets canceling if running.
-pub proof fn lemma_cancel_clears_queued()
+/// WK5: cancel always clears QUEUED, and an item that was RUNNING is left
+/// marked CANCELING.
+pub proof fn lemma_cancel_clears_queued(a: WorkItem, b: WorkItem, r: u8)
+    requires
+        WorkItem::cancel_post(a, b, r),
     ensures
-        true,
-{}
+        !b.is_queued_spec(),
+        a.is_running_spec() ==> b.is_canceling_spec(),
+{
+}
 
 /// Lifecycle: init -> submit -> start_running -> finish_running returns to idle.
 pub proof fn lemma_full_lifecycle()
