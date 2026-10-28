@@ -195,6 +195,88 @@ impl KernelObject {
         forall|i: int| 0 <= i < MAX_THREADS as int ==> !self.thread_perms[i]
     }
 
+    // ------------------------------------------------------------------
+    // Operation contracts as spec fns (gale#462). Each exec op below
+    // `ensures` exactly its `*_post`, and the lemmas at the bottom `require`
+    // the same `*_post` -- one definition, so a lemma cannot drift from the
+    // contract it reasons about. Before this, those lemmas were `ensures true`
+    // with the property written as comments.
+    // ------------------------------------------------------------------
+
+    /// What grant_access guarantees about the state it leaves (US2, US8).
+    pub open spec fn grant_post(pre: KernelObject, post: KernelObject, tid: u32, rc: i32) -> bool {
+        &&& tid >= MAX_THREADS ==> {
+            &&& rc == EINVAL
+            &&& post.thread_perms === pre.thread_perms
+            &&& post.flag_initialized == pre.flag_initialized
+            &&& post.flag_public == pre.flag_public
+            &&& post.obj_type === pre.obj_type
+        }
+        &&& tid < MAX_THREADS ==> {
+            &&& rc == OK
+            &&& post.thread_perms[tid as int]
+            &&& post.flag_initialized == pre.flag_initialized
+            &&& post.flag_public == pre.flag_public
+            &&& post.obj_type === pre.obj_type
+            &&& forall|i: int| 0 <= i < MAX_THREADS as int && i != tid as int
+                ==> post.thread_perms[i] == pre.thread_perms[i]
+        }
+    }
+
+    /// What revoke_access guarantees about the state it leaves (US3, US8).
+    pub open spec fn revoke_post(pre: KernelObject, post: KernelObject, tid: u32, rc: i32) -> bool {
+        &&& tid >= MAX_THREADS ==> {
+            &&& rc == EINVAL
+            &&& post.thread_perms === pre.thread_perms
+            &&& post.flag_initialized == pre.flag_initialized
+            &&& post.flag_public == pre.flag_public
+            &&& post.obj_type === pre.obj_type
+        }
+        &&& tid < MAX_THREADS ==> {
+            &&& rc == OK
+            &&& !post.thread_perms[tid as int]
+            &&& post.flag_initialized == pre.flag_initialized
+            &&& post.flag_public == pre.flag_public
+            &&& post.obj_type === pre.obj_type
+            &&& forall|i: int| 0 <= i < MAX_THREADS as int && i != tid as int
+                ==> post.thread_perms[i] == pre.thread_perms[i]
+        }
+    }
+
+    /// What recycle guarantees: exactly `tid` holds a permission, and the
+    /// object is initialized.
+    pub open spec fn recycle_post(pre: KernelObject, post: KernelObject, tid: u32, rc: i32) -> bool {
+        &&& rc == OK
+        &&& post.thread_perms[tid as int]
+        &&& forall|i: int| 0 <= i < MAX_THREADS as int && i != tid as int ==> !post.thread_perms[i]
+        &&& post.is_initialized_spec()
+        &&& post.obj_type === pre.obj_type
+    }
+
+    /// The full result of validate (US1, US4, US5, US7). validate's ensures
+    /// used to constrain only the `Ok` case, so WHICH error a failure returns
+    /// -- e.g. US7's EINVAL for an uninitialized MustBeInit object -- was not
+    /// proven by anything.
+    pub open spec fn validate_spec(
+        &self,
+        expected_type: ObjType,
+        tid: u32,
+        is_supervisor: bool,
+        init_check: InitCheck,
+    ) -> Result<(), i32> {
+        if !(expected_type === ObjType::Any || self.obj_type === expected_type) {
+            Err(EBADF)
+        } else if !self.check_access_spec(tid, is_supervisor) {
+            Err(EPERM)
+        } else {
+            match init_check {
+                InitCheck::MustBeInit => if !self.flag_initialized { Err(EINVAL) } else { Ok(()) },
+                InitCheck::MustNotBeInit => if self.flag_initialized { Err(EADDRINUSE) } else { Ok(()) },
+                InitCheck::DontCare => Ok(()),
+            }
+        }
+    }
+
     // ==================================================================
     // Constructor
     // ==================================================================
@@ -242,26 +324,8 @@ impl KernelObject {
             old(self).inv(),
         ensures
             self.inv(),
-            // US8: invalid tid -> error, unchanged
-            tid >= MAX_THREADS ==> {
-                &&& rc == EINVAL
-                &&& self.thread_perms === old(self).thread_perms
-                &&& self.flag_initialized == old(self).flag_initialized
-                &&& self.flag_public == old(self).flag_public
-                &&& self.obj_type === old(self).obj_type
-            },
-            // US2: valid tid -> permission set, rest unchanged
-            tid < MAX_THREADS ==> {
-                &&& rc == OK
-                &&& self.thread_perms[tid as int]
-                &&& self.has_perm_spec(tid)
-                &&& self.flag_initialized == old(self).flag_initialized
-                &&& self.flag_public == old(self).flag_public
-                &&& self.obj_type === old(self).obj_type
-                // Other permissions unchanged
-                &&& forall|i: int| 0 <= i < MAX_THREADS as int && i != tid as int
-                    ==> self.thread_perms[i] == old(self).thread_perms[i]
-            },
+            Self::grant_post(*old(self), *self, tid, rc),
+            tid < MAX_THREADS ==> self.has_perm_spec(tid),
     {
         if tid >= MAX_THREADS {
             return EINVAL;
@@ -282,26 +346,8 @@ impl KernelObject {
             old(self).inv(),
         ensures
             self.inv(),
-            // US8: invalid tid -> error, unchanged
-            tid >= MAX_THREADS ==> {
-                &&& rc == EINVAL
-                &&& self.thread_perms === old(self).thread_perms
-                &&& self.flag_initialized == old(self).flag_initialized
-                &&& self.flag_public == old(self).flag_public
-                &&& self.obj_type === old(self).obj_type
-            },
-            // US3: valid tid -> permission cleared, rest unchanged
-            tid < MAX_THREADS ==> {
-                &&& rc == OK
-                &&& !self.thread_perms[tid as int]
-                &&& !self.has_perm_spec(tid)
-                &&& self.flag_initialized == old(self).flag_initialized
-                &&& self.flag_public == old(self).flag_public
-                &&& self.obj_type === old(self).obj_type
-                // Other permissions unchanged
-                &&& forall|i: int| 0 <= i < MAX_THREADS as int && i != tid as int
-                    ==> self.thread_perms[i] == old(self).thread_perms[i]
-            },
+            Self::revoke_post(*old(self), *self, tid, rc),
+            tid < MAX_THREADS ==> !self.has_perm_spec(tid),
     {
         if tid >= MAX_THREADS {
             return EINVAL;
@@ -371,6 +417,9 @@ impl KernelObject {
         requires
             self.inv(),
         ensures
+            // The exec check IS the spec check (gale#462) -- so lemmas about
+            // check_access_spec are lemmas about this function.
+            granted == self.check_access_spec(tid, is_supervisor),
             // US5: supervisor always has access
             is_supervisor ==> granted,
             // US1: public objects grant access to everyone
@@ -431,6 +480,8 @@ impl KernelObject {
         requires
             self.inv(),
         ensures
+            // Full result, not only the Ok case (gale#462).
+            result === self.validate_spec(expected_type, tid, is_supervisor, init_check),
             // US4: type mismatch -> EBADF
             expected_type !== ObjType::Any && self.obj_type !== expected_type ==> {
                 result.is_err() && result === Err::<(), i32>(EBADF)
@@ -550,16 +601,8 @@ impl KernelObject {
             current_tid < MAX_THREADS,
         ensures
             self.inv(),
-            rc == OK,
-            // Only current thread has access
-            self.thread_perms[current_tid as int],
+            Self::recycle_post(*old(self), *self, current_tid, rc),
             self.has_perm_spec(current_tid),
-            // All other perms cleared
-            forall|i: int| 0 <= i < MAX_THREADS as int && i != current_tid as int
-                ==> !self.thread_perms[i],
-            // Object is now initialized
-            self.is_initialized_spec(),
-            self.obj_type === old(self).obj_type,
     {
         self.thread_perms = [false; 64];
         self.thread_perms[current_tid as usize] = true;
@@ -630,121 +673,140 @@ impl KernelObject {
 // Compositional proofs
 // ======================================================================
 
-/// US1-US8: invariant is inductive across all operations.
-pub proof fn lemma_invariant_inductive()
+// There is no lemma_invariant_inductive here (gale#462). KernelObject::inv()
+// is `true` by definition -- the bool-array model has no structural invariant
+// to preserve -- so a P1 lemma would restate `true`. The lemma that stood here
+// had `ensures true` and an empty body; it was removed rather than dressed up.
+
+/// US2+US3: grant then revoke restores tid's original (false) permission and
+/// leaves every other thread's permission as it was.
+pub proof fn lemma_grant_revoke_roundtrip(
+    a: KernelObject, b: KernelObject, c: KernelObject, tid: u32, r1: i32, r2: i32,
+)
+    requires
+        tid < MAX_THREADS,
+        !a.thread_perms[tid as int],
+        KernelObject::grant_post(a, b, tid, r1),
+        KernelObject::revoke_post(b, c, tid, r2),
     ensures
-        // new() establishes inv (from new's ensures)
-        // grant_access preserves inv (from grant_access's ensures)
-        // revoke_access preserves inv (from revoke_access's ensures)
-        // init_object preserves inv (from init_object's ensures)
-        // uninit_object preserves inv (from uninit_object's ensures)
-        // recycle preserves inv (from recycle's ensures)
-        // make_public preserves inv (from make_public's ensures)
-        // validate does not modify state
-        true,
+        forall|i: int| 0 <= i < MAX_THREADS as int ==> c.thread_perms[i] == a.thread_perms[i],
+        c.flag_initialized == a.flag_initialized,
+        c.flag_public == a.flag_public,
+        c.obj_type === a.obj_type,
 {
 }
 
-/// US2+US3: grant then revoke restores original permission for tid.
-pub proof fn lemma_grant_revoke_roundtrip()
+/// US2: grant_access is idempotent -- a second grant of the same tid leaves
+/// the object exactly as the first grant did.
+pub proof fn lemma_grant_idempotent(
+    a: KernelObject, b: KernelObject, c: KernelObject, tid: u32, r1: i32, r2: i32,
+)
+    requires
+        KernelObject::grant_post(a, b, tid, r1),
+        KernelObject::grant_post(b, c, tid, r2),
     ensures
-        // For any KernelObject and valid tid, granting then revoking
-        // returns tid's permission to its original false state.
-        // This follows from grant_access and revoke_access ensures.
-        true,
-{
-}
-
-/// US2: grant_access is idempotent.
-pub proof fn lemma_grant_idempotent()
-    ensures
-        // Granting access twice is the same as granting once.
-        // This follows from grant_access: it sets thread_perms[tid] = true.
-        true,
+        forall|i: int| 0 <= i < MAX_THREADS as int ==> c.thread_perms[i] == b.thread_perms[i],
+        c.flag_initialized == b.flag_initialized,
+        c.flag_public == b.flag_public,
+        c.obj_type === b.obj_type,
+        r2 == r1,
 {
 }
 
 /// US3: revoke_access is idempotent.
-pub proof fn lemma_revoke_idempotent()
-    ensures
-        // Revoking access twice is the same as revoking once.
-        // This follows from revoke_access: it sets thread_perms[tid] = false.
-        true,
-{
-}
-
-/// US5: supervisor mode always grants access regardless of perms.
-pub proof fn lemma_supervisor_always_granted()
-    ensures
-        // For any KernelObject with inv(), check_access(tid, true) == true
-        // This follows directly from check_access's ensures clause.
-        true,
-{
-}
-
-/// US6: newly created objects have no permissions.
-pub proof fn lemma_new_no_perms()
-    ensures
-        // new() produces an object with:
-        //   - no permissions set (all_perms_clear_spec)
-        //   - not initialized
-        //   - not public
-        // This follows directly from new()'s ensures clause.
-        true,
-{
-}
-
-/// US4: type mismatch always fails validation.
-pub proof fn lemma_type_mismatch_fails(ko: KernelObject, expected: ObjType)
+pub proof fn lemma_revoke_idempotent(
+    a: KernelObject, b: KernelObject, c: KernelObject, tid: u32, r1: i32, r2: i32,
+)
     requires
-        ko.inv(),
+        KernelObject::revoke_post(a, b, tid, r1),
+        KernelObject::revoke_post(b, c, tid, r2),
+    ensures
+        forall|i: int| 0 <= i < MAX_THREADS as int ==> c.thread_perms[i] == b.thread_perms[i],
+        c.flag_initialized == b.flag_initialized,
+        c.flag_public == b.flag_public,
+        c.obj_type === b.obj_type,
+        r2 == r1,
+{
+}
+
+/// US5: supervisor mode is granted access to any object, whatever its
+/// permissions. check_access's ensures equates it with check_access_spec, so
+/// this is a statement about the shipped check.
+pub proof fn lemma_supervisor_always_granted(ko: KernelObject, tid: u32)
+    ensures
+        ko.check_access_spec(tid, true),
+{
+}
+
+/// US6: an object in the state new() produces -- no permissions, not public --
+/// denies every non-supervisor thread.
+pub proof fn lemma_new_no_perms(ko: KernelObject, tid: u32)
+    requires
+        ko.all_perms_clear_spec(),
+        !ko.is_public_spec(),
+    ensures
+        !ko.has_perm_spec(tid),
+        !ko.check_access_spec(tid, false),
+{
+}
+
+/// US4: a type mismatch fails validation with EBADF, before any permission or
+/// initialization check, for every caller.
+pub proof fn lemma_type_mismatch_fails(
+    ko: KernelObject, expected: ObjType, tid: u32, is_supervisor: bool, init_check: InitCheck,
+)
+    requires
         expected !== ObjType::Any,
         ko.obj_type !== expected,
     ensures
-        // validate() returns Err(EBADF) for type mismatch
-        // This follows from validate's ensures clause.
-        true,
+        ko.validate_spec(expected, tid, is_supervisor, init_check) === Err::<(), i32>(EBADF),
 {
 }
 
-/// US7: uninitialized object fails MustBeInit validation.
-pub proof fn lemma_uninit_fails_must_be_init(ko: KernelObject)
+/// US7: an uninitialized object fails MustBeInit validation with EINVAL. A
+/// supervisor bypasses the permission check but not the initialization check.
+pub proof fn lemma_uninit_fails_must_be_init(ko: KernelObject, expected: ObjType, tid: u32)
     requires
-        ko.inv(),
         !ko.is_initialized_spec(),
+        expected === ObjType::Any || ko.obj_type === expected,
     ensures
-        // validate(Any, tid, true, MustBeInit) returns Err(EINVAL)
-        // supervisor bypasses perms but not init check.
-        true,
+        ko.validate_spec(expected, tid, true, InitCheck::MustBeInit) === Err::<(), i32>(EINVAL),
 {
 }
 
-/// US2+US1: after granting, check_access returns true.
-pub proof fn lemma_grant_then_check()
+/// US2+US1: after a successful grant, that thread passes the access check.
+pub proof fn lemma_grant_then_check(a: KernelObject, b: KernelObject, tid: u32, rc: i32)
+    requires
+        tid < MAX_THREADS,
+        KernelObject::grant_post(a, b, tid, rc),
     ensures
-        // For any perms array and valid tid:
-        //   perms[tid] = true ==> has_perm_spec(tid)
-        // This follows from has_perm_spec definition.
-        true,
+        b.has_perm_spec(tid),
+        b.check_access_spec(tid, false),
 {
 }
 
-/// US3+US1: after revoking, check_access returns false.
-pub proof fn lemma_revoke_then_check()
+/// US3+US1: after a revoke, that thread fails the access check on a
+/// non-public object (revoke does not change publicity).
+pub proof fn lemma_revoke_then_check(a: KernelObject, b: KernelObject, tid: u32, rc: i32)
+    requires
+        tid < MAX_THREADS,
+        !a.is_public_spec(),
+        KernelObject::revoke_post(a, b, tid, rc),
     ensures
-        // For any perms array and valid tid:
-        //   perms[tid] = false ==> !has_perm_spec(tid)
-        // This follows from has_perm_spec definition.
-        true,
+        !b.has_perm_spec(tid),
+        !b.check_access_spec(tid, false),
 {
 }
 
-/// Recycle grants exactly one permission.
-pub proof fn lemma_recycle_single_perm()
+/// recycle leaves exactly one thread with access: the recycling thread.
+pub proof fn lemma_recycle_single_perm(a: KernelObject, b: KernelObject, tid: u32, other: u32, rc: i32)
+    requires
+        tid < MAX_THREADS,
+        other != tid,
+        KernelObject::recycle_post(a, b, tid, rc),
     ensures
-        // After recycle(tid), only thread_perms[tid] is true
-        // This follows from recycle's ensures clause.
-        true,
+        b.has_perm_spec(tid),
+        !b.has_perm_spec(other),
 {
 }
 
