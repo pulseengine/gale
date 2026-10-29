@@ -1,3 +1,6 @@
+# Explicit name (gale#463): without it Zephyr derives the module name from the
+# directory, so a consumer's name-collision check depends on where it unpacked.
+name: gale
 build:
   cmake: zephyr
   kconfig: zephyr/Kconfig

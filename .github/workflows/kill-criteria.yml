@@ -236,6 +236,24 @@ jobs:
       - name: Every job in every workflow is bounded
         run: cargo xtask check job-timeouts
 
+  zephyr-module-archive:
+    name: "the Zephyr module archive is reproducible, self-contained, and named"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # gale#463: releases ship gale-zephyr-module-<v>.tar.gz under the cosign
+      # signature, for varve to carry gale as a verified Zephyr module. The
+      # self-test's control builds an archive MISSING a build input and requires
+      # the standalone build to fail -- so "self-contained" cannot be satisfied
+      # by a build that read files from the checkout instead of the archive.
+      - name: Negative control -- an incomplete archive must not build
+        run: cargo xtask check zephyr-module-archive --self-test
+
+      - name: The archive builds twice identically, and alone
+        run: cargo xtask check zephyr-module-archive
+
   data-overlap:
     name: "fused data segments are disjoint (gale#266)"
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
