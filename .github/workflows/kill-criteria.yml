@@ -30,7 +30,10 @@ concurrency:
 jobs:
   wcet-evt:
     name: "VER-OS-WCET-001 kill-criterion can still fail"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    # Routes fork PRs to GitHub-hosted runners by default. This is NOT a security
+    # boundary: a fork PR can edit this file. Isolation is enforced by the org's
+    # smithy runner-group policy and fork-PR approval (pulseengine/warte#35).
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -72,7 +75,7 @@ jobs:
 
   proof-completeness:
     name: "a Rocq proof that is merely STATED cannot pass as proven"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -114,7 +117,7 @@ jobs:
 
   renode-targets:
     name: "every renode_test target defined is actually run"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -175,7 +178,7 @@ jobs:
 
   retry-loops:
     name: "no CI retry loop can swallow its own failure"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -217,7 +220,7 @@ jobs:
 
   job-timeouts:
     name: "every CI job declares a timeout-minutes"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -235,7 +238,7 @@ jobs:
 
   data-overlap:
     name: "fused data segments are disjoint (gale#266)"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -295,7 +298,7 @@ jobs:
 
   pin-agreement:
     name: "a hardcoded tool version matches the toolchain pin"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -338,7 +341,7 @@ jobs:
 
   fixture-freshness:
     name: "committed Renode ELF fixtures are not older than their sources"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -358,7 +361,7 @@ jobs:
 
   object-freshness:
     name: "committed objects are not older than their sources"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -421,7 +424,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Negative control -- the gate catches each way a check stops arriving
         run: python3 tools/check-required-contexts.py --self-test
@@ -471,7 +474,7 @@ jobs:
   # composed/fused wasm imports from `env`.
   graph-env:
     name: "no raw env import survives in the composed graph"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -602,7 +605,7 @@ jobs:
   # laid down here and `varve which spar` is printed.
   aadl-parse:
     name: every committed AADL model parses with the pinned spar
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -656,7 +659,7 @@ jobs:
 
   wcet-sidecar:
     name: "T4: synth emits sound per-function WCET bounds (REQ-OS-WCET-001)"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -705,7 +708,7 @@ jobs:
 
   criticality-axis:
     name: "every coexisting pair carries a freedom-from-interference argument"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
     timeout-minutes: 15
     # rivet is fetched as a pinned release binary rather than through the varve
     # shim, deliberately: the sha256 is pinned here, not read from the same

@@ -48,7 +48,11 @@ jobs:
     # sudo, so neither the vm.mmap_rnd_bits sysctl nor a setarch -R
     # fallback can satisfy TSan's shadow-layout requirement there. On
     # GitHub-hosted runners the sysctl works.
-    runs-on: ${{ fromJSON(matrix.runner) }}
+    # Routes fork PRs to GitHub-hosted runners by default (self-hosted matrix
+    # entries only). This is NOT a security boundary: a fork PR can edit this
+    # file. Isolation is enforced by the org's smithy runner-group policy and
+    # fork-PR approval (pulseengine/warte#35).
+    runs-on: ${{ github.event.pull_request.head.repo.fork && contains(matrix.runner, 'self-hosted') && 'ubuntu-latest' || fromJSON(matrix.runner) }}
     timeout-minutes: 45
     strategy:
       fail-fast: false

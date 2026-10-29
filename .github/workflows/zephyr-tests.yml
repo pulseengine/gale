@@ -569,7 +569,7 @@ jobs:
 
     steps:
       - name: Checkout Gale
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: gale
 
@@ -750,7 +750,7 @@ jobs:
       - name: Track binary size over time
         if: always()
         continue-on-error: true
-        uses: benchmark-action/github-action-benchmark@v1
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1
         with:
           name: Binary Size (semaphore test, qemu_cortex_m3)
           tool: cargo

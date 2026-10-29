@@ -23,12 +23,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@nightly
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@2c76c034f9e32a5d6e2c104dc4df23a22476db04 # nightly
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
           tool: cargo-llvm-cov
 
@@ -38,8 +38,8 @@ jobs:
           cargo llvm-cov --workspace --html --output-dir coverage-rust
 
       - name: Upload LCOV to Codecov
-        if: env.CODECOV_TOKEN != ''
-        uses: codecov/codecov-action@v7
+        if: (env.CODECOV_TOKEN != '') && github.event.pull_request.head.repo.fork != true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: lcov-rust.info
           flags: rust
@@ -48,7 +48,7 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload HTML coverage report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-rust
           path: coverage-rust/
@@ -68,7 +68,7 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout Gale
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: gale
 
@@ -217,8 +217,8 @@ jobs:
           PYEOF
 
       - name: Upload LCOV to Codecov
-        if: env.CODECOV_TOKEN != ''
-        uses: codecov/codecov-action@v7
+        if: (env.CODECOV_TOKEN != '') && github.event.pull_request.head.repo.fork != true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           directory: twister-out/coverage/
           flags: zephyr
@@ -228,7 +228,7 @@ jobs:
 
       - name: Upload twister results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: twister-results
           path: |
@@ -252,7 +252,7 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout Gale
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: gale
 
@@ -385,8 +385,8 @@ jobs:
           PYEOF
 
       - name: Upload LCOV to Codecov
-        if: env.CODECOV_TOKEN != ''
-        uses: codecov/codecov-action@v7
+        if: (env.CODECOV_TOKEN != '') && github.event.pull_request.head.repo.fork != true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           directory: twister-out-gale/coverage/
           flags: zephyr
@@ -396,7 +396,7 @@ jobs:
 
       - name: Upload twister results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: twister-results-gale
           path: |

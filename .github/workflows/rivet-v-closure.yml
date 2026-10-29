@@ -40,7 +40,10 @@ jobs:
     # below still REPORTS its check on every PR (gale#294) while doing no work
     # when nothing relevant changed.
     name: "V-closure needed?"
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    # Routes fork PRs to GitHub-hosted runners by default. This is NOT a security
+    # boundary: a fork PR can edit this file. Isolation is enforced by the org's
+    # smithy runner-group policy and fork-PR approval (pulseengine/warte#35).
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
     timeout-minutes: 30
     outputs:
       run: ${{ steps.q.outputs.run }}
@@ -64,7 +67,7 @@ jobs:
   v-closure:
     name: "no requirement lags its closed V"
     needs: guard
-    runs-on: [self-hosted, linux, x64, rust-cpu]
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
