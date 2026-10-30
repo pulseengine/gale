@@ -12,6 +12,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # GitHub merge queue: this workflow emits required contexts, so it must
+  # run on merge_group or a queued PR waits on checks nothing reports
+  # (tools/check-required-contexts.py fails a PR that drops this).
+  # Required: Binary size comparison (skips on docs-only). The primitive
+  # matrices are not required: skipped in the queue and on docs-only.
+  merge_group:
 
 permissions:
   contents: write
@@ -43,7 +49,34 @@ env:
   GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
+  changes:
+    # Docs-only detector (tools/ci/detect-changes.sh, fails closed). The heavy
+    # jobs below skip on docs-only changes by job-level `if:`, which still
+    # REPORTS their required context; a workflow `paths:` would not (gale#294).
+    # pull_request diffs against the PR base, merge_group against
+    # merge_group.base_sha.
+    name: "docs-only change?"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The workflow-level HOME=/root is for the Zephyr containers. This job runs
+    # on the bare hosted runner, where checkout cannot stat /root/.gitconfig.
+    env:
+      HOME: /home/runner
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: bash tools/ci/detect-changes.sh
+
   zephyr-test:
+    needs: changes
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.code != 'false' }}
     name: "${{ matrix.primitive }} (qemu_cortex_m3)"
     runs-on: ubuntu-22.04
     timeout-minutes: 90
@@ -264,6 +297,8 @@ jobs:
   # qemu_cortex_m3 does not provide.
   # =========================================================================
   zephyr-mpu-test:
+    needs: changes
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.code != 'false' }}
     name: "${{ matrix.primitive }} (mps2/an385)"
     runs-on: ubuntu-22.04
     timeout-minutes: 90
@@ -413,6 +448,8 @@ jobs:
   #       the primary Cortex-M test suite.
   # =========================================================================
   zephyr-smp-test:
+    needs: changes
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.code != 'false' }}
     # Known issue: x86_64 SMP tests hang at boot (Gale shim interaction
     # with x86_64 SMP init). ARM Cortex-M tests pass. Tracked for investigation.
     continue-on-error: true
@@ -551,6 +588,8 @@ jobs:
   # Binary size comparison — baseline vs Gale for the semaphore test suite
   # =========================================================================
   size-comparison:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     name: "Binary size comparison"
     runs-on: ubuntu-22.04
     timeout-minutes: 15

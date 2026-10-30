@@ -11,7 +11,12 @@ This checks the direction that CI can check without admin rights: for every name
 in .github/required-contexts.txt, some job in some workflow produces it, and that
 workflow's `pull_request` trigger is unconditional -- no path filter (INCLUDING an
 empty or null one), no branch restriction that excludes main, no `types:` that
-drops a default PR activity.
+drops a default PR activity -- and that it also triggers on `merge_group`.  main
+merges through a merge queue, and the queue waits for every required context on
+its own merge_group run: a workflow without that trigger reports nothing there,
+so the queued PR sits until the queue's timeout evicts it.  A job SKIPPED by its
+`if:` in the queue still reports (skipped counts as success); only a workflow
+that never starts does not.
 
 The other direction -- that this file still matches the real branch protection --
 needs admin rights the default GITHUB_TOKEN does not have.  Pass --protection FILE
@@ -70,6 +75,16 @@ def trigger_state(wf):
         missing = DEFAULT_PR_TYPES - set(pr["types"])
         if missing:
             return ("TYPES_RESTRICTED", f"types={pr['types']} drops {sorted(missing)}")
+
+    # The merge queue runs required checks on `merge_group`, not `pull_request`.
+    # merge_group's only filter is `types:`, and its only activity type is
+    # checks_requested, so a bare key or that one type is the whole trigger.
+    if "merge_group" not in on:
+        return ("NO_MERGE_GROUP", "no merge_group trigger -- never reports in the merge queue")
+    mg = on["merge_group"]
+    if isinstance(mg, dict) and mg.get("types") is not None \
+            and "checks_requested" not in mg["types"]:
+        return ("NO_MERGE_GROUP", f"merge_group types={mg['types']} drops checks_requested")
 
     return ("OK", None)
 
@@ -134,24 +149,31 @@ def check(listfile, wfdir, protection=None):
     if bad:
         print(f"  FAIL: {len(bad)} required context(s) may not be produced on a PR")
         return 1
-    print(f"  PASS: every required context maps to a job that reports on every PR")
+    print(f"  PASS: every required context maps to a job that reports on every PR and in the merge queue")
     return 0
 
 
 # --- negative control -------------------------------------------------------
 # The gate has to be shown to DISCRIMINATE, not merely to run.  Each planted
 # workflow below is the real shape of a way a required context stops arriving.
+# Every plant but the merge-queue ones carries a correct `merge_group:`, so each
+# is caught for its OWN reason rather than for the missing queue trigger.
+MG = "  merge_group:\n"
 PLANTS = {
     "dangling-paths": ("the gale#340 shape: a `paths:` key with nothing under it",
-                       "on:\n  pull_request:\n    branches: [main]\n    paths:\n"),
+                       "on:\n  pull_request:\n    branches: [main]\n    paths:\n" + MG),
     "real-paths":     ("an ordinary path filter",
-                       "on:\n  pull_request:\n    branches: [main]\n    paths: ['src/**']\n"),
+                       "on:\n  pull_request:\n    branches: [main]\n    paths: ['src/**']\n" + MG),
     "no-pr":          ("push-only, so no PR ever gets a check",
-                       "on:\n  push:\n    branches: [main]\n"),
+                       "on:\n  push:\n    branches: [main]\n" + MG),
     "types":          ("`types:` that drops synchronize, so pushes to the PR do not re-report",
-                       "on:\n  pull_request:\n    branches: [main]\n    types: [opened]\n"),
+                       "on:\n  pull_request:\n    branches: [main]\n    types: [opened]\n" + MG),
     "branch":         ("a branches list that excludes main",
-                       "on:\n  pull_request:\n    branches: [develop]\n"),
+                       "on:\n  pull_request:\n    branches: [develop]\n" + MG),
+    "no-merge-group": ("PR-only, so the merge queue waits on a check that never arrives",
+                       "on:\n  pull_request:\n    branches: [main]\n"),
+    "mg-types":       ("a merge_group `types:` that drops checks_requested",
+                       "on:\n  pull_request:\n    branches: [main]\n  merge_group:\n    types: [destroyed]\n"),
 }
 
 
@@ -163,7 +185,7 @@ def self_test():
         lst = td / "list.txt"
         lst.write_text("The Gate\n")
 
-        clean = "name: clean\non:\n  pull_request:\n    branches: [main]\n"
+        clean = "name: clean\non:\n  pull_request:\n    branches: [main]\n  merge_group:\n"
         job = "jobs:\n  g:\n    name: \"The Gate\"\n    runs-on: ubuntu-24.04\n    steps: [{run: 'true'}]\n"
 
         print("  negative control -- each planted workflow MUST make the gate fail\n")

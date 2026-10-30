@@ -15,6 +15,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # GitHub merge queue: this workflow emits required contexts, so it must
+  # run on merge_group or a queued PR waits on checks nothing reports
+  # (tools/check-required-contexts.py fails a PR that drops this).
+  # Required: LLVM LTO build + size comparison (skips on docs-only). The
+  # llvm-lto-test matrix is advisory: skipped in the queue and on docs-only.
+  merge_group:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -38,7 +44,34 @@ env:
   GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
+  changes:
+    # Docs-only detector (tools/ci/detect-changes.sh, fails closed). The heavy
+    # jobs below skip on docs-only changes by job-level `if:`, which still
+    # REPORTS their required context; a workflow `paths:` would not (gale#294).
+    # pull_request diffs against the PR base, merge_group against
+    # merge_group.base_sha.
+    name: "docs-only change?"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The workflow-level HOME=/root is for the Zephyr containers. This job runs
+    # on the bare hosted runner, where checkout cannot stat /root/.gitconfig.
+    env:
+      HOME: /home/runner
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: bash tools/ci/detect-changes.sh
+
   llvm-lto-build:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     name: "LLVM LTO build + size comparison"
     runs-on: ubuntu-22.04
     # MEASURED BOUND (gale#382). Job durations over 12 runs:
@@ -386,6 +419,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   llvm-lto-test:
+    needs: changes
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.code != 'false' }}
     name: "llvm-lto-test"
     runs-on: ubuntu-22.04
     # MEASURED BOUND (gale#382). Job durations over 12 runs:
