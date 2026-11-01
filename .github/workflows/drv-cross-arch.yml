@@ -42,6 +42,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # GitHub merge queue: this workflow emits required contexts, so it must
+  # run on merge_group or a queued PR waits on checks nothing reports
+  # (tools/check-required-contexts.py fails a PR that drops this).
+  # Its step-level guard diffs against merge_group.base_sha in the queue.
+  merge_group:
 
 permissions:
   contents: read
@@ -94,11 +99,11 @@ jobs:
         # here so the job still REPORTS when they do not match (gale#294).
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
+          if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ github.event_name }}" != "merge_group" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "push to main — always run"; exit 0
           fi
-          base="${{ github.event.pull_request.base.sha }}"
+          base="${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
           changed="$(git diff --name-only "$base"...HEAD)"
           if printf '%s\n' "$changed" | grep -qE \
               '^benches/gust/drivers/[^/]+-thin/|^benches/gust/drivers/wit/|^benches/gust/drivers/build-cross-arch\.sh$|^benches/gust/drivers/check-cross-arch\.py$|^\.github/workflows/drv-cross-arch\.yml$'; then

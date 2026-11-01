@@ -19,6 +19,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # GitHub merge queue: this workflow emits required contexts, so it must
+  # run on merge_group or a queued PR waits on checks nothing reports
+  # (tools/check-required-contexts.py fails a PR that drops this).
+  # Every kill criterion runs in the queue as on a PR.
+  merge_group:
 
 permissions:
   contents: read
