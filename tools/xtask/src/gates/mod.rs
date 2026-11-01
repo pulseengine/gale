@@ -15,6 +15,7 @@ pub mod providers;
 pub mod renode_targets;
 pub mod retry_loops;
 pub mod wit_resolve;
+pub mod zephyr_module_archive;
 
 use crate::verdict::Verdict;
 use std::path::Path;
@@ -104,6 +105,12 @@ pub const GATES: &[Gate] = &[
         about: "generated WIT worlds resolve against the gust:hal seam",
         run: wit_resolve::run,
         self_test: wit_resolve::self_test,
+    },
+    Gate {
+        name: zephyr_module_archive::NAME,
+        about: "the Zephyr module archive is reproducible, self-contained, and named",
+        run: zephyr_module_archive::run,
+        self_test: zephyr_module_archive::self_test,
     },
 ];
 
