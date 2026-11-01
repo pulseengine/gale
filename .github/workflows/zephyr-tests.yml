@@ -58,6 +58,10 @@ jobs:
     name: "docs-only change?"
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # The workflow-level HOME=/root is for the Zephyr containers. This job runs
+    # on the bare hosted runner, where checkout cannot stat /root/.gitconfig.
+    env:
+      HOME: /home/runner
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
