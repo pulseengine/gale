@@ -11,6 +11,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # GitHub merge queue: this workflow emits required contexts, so it must
+  # run on merge_group or a queued PR waits on checks nothing reports
+  # (tools/check-required-contexts.py fails a PR that drops this).
+  # Required: Verus-Strip Gate, FFI Feature Sizes (run in full). The
+  # Test + Lint matrix is not required and is skipped in the queue.
+  merge_group:
 
 permissions:
   contents: read
@@ -21,6 +27,7 @@ concurrency:
 
 jobs:
   test:
+    if: github.event_name != 'merge_group'
     name: "Test + Lint (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45

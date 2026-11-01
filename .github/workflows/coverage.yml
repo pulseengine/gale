@@ -11,14 +11,43 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # GitHub merge queue: this workflow emits required contexts, so it must
+  # run on merge_group or a queued PR waits on checks nothing reports
+  # (tools/check-required-contexts.py fails a PR that drops this).
+  # Required: Rust Coverage, Zephyr C Coverage (skip on docs-only). The
+  # gale-enabled run and the delta are advisory: skipped in the queue.
+  merge_group:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    # Docs-only detector (tools/ci/detect-changes.sh, fails closed). The heavy
+    # jobs below skip on docs-only changes by job-level `if:`, which still
+    # REPORTS their required context; a workflow `paths:` would not (gale#294).
+    # pull_request diffs against the PR base, merge_group against
+    # merge_group.base_sha.
+    name: "docs-only change?"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: bash tools/ci/detect-changes.sh
+
   # ── Rust source coverage (cargo-llvm-cov) ─────────────────────────
   rust-coverage:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     name: Rust Coverage
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -56,6 +85,8 @@ jobs:
 
   # ── Zephyr C coverage (twister + gcov on QEMU) ───────────────────
   zephyr-coverage:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     name: Zephyr C Coverage
     runs-on: ubuntu-22.04
     timeout-minutes: 90
@@ -236,6 +267,8 @@ jobs:
             twister-out/coverage/
           retention-days: 14
   zephyr-coverage-gale:
+    needs: changes
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.code != 'false' }}
     name: Zephyr C Coverage (gale-enabled)
     # MEASUREMENT LEG (gale#395). Identical to zephyr-coverage except gale's
     # module + overlay are injected. Not a required context: its purpose
@@ -408,7 +441,8 @@ jobs:
     name: "Upstream vs gale — kernel test delta (gale#395)"
     needs: [zephyr-coverage, zephyr-coverage-gale]
     # always(): the delta is most valuable exactly when one leg went red.
-    if: always()
+    # Advisory: skipped in the merge queue.
+    if: always() && github.event_name != 'merge_group'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:

@@ -38,6 +38,12 @@ on:
     # off the trigger and into the job as a step-level early exit (pattern from
     # gale#319). The job always runs and always reports; when nothing relevant
     # changed it exits in seconds without building anything.
+  # GitHub merge queue: this workflow emits required contexts, so it must
+  # run on merge_group or a queued PR waits on checks nothing reports
+  # (tools/check-required-contexts.py fails a PR that drops this).
+  # `proofs needed?` diffs against merge_group.base_sha in the queue;
+  # the proof jobs report either way (step-level skip).
+  merge_group:
   schedule:
     - cron: '0 2 * * 0'
 
@@ -65,10 +71,10 @@ jobs:
       - id: q
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
+          if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ github.event_name }}" != "merge_group" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "not a PR — run"; exit 0
           fi
-          changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}"...HEAD)"
+          changed="$(git diff --name-only "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"...HEAD)"
           if printf '%s\n' "$changed" | grep -qE '^src/|^plain/|^ffi/|^tests/|^proofs/|^BUILD\.bazel$|^MODULE\.bazel$|^\.github/workflows/formal-verification\.yml$'; then
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "proof-relevant paths changed"
           else
