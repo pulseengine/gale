@@ -19,9 +19,8 @@ groups:
       - "wasmtime"
       - "wasmtime-*"
   github-actions-all:
-    package-ecosystem: github-actions
     patterns:
-      - "*"
+      - "^[^@]+/"
 updates:
   - package-ecosystem: github-actions
     directory: /
