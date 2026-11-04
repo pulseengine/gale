@@ -41,3 +41,17 @@ artifacts:
         target: SYSREQ-BYOOS-001
       - type: related-to
         target: REQ-OS-RUNTIME-LOAD-001
+
+  - id: REQ-OS-P3-ASYNC-001
+    type: sw-req
+    title: P3 async edges run inside one partition, wake through an ISR-safe pending mask, and enlarge the seam and trusted base only explicitly
+    status: proposed
+    description: "gale's side of the joint P3-async design (meld ADR-10, meld PR #556, meld#548), owned by gale and due before that ADR's step 4. SHALL: (1) every async edge stays within one partition; subtask and waitable-set state lives in that partition's MPU region, and a cross-domain async edge is refused at fuse time (v1). (2) Readiness has one structure, the gust executor's ready mask. An external or ISR wake sets bit h in a separate pending mask with an atomic OR. Only the executor's main loop drains that mask, between poll rounds, by calling the verified wake(h) once per set bit, never ready |= pending. That keeps poll_round's termination proof, which rests on dispatch_one's assumed ready == old.ready, and the invariant that ready bits exist only for Pending slots. (3) No lost wake-ups: pending bits are merged with |= and never overwritten. (4) Static capacity: subtask and waitable tables are fixed-size and refuse loudly when full. (5) The kiln-builtins __p3_* entry points become undefined symbols in the dissolved object. They are added to the DECLARED seam (the dissolve seam gate requires undefined == declared, exactly) and recorded in the unverified trusted base. They are not absorbed silently. Kill-criteria: a ready bit set during poll_round; a wake lost between an ISR and the next round; an undefined __p3_* symbol that the seam declaration does not list."
+    tags: [gust, p3-async, executor, seam, tcb]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-EXEC-001
+      - type: related-to
+        target: REQ-OS-MULTICORE-001
