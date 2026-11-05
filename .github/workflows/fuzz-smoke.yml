@@ -75,7 +75,7 @@ jobs:
           restore-keys: fuzz-${{ runner.os }}-
 
       - name: Install cargo-fuzz
-        uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2
+        uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941 # v2
         with:
           tool: cargo-fuzz
 
