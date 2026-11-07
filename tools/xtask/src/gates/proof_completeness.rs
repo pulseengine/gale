@@ -40,7 +40,7 @@ const EMPTY_LEDGER: &[&str] = &["heap_proofs.v"];
 /// Rust method `Tasks::admit` in a COMMENT, and a naive grep reads that as two
 /// admitted proofs -- it fooled me first time, and that file is in fact fully
 /// discharged.
-fn count_admits(text: &str) -> usize {
+pub(crate) fn count_admits(text: &str) -> usize {
     text.lines()
         .filter(|l| {
             let t = l.trim_start();

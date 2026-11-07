@@ -20,7 +20,9 @@ fn usage() -> String {
          USAGE:\n  \
            cargo xtask check <gate> [--self-test] [--module PATH] [--format json]\n  \
            cargo xtask check            list the gates\n  \
-           cargo xtask silicon ...      gust firmware on physical boards (see `xtask silicon`)\n\n\
+           cargo xtask silicon ...      gust firmware on physical boards (see `xtask silicon`)\n  \
+           cargo xtask trusted-base [--out PATH | --write-doc]\n  \
+                                        the trusted-base inventory as JSON (gale#467)\n\n\
          EXIT CODES:\n  \
            0  the property holds\n  \
            1  the property does NOT hold\n  \
@@ -65,6 +67,13 @@ fn main() {
             exit(EXIT_USAGE);
         };
         exit(silicon::main(&root, &args[1..]));
+    }
+    if args[0] == "trusted-base" {
+        let Some(root) = repo_root() else {
+            eprintln!("xtask: not a git repository");
+            exit(EXIT_USAGE);
+        };
+        exit(trusted_base_cmd(&root, &args[1..]));
     }
     if args[0] != "check" {
         eprintln!("xtask: unknown command '{}'\n\n{}", args[0], usage());
@@ -132,4 +141,81 @@ fn main() {
         println!("{v}");
     }
     exit(v.code());
+}
+
+/// `xtask trusted-base`: print (or `--out PATH`) the inventory JSON, or
+/// `--write-doc` to re-render the honesty doc's block. Exit 3 when the tree
+/// cannot be measured -- never an empty document.
+fn trusted_base_cmd(root: &std::path::Path, args: &[String]) -> i32 {
+    use gates::trusted_base as tb;
+    let mut out: Option<String> = None;
+    let mut doc = false;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--write-doc" => doc = true,
+            "--out" => match it.next() {
+                Some(p) => out = Some(p.clone()),
+                None => {
+                    eprintln!("xtask: --out needs a path");
+                    return EXIT_USAGE;
+                }
+            },
+            other => {
+                eprintln!("xtask: unknown argument '{other}' to trusted-base\n\n{}", usage());
+                return EXIT_USAGE;
+            }
+        }
+    }
+    if doc && out.is_some() {
+        eprintln!("xtask: --write-doc and --out are separate actions");
+        return EXIT_USAGE;
+    }
+    if doc {
+        return match tb::write_doc(root) {
+            Ok(m) => {
+                println!("{m}");
+                EXIT_PASS
+            }
+            Err(e) => {
+                eprintln!("xtask: {e}");
+                verdict::EXIT_REFUSED
+            }
+        };
+    }
+    let inv = match tb::inventory(root) {
+        Ok(i) => i,
+        Err(e) => {
+            eprintln!("xtask: {e}");
+            return verdict::EXIT_REFUSED;
+        }
+    };
+    let commit = match tb::commit(root) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("xtask: {e}");
+            return verdict::EXIT_REFUSED;
+        }
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let json = tb::to_json(&inv, &commit, &tb::utc(now));
+    match out {
+        Some(p) => match std::fs::write(&p, &json) {
+            Ok(()) => {
+                println!("wrote {p}");
+                EXIT_PASS
+            }
+            Err(e) => {
+                eprintln!("xtask: cannot write {p}: {e}");
+                verdict::EXIT_REFUSED
+            }
+        },
+        None => {
+            print!("{json}");
+            EXIT_PASS
+        }
+    }
 }
