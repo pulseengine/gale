@@ -173,31 +173,34 @@ fi
 echo "  ok: the seam is intact and is exactly what the composite declares"
 
 # ── negative control ────────────────────────────────────────────────────────────
-# A gate nobody has watched fail is not a gate. wasm-kernel/fused.wasm lowers with NO
+# A gate nobody has watched fail is not a gate. The control is an object with NO
 # undefined symbols -- exactly the "seam swallowed" shape -- so the gate MUST reject
 # it. If this control ever passes, the gate above has stopped discriminating and the
 # green it reports means nothing.
+#
+# The control OWNS its fixture, built here, and a control that cannot run FAILS.
+# It used to borrow wasm-kernel/fused.wasm and print "SKIPPED" when that would not
+# compile -- and synth stopped compiling it (#1041: its data segment is refused on
+# the --relocatable path without --native-pointer-abi), so on main this gate had
+# been reporting green with its negative control silently skipped. Found while
+# re-verifying the layer 2026.10.35 bump; it skipped on 2026.10.30 as well.
 echo ""
 echo "== negative control: an object with no seam MUST be refused =="
-CTL_SRC="$HERE/../wasm-kernel/fused.wasm"
-if [ -f "$CTL_SRC" ]; then
-  if "$SYNTH" compile "$CTL_SRC" --target cortex-m3 --all-exports --relocatable \
-        -o "$T/control.o" >/dev/null 2>&1; then
-    cu="$("$NM" -u "$T/control.o" 2>/dev/null | awk '{print $NF}' | sort -u)"
-    cn=$(printf '%s' "$cu" | grep -c . || true)
-    if [ "$cn" -eq 0 ]; then
-      echo "  ok: control has 0 undefined symbols and the gate refuses it -- the gate bites"
-    else
-      echo "  CONTROL DID NOT FAIL: it has $cn undefined symbols [$(printf '%s' "$cu" | tr '\n' ' ')]"
-      echo "        The control is no longer a seam-swallowed object, so it no longer"
-      echo "        exercises the gate. Pick a new control."
-      exit 4
-    fi
-  else
-    echo "  SKIPPED: control object would not compile"
-  fi
+printf '%s' '(module (func (export "f") (result i32) i32.const 7))' > "$T/control.wat"
+wasm-tools parse "$T/control.wat" -o "$T/control.wasm" \
+  || { echo "  CONTROL COULD NOT BE BUILT (wasm-tools parse) -- refusing to report green" >&2; exit 4; }
+"$SYNTH" compile "$T/control.wasm" --target cortex-m3 --all-exports --relocatable \
+      -o "$T/control.o" >/dev/null 2>&1 \
+  || { echo "  CONTROL COULD NOT BE COMPILED by $SYNTH -- refusing to report green" >&2; exit 4; }
+cu="$("$NM" -u "$T/control.o" 2>/dev/null | awk '{print $NF}' | sort -u)"
+cn=$(printf '%s' "$cu" | grep -c . || true)
+if [ "$cn" -eq 0 ]; then
+  echo "  ok: control has 0 undefined symbols and the gate refuses it -- the gate bites"
 else
-  echo "  SKIPPED: no control at $CTL_SRC"
+  echo "  CONTROL DID NOT FAIL: it has $cn undefined symbols [$(printf '%s' "$cu" | tr '\n' ' ')]"
+  echo "        The control is no longer a seam-swallowed object, so it no longer"
+  echo "        exercises the gate. Pick a new control."
+  exit 4
 fi
 
 echo ""
