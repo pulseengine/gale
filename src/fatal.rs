@@ -99,6 +99,41 @@ impl FatalError {
         self.reason === FatalReason::KernelPanic
     }
 
+    /// The full recovery decision (gale#462). classify's ensures used to pin
+    /// only the panic and ISR-production cases, so FT3's thread recovery and
+    /// the test-mode behaviour were stated in comments, not proven.
+    pub open spec fn classify_spec(&self) -> RecoveryAction {
+        if self.reason === FatalReason::KernelPanic {
+            RecoveryAction::Halt
+        } else if !self.test_mode {
+            match self.reason {
+                FatalReason::StackCheckFail => RecoveryAction::AbortThread,
+                _ => match self.context {
+                    FatalContext::Isr => RecoveryAction::Halt,
+                    FatalContext::Thread => RecoveryAction::AbortThread,
+                },
+            }
+        } else {
+            match self.context {
+                FatalContext::Isr => match self.reason {
+                    FatalReason::StackCheckFail => RecoveryAction::AbortThread,
+                    _ => RecoveryAction::Ignore,
+                },
+                FatalContext::Thread => RecoveryAction::AbortThread,
+            }
+        }
+    }
+
+    /// The reason-code mapping (FT1).
+    pub open spec fn from_code_spec(code: u32) -> Option<FatalReason> {
+        if code == 0 { Some(FatalReason::CpuException) }
+        else if code == 1 { Some(FatalReason::SpuriousIrq) }
+        else if code == 2 { Some(FatalReason::StackCheckFail) }
+        else if code == 3 { Some(FatalReason::KernelOops) }
+        else if code == 4 { Some(FatalReason::KernelPanic) }
+        else { None }
+    }
+
     // ------------------------------------------------------------------
     // Operations
     // ------------------------------------------------------------------
@@ -123,6 +158,8 @@ impl FatalError {
     pub fn classify(&self) -> (result: RecoveryAction)
         requires self.inv(),
         ensures
+            // The whole decision, not only the cases below (gale#462).
+            result === self.classify_spec(),
             // FT2: panic ALWAYS halts — test_mode does not weaken this.
             // A panic indicates kernel invariant violation; resuming would
             // run the rest of the system on state that triggered the panic.
@@ -198,6 +235,7 @@ impl FatalError {
     /// FT1: all valid codes produce a valid variant.
     pub fn from_code(code: u32) -> (result: Option<FatalReason>)
         ensures
+            result === Self::from_code_spec(code),
             code == 0 ==> result === Some(FatalReason::CpuException),
             code == 1 ==> result === Some(FatalReason::SpuriousIrq),
             code == 2 ==> result === Some(FatalReason::StackCheckFail),
@@ -250,37 +288,32 @@ impl FatalError {
 // Compositional proofs
 // ======================================================================
 
-/// FT1: all valid reason codes map to a variant.
-/// Codes 0..=4 correspond to the five FatalReason variants.
-pub proof fn lemma_valid_codes_map()
+/// FT1: every reason code 0..=4 maps to its variant, and nothing above 4 does.
+pub proof fn lemma_valid_codes_map(code: u32)
     ensures
-        // from_code maps: 0=CpuException, 1=SpuriousIrq, 2=StackCheckFail,
-        // 3=KernelOops, 4=KernelPanic — all produce Some
-        true,
+        code <= 4 ==> FatalError::from_code_spec(code).is_some(),
+        code > 4 ==> FatalError::from_code_spec(code).is_none(),
+        FatalError::from_code_spec(4) === Some(FatalReason::KernelPanic),
 {}
 
-/// FT2: kernel panic always halts in production mode.
-/// Follows from classify's match: KernelPanic + !test_mode => Halt.
-pub proof fn lemma_panic_halts()
+/// FT2: a kernel panic halts in every context and in BOTH modes. CC-4 asked
+/// for exactly this: before the U-4 fix, test_mode + Isr + KernelPanic returned
+/// Ignore, and this lemma (then `ensures true`) could not notice.
+pub proof fn lemma_panic_halts(e: FatalError)
+    requires
+        e.reason === FatalReason::KernelPanic,
     ensures
-        // FatalError { reason: KernelPanic, context: Thread, test_mode: false }.classify()
-        //   === RecoveryAction::Halt
-        // FatalError { reason: KernelPanic, context: Isr, test_mode: false }.classify()
-        //   === RecoveryAction::Halt
-        // (proven by classify's ensures clause)
-        true,
+        e.classify_spec() === RecoveryAction::Halt,
 {}
 
-/// FT3: thread-context non-panic faults are recoverable in production.
-/// Follows from classify's match arms for Thread context.
-pub proof fn lemma_thread_faults_recoverable()
+/// FT3: every non-panic fault in thread context aborts the thread rather than
+/// halting the system -- in production and in test mode.
+pub proof fn lemma_thread_faults_recoverable(e: FatalError)
+    requires
+        e.context === FatalContext::Thread,
+        e.reason !== FatalReason::KernelPanic,
     ensures
-        // CpuException + Thread + !test_mode => AbortThread
-        // KernelOops + Thread + !test_mode => AbortThread
-        // SpuriousIrq + Thread + !test_mode => AbortThread
-        // StackCheckFail + Thread + !test_mode => AbortThread
-        // (proven by classify's ensures clause)
-        true,
+        e.classify_spec() === RecoveryAction::AbortThread,
 {}
 
 /// FT4: reason codes are distinct.
@@ -293,27 +326,25 @@ pub proof fn lemma_reason_codes_distinct()
         FatalReason::KernelOops !== FatalReason::KernelPanic,
 {}
 
-/// Stack check fail is always recoverable (abort thread).
-/// Follows from classify: StackCheckFail always => AbortThread,
-/// regardless of context or test_mode.
-pub proof fn lemma_stack_check_always_abort()
+/// A stack-check failure aborts the faulting thread in every context and
+/// mode -- it is detected on behalf of the thread, even on ISR exit.
+pub proof fn lemma_stack_check_always_abort(e: FatalError)
+    requires
+        e.reason === FatalReason::StackCheckFail,
     ensures
-        // StackCheckFail in production: Thread => AbortThread, Isr => AbortThread
-        // StackCheckFail in test mode: Thread => AbortThread, Isr => AbortThread
-        // (proven by classify's ensures clause)
-        true,
+        e.classify_spec() === RecoveryAction::AbortThread,
 {}
 
-/// Test mode is more permissive than production for ISR faults.
-/// In production, ISR oops halts; in test mode, ISR oops is ignored.
-pub proof fn lemma_test_mode_permissive()
+/// FT3: test mode is more permissive for ISR faults (a kernel oops in an ISR
+/// halts in production and is ignored under test), but never for a panic.
+pub proof fn lemma_test_mode_permissive(ctx: FatalContext)
     ensures
-        // FatalError { reason: KernelOops, context: Isr, test_mode: false }.classify()
-        //   === RecoveryAction::Halt
-        // FatalError { reason: KernelOops, context: Isr, test_mode: true }.classify()
-        //   === RecoveryAction::Ignore
-        // (proven by classify's match structure)
-        true,
+        (FatalError { reason: FatalReason::KernelOops, context: FatalContext::Isr, test_mode: false })
+            .classify_spec() === RecoveryAction::Halt,
+        (FatalError { reason: FatalReason::KernelOops, context: FatalContext::Isr, test_mode: true })
+            .classify_spec() === RecoveryAction::Ignore,
+        (FatalError { reason: FatalReason::KernelPanic, context: ctx, test_mode: true })
+            .classify_spec() === RecoveryAction::Halt,
 {}
 
 // ======================================================================

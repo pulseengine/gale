@@ -251,17 +251,10 @@ impl Lifo {
 // Compositional proofs
 // ======================================================================
 
-/// LI1/LI5: invariant is inductive across all operations.
-/// The ensures clauses on put/get already prove this; this lemma
-/// documents the property.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv (from init's ensures)
-        // put preserves inv (from put's ensures)
-        // get preserves inv (from get's ensures)
-        true,
-{
-}
+// P1 (inv is inductive): no lemma here -- this module's inv() is `true` by
+// definition, so there is nothing to preserve (gale#462; the stub that stood
+// here was `ensures true`).
+
 
 /// LI2+LI3: put then get returns to original count.
 pub proof fn lemma_put_get_roundtrip(count: u32)

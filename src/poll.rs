@@ -678,19 +678,12 @@ pub proof fn lemma_any_ready_correct()
 {
 }
 
-/// Invariant inductive: all operations preserve the invariant.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv (from init's ensures)
-        // reset_state preserves inv (from reset_state's ensures)
-        // set_ready preserves inv (from set_ready's ensures)
-        // cancel preserves inv (from cancel's ensures)
-        // PollSignal::init establishes inv
-        // PollSignal::raise preserves inv
-        // PollSignal::reset preserves inv
-        true,
-{
-}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// Double-raise is idempotent on signaled flag.
 pub proof fn lemma_double_raise_idempotent()

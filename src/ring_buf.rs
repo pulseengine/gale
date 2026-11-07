@@ -477,18 +477,12 @@ impl RingBuf {
 // Compositional proofs
 // =================================================================
 
-/// RB1/RB2: invariant is inductive across all operations.
-pub proof fn lemma_invariant_inductive()
-    ensures
-        // init establishes inv (from init's ensures)
-        // put preserves inv (from put's ensures)
-        // get preserves inv (from get's ensures)
-        // put_n preserves inv (from put_n's ensures)
-        // get_n preserves inv (from get_n's ensures)
-        // reset preserves inv (from reset's ensures)
-        true,
-{
-}
+// P1 (inv is inductive) is carried by every `&mut self` operation's
+// `requires old(self).inv()` / `ensures self.inv()` and by the constructor's
+// `ensures result.inv()` -- Verus proves each. `xtask check vacuous-lemmas`
+// fails if an operation is added without them. The lemma that stood here
+// restated that in comments over `ensures true` (gale#462).
+
 
 /// RB3/RB4: put-get roundtrip — single put then get returns to same size.
 pub proof fn lemma_put_get_roundtrip(size: u32, capacity: u32)
