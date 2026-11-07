@@ -1,0 +1,27 @@
+# Supply-chain gate: cargo-deny over advisories, bans, licenses and sources.
+# Org standard (2026-11): every Rust repo runs this and it fails the PR.
+# deny.toml at the repo root carries the agreed license allowlist and any
+# reasoned advisory ignores.
+name: Supply Chain (cargo-deny)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-deny:
+    name: cargo-deny (advisories, bans, licenses, sources)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked --version 0.20.2 || true
+      - name: Run cargo-deny
+        run: cargo deny check advisories bans licenses sources
