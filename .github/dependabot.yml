@@ -1,4 +1,8 @@
 version: 2
+# One PR per logical release across all directories: version-locked families
+# (wasm-tools, wasmtime) and all github-actions pins in / must not split into
+# one PR per directory. (Learned from loom/witness/mcp/relay/rules_wasm_component,
+# where one release arrived as 4-8 PRs.)
 updates:
   - package-ecosystem: github-actions
     directory: /
@@ -6,6 +10,24 @@ updates:
       interval: weekly
     labels:
       - dependencies
+    groups:
+      wasm-tools-family:
+        patterns:
+          - "wasmparser"
+          - "wasm-encoder"
+          - "wasmprinter"
+          - "wit-component"
+          - "wit-parser"
+          - "wasm-metadata"
+          - "wat"
+          - "walrus"
+      wasmtime:
+        patterns:
+          - "wasmtime"
+          - "wasmtime-*"
+      github-actions-all:
+        patterns:
+          - "^[^@]+/"
   - package-ecosystem: cargo
     directory: /
     schedule:
