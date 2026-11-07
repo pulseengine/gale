@@ -29,7 +29,7 @@ const LEDGER: &str = "tools/xtask/vacuous-lemmas.ledger";
 /// Remove `//` line comments and `/* */` block comments, keeping string
 /// literals intact (Verus proof headers rarely contain them, but a `"//"`
 /// inside one must not truncate the line).
-fn strip_comments(src: &str) -> String {
+pub(crate) fn strip_comments(src: &str) -> String {
     let b = src.as_bytes();
     let mut out = String::with_capacity(src.len());
     let mut i = 0;

@@ -1,4 +1,4 @@
-# Deploy the "gust in the browser" demo to GitHub Pages on merge to main.
+# Deploy the "gust in the browser" demo, and trusted-base.json (gale#467), to GitHub Pages on merge to main.
 #
 # Builds the SAME kiln-async kernel as benches/gust to wasm32 and publishes
 # benches/gust/browser/web/ (index.html + the freshly-built gust.wasm). The
@@ -15,6 +15,11 @@ on:
     paths:
       - 'benches/gust/browser/**'
       - '.github/workflows/pages.yml'
+      # gale#467: trusted-base.json is published here, so every change that can
+      # move the inventory redeploys it.
+      - 'src/**'
+      - 'proofs/**'
+      - 'tools/xtask/**'
   workflow_dispatch:
 
 permissions:
@@ -51,6 +56,13 @@ jobs:
           # to wasm-kernel/fused.o and boots on Cortex-M3.
           cp ../wasm-kernel/fused.wasm web/fused.wasm
           echo "shipped web/fused.wasm ($(wc -c < web/fused.wasm) bytes)"
+
+      # gale#467: the trusted-base inventory, measured from this commit, at
+      # https://pulseengine.github.io/gale/trusted-base.json. A tree that cannot
+      # be measured exits non-zero and fails the deploy rather than publishing
+      # an empty inventory.
+      - name: Measure the trusted base
+        run: cargo xtask trusted-base --out benches/gust/browser/web/trusted-base.json
 
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
