@@ -106,7 +106,7 @@ jobs:
           base="${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
           changed="$(git diff --name-only "$base"...HEAD)"
           if printf '%s\n' "$changed" | grep -qE \
-              '^benches/gust/drivers/[^/]+-thin/|^benches/gust/drivers/wit/|^benches/gust/drivers/build-cross-arch\.sh$|^benches/gust/drivers/check-cross-arch\.py$|^\.github/workflows/drv-cross-arch\.yml$'; then
+              '^drivers/[^/]+-thin/|^drivers/wit/|^drivers/build-cross-arch\.sh$|^drivers/check-cross-arch\.py$|^\.github/workflows/drv-cross-arch\.yml$'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "driver seam touched — running the gate"
           else
@@ -159,7 +159,7 @@ jobs:
         if: steps.guard.outputs.run == 'true'
         run: |
           set -euo pipefail
-          cd benches/gust/drivers
+          cd drivers
           if SYNTH=/usr/bin/false bash build-cross-arch.sh >/dev/null 2>&1; then
             echo "::error::the pin guard did not bite — gate would answer from an unknown toolchain"
             exit 1
@@ -188,12 +188,12 @@ jobs:
       - name: Negative control — the gate's own rule must reject a leaked symbol
         if: steps.guard.outputs.run == 'true'
         run: |
-          cd benches/gust/drivers
+          cd drivers
           python3 check-cross-arch.py --self-test
 
       - name: Cross-arch seam gate
         if: steps.guard.outputs.run == 'true'
         run: |
-          cd benches/gust/drivers
+          cd drivers
           SYNTH="$HOME/pe-toolchain/bin/synth" \
             NM=arm-none-eabi-nm python3 check-cross-arch.py

@@ -30,7 +30,7 @@ formally verified port of zephyr/kernel/sem.c"). That is no longer what gale is:
 - **The host seam exists, unnamed.** gust on bare metal runs on a small trusted native shim (see
   DOC-BYOOS-ARCH, `SAC-BYOOS-SCAFFOLD`): boot/reset, scheduler start, device init, MMIO, IRQ entry,
   context save/resume, region swap, MPU write, time.
-- **A host run already exists, as a test.** `benches/gust/drivers/gustos-hostrun` executes the
+- **A host run already exists, as a test.** `drivers/gustos-hostrun` executes the
   fused `gust:os` component on a host wasm engine (REQ-OS-COMPOSITE-EXEC-001). Its only residual
   import is `gust:hal/mmio`, answered by a **fake** register file, which is right for a
   falsification harness. A hosted port is the same seam with real devices and a real clock.

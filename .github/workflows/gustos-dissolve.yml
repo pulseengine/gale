@@ -21,22 +21,22 @@ on:
   push:
     branches: [main]
     paths:
-      - "benches/gust/drivers/*-provider/**"
-      - "benches/gust/drivers/wit-os/**"
-      - "benches/gust/drivers/wit/**"
-      - "benches/gust/drivers/build-gustos-components.sh"
-      - "benches/gust/drivers/build-fused-gustos.sh"
-      - "benches/gust/drivers/build-dissolve-gustos.sh"
+      - "drivers/*-provider/**"
+      - "drivers/wit-os/**"
+      - "drivers/wit/**"
+      - "drivers/build-gustos-components.sh"
+      - "drivers/build-fused-gustos.sh"
+      - "drivers/build-dissolve-gustos.sh"
       - ".github/workflows/gustos-dissolve.yml"
   pull_request:
     branches: [main]
     paths:
-      - "benches/gust/drivers/*-provider/**"
-      - "benches/gust/drivers/wit-os/**"
-      - "benches/gust/drivers/wit/**"
-      - "benches/gust/drivers/build-gustos-components.sh"
-      - "benches/gust/drivers/build-fused-gustos.sh"
-      - "benches/gust/drivers/build-dissolve-gustos.sh"
+      - "drivers/*-provider/**"
+      - "drivers/wit-os/**"
+      - "drivers/wit/**"
+      - "drivers/build-gustos-components.sh"
+      - "drivers/build-fused-gustos.sh"
+      - "drivers/build-dissolve-gustos.sh"
       - ".github/workflows/gustos-dissolve.yml"
   workflow_dispatch:
 
@@ -108,18 +108,18 @@ jobs:
       # because a gate that has stopped discriminating reports a green that means
       # nothing. Exit 2 = the seam is wrong (empty, or carrying something undeclared).
       - name: Dissolve the composite + assert the seam
-        run: bash benches/gust/drivers/build-dissolve-gustos.sh
+        run: bash drivers/build-dissolve-gustos.sh
 
       # The committed object is evidence quoted in measurements/composite-dissolved.md.
       # If a provider change moves it, that is a real finding and the diff should be
       # reviewed, not silently absorbed -- so surface it rather than fail on it.
       - name: Did the committed object drift?
         run: |
-          if git diff --quiet -- benches/gust/drivers/os-node/gustos-dissolved-cm3.o; then
+          if git diff --quiet -- drivers/os-node/gustos-dissolved-cm3.o; then
             echo "committed object unchanged"
           else
             echo "::warning::gustos-dissolved-cm3.o changed -- re-run the script and commit it, and check measurements/composite-dissolved.md still states the truth"
-            arm-none-eabi-size benches/gust/drivers/os-node/gustos-dissolved-cm3.o
+            arm-none-eabi-size drivers/os-node/gustos-dissolved-cm3.o
           fi
 
       - name: Upload the dissolved object
@@ -127,5 +127,5 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: gustos-dissolved-cm3
-          path: benches/gust/drivers/os-node/gustos-dissolved-cm3.o
+          path: drivers/os-node/gustos-dissolved-cm3.o
           if-no-files-found: warn

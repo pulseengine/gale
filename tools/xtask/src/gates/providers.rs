@@ -25,7 +25,7 @@ use std::process::Command;
 
 pub const NAME: &str = "providers";
 
-const REL: &str = "benches/gust/drivers";
+const REL: &str = "drivers";
 
 /// DISCOVERED, not enumerated: every `app-*` and `*-provider` directory holding
 /// a Cargo.toml. Globbing means a new app/provider crate is gated by

@@ -93,8 +93,7 @@ fn git(repo: &Path, args: &[&str]) -> Option<String> {
 
 /// Unix timestamp of the last commit touching `relpath`.
 fn last_commit_epoch(repo: &Path, relpath: &str) -> Option<i64> {
-    let s = git(repo, &["log", "-1", "--format=%ct", "--", relpath])?;
-    s.parse().ok()
+    super::last_content_epoch(repo, relpath)
 }
 
 /// Civil-from-days (Howard Hinnant). Display only.
@@ -154,9 +153,9 @@ fn linked_objects(repo: &Path, bin: &str) -> Vec<String> {
             if rel.ends_with(".o") {
                 // The `.join(..)` paths in build.rs are relative to the CRATE
                 // manifest dir, not to the drivers dir. Prefixing with the
-                // latter produced `benches/gust/drivers/drivers/...`, which
+                // latter produced `drivers/drivers/...`, which
                 // resolves to nothing -- see `run`'s unresolvable-input check.
-                out.push(format!("{BENCH_DIR}/{rel}"));
+                out.push(normalize(&format!("{BENCH_DIR}/{rel}")));
             }
             break;
         }
@@ -164,6 +163,24 @@ fn linked_objects(repo: &Path, bin: &str) -> Vec<String> {
     out.sort();
     out.dedup();
     out
+}
+
+/// Resolve `.` and `..` lexically, so a build.rs path that climbs out of the
+/// crate (`../../drivers/x.o`, after drivers/ moved to the repository root)
+/// becomes the repository path git knows (`drivers/x.o`), not
+/// `benches/gust/../../drivers/x.o`.
+fn normalize(p: &str) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for c in p.split('/') {
+        match c {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            c => parts.push(c),
+        }
+    }
+    parts.join("/")
 }
 
 pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
@@ -324,9 +341,13 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     );
     // THE ASSERTION THAT WAS MISSING, and the reason the object half of this
     // gate was vacuous on the day it landed: the first version of the check
-    // above passed on `benches/gust/drivers/drivers/iso-core-fused-cm3.o`,
+    // above passed on `drivers/drivers/iso-core-fused-cm3.o`,
     // because `ends_with` is true of a path that resolves to nothing. A derived
     // path must RESOLVE, not merely end in the right name.
+    ck(
+        "a climbing build.rs path normalizes to the repository path",
+        normalize("benches/gust/../../drivers/x-cm3.o") == "drivers/x-cm3.o",
+    );
     ck(
         "every derived object path actually exists",
         !iso.is_empty() && iso.iter().all(|o| repo.join(o).is_file()),

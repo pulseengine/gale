@@ -657,7 +657,7 @@ artifacts:
     title: "T4: sound static-WCET inputs, gale-owned — no partition budget sized from raw DWT high-water-marks"
     status: implemented
     release: v0.12.0
-    description: "Cross-cutting track T4. The per-function cycle bound feeding the track-T3 schedulability analysis SHALL be a SOUND static bound, and on the BUILD (all-from-us) path the natural owner is gale's own compiler: since the compiler emits the exact instructions for a function, it SHALL also emit a sound per-function timing bound from its own instruction-timing model — a gale-owned static-WCET, not a third-party WCET tool integration. This is a BUILD GATE: no partition time budget may be sized directly from a raw cycle-counter high-water-mark; every budget SHALL trace to a sound static bound (or a recognized rigorous complement such as a measurement-based, sound-by-extreme-value-theory statistical WCET method used to cross-check the static bound — categorically above a raw high-water- mark, but not a substitute for the static bound as the primary input). IMPLEMENTED (2026-07-17): synth 0.46.0 ships the emission mechanism (synth#778 → `--emit-wcet`, schema synth-wcet-v1) — a sound worst-case-path × per-instruction-timing-table bound per function, cortex-m3 first, with a stated memory assumption and LOUD declines (reason=call: intra-procedural scope, composition is T3/spar's job; reason=loop: needs a trip count, scry inference follow-on) — and gale exercises + gates it on its reproducible dissolve inputs via benches/gust/drivers/emit-wcet.sh: the frozen os-tl node (4 bounded — time#deadline 42cyc, time#elapsed 71cyc, cabi_realloc 28cyc ×2 — 9 declined loud; sidecar committed at os-node/repro-757/os-tl.wcet.json; the .o is byte-identical with/without the flag, sidecar purely additive) and the i2c-thin driver (3 leaf protocol fns bounded: ack_byte 37cyc, addr_ack 37cyc, is_complete 19cyc). Remaining for VER-OS-WCET-001 (stays proposed): the EVT statistical cross-check on silicon, inter-procedural composition via T3 (spar#331), and loop trip-count inference — the trusted-core switch/MPU/HM objects get their bounds once those close. T4 STATIC HALF CI-GATED 2026-09-09: emit-wcet.sh had existed since the synth-wcet-v1 sidecar landed (synth#778) and was invoked by NO workflow — it was one of the seven scripts gale#324 catalogued as 'builders, less alarming', which it is not: it is the static half of this track. Run under the pinned toolchain (layer 2026.09.1, synth 0.61.0) it is green: 9 functions bounded, 10 declined LOUDLY, and it gates three properties itself — the emitted bounds, that the .o is byte-identical with and without --emit-wcet so the sidecar is additive, and that an unboundable function declines rather than being silently omitted. Now a job in kill-criteria.yml. NOT YET the whole requirement: VER-OS-WCET-001 asks for the compiler-emitted bound to be cross-checked against a measurement-based EVT statistical bound, and check-wcet-evt.py gates the EVT side separately. Nothing yet joins the two numbers for the same function, which is the remaining work on this track."
+    description: "Cross-cutting track T4. The per-function cycle bound feeding the track-T3 schedulability analysis SHALL be a SOUND static bound, and on the BUILD (all-from-us) path the natural owner is gale's own compiler: since the compiler emits the exact instructions for a function, it SHALL also emit a sound per-function timing bound from its own instruction-timing model — a gale-owned static-WCET, not a third-party WCET tool integration. This is a BUILD GATE: no partition time budget may be sized directly from a raw cycle-counter high-water-mark; every budget SHALL trace to a sound static bound (or a recognized rigorous complement such as a measurement-based, sound-by-extreme-value-theory statistical WCET method used to cross-check the static bound — categorically above a raw high-water- mark, but not a substitute for the static bound as the primary input). IMPLEMENTED (2026-07-17): synth 0.46.0 ships the emission mechanism (synth#778 → `--emit-wcet`, schema synth-wcet-v1) — a sound worst-case-path × per-instruction-timing-table bound per function, cortex-m3 first, with a stated memory assumption and LOUD declines (reason=call: intra-procedural scope, composition is T3/spar's job; reason=loop: needs a trip count, scry inference follow-on) — and gale exercises + gates it on its reproducible dissolve inputs via drivers/emit-wcet.sh: the frozen os-tl node (4 bounded — time#deadline 42cyc, time#elapsed 71cyc, cabi_realloc 28cyc ×2 — 9 declined loud; sidecar committed at os-node/repro-757/os-tl.wcet.json; the .o is byte-identical with/without the flag, sidecar purely additive) and the i2c-thin driver (3 leaf protocol fns bounded: ack_byte 37cyc, addr_ack 37cyc, is_complete 19cyc). Remaining for VER-OS-WCET-001 (stays proposed): the EVT statistical cross-check on silicon, inter-procedural composition via T3 (spar#331), and loop trip-count inference — the trusted-core switch/MPU/HM objects get their bounds once those close. T4 STATIC HALF CI-GATED 2026-09-09: emit-wcet.sh had existed since the synth-wcet-v1 sidecar landed (synth#778) and was invoked by NO workflow — it was one of the seven scripts gale#324 catalogued as 'builders, less alarming', which it is not: it is the static half of this track. Run under the pinned toolchain (layer 2026.09.1, synth 0.61.0) it is green: 9 functions bounded, 10 declined LOUDLY, and it gates three properties itself — the emitted bounds, that the .o is byte-identical with and without --emit-wcet so the sidecar is additive, and that an unboundable function declines rather than being silently omitted. Now a job in kill-criteria.yml. NOT YET the whole requirement: VER-OS-WCET-001 asks for the compiler-emitted bound to be cross-checked against a measurement-based EVT statistical bound, and check-wcet-evt.py gates the EVT side separately. Nothing yet joins the two numbers for the same function, which is the remaining work on this track."
     tags: [gust, os, track-t4, wcet, timing, synth, safety, gale63]
     links:
       - type: derives-from
@@ -802,29 +802,7 @@ artifacts:
     links:
       - type: verifies
         target: REQ-OS-DELIVERY-001
-    description: >
-      Evidence for REQ-OS-DELIVERY-001 — the ARTIFACT half of DD-OS-DELIVERY-001,
-      and deliberately not its DELIVERY half. What is gated, by
-      benches/gust/drivers/build-fused-gustos.sh on every invocation: the composite
-      is a component (wasm-tools validate + component wit decode); it exports the
-      five gust:os interfaces the providers supply; its residual imports are exactly
-      gust:hal/mmio plus the app-supplied gust:os/taskdisp, with gust:sched sealed
-      inside; no env / WASI / heap / scheduler symbol appears in any core import;
-      and exactly one component instance owns the scheduler, checked by import
-      routing across the unbundled core modules rather than by a source string.
-      Both the residual-import gate and the one-scheduler gate are negative-tested —
-      the former in-band on every run against a deliberately unwired composition,
-      the latter against the pre-change providers, where it fires on all three
-      signals. A gate that has not been observed to fail is not evidence.
-      NOT covered here, and NOT to be read as covered: the component has never been
-      EXECUTED — no wasm runtime, no dissolve of the composite, no hardware — so
-      "one scheduler, one clock" is a structural property, not an observed one; the
-      composite is not lowered to native, so its 20741 bytes are a wasm figure and
-      imply nothing about code size, SRAM or cycles; and the publish half of
-      DD-OS-DELIVERY-001 (cosign-signed OCI + wasm.directory, and a third party
-      pulling the artifact and verifying its signature from a clean machine) has not
-      happened at the time of writing. That step closes at tag; until an outside
-      party can check the signature without us, the delivery claim is unevidenced.
+    description: "Evidence for REQ-OS-DELIVERY-001 — the ARTIFACT half of DD-OS-DELIVERY-001, and deliberately not its DELIVERY half. What is gated, by drivers/build-fused-gustos.sh on every invocation: the composite is a component (wasm-tools validate + component wit decode); it exports the five gust:os interfaces the providers supply; its residual imports are exactly gust:hal/mmio plus the app-supplied gust:os/taskdisp, with gust:sched sealed inside; no env / WASI / heap / scheduler symbol appears in any core import; and exactly one component instance owns the scheduler, checked by import routing across the unbundled core modules rather than by a source string. Both the residual-import gate and the one-scheduler gate are negative-tested — the former in-band on every run against a deliberately unwired composition, the latter against the pre-change providers, where it fires on all three signals. A gate that has not been observed to fail is not evidence. NOT covered here, and NOT to be read as covered: the component has never been EXECUTED — no wasm runtime, no dissolve of the composite, no hardware — so \"one scheduler, one clock\" is a structural property, not an observed one; the composite is not lowered to native, so its 20741 bytes are a wasm figure and imply nothing about code size, SRAM or cycles; and the publish half of DD-OS-DELIVERY-001 (cosign-signed OCI + wasm.directory, and a third party pulling the artifact and verifying its signature from a clean machine) has not happened at the time of writing. That step closes at tag; until an outside party can check the signature without us, the delivery claim is unevidenced."
   - id: VER-OS-WCET-001
     type: sw-verification
     title: "Sound per-function static-WCET emission cross-checked against a statistical (EVT) bound, on the trusted object's functions"
@@ -931,7 +909,7 @@ artifacts:
     links:
       - type: verifies
         target: REQ-DRV-COMPONENT-001
-    description: "benches/gust/drivers/check-driver-components.py, wired by .github/workflows/drv-components.yml. Per driver: no raw env import; wasm-tools component new + validate succeed; the component's WIT decodes; and the committed .o's undefined symbols equal the wasm's imported field names. Distinct exit codes per property (3 env, 4 componentize, 5 not introspectable, 7 object disagrees, 6 the negative control passed when it must fail) so a CI log says WHICH property failed. --self-test plants a module with a raw env import and requires rejection, and plants read32-vs-mmio_read32 to prove the comparator distinguishes. Run on main at 681c0dc: 13 of 13 gated, PASS, both controls bite. NOT in scope here, deliberately: the 9 composed/fused objects listed as UNGATED (a fusion of a whole component graph with native atoms is not a 1:1 lowering, so this gate's rule would produce false failures) — that is REQ-DRV-GRAPH-001; and hardware observation — that is REQ-DRV-SILICON-001."
+    description: "drivers/check-driver-components.py, wired by .github/workflows/drv-components.yml. Per driver: no raw env import; wasm-tools component new + validate succeed; the component's WIT decodes; and the committed .o's undefined symbols equal the wasm's imported field names. Distinct exit codes per property (3 env, 4 componentize, 5 not introspectable, 7 object disagrees, 6 the negative control passed when it must fail) so a CI log says WHICH property failed. --self-test plants a module with a raw env import and requires rejection, and plants read32-vs-mmio_read32 to prove the comparator distinguishes. Run on main at 681c0dc: 13 of 13 gated, PASS, both controls bite. NOT in scope here, deliberately: the 9 composed/fused objects listed as UNGATED (a fusion of a whole component graph with native atoms is not a 1:1 lowering, so this gate's rule would produce false failures) — that is REQ-DRV-GRAPH-001; and hardware observation — that is REQ-DRV-SILICON-001."
 
   - id: REQ-OS-COMPOSITE-EXEC-001
     type: sw-req
@@ -963,38 +941,7 @@ artifacts:
     links:
       - type: verifies
         target: REQ-OS-COMPOSITE-EXEC-001
-    description: >
-      Planned evidence for REQ-OS-COMPOSITE-EXEC-001: a test that starts a task through
-      gust:os/spawn, arms it through gust:os/timer using the handle spawn returned, and
-      asserts gust:os/exec agrees on that handle's state — on a host engine first, then on
-      the dissolved image. Run in CI on every change to any provider so the property cannot
-      silently stop holding.
-      Kill-criterion: the handle is rejected, or resolves to different task state across
-      the three interfaces.
-      DELIVERED (2026-08-06, gale#250 + gale#254): the composite is EXECUTED on a host
-      engine by benches/gust/drivers/run-gustos-hostrun.sh. A handle from
-      gust:os/spawn.start is accepted by gust:os/timer.sleep and agreed on by
-      gust:os/exec.state; the timer's arming wakes spawn's task; 21 checks passed,
-      0 FAILED. Corroborated independently: spawn and exec exhaust ONE 8-slot table
-      JOINTLY, where two private tables would allow 8 each.
-      IT IS A GATE, NOT A RUN: wired into .github/workflows/gustos-publish.yml on
-      every change to any provider, to the composite build scripts, or to the harness
-      (gale#254 — until then nothing ran it, and the workflow's path filter did not
-      even cover the script it gates). Two negative controls run with it: a
-      two-scheduler composite that the harness MUST refute (16 passed, 5 FAILED,
-      exit 1), so a harness that can only pass is caught (exit 4).
-      WHAT IT DOES NOT COVER, stated because the checks pass anyway: two STATELESS
-      instances of the time provider pass all 21 checks — both read the same register
-      through the same host import, so they are indistinguishable at the seam (one
-      clock SOURCE reached twice). A second clock with a different source or offset IS
-      caught. Also untouched: the dissolved/native path (that is
-      REQ-OS-COMPOSITE-DISSOLVE-001), gust:os channel and io, 32-bit clock wraparound,
-      multi-task interleaving, and silicon.
-      A structural gate of the SAME composite was separately shown unable to detect a
-      two-scheduler wiring at all — byte-identical WIT, same five core modules, same
-      import routing. A count over modules cannot see a count over instances. That is
-      why this property had to be executed to be known, and it is the argument for
-      the whole E1 rung.
+    description: "Planned evidence for REQ-OS-COMPOSITE-EXEC-001: a test that starts a task through gust:os/spawn, arms it through gust:os/timer using the handle spawn returned, and asserts gust:os/exec agrees on that handle's state — on a host engine first, then on the dissolved image. Run in CI on every change to any provider so the property cannot silently stop holding. Kill-criterion: the handle is rejected, or resolves to different task state across the three interfaces. DELIVERED (2026-08-06, gale#250 + gale#254): the composite is EXECUTED on a host engine by drivers/run-gustos-hostrun.sh. A handle from gust:os/spawn.start is accepted by gust:os/timer.sleep and agreed on by gust:os/exec.state; the timer's arming wakes spawn's task; 21 checks passed, 0 FAILED. Corroborated independently: spawn and exec exhaust ONE 8-slot table JOINTLY, where two private tables would allow 8 each. IT IS A GATE, NOT A RUN: wired into .github/workflows/gustos-publish.yml on every change to any provider, to the composite build scripts, or to the harness (gale#254 — until then nothing ran it, and the workflow's path filter did not even cover the script it gates). Two negative controls run with it: a two-scheduler composite that the harness MUST refute (16 passed, 5 FAILED, exit 1), so a harness that can only pass is caught (exit 4). WHAT IT DOES NOT COVER, stated because the checks pass anyway: two STATELESS instances of the time provider pass all 21 checks — both read the same register through the same host import, so they are indistinguishable at the seam (one clock SOURCE reached twice). A second clock with a different source or offset IS caught. Also untouched: the dissolved/native path (that is REQ-OS-COMPOSITE-DISSOLVE-001), gust:os channel and io, 32-bit clock wraparound, multi-task interleaving, and silicon. A structural gate of the SAME composite was separately shown unable to detect a two-scheduler wiring at all — byte-identical WIT, same five core modules, same import routing. A count over modules cannot see a count over instances. That is why this property had to be executed to be known, and it is the argument for the whole E1 rung."
 
   - id: FIND-OS-TIMER-SLEEP-CONTRACT-001
     type: finding
@@ -1052,28 +999,7 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-BYOOS-001
-    description: >
-      v0.6.0 reports the composed OS as 20 741 bytes. That is a WASM figure and implies
-      nothing about code size, SRAM or cycles; no native object for the whole OS exists.
-      The composite SHALL be put through the same chain each provider already goes through
-      (meld fuse --memory shared -> loom optimize -> synth compile --target cortex-m3
-      --all-exports --relocatable) to yield the first real .text/.bss for the OS as a whole.
-      This is E2 of the v0.7.0 ladder, and it is the PREREQUISITE for the timing triad:
-      object-code verification (REQ-OS-OBJVERIFY-001) has no object to verify without it,
-      and per-function WCET emission (REQ-OS-WCET-001) has nothing to bound.
-      The failure mode to watch is a SMALLER object with no undefined symbols, which means
-      the gust:hal seam was swallowed rather than preserved.
-      DELIVERED (2026-08-06): benches/gust/drivers/build-dissolve-gustos.sh lowers the
-      fused composite through meld fuse --memory shared -> loom optimize --passes inline
-      -> synth compile --target cortex-m3 (pin 0.52.0). First native figure for the OS
-      as a whole: text 4792, data 0, bss 0 -- 0 B of the STM32F100RB's 8192 SRAM, 31
-      functions, 25 relocations. The seam gate passes with undefined = EXACTLY
-      {poll-task, read32, write32}, and its negative control (an object with no seam)
-      is refused on every run. See measurements/composite-dissolved.md.
-      NOT verified yet: nothing in CI runs this, so the property can still silently
-      stop holding -- that is what VER-OS-COMPOSITE-DISSOLVE-001 requires.
-      The 20741 -> 4792 numbers are NOT a ratio: a wasm component and a .text section
-      measure different things.
+    description: "v0.6.0 reports the composed OS as 20 741 bytes. That is a WASM figure and implies nothing about code size, SRAM or cycles; no native object for the whole OS exists. The composite SHALL be put through the same chain each provider already goes through (meld fuse --memory shared -> loom optimize -> synth compile --target cortex-m3 --all-exports --relocatable) to yield the first real .text/.bss for the OS as a whole. This is E2 of the v0.7.0 ladder, and it is the PREREQUISITE for the timing triad: object-code verification (REQ-OS-OBJVERIFY-001) has no object to verify without it, and per-function WCET emission (REQ-OS-WCET-001) has nothing to bound. The failure mode to watch is a SMALLER object with no undefined symbols, which means the gust:hal seam was swallowed rather than preserved. DELIVERED (2026-08-06): drivers/build-dissolve-gustos.sh lowers the fused composite through meld fuse --memory shared -> loom optimize --passes inline -> synth compile --target cortex-m3 (pin 0.52.0). First native figure for the OS as a whole: text 4792, data 0, bss 0 -- 0 B of the STM32F100RB's 8192 SRAM, 31 functions, 25 relocations. The seam gate passes with undefined = EXACTLY {poll-task, read32, write32}, and its negative control (an object with no seam) is refused on every run. See measurements/composite-dissolved.md. NOT verified yet: nothing in CI runs this, so the property can still silently stop holding -- that is what VER-OS-COMPOSITE-DISSOLVE-001 requires. The 20741 -> 4792 numbers are NOT a ratio: a wasm component and a .text section measure different things."
 
   - id: VER-OS-COMPOSITE-DISSOLVE-001
     type: sw-verification
@@ -1238,7 +1164,7 @@ artifacts:
     type: sw-verification
     title: Whole-graph env sweep over composed and fused objects, negative-tested
     status: implemented
-    description: "Planned evidence for the graph clause. Extends check-driver-components.py past the 1:1 lowering it gates today: a sweep over every core module inside the composed and fused artifacts (the 9 currently listed as UNGATED), asserting none imports env, with a negative control that plants a pre-conversion module and MUST fail. Also decides dma-own: either its 3 TCB atoms become a typed WIT interface, or it is declared out of scope by name with the reason recorded. What the gate does today is report dma-own's state as an assertion so a change cannot pass silently, which is a ledger, not verification. LANDED 2026-09-04 (gale#346) as benches/gust/drivers/check-graph-env.py, wired as a job in kill-criteria.yml (unfiltered, so requirable). It sweeps the 5 committed composed/fused wasm artifacts and asserts no core module imports from module env; the census is over git ls-files rather than a filesystem glob, and sweep and census are rooted at the same tree so a new artifact beside the swept ones cannot escape. Negative control checks BOTH directions: a planted (import \"env\" \"mmio_read32\") must be caught AND a planted WIT-typed import must not be flagged, so the gate cannot pass by flagging everything. Result on main at a1b6137: 5 swept, 0 env, PASS — the property already held, so the gate prevents regression rather than fixing anything. Rule reads the import MODULE name, not symbol shape: an earlier sketch keyed on underscore-vs-hyphen, which is only one-way (a hyphen proves WIT-lowering since it cannot occur in a C identifier, but read32/write32/poll are WIT field names with none). STATUS IS implemented, NOT verified, and the missing piece is a decision rather than code: this artifact also undertook to decide dma-own, whose 3 raw env atoms (dma_barrier, dma_irq_poll, dma_program) sit in a 1:1 component that is not part of any composed graph the sweep covers. Whether dma-own is inside 'the graph' is a scope call the symbol table does not make."
+    description: "Planned evidence for the graph clause. Extends check-driver-components.py past the 1:1 lowering it gates today: a sweep over every core module inside the composed and fused artifacts (the 9 currently listed as UNGATED), asserting none imports env, with a negative control that plants a pre-conversion module and MUST fail. Also decides dma-own: either its 3 TCB atoms become a typed WIT interface, or it is declared out of scope by name with the reason recorded. What the gate does today is report dma-own's state as an assertion so a change cannot pass silently, which is a ledger, not verification. LANDED 2026-09-04 (gale#346) as drivers/check-graph-env.py, wired as a job in kill-criteria.yml (unfiltered, so requirable). It sweeps the 5 committed composed/fused wasm artifacts and asserts no core module imports from module env; the census is over git ls-files rather than a filesystem glob, and sweep and census are rooted at the same tree so a new artifact beside the swept ones cannot escape. Negative control checks BOTH directions: a planted (import \"env\" \"mmio_read32\") must be caught AND a planted WIT-typed import must not be flagged, so the gate cannot pass by flagging everything. Result on main at a1b6137: 5 swept, 0 env, PASS — the property already held, so the gate prevents regression rather than fixing anything. Rule reads the import MODULE name, not symbol shape: an earlier sketch keyed on underscore-vs-hyphen, which is only one-way (a hyphen proves WIT-lowering since it cannot occur in a C identifier, but read32/write32/poll are WIT field names with none). STATUS IS implemented, NOT verified, and the missing piece is a decision rather than code: this artifact also undertook to decide dma-own, whose 3 raw env atoms (dma_barrier, dma_irq_poll, dma_program) sit in a 1:1 component that is not part of any composed graph the sweep covers. Whether dma-own is inside 'the graph' is a scope call the symbol table does not make."
     tags: [gust, driver, component-model, gate, graph]
     fields:
       release: v0.7.1
@@ -1312,7 +1238,7 @@ artifacts:
     title: The dissolved MPU component's 'lifted VERBATIM' provenance claim was checked by nothing
     status: resolved
     description: |-
-      FOUND BY INSPECTION (2026-09-22, gale#411), while auditing what the dissolved isolation core actually asserts. benches/gust/drivers/mpu-thin/src/lib.rs opened with "Bodies lifted VERBATIM from plain/src/mpu_switch.rs (Verus+Kani verified)" and carried a second, independently-maintained copy of the region-programming logic: size_field, rasr_for, RegionTable and its five methods, apply_program, emit_write, plus is_power_of_two / validate_region / MIN_REGION_SIZE from mpu.rs.
+      FOUND BY INSPECTION (2026-09-22, gale#411), while auditing what the dissolved isolation core actually asserts. drivers/mpu-thin/src/lib.rs opened with "Bodies lifted VERBATIM from plain/src/mpu_switch.rs (Verus+Kani verified)" and carried a second, independently-maintained copy of the region-programming logic: size_field, rasr_for, RegionTable and its five methods, apply_program, emit_write, plus is_power_of_two / validate_region / MIN_REGION_SIZE from mpu.rs.
 
       Nothing compared the two. verus-strip --check gates src/ against plain/, which is a different pair; no gate related plain/ to this bench driver. A change to the verified core would have left the copy behind in silence while the header went on asserting the two were identical — and the object built from it is the one gust_iso links and Renode executes, so the claim was load-bearing.
 

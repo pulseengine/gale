@@ -19,7 +19,7 @@ use std::process::Command;
 
 pub const NAME: &str = "object-freshness";
 
-const REL: &str = "benches/gust/drivers";
+const REL: &str = "drivers";
 
 /// Builder -> the object it writes. Only builders whose output is COMMITTED.
 /// build-reloc-cores.sh takes its target as an argument, and
@@ -125,8 +125,7 @@ fn git(repo: &Path, args: &[&str]) -> Option<String> {
 
 /// Unix timestamp of the last commit touching `relpath`.
 fn last_commit_epoch(repo: &Path, relpath: &str) -> Option<i64> {
-    let s = git(repo, &["log", "-1", "--format=%ct", "--", relpath])?;
-    s.parse().ok()
+    super::last_content_epoch(repo, relpath)
 }
 
 fn ymd(epoch: i64) -> String {

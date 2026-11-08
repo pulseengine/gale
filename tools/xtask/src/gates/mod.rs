@@ -138,3 +138,37 @@ pub const GATES: &[Gate] = &[
 pub fn find(name: &str) -> Option<&'static Gate> {
     GATES.iter().find(|g| g.name == name)
 }
+
+/// Commit time (unix seconds) of the last commit that changed `relpath`'s
+/// CONTENT, following renames. A pure rename (similarity 100) is skipped: moving
+/// a file does not make it newer, and dating by "last commit touching the path"
+/// made every input look freshly changed on the day its directory moved (the
+/// rework's step 2b moved drivers/ and would have reddened every freshness gate).
+/// A rename WITH edits still counts, because its content changed.
+pub(crate) fn last_content_epoch(repo: &std::path::Path, relpath: &str) -> Option<i64> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["log", "--follow", "-M", "--format=%x01%ct", "--name-status", "--", relpath])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    for entry in text.split('\x01').filter(|e| !e.trim().is_empty()) {
+        let mut lines = entry.lines();
+        let Some(ct) = lines.next().and_then(|l| l.trim().parse::<i64>().ok()) else { continue };
+        let statuses: Vec<&str> = lines.filter(|l| !l.trim().is_empty()).collect();
+        // A merge commit lists no paths; the commits that brought the content
+        // are listed on their own.
+        if statuses.is_empty() {
+            continue;
+        }
+        if statuses.iter().all(|s| s.starts_with("R100")) {
+            continue;
+        }
+        return Some(ct);
+    }
+    None
+}
