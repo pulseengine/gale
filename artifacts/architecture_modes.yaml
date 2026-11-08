@@ -27,7 +27,7 @@ artifacts:
     fields:
       priority: must
       req-type: interface
-      verification-criteria: "Step 2: the bare-metal implementation is extracted behind the contract and every committed object and fused image is byte-identical before and after, with the Renode cycle gates unchanged. Step 3: a second (POSIX) implementation runs gust_two_tenant on Linux and macOS."
+      verification-criteria: "Step 2: the duplicated bare-metal shim (MMIO accessors in 19 binaries, UART tx in 13, mpu_write in 9, semihosting exit in 48) moves into ports/host/baremetal and ports/arch/armv7m. The .text sections of all native gust binaries are compared before and after, and every difference is zero or explained; the Renode cycle gates keep their recorded values. Step 3: a second (POSIX) implementation runs gust_two_tenant on Linux and macOS."
     links:
       - type: derives-from
         target: SYSREQ-ARCH-MODES-001
@@ -45,7 +45,7 @@ artifacts:
     fields:
       priority: must
       req-type: interface
-      verification-criteria: The armv7m arch port is extracted with byte-identical images. A new board is added by AADL plus regeneration alone, with no hand edit outside the generated tree and the build selector.
+      verification-criteria: The armv7m arch port is extracted with every native gust binary's .text unchanged or the difference explained. A new board is added by AADL plus regeneration alone, with no hand edit outside the generated tree and the build selector.
     links:
       - type: derives-from
         target: SYSREQ-ARCH-MODES-001

@@ -144,11 +144,14 @@ markers) and the committed Renode fixtures at once, under a 2-PR CI ceiling. So:
 1. **Record it.** This doc in `docs/architecture/`, plus rivet: a system-req for the three modes,
    sw-reqs for the seam contract and the per-port protection declaration, and a finding citing
    this context. Ships alone.
-2. **Name the seams, change no behaviour.** Extract the native shim behind the host contract
-   (`ports/host/baremetal`) and the CPU half behind the arch contract (`ports/arch/armv7m`). Oracle: **every committed object and fused image is
-   byte-identical** before and after (the object-freshness gate already tracks them), and the Renode
-   cycle gates stay at their recorded values (e.g. control `0x162CB6`). A refactor that changes a
-   byte is not this step.
+2. **Name the seams, change no behaviour.** Today the bare-metal shim is copy-pasted, not a module:
+   `mmio_read32`/`mmio_write32` are defined in 19 gust binaries, a UART `tx` in 13, `mpu_write` in 9,
+   and 48 carry their own semihosting exit. Step 2 moves that into `ports/host/baremetal` (boot,
+   exit, fault entry) and `ports/arch/armv7m` (MMIO, barriers, MPU writes), and the binaries call it.
+   Oracle: build all native gust binaries before and after and compare their `.text` sections; every
+   difference is either zero or explained. The Renode cycle gates must keep their recorded values
+   (e.g. control `0x162CB6`). The committed synth objects come from the wasm side, which this step
+   does not touch, so their staying byte-identical proves nothing here; they are not the oracle.
 3. **POSIX port.** Start from `gustos-hostrun`'s seam: swap the fake register file for host-backed
    `gust:hal` devices and the host clock. The harness stays as it is, as the falsification test. First milestone: `gust_two_tenant` on Linux and macOS CI runners. Its matched
    pair: tenant A writes into B's memory → the host faults → gust's HM reaches the **same verdict**
