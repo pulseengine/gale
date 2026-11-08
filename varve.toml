@@ -5,14 +5,15 @@ manifest-version = 1
 [toolchain]
 realm   = "pulseengine"
 channel = "rolling"
-# 2026.10.1 is refused by varve's anti-rollback: the layer presents counter 2
-# but the 2026.10 line's high-water mark (signed line-status) is 26. 2026.10.30
-# is the line's greatest counter in the signed index — the most headroom
-# against the mark advancing again. It also sits past both known problems on
-# the line (meld <= 0.61.0 up to 2026.10.15, wsc 0.11.0/rustls up to
-# 2026.10.22), and it carries synth 0.88.0: 0.87.0's static-data validator
-# (VCR-VER-003) refuses gale's own composite — a correct 1-byte access packed
-# next to another segment by meld 0.62.0–0.63.0 --pack-rebase (synth#1563,
-# fixed in 0.88.0). Digest verified against the realm root by `varve install`.
-layer   = "2026.10.30"
-digest  = "sha256:18e9286a2c61267f62d11bf2c3bcddc68198592086db11786eafe2f342127413"
+# 2026.10.35 (gale#462-era bump, 2026-11-04): the last layer of the 2026.10 line --
+# the 2026.11 line has started, so this line's anti-rollback mark should not
+# advance again (the reason 2026.10.1 was once refused: counter 2 against a mark
+# of 26). It carries meld 0.66.0 (`--memory-page-size 1`, meld#530: domain
+# memories declared at their packed byte extent) and synth 0.89.0 (multi-memory
+# under --native-pointer-abi, synth#1145; byte-sized memories). Both are the
+# v0.11.0 two-domain chain; the image still needs synth#1622 (i64 on a
+# non-default memory) and loom#457 (loom reads (pagesize 1)). 2026.11.1 exists
+# (meld 0.67.0, spar 0.48.1) and is the next candidate. Digest verified against
+# the realm root by `varve install`.
+layer   = "2026.10.35"
+digest  = "sha256:c00162ed1bae1cd17a1eaaea04fefaeddfcf49859c3c6fa28ac0958ec3a8fd13"
