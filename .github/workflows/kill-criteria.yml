@@ -278,6 +278,23 @@ jobs:
       - name: Vacuous and assumed proofs only ever decrease
         run: cargo xtask check vacuous-lemmas
 
+  trusted-base:
+    name: "the honesty doc states the measured trusted base (gale#467)"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # gale#467: the doc said 133 external_body while the source had 135 (and
+      # #388's grep said 142, counting comments). The doc's figures are now a
+      # block rendered from the source; this job re-renders it and fails on any
+      # difference. The self-test carries the hand-edited-total shape.
+      - name: Negative control -- a hand-edited figure must be caught
+        run: cargo xtask check trusted-base --self-test
+
+      - name: The doc's trusted-base block equals the source
+        run: cargo xtask check trusted-base
+
   data-overlap:
     name: "fused data segments are disjoint (gale#266)"
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
