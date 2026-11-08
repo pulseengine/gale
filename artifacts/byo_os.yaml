@@ -60,6 +60,8 @@ artifacts:
       - type: generates
         target: SYSREQ-BYOOS-001
 
+      - type: informs
+        target: FIND-ARCH-AXES-001
   # ── System requirement ────────────────────────────────────────────────────
   - id: SYSREQ-BYOOS-001
     type: system-req
