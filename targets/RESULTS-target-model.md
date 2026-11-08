@@ -147,7 +147,7 @@ silently skipped:
   for witness to cover here. If a future target adds a *conditionally-present*
   peripheral that the firmware branches on, that branch gets a witness pass.
 - **sigil (attestation): deferred, tracked as FIND-TARGET-SIGIL-001.** The generator
-  is a new build stage that emits committed artifacts (`benches/gust/targets/
+  is a new build stage that emits committed artifacts (`targets/
   generated/`). Signing that tree (so a consumer can verify the generated constants
   were produced by the trusted generator from the reviewed model, not hand-edited)
   is a reasonable build-integrity step but is not v1-blocking: the committed tree is

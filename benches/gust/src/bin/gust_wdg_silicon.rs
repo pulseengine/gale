@@ -49,7 +49,7 @@ extern "C" {
 }
 
 // Target constants (IWDG_BASE, RCC_CSR, IWDGRSTF, RMVF, + memory map) are
-// GENERATED from the AADL model (benches/gust/targets/) — see gust-target-gen.
+// GENERATED from the AADL model (targets/) — see gust-target-gen.
 // The board is selected at build time via a cargo feature; G4 and F1 differ
 // ONLY in these baked values (RCC_CSR offset 0x94/0x24, RMVF bit 23/24) — the
 // same verified driver programs both. Swap the target = swap the generated
@@ -67,19 +67,19 @@ const _: () = assert!(_TARGETS == 1, "gust_wdg_silicon: select exactly one targe
 compile_error!("gust_wdg_silicon: no dissolved driver runs on Cortex-M0+ yet — wdg-thin-cm3.o is ARMv7-M (synth#1301)");
 
 #[cfg(feature = "target-g474re")]
-#[path = "../../targets/generated/gust_target_stm32g474.rs"]
+#[path = "../../../../targets/generated/gust_target_stm32g474.rs"]
 #[allow(dead_code)]
 mod target;
 #[cfg(feature = "target-f100")]
-#[path = "../../targets/generated/gust_target_stm32f100.rs"]
+#[path = "../../../../targets/generated/gust_target_stm32f100.rs"]
 #[allow(dead_code)]
 mod target;
 #[cfg(feature = "target-wl55jc")]
-#[path = "../../targets/generated/gust_target_stm32wl55.rs"]
+#[path = "../../../../targets/generated/gust_target_stm32wl55.rs"]
 #[allow(dead_code)]
 mod target;
 #[cfg(feature = "target-wb55rg")]
-#[path = "../../targets/generated/gust_target_stm32wb55.rs"]
+#[path = "../../../../targets/generated/gust_target_stm32wb55.rs"]
 #[allow(dead_code)]
 mod target;
 use target::{BOARD, IWDG_BASE, IWDGRSTF, RCC_CSR, RMVF};

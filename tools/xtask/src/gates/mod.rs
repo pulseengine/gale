@@ -7,6 +7,7 @@ pub mod criticality_axis;
 pub mod data_overlap;
 pub mod graph_env;
 pub mod job_timeouts;
+pub mod moved_paths;
 pub mod fixture_freshness;
 pub mod object_freshness;
 pub mod pin_agreement;
@@ -119,6 +120,12 @@ pub const GATES: &[Gate] = &[
         about: "generated WIT worlds resolve against the gust:hal seam",
         run: wit_resolve::run,
         self_test: wit_resolve::self_test,
+    },
+    Gate {
+        name: moved_paths::NAME,
+        about: "a directory moved in the rework leaves no live reference to its old path",
+        run: moved_paths::run,
+        self_test: moved_paths::self_test,
     },
     Gate {
         name: zephyr_module_archive::NAME,

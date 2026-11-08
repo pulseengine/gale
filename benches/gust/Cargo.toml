@@ -43,7 +43,7 @@ no-regions = []
 priv-private = []
 priv-shared = []
 # Silicon-firmware target selection (gust_wdg_silicon). Exactly one is active;
-# each pulls the matching generated constants module (benches/gust/targets/
+# each pulls the matching generated constants module (targets/
 # generated/). G4 is the default (the directly-attached NUCLEO board); F1 is
 # --no-default-features --features target-f100.
 default = ["target-g474re"]
