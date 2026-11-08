@@ -73,7 +73,7 @@ env:
   # still moves with the layer; the difference is that forgetting is now loud.
   # Moved WITH the 2026.10.30 bump (synth 0.78.0 -> 0.88.0) — the gate caught
   # nothing because this was updated in the same commit as the pin.
-  SYNTH_VERSION: "0.88.0"
+  SYNTH_VERSION: "0.89.0"
   LOOM_VERSION: "1.4.1"
 
 jobs:
