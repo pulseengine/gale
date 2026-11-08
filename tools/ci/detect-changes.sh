@@ -42,7 +42,9 @@ while IFS= read -r f; do
     *.md|LICENSE|LICENSE-*) ;;
     *) run_all "non-docs file $f" ;;
   esac
-  if git grep -qF -- "$(basename "$f")" -- ':!*.md' ':!tools/ci/detect-changes.sh'; then
+  # Excluded from the search: this script, and the probe contract, which names
+  # its negative controls only to declare them; neither reads a .md file.
+  if git grep -qF -- "$(basename "$f")" -- ':!*.md' ':!tools/ci/detect-changes.sh' ':!.github/gate-probe.json'; then
     run_all "$f is named by a non-markdown file"
   fi
 done <<< "$changed"
