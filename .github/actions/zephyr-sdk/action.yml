@@ -1,0 +1,83 @@
+name: Zephyr SDK (cached)
+description: >
+  Install the Zephyr SDK version the workspace's zephyr/SDK_VERSION names, restoring it from
+  the Actions cache when present. A GitHub release-download outage (2026-11-08: github.com
+  answered 504 on release assets for over an hour while reporting all systems operational)
+  then reds only a cold cache, not every Zephyr job. The cache is a copy of what
+  `west sdk install` lays down, keyed on the SDK version, toolchain and install base, so a
+  version bump in the fork misses the cache and installs fresh.
+inputs:
+  workspace:
+    description: The west workspace (the directory holding zephyr/).
+    required: true
+  toolchain:
+    description: The SDK toolchain to install, e.g. arm-zephyr-eabi.
+    default: arm-zephyr-eabi
+  install-base:
+    description: Where the SDK is extracted. Empty means west's default ($HOME).
+    default: ""
+  token:
+    description: Token for west sdk install's GitHub API release-list fetch.
+    required: true
+runs:
+  using: composite
+  steps:
+    - id: sdk
+      shell: bash
+      env:
+        WS: ${{ inputs.workspace }}
+        BASE: ${{ inputs.install-base }}
+      run: |
+        set -euo pipefail
+        v="$(tr -d '[:space:]' < "$WS/zephyr/SDK_VERSION")"
+        [ -n "$v" ] || { echo "::error::empty $WS/zephyr/SDK_VERSION" >&2; exit 1; }
+        base="${BASE:-$HOME}"
+        echo "version=$v" >> "$GITHUB_OUTPUT"
+        echo "dir=$base/zephyr-sdk-$v" >> "$GITHUB_OUTPUT"
+
+    - id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ steps.sdk.outputs.dir }}
+        key: zephyr-sdk-${{ steps.sdk.outputs.version }}-${{ inputs.toolchain }}-${{ runner.os }}-${{ steps.sdk.outputs.dir }}
+
+    - name: Register the restored SDK
+      if: steps.restore.outputs.cache-hit == 'true'
+      shell: bash
+      env:
+        DIR: ${{ steps.sdk.outputs.dir }}
+        TC: ${{ inputs.toolchain }}
+      run: |
+        set -euo pipefail
+        # The cache holds the files; the CMake package registration lives in
+        # ~/.cmake and is per-runner, so redo it. A restore that lacks the
+        # compiler is not a usable SDK: fail rather than build with nothing.
+        # SDK 1.0+ keeps the GNU toolchain under gnu/; older layouts do not.
+        [ -x "$DIR/gnu/$TC/bin/$TC-gcc" ] || [ -x "$DIR/$TC/bin/$TC-gcc" ] \
+          || { echo "::error::restored SDK at $DIR has no $TC-gcc" >&2; exit 1; }
+        "$DIR/setup.sh" -c
+        echo "Zephyr SDK $(basename "$DIR") restored from cache"
+
+    - name: Install the SDK (cache miss)
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ inputs.workspace }}
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        BASE: ${{ inputs.install-base }}
+        TC: ${{ inputs.toolchain }}
+        DIR: ${{ steps.sdk.outputs.dir }}
+      run: |
+        set -euo pipefail
+        args=(-t "$TC" --personal-access-token "$GITHUB_TOKEN")
+        [ -n "$BASE" ] && args=(--install-base "$BASE" "${args[@]}")
+        n=0; until west sdk install "${args[@]}"; do n=$((n+1)); if [ $n -ge 3 ]; then echo "::error::west sdk install failed after 3 attempts" >&2; exit 1; fi; sleep $((5*n)); done
+        [ -x "$DIR/gnu/$TC/bin/$TC-gcc" ] || [ -x "$DIR/$TC/bin/$TC-gcc" ] \
+          || { echo "::error::west sdk install did not lay down $TC-gcc under $DIR" >&2; exit 1; }
+
+    - name: Save the SDK for the next run
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ steps.sdk.outputs.dir }}
+        key: ${{ steps.restore.outputs.cache-primary-key }}
