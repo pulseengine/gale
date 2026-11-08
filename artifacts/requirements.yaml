@@ -5674,7 +5674,7 @@ artifacts:
   - id: REQ-HONESTY-TCB-001
     type: sw-req
     title: The stated trusted base is the measured trusted base, published machine-readably
-    status: implemented
+    status: verified
     description: "The trusted-base figures gale states in docs/safety/verification-honesty.md (counts of #[verifier::external_body], assume_specification items, Rocq Admitted theorems and Lean sorry, total and per file) shall be rendered from the source tree and never typed by hand; CI shall fail when the stated block differs from the source by any character; and the same inventory shall be published anonymously as JSON (schema 1) with the commit and UTC time it was measured, at https://pulseengine.github.io/gale/trusted-base.json, so downstream readers fetch the figure instead of copying it. Raised by gale#467: the doc said 133 external_body and placed both assume_specification items in src/poll.rs; the source had 135, both in src/sched.rs."
     tags: [honesty, tcb, claims, ci, gale#467]
     fields:
