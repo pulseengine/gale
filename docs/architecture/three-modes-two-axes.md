@@ -117,8 +117,8 @@ JSON, and a gate checks it against a matched-pair test on that port.
 
 ```
 src/              gale core (verified decision logic)             — unchanged, docs generalised
-os/               gust runtime: scheduler, partition switch, HM   — from benches/gust/src
-drivers/          drivers, providers, apps                        — from benches/gust/drivers
+os/               gust runtime: scheduler, partition switch, HM   — moved out of the gust bench tree
+drivers/          drivers, providers, apps                        — moved out of the gust bench tree
 wit/              gale:kernel, gust:hal, gust:os, gust:sched      — today split over 3 dirs
 ports/host/
   baremetal/      boot, IRQ entry, fatal                          — extracted from gust
@@ -129,7 +129,7 @@ ports/arch/
   armv7m/         context switch, PMSAv7 MPU (M3, M4, M7)         — extracted from gust
   armv8m/         PMSAv8 (M33)                                    — later
   riscv32/        PMP (ESP32-C3)                                  — later
-targets/          AADL: cores, SoCs, boards → generated/          — from benches/gust/targets
+targets/          AADL: cores, SoCs, boards → generated/          — moved (step 2a)
 benches/          benchmarks only
 proofs/ artifacts/ tools/ docs/                                   — unchanged
 ```
@@ -144,23 +144,30 @@ markers) and the committed Renode fixtures at once, under a 2-PR CI ceiling. So:
 1. **Record it.** This doc in `docs/architecture/`, plus rivet: a system-req for the three modes,
    sw-reqs for the seam contract and the per-port protection declaration, and a finding citing
    this context. Ships alone.
-2. **Name the seams, change no behaviour.** Today the bare-metal shim is copy-pasted, not a module:
+2. **Move directories first**, one PR per move, so everything after this step is written in its
+   final home rather than moved twice. Each move is a row in the `moved-paths` gate's ledger
+   (`cargo xtask check moved-paths`): any tracked, non-historical file still naming an old path
+   fails, and so does a recreated old directory. The `.text` sections of every native gust binary
+   are compared before and after each move, and a pure move leaves them identical. Order:
+   `targets/` (2a), then `drivers/`, `wit/`, and the gust runtime to `os/`.
+3. **Name the seams, change no behaviour.** Today the bare-metal shim is copy-pasted, not a module:
    `mmio_read32`/`mmio_write32` are defined in 19 gust binaries, a UART `tx` in 13, `mpu_write` in 9,
-   and 48 carry their own semihosting exit. Step 2 moves that into `ports/host/baremetal` (boot,
+   and 48 carry their own semihosting exit. This step moves that into `ports/host/baremetal` (boot,
    exit, fault entry) and `ports/arch/armv7m` (MMIO, barriers, MPU writes), and the binaries call it.
    Oracle: build all native gust binaries before and after and compare their `.text` sections; every
    difference is either zero or explained. The Renode cycle gates must keep their recorded values
    (e.g. control `0x162CB6`). The committed synth objects come from the wasm side, which this step
    does not touch, so their staying byte-identical proves nothing here; they are not the oracle.
-3. **POSIX port.** Start from `gustos-hostrun`'s seam: swap the fake register file for host-backed
-   `gust:hal` devices and the host clock. The harness stays as it is, as the falsification test. First milestone: `gust_two_tenant` on Linux and macOS CI runners. Its matched
-   pair: tenant A writes into B's memory → the host faults → gust's HM reaches the **same verdict**
-   it reaches on Renode. With protection off, the write lands. This proves the seam is real, and it
-   gives a fast loop with no SDK download.
-4. **Move directories**, one PR per move, each with a gate that no path reference dangles.
+4. **POSIX port.** Start from `gustos-hostrun`'s seam: swap the fake register file for host-backed
+   `gust:hal` devices and the host clock. The harness stays as it is, as the falsification test.
+   First milestone: `gust_two_tenant` on Linux and macOS CI runners. Its matched pair: tenant A
+   writes into B's memory → the host faults → gust's HM reaches the **same verdict** it reaches on
+   Renode. With protection off, the write lands. This proves the seam is real, and it gives a fast
+   loop with no SDK download.
 5. **FreeRTOS port**, same matched pair, on QEMU first and then silicon. Adds the first
    AADL-vs-host hardware cross-check (FreeRTOS config ↔ AADL).
-6. **Zephyr library-OS mode**, after FreeRTOS, with the devicetree ↔ AADL cross-check. Primitives mode on Zephyr stays as it is throughout.
+6. **Zephyr library-OS mode**, after FreeRTOS, with the devicetree ↔ AADL cross-check. Primitives
+   mode on Zephyr stays as it is throughout.
 
 ## Not decided here
 
@@ -174,6 +181,6 @@ Decided by the project owner on 2026-11-08, choosing between options for each po
 - **structure:** two axes rather than a Zephyr-style tree, host-only ports, or a full package matrix;
 - **hardware truth:** AADL authoritative and cross-checked, rather than generating host config or deferring to it;
 - **names:** gale = the project and the verified core, gust = the OS;
-- **order:** steps 1–2 before #478.
+- **order:** the decision record and the seam extraction go before #478 (decided as "steps 1–2"; the directory moves were inserted between them on 2026-11-08, after the owner asked not to forget them, so they are now steps 1–3).
 
 Requirements: SYSREQ-ARCH-MODES-001 and the REQ-ARCH-* set derived from it; context in FIND-ARCH-AXES-001.
