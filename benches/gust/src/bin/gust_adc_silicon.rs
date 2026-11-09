@@ -65,11 +65,11 @@ extern "C" {
 }
 
 // ADC_BASE (0x4001_2400) + VREFINT_CH (17) are GENERATED from the AADL model
-// (benches/gust/targets/) — see gust-target-gen. F100 only (thumbv7m).
+// (targets/) — see gust-target-gen. F100 only (thumbv7m).
 #[cfg(not(feature = "target-f100"))]
 compile_error!("gust_adc_silicon: build with --no-default-features --features target-f100 (Vrefint is an F1/F100 internal channel)");
 #[cfg(feature = "target-f100")]
-#[path = "../../targets/generated/gust_target_stm32f100.rs"]
+#[path = "../../../../targets/generated/gust_target_stm32f100.rs"]
 #[allow(dead_code)]
 mod target;
 use target::{ADC_BASE, BOARD, VREFINT_CH};

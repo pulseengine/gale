@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate benches/gust/targets/generated/ from the AADL target models.
+# Regenerate targets/generated/ from the AADL target models.
 #
 # The committed spar-items JSON (tools/gust-target-gen/tests/golden/f100.items.json)
 # is the canonical spar output. When `spar` is on PATH (local dev) this script
@@ -9,8 +9,8 @@
 #
 # The generated files are COMMITTED and DO NOT EDIT them by hand.
 set -euo pipefail
-HERE="$(cd "$(dirname "$0")" && pwd)"            # benches/gust/targets
-REPO="$(cd "$HERE/../../.." && pwd)"             # repo root
+HERE="$(cd "$(dirname "$0")" && pwd)"            # targets
+REPO="$(cd "$HERE/.." && pwd)"                   # repo root
 GEN="$HERE/generated"
 FIXTURE="$REPO/tools/gust-target-gen/tests/golden/f100.items.json"
 mkdir -p "$GEN"

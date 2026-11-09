@@ -63,7 +63,7 @@ fn resolves(world: &Path, hal: &Path, tag: &str) -> Result<bool, String> {
 
 pub fn run(repo: &Path, _target: Option<&str>) -> Verdict {
     let hal = repo.join("benches/gust/drivers/wit/gust-hal.wit");
-    let gen = repo.join("benches/gust/targets/generated");
+    let gen = repo.join("targets/generated");
 
     if !hal.is_file() {
         return Verdict::Refused(format!("gust:hal seam not found at {}", hal.display()));

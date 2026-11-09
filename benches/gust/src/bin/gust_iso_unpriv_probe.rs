@@ -66,15 +66,15 @@ pub extern "C" fn mpu_write(rnr: u32, rbar: u32, rasr: u32) {
 // The shared-bench boards (gale#397) take their memory map from the GENERATED target
 // constants — measured on each board — instead of a hand-written per-board cfg arm.
 #[cfg(feature = "target-wl55jc")]
-#[path = "../../targets/generated/gust_target_stm32wl55.rs"]
+#[path = "../../../../targets/generated/gust_target_stm32wl55.rs"]
 #[allow(dead_code)]
 mod target;
 #[cfg(feature = "target-wb55rg")]
-#[path = "../../targets/generated/gust_target_stm32wb55.rs"]
+#[path = "../../../../targets/generated/gust_target_stm32wb55.rs"]
 #[allow(dead_code)]
 mod target;
 #[cfg(feature = "target-g031k8")]
-#[path = "../../targets/generated/gust_target_stm32g031.rs"]
+#[path = "../../../../targets/generated/gust_target_stm32g031.rs"]
 #[allow(dead_code)]
 mod target;
 const BOARD_MAP: bool = cfg!(any(feature = "target-wl55jc", feature = "target-wb55rg", feature = "target-g031k8"));

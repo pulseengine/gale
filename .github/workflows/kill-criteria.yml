@@ -295,6 +295,24 @@ jobs:
       - name: The doc's trusted-base block equals the source
         run: cargo xtask check trusted-base
 
+  moved-paths:
+    name: "a directory moved in the rework leaves no live reference"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # docs/architecture/three-modes-two-axes.md step 2 moves directories out
+      # of benches/gust/ one at a time. Each completed move is a row in the
+      # gate's ledger; any tracked, non-historical file still naming the old
+      # path fails the job. The self-test carries the shapes the scanner could
+      # get wrong (a longer name, a deeper path, a historical record).
+      - name: Negative control -- the scanner must bite and must not over-match
+        run: cargo xtask check moved-paths --self-test
+
+      - name: No live reference to a moved path
+        run: cargo xtask check moved-paths
+
   data-overlap:
     name: "fused data segments are disjoint (gale#266)"
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
@@ -712,7 +730,7 @@ jobs:
       - name: Negative control — rejects a bad model, accepts a good one, and the ledger bites both ways
         run: cargo xtask check aadl-parse --self-test
       - name: Positive control — a committed target model is accepted
-        run: cargo xtask check aadl-parse --module benches/gust/targets/stm32g474.aadl
+        run: cargo xtask check aadl-parse --module targets/stm32g474.aadl
       - name: Every committed AADL model parses, or is on the ledger
         run: cargo xtask check aadl-parse
 

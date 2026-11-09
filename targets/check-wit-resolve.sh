@@ -4,8 +4,8 @@
 # in benches/gust/drivers/wit/gust-hal.wit. Catches a generated world that drifts
 # from the seam. Needs wasm-tools on PATH.
 set -euo pipefail
-HERE="$(cd "$(dirname "$0")" && pwd)"           # benches/gust/targets
-HAL="$HERE/../drivers/wit/gust-hal.wit"
+HERE="$(cd "$(dirname "$0")" && pwd)"           # targets
+HAL="$HERE/../benches/gust/drivers/wit/gust-hal.wit"
 GEN="$HERE/generated"
 
 shopt -s nullglob

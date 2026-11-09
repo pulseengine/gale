@@ -17,7 +17,7 @@
 //! [`resolve`] and benches/gust/silicon/README.md). A board with no configured host is
 //! REFUSED with the variable to set, never run against a default. Memory maps and
 //! register addresses are NOT here either: they come from the measured target models
-//! (benches/gust/targets/*.aadl -> generated/).
+//! (targets/*.aadl -> generated/).
 
 use crate::verdict::{Verdict, EXIT_FAIL, EXIT_PASS, EXIT_REFUSED, EXIT_USAGE};
 use std::fs;
@@ -70,7 +70,7 @@ struct Board {
     claim: &'static str,
     triple: &'static str,
     features: &'static [&'static str],
-    /// Stem of benches/gust/targets/generated/{memory-,gust_target_}<stem>.{x,rs}.
+    /// Stem of targets/generated/{memory-,gust_target_}<stem>.{x,rs}.
     stem: &'static str,
     /// openocd interface args (adapter selection). The pin, if any, goes right after.
     iface: &'static [&'static str],
@@ -608,7 +608,7 @@ pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: 
         Ok(s) => s,
         Err(e) => return Verdict::Refused(e),
     };
-    let consts = match fs::read_to_string(root.join(format!("benches/gust/targets/generated/gust_target_{}.rs", b.stem))) {
+    let consts = match fs::read_to_string(root.join(format!("targets/generated/gust_target_{}.rs", b.stem))) {
         Ok(t) => t,
         Err(e) => return Verdict::Refused(format!("generated target module for {}: {e}", b.stem)),
     };

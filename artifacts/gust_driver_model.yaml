@@ -308,7 +308,7 @@ artifacts:
       implementation. An earlier spar accepted it. Nothing in CI ever ran spar parse --
       a grep of the workflows for safety/aadl, spar parse or spar analyze returned
       nothing -- so the day they stopped parsing is not recoverable from CI history.
-      The 7 target models under benches/gust/targets DO parse and remain the source for
+      The 7 target models under targets DO parse and remain the source for
       the generated constants and linker map (REQ-TARGET-MODEL-001).
 
       (2) "the 34 .aadl files in the repo" is wrong by a factor of nearly four. There

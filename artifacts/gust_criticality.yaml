@@ -35,7 +35,7 @@ artifacts:
     title: gust supervisor is ASIL-D on the WB55 mixed-criticality deployment
     status: proposed
     release: v0.11.0
-    description: "DECLARED, not assessed (REQ-OS-MCDEMO-001: the criticality levels shown are declared for the demonstrator). WB55 because it is the only bench part whose 192 KiB SRAM fits more than one tenant domain at synth's 64 KiB page granularity (REQ-OS-MCDEMO-001 venue constraint); target id is the AADL package of benches/gust/targets/stm32wb55.aadl."
+    description: "DECLARED, not assessed (REQ-OS-MCDEMO-001: the criticality levels shown are declared for the demonstrator). WB55 because it is the only bench part whose 192 KiB SRAM fits more than one tenant domain at synth's 64 KiB page granularity (REQ-OS-MCDEMO-001 venue constraint); target id is the AADL package of targets/stm32wb55.aadl."
     tags: [gust, criticality]
     fields:
       criticality: ASIL-D

@@ -104,7 +104,7 @@ compile_error!(
      linking it into a thumbv7em/M4 image silently produces an empty ELF)"
 );
 #[cfg(feature = "target-f100")]
-#[path = "../../targets/generated/gust_target_stm32f100.rs"]
+#[path = "../../../../targets/generated/gust_target_stm32f100.rs"]
 #[allow(dead_code)]
 mod target;
 use target::BOARD;

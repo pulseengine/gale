@@ -14,7 +14,7 @@
 //! not. Because no gate existed, the day it started failing is not recoverable
 //! from CI history -- which is the real defect. A model nobody parses is prose.
 //!
-//! The 7 target models under `benches/gust/targets/` DO parse and are the
+//! The 7 target models under `targets/` DO parse and are the
 //! source for generated constants and the linker map (REQ-TARGET-MODEL-001), so
 //! the point of this gate is as much to keep them parsing as to surface the two
 //! that do not.
@@ -309,7 +309,7 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     // And a real committed model, so the fixtures are not the only thing checked.
     ck(
         "a committed target model is accepted",
-        matches!(spar_parses(&bin, repo, "benches/gust/targets/stm32g474.aadl"), Ok(true)),
+        matches!(spar_parses(&bin, repo, "targets/stm32g474.aadl"), Ok(true)),
     );
 
     // The enumeration, against the real tree -- the half that was missing from
@@ -318,7 +318,7 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
         ck("enumeration is not vacuous", !found.is_empty());
         ck(
             "enumeration finds the target models",
-            found.iter().any(|f| f == "benches/gust/targets/stm32g474.aadl"),
+            found.iter().any(|f| f == "targets/stm32g474.aadl"),
         );
         ck(
             "enumeration finds the safety models",
