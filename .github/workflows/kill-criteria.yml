@@ -76,7 +76,7 @@ jobs:
       - name: The committed silicon capture must still be dominated
         run: |
           cd drivers
-          python3 check-wcet-evt.py ../silicon/RESULTS-wcet-evt-f100.txt
+          python3 check-wcet-evt.py ../benches/gust/silicon/RESULTS-wcet-evt-f100.txt
 
   proof-completeness:
     name: "a Rocq proof that is merely STATED cannot pass as proven"
