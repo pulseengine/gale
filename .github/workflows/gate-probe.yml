@@ -14,7 +14,10 @@ permissions:
   contents: read
 jobs:
   gate-probe:
-    runs-on: [self-hosted, light]
+    # The probe runs the PR head's own detector, so a fork PR would execute
+    # untrusted code. Fork PRs go to a GitHub-hosted runner, the same routing
+    # gale's other self-hosted jobs use; the job still runs (not skipped).
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","light"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
