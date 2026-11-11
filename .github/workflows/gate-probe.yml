@@ -1,0 +1,26 @@
+# temper's behavioural gate probe (temper docs/gate-probe.md, temper#86/#87).
+# Runs tools/ci/detect-changes.sh on the control paths declared in
+# .github/gate-probe.json: every declared output must be true for the controls
+# and false for the negative controls, or the job fails. Report-only today;
+# making it required is a later, per-repo step with the owner's approval.
+#
+# Held to the rule it checks: no path or branch filter, no `if:`, no
+# continue-on-error, no pull_request_target, the action pinned to a full temper
+# sha. Control paths live only in .github/gate-probe.json, never here.
+name: gate-probe
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  gate-probe:
+    # The probe runs the PR head's own detector, so a fork PR would execute
+    # untrusted code. Fork PRs go to a GitHub-hosted runner, the same routing
+    # gale's other self-hosted jobs use; the job still runs (not skipped).
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","light"]') }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pulseengine/temper/.github/actions/gate-probe@308848d151a0fdd0fc5eb8af0531addbf6f36ef4
