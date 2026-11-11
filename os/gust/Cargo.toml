@@ -12,6 +12,8 @@ description = "gust: a maximal-wasm mini-RTOS for tiny bare-metal nodes (Cortex-
 # proofs are about). The gust_iso_* probes program the qemu MPU exclusively
 # through gale::mpu_switch::RegionTable::switch_to_partition — never by hand.
 gale = { path = "../.." }
+# rework step 3: the gust:hal/mmio bridge (read32/write32), one copy instead of 19.
+gust-armv7m = { path = "../../ports/arch/armv7m" }
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 cortex-m-semihosting = "0.5"
