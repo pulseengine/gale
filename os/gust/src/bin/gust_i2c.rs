@@ -15,20 +15,8 @@ use cortex_m_rt::entry;
 use cortex_m_semihosting::debug;
 use panic_halt as _;
 
-#[no_mangle]
-// Re-pinned for REQ-DRV-COMPONENT-001 (gale#307): the driver imports gust:hal/mmio
-// as a WIT-typed component import, so the dissolved object's undefined symbols are
-// the INTERFACE FIELD names read32/write32, not the old mmio_* extern names. Same
-// bridge, same bodies — only the exported symbol changed.
-#[export_name = "read32"]
-pub extern "C" fn mmio_read32(addr: u32) -> u32 {
-    unsafe { read_volatile(addr as *const u32) }
-}
-#[no_mangle]
-#[export_name = "write32"]
-pub extern "C" fn mmio_write32(addr: u32, val: u32) {
-    unsafe { write_volatile(addr as *mut u32, val) }
-}
+// gust:hal/mmio bridge (read32/write32): linked from ports/arch/armv7m (rework step 3).
+use gust_armv7m as _;
 
 extern "C" {
     fn i2c_configure(base: u32, apb1_mhz: u32, divisor: u32, fast: u32, trise: u32);

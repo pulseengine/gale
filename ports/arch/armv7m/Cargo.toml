@@ -1,0 +1,10 @@
+[package]
+name = "gust-armv7m"
+version = "0.1.0"
+edition = "2021"
+description = "ARMv7-M port layer for gust: the gust:hal/mmio bridge (read32/write32) every dissolved driver links against."
+license = "Apache-2.0"
+publish = false
+
+[lib]
+path = "src/lib.rs"

@@ -17,18 +17,8 @@ use cortex_m_rt::entry;
 use cortex_m_semihosting::{debug, hprintln};
 use panic_halt as _;
 
-// The mmio seam the dissolved driver imports — here it reads/writes the RAM window.
-// wdg-thin is a wasm COMPONENT (world `wdg-driver`), so the import is WIT-typed and
-// the dissolved object's undefined symbols are the `gust:hal/mmio` FIELD names —
-// `read32`/`write32`, not the old `mmio_*` extern names. Same bridge, re-pinned.
-#[export_name = "read32"]
-pub extern "C" fn mmio_read32(addr: u32) -> u32 {
-    unsafe { read_volatile(addr as *const u32) }
-}
-#[export_name = "write32"]
-pub extern "C" fn mmio_write32(addr: u32, val: u32) {
-    unsafe { write_volatile(addr as *mut u32, val) }
-}
+// gust:hal/mmio bridge (read32/write32): linked from ports/arch/armv7m (rework step 3).
+use gust_armv7m as _;
 
 extern "C" {
     fn wdg_unlock(base: u32, state: u32) -> u32;
