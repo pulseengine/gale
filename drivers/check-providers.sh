@@ -2,7 +2,7 @@
 # gust:os syscall-seam drift gate (gale#214).
 #
 # The gust:os providers implement WIT Guest traits generated from
-# drivers/wit-os/gust-os.wit via `wit_bindgen::generate!`. If the WIT gains a
+# wit/os/gust-os.wit via `wit_bindgen::generate!`. If the WIT gains a
 # method but a Guest impl is not updated, the provider crate fails to compile
 # (E0046 "not all trait items implemented") — but NOTHING in CI built these
 # crates, so the break shipped GREEN and only surfaced when the dissolve path
@@ -20,7 +20,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"
 
 # App worlds (import gust:os capabilities) + the providers that export them.
-# Every crate here calls wit_bindgen::generate! against ../wit-os, so a WIT
+# Every crate here calls wit_bindgen::generate! against ../../wit/os, so a WIT
 # change that outruns an impl breaks the crate that must implement it.
 # DISCOVERED, not enumerated. A hand-written list silently narrows: app-timer was
 # added and this gate kept reporting "all 8 ... in sync" while never building it —
@@ -52,7 +52,7 @@ done
 if [ -n "$fail" ]; then
   echo ""
   echo "gust:os provider drift gate FAILED:$fail"
-  echo "A WIT change in drivers/wit-os/gust-os.wit likely outran a Guest impl"
+  echo "A WIT change in wit/os/gust-os.wit likely outran a Guest impl"
   echo "(E0046). Update the provider's impl to match the WIT interface."
   exit 1
 fi

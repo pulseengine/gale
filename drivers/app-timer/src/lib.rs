@@ -1,4 +1,4 @@
-//! gust:os step-4 app (world `app-timer`, wit-os/gust-os.wit): imports gust:os
+//! gust:os step-4 app (world `app-timer`, wit/os/gust-os.wit): imports gust:os
 //! {time, spawn, timer} and demonstrates THE PERIODIC-LOOP SHAPE — arm a one-shot
 //! wake on a real task handle, then poll it to completion.
 //!
@@ -45,7 +45,7 @@ unsafe impl GlobalAlloc for Bump {
 }
 #[global_allocator] static A: Bump = Bump;
 
-wit_bindgen::generate!({ world: "gust:os/app-timer@0.1.0", path: ["../wit", "../wit-os"], generate_all });
+wit_bindgen::generate!({ world: "gust:os/app-timer@0.1.0", path: ["../../wit/hal", "../../wit/os"], generate_all });
 use crate::gust::os::spawn::start;
 use crate::gust::os::time::now;
 use crate::gust::os::timer::{sleep, slept};

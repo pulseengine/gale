@@ -1,4 +1,4 @@
-//! gust:os `spawn` provider (world `spawn-provider`, wit-os/gust-os.wit) — Task 6
+//! gust:os `spawn` provider (world `spawn-provider`, wit/os/gust-os.wit) — Task 6
 //! Step 5. STATELESS by construction: it owns no task table and includes no
 //! executor. `start`/`poll` marshal onto the node's single executor instance
 //! through the `gust:sched/tasks` import (exported by exec-provider, which holds
@@ -25,7 +25,7 @@ unsafe impl GlobalAlloc for NoAlloc {
 #[global_allocator]
 static A: NoAlloc = NoAlloc;
 
-wit_bindgen::generate!({ world: "gust:os/spawn-provider@0.1.0", path: ["../wit", "../wit-os"], generate_all });
+wit_bindgen::generate!({ world: "gust:os/spawn-provider@0.1.0", path: ["../../wit/hal", "../../wit/os"], generate_all });
 use crate::gust::sched::tasks;
 use exports::gust::os::spawn::Guest;
 

@@ -12,7 +12,7 @@
 //! dissolved to native.
 //!
 //! REQ-DRV-COMPONENT-001: this is a wasm **component** — `world spi-driver`
-//! (`../wit/gust-hal.wit`), importing `gust:hal/mmio` and exporting `gust:hal/spi`.
+//! (`../../wit/hal/gust-hal.wit`), importing `gust:hal/mmio` and exporting `gust:hal/spi`.
 //! The capability is therefore checked against a typed contract at composition time,
 //! instead of being an untyped `env` extern that only had to match by name at link.
 //!
@@ -51,7 +51,7 @@ static ALLOC: NoAlloc = NoAlloc;
 // primitives the ~10-line TCB bridge gpio-thin/uart-thin use). No irq/dma atom: a
 // thin-seam polled SPI needs only register reads/writes.
 #[cfg(not(kani))]
-wit_bindgen::generate!({ world: "spi-driver", path: "../wit", generate_all });
+wit_bindgen::generate!({ world: "spi-driver", path: "../../wit/hal", generate_all });
 #[cfg(not(kani))]
 use crate::gust::hal::mmio::{read32, write32};
 

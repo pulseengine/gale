@@ -1,6 +1,6 @@
 # timer-provider — gust:os `timer` backed by the real executor (Task 4, v0.4.0 timer-sleep)
 
-Backs the `gust:os/timer` WIT interface (world `timer-provider`, `wit-os/gust-os.wit`:
+Backs the `gust:os/timer` WIT interface (world `timer-provider`, `wit/os/gust-os.wit`:
 `sleep: func(handle: u32, ticks: u32) -> u32; slept: func(handle: u32) -> u32;`)
 with the node's ONE verified executor deadline table — not a hand-written
 placeholder, and no longer a private copy. `src/lib.rs` holds no state at all: it

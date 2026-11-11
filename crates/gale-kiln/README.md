@@ -2,7 +2,7 @@
 
 Slice 2 of the kiln component-host path (Phase 2 / **SWREQ-KILN-002**; gale#63).
 
-Implements `world host` from `../../wit/gale.wit` —
+Implements `world host` from `../../wit/kernel/gale.wit` —
 `gale:kernel/{sem,msgq,mutex,event}` — **directly over the verified `gale::*`
 decision functions**. An application component that imports `gale:kernel` gets
 its kernel decisions resolved by this component (or, on kiln, registered as host
@@ -25,7 +25,7 @@ msgq.put(0,4,4,_,_) -> full        event.post(0,0b101,0b1111) -> 5
 The **payload is `gale` (`#![no_std]`, no alloc)** — the decisions. The wasip2
 component wrapper around it is host/dev-time scaffolding; when synth dissolves
 this to native ELF the wasm-runtime layer is elided/replaced by the thin TCB
-(see `../../wit/README.md`).
+(see `../../wit/kernel/README.md`).
 
 ## Next (slice 3)
 

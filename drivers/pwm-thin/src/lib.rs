@@ -50,7 +50,7 @@ static ALLOC: NoAlloc = NoAlloc;
 // ~10-line TCB bridge every other thin-seam driver uses — what changes is that the
 // dependency is declared in the WIT and checkable on the module, rather than being
 // an undefined symbol nobody typed.
-wit_bindgen::generate!({ world: "pwm-driver", path: "../wit", generate_all });
+wit_bindgen::generate!({ world: "pwm-driver", path: "../../wit/hal", generate_all });
 use crate::gust::hal::mmio::{read32 as mmio_read32, write32 as mmio_write32};
 
 // STM32 advanced-timer register map (offsets from the timer base, e.g. TIM1=0x4001_2C00).

@@ -10,7 +10,7 @@
 //! arithmetic, so it dissolves `--relocatable` with 0 SRAM / 0 linmem.
 //!
 //! REQ-DRV-COMPONENT-001: this is a wasm **component** — `world timer-driver`
-//! (`../wit/gust-hal.wit`), importing `gust:hal/mmio` and exporting `gust:hal/timer`.
+//! (`../../wit/hal/gust-hal.wit`), importing `gust:hal/mmio` and exporting `gust:hal/timer`.
 //! The capability is therefore checked against a typed contract at composition time,
 //! instead of being an untyped `env` extern that only had to match by name at link.
 //!
@@ -48,7 +48,7 @@ static ALLOC: NoAlloc = NoAlloc;
 // gust:hal mmio capability — now a WIT-typed component import (still the SAME two
 // primitives the ~10-line TCB bridge gpio-thin/uart-thin use; no irq atom).
 #[cfg(not(kani))]
-wit_bindgen::generate!({ world: "timer-driver", path: "../wit", generate_all });
+wit_bindgen::generate!({ world: "timer-driver", path: "../../wit/hal", generate_all });
 #[cfg(not(kani))]
 use crate::gust::hal::mmio::{read32, write32};
 

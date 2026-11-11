@@ -34,7 +34,7 @@ executor's `extern "C" poll_task` through a forwarder into the WIT-typed
 10246 B, one import — the delivery invariant build-gustos-components.sh checks, so
 exec can join the fuse (gale#224).
 
-The second export is the node's INTERNAL scheduler seam (`wit-os/deps/sched/
+The second export is the node's INTERNAL scheduler seam (`wit/os/deps/sched/
 gust-sched.wit`). This crate is the single owner of scheduler state: spawn-provider
 and timer-provider used to embed their own copies of `plain/src/executor.rs` with
 their own `static mut TASKS`, which made a `spawn.start` handle meaningless to

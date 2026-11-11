@@ -292,7 +292,7 @@ artifacts:
       time. But the loop's first two steps are structurally inapplicable to every
       gust:os change, and that is now observed rather than inferred.
 
-      Consequence worth stating: every WIT file under drivers/wit and drivers/wit-os is
+      Consequence worth stating: every WIT file under wit/hal and wit/os is
       hand-authored, including the isolation-relevant gust:sched header whose wording
       carries the tenant-mutation argument. A hand-written interface can drift from the
       architecture with nothing to detect it.

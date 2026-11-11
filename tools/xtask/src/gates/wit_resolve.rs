@@ -1,6 +1,6 @@
 //! Every generated per-target WIT world must RESOLVE against the real gust:hal
 //! seam -- its imports must name interfaces that actually exist in
-//! drivers/wit/gust-hal.wit. Catches a generated world drifting from the seam.
+//! wit/hal/gust-hal.wit. Catches a generated world drifting from the seam.
 //!
 //! Ported from check-wit-resolve.sh (gale#368). The shell version was correctly
 //! written -- the verdict rode `wasm-tools`' real exit status through an `if`,
@@ -62,7 +62,7 @@ fn resolves(world: &Path, hal: &Path, tag: &str) -> Result<bool, String> {
 }
 
 pub fn run(repo: &Path, _target: Option<&str>) -> Verdict {
-    let hal = repo.join("drivers/wit/gust-hal.wit");
+    let hal = repo.join("wit/hal/gust-hal.wit");
     let gen = repo.join("targets/generated");
 
     if !hal.is_file() {
@@ -119,7 +119,7 @@ pub fn run(repo: &Path, _target: Option<&str>) -> Verdict {
 /// naming only real ones MUST be accepted. If either half misbehaves the gate
 /// cannot distinguish, and reports so rather than claiming a clean run.
 pub fn self_test(repo: &Path, _target: Option<&str>) -> Verdict {
-    let hal = repo.join("drivers/wit/gust-hal.wit");
+    let hal = repo.join("wit/hal/gust-hal.wit");
     if !hal.is_file() {
         return Verdict::Refused(format!("gust:hal seam not found at {}", hal.display()));
     }

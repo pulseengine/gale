@@ -1,7 +1,7 @@
 # gust:os syscall-seam drift gate (gale#214).
 #
 # The gust:os providers implement WIT Guest traits generated from
-# drivers/wit-os/gust-os.wit. A WIT method added without its Guest
+# wit/os/gust-os.wit. A WIT method added without its Guest
 # impl fails to compile (E0046) — but no workflow built these crates, so #202
 # added time.resolution() to the WIT without the time-provider impl and shipped
 # GREEN, silently breaking the gust_os_tl/ts dissolve until #213 caught it by
@@ -13,7 +13,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "drivers/wit-os/**"
+      - "wit/os/**"
       - "drivers/app-*/**"
       - "drivers/*-provider/**"
       - "drivers/check-providers.sh"
@@ -22,7 +22,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "drivers/wit-os/**"
+      - "wit/os/**"
       - "drivers/app-*/**"
       - "drivers/*-provider/**"
       - "drivers/check-providers.sh"

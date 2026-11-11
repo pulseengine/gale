@@ -1,6 +1,6 @@
 //! gale-kiln — the gale kernel as a WebAssembly **Component** (`world host`).
 //!
-//! Implements `gale:kernel/{sem,msgq,mutex,event}` (see `../../wit/gale.wit`)
+//! Implements `gale:kernel/{sem,msgq,mutex,event}` (see `../../wit/kernel/gale.wit`)
 //! directly over the verified `gale::*` decision functions — the same
 //! machine-checked logic (Verus/Rocq/Lean + Kani) that ships in the Zephyr
 //! drop-in and the wasm-cross-LTO modules. This is the **no-C-FFI host side**
@@ -14,7 +14,7 @@
 
 wit_bindgen::generate!({
     world: "host",
-    path: "../../wit",
+    path: "../../wit/kernel",
 });
 
 use exports::gale::kernel::event::Guest as EventGuest;

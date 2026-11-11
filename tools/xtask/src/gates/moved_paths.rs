@@ -36,6 +36,18 @@ pub const MOVES: &[(&str, &str, &str)] = &[(
     "benches/gust/drivers",
     "drivers",
     "drivers, providers and apps are OS components, not benchmarks (rework step 2b)",
+), (
+    "drivers/wit-os",
+    "wit/os",
+    "the gust:os and gust:sched seams join the other WIT packages in wit/ (rework step 2c)",
+), (
+    "drivers/wit",
+    "wit/hal",
+    "the gust:hal seam joins the other WIT packages in wit/ (rework step 2c)",
+), (
+    "wit/gale.wit",
+    "wit/kernel/gale.wit",
+    "one directory per WIT package, so a wit-bindgen path names exactly one (rework step 2c)",
 )];
 
 /// Dated records. They describe what was true when written, paths included.
@@ -105,9 +117,9 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
         return Verdict::Refused("no moves recorded -- the check would be vacuous".into());
     }
     for (old, new, _) in MOVES {
-        if !repo.join(new).is_dir() {
+        if !repo.join(new).exists() {
             return Verdict::Refused(format!(
-                "ledger says {old} moved to {new}, but {new}/ does not exist -- the ledger is wrong"
+                "ledger says {old} moved to {new}, but {new} does not exist -- the ledger is wrong"
             ));
         }
     }

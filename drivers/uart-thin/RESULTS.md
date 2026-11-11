@@ -101,7 +101,7 @@ correctness gate works locally *and* in CI.
 The driver no longer reaches the bridge through raw `env.mmio_read32` /
 `env.mmio_write32` / `env.irq_poll` externs but through `wit_bindgen::generate!`
 against `world uart-driver { import mmio; import irq; export uart; }`
-(`../wit/gust-hal.wit` — the contract predates this change and is used unedited).
+(`../../wit/hal/gust-hal.wit` — the contract predates this change and is used unedited).
 This is the first thin driver to carry **two** typed imports. The four exported
 primitives already matched `interface uart` field-for-field, so the `Guest` impl just
 forwards to the same bodies the `#[no_mangle] extern "C"` symbols export. No register

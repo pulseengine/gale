@@ -6,13 +6,13 @@ struct NoAlloc;
 unsafe impl GlobalAlloc for NoAlloc { unsafe fn alloc(&self,_:Layout)->*mut u8{core::ptr::null_mut()} unsafe fn dealloc(&self,_:*mut u8,_:Layout){} }
 #[global_allocator] static A: NoAlloc = NoAlloc;
 
-wit_bindgen::generate!({ world: "gust:os/time-provider@0.1.0", path: ["../wit", "../wit-os"], generate_all });
+wit_bindgen::generate!({ world: "gust:os/time-provider@0.1.0", path: ["../../wit/hal", "../../wit/os"], generate_all });
 use crate::gust::hal::mmio::read32;
 use exports::gust::os::time::Guest;
 
 const TIM2_CNT: u32 = 0x4000_0024; // timer count register (via gust:hal/mmio)
 
-// Ticks/sec (REQ-OS-TIMER-001, wit-os/gust-os.wit `time.resolution`). TIM2_CNT is a
+// Ticks/sec (REQ-OS-TIMER-001, wit/os/gust-os.wit `time.resolution`). TIM2_CNT is a
 // raw free-running counter with no PSC/ARR config crossing this seam (unlike
 // timer-thin, which owns the real prescaler), so there is no clock-tree-derived Hz
 // to report here yet — 1 MHz (1 tick = 1 us) is a documented placeholder, matching

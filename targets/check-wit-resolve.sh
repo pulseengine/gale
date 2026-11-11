@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Assert every generated per-target WIT world RESOLVES against the real gust:hal
 # seam — i.e. its imports (e.g. gust:hal/mmio) name interfaces that actually exist
-# in drivers/wit/gust-hal.wit. Catches a generated world that drifts
+# in wit/hal/gust-hal.wit. Catches a generated world that drifts
 # from the seam. Needs wasm-tools on PATH.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"           # targets
-HAL="$HERE/../drivers/wit/gust-hal.wit"
+HAL="$HERE/../wit/hal/gust-hal.wit"
 GEN="$HERE/generated"
 
 shopt -s nullglob

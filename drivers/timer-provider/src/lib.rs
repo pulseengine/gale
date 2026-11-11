@@ -1,4 +1,4 @@
-//! gust:os `timer` provider (world `timer-provider`, wit-os/gust-os.wit) — Task 4.
+//! gust:os `timer` provider (world `timer-provider`, wit/os/gust-os.wit) — Task 4.
 //! STATELESS by construction, and clockless: it owns neither the deadline table nor
 //! the clock. `sleep`/`slept` operate on the app's handle UNCHANGED against the
 //! node's single executor instance via `gust:sched/tasks`, and read time through
@@ -26,7 +26,7 @@ unsafe impl GlobalAlloc for NoAlloc {
 #[global_allocator]
 static A: NoAlloc = NoAlloc;
 
-wit_bindgen::generate!({ world: "gust:os/timer-provider@0.1.0", path: ["../wit", "../wit-os"], generate_all });
+wit_bindgen::generate!({ world: "gust:os/timer-provider@0.1.0", path: ["../../wit/hal", "../../wit/os"], generate_all });
 use crate::gust::os::time;
 use crate::gust::sched::tasks;
 use exports::gust::os::timer::Guest;

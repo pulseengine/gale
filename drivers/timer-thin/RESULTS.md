@@ -19,7 +19,7 @@ arithmetic, no `match`→`.rodata` linmem lookup, so it dissolves `--relocatable
 
 The driver no longer reaches the bridge through raw `env.mmio_read32`/
 `env.mmio_write32` externs but through `wit_bindgen::generate!` against
-`world timer-driver { import mmio; export timer; }` (`../wit/gust-hal.wit` — the
+`world timer-driver { import mmio; export timer; }` (`../../wit/hal/gust-hal.wit` — the
 contract predates this change and is used unedited). The five exported primitives
 already matched `interface timer` field-for-field, so the `Guest` impl just forwards
 to the same bodies the `#[no_mangle] extern "C"` symbols export — component and

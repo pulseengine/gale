@@ -10,7 +10,7 @@ unsafe impl GlobalAlloc for NoAlloc {
 #[global_allocator]
 static ALLOC: NoAlloc = NoAlloc;
 
-wit_bindgen::generate!({ world: "timer-driver", path: "../wit" });
+wit_bindgen::generate!({ world: "timer-driver", path: "../../wit/hal" });
 use crate::gust::hal::mmio::{read32, write32};
 use exports::gust::hal::timer::Guest;
 

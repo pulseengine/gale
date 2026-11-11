@@ -119,7 +119,7 @@ JSON, and a gate checks it against a matched-pair test on that port.
 src/              gale core (verified decision logic)             — unchanged, docs generalised
 os/               gust runtime: scheduler, partition switch, HM   — moved out of the gust bench tree
 drivers/          drivers, providers, apps                        — moved out of the gust bench tree
-wit/              gale:kernel, gust:hal, gust:os, gust:sched      — today split over 3 dirs
+wit/              gale:kernel, gust:hal, gust:os, gust:sched      — one directory per package (step 2c)
 ports/host/
   baremetal/      boot, IRQ entry, fatal                          — extracted from gust
   zephyr/         primitives mode (today's ffi/ + zephyr/), later library OS
@@ -149,7 +149,7 @@ markers) and the committed Renode fixtures at once, under a 2-PR CI ceiling. So:
    (`cargo xtask check moved-paths`): any tracked, non-historical file still naming an old path
    fails, and so does a recreated old directory. The `.text` sections of every native gust binary
    are compared before and after each move, and a pure move leaves them identical. Order:
-   `targets/` (2a), then `drivers/`, `wit/`, and the gust runtime to `os/`.
+   `targets/` (2a), `drivers/` (2b), `wit/` (2c), then the gust runtime to `os/` (2d).
 3. **Name the seams, change no behaviour.** Today the bare-metal shim is copy-pasted, not a module:
    `mmio_read32`/`mmio_write32` are defined in 19 gust binaries, a UART `tx` in 13, `mpu_write` in 9,
    and 48 carry their own semihosting exit. This step moves that into `ports/host/baremetal` (boot,
