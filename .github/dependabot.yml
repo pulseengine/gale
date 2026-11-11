@@ -1,4 +1,7 @@
 version: 2
+# Groups are per update entry, so each group sits under the ecosystem whose
+# names it matches; patterns are globs, not regexes. One upstream release
+# then arrives as one PR instead of one per package.
 updates:
   - package-ecosystem: github-actions
     directory: /
@@ -6,12 +9,26 @@ updates:
       interval: weekly
     labels:
       - dependencies
+    groups:
+      github-actions-all:
+        patterns:
+          - "*"
   - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
     labels:
       - dependencies
+    groups:
+      # Released in lockstep from one upstream repository; a partial bump
+      # does not resolve. Only the root workspace depends on them.
+      wasm-tools-family:
+        patterns:
+          - "wasmparser"
+          - "wasm-encoder"
+          - "wasm-metadata"
+          - "wit-component"
+          - "wit-parser"
   - package-ecosystem: cargo
     directory: /ffi
     schedule:
