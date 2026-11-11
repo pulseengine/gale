@@ -8,7 +8,7 @@
 //! thumbv7m ⊂ thumbv7em). The IWDG is register-identical across the STM32 line
 //! (same base, same KR/PR/RLR key sequence), so the F1-authored driver programs
 //! the G4 watchdog verbatim — the one peripheral that is faithfully testable on
-//! whichever board is at hand. Flash + capture:  benches/gust/silicon/run-wdg.sh
+//! whichever board is at hand. Flash + capture:  os/gust/silicon/run-wdg.sh
 //!
 //! Two-boot proof (self-checking, no scope/LED needed):
 //!   boot 1 — RCC_CSR.IWDGRSTF == 0: arm the IWDG via the driver, then STOP kicking

@@ -48,6 +48,10 @@ pub const MOVES: &[(&str, &str, &str)] = &[(
     "wit/gale.wit",
     "wit/kernel/gale.wit",
     "one directory per WIT package, so a wit-bindgen path names exactly one (rework step 2c)",
+), (
+    "benches/gust",
+    "os/gust",
+    "gust is the OS, not a benchmark; os/gust keeps the depth so in-crate ../.. paths hold (rework step 2d)",
 )];
 
 /// Dated records. They describe what was true when written, paths included.

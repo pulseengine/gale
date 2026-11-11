@@ -7,7 +7,7 @@
 //! (wasm→loom→synth, linked from wasm-kernel/gust_mix-cm3.o, cortex-m3 — runs
 //! unmodified on the M4 too). Correctness-gated over [0,2047] before timing.
 //!
-//! Build/flash/capture per board: benches/gust/silicon/run.sh {g474re|f100}
+//! Build/flash/capture per board: os/gust/silicon/run.sh {g474re|f100}
 //! (selects the target + memory map, flashes via probe-rs, captures semihosting).
 //! The DWT cycle counter is identical on M3 and M4, so the two boards' numbers
 //! are directly comparable; the dissolved object is the same on both (the gust /

@@ -73,7 +73,7 @@ jobs:
         # file; the filter is fixed above and this check makes the class cheap to catch.
         run: |
           rc=0
-          for f in drivers/*.sh benches/gust/silicon/*.sh; do
+          for f in drivers/*.sh os/gust/silicon/*.sh; do
             [ -f "$f" ] || continue
             bash -n "$f" || { echo "::error file=$f::bash syntax error"; rc=1; }
           done

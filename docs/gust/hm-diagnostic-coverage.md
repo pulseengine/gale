@@ -2,7 +2,7 @@
 
 **Status:** DELIVERED 2026-07-17; EXTENDED 2026-07-21 with the cross-sensor voting
 detector (the last detector-class gap), alongside the fault-injection demonstrator
-(`benches/gust/src/bin/gust_hm_probe.rs`) and the FSM proofs
+(`os/gust/src/bin/gust_hm_probe.rs`) and the FSM proofs
 (#189, Verus H1–H5 + Kani `h1_escalation_terminates` … `h7_replenish_requires_quiet`,
 plus `h8_vote_2of3_characterized` for the TMR 2-of-3 vote).
 This closes the second evidence part `REQ-OS-HM-001` asks for: *"The design SHALL
@@ -95,7 +95,7 @@ liveness fault reaches `CrossCoreTrip` in exactly one more call:
 
 ## Executable evidence
 
-- `benches/gust/src/bin/gust_hm_probe.rs` — qemu (lm3s6965evb, cortex-m3) demonstrator.
+- `os/gust/src/bin/gust_hm_probe.rs` — qemu (lm3s6965evb, cortex-m3) demonstrator.
   For each of the 6 named causes: builds the tripping `Obs`, confirms the mapped gate
   and `all_clear` both correctly fail, drives the REAL `Hm` FSM via `on_fault` (with a
   no-silent-clear `try_restart` check on the still-faulty observation), and confirms

@@ -148,7 +148,7 @@ is unobtainable from the tool. Recorded rather than glossed.
     drivers/build-iso-core.sh
 
     # and execute it:
-    cd benches/gust && cargo build --release --bin gust_iso_probe --target thumbv7m-none-eabi
+    cd os/gust && cargo build --release --bin gust_iso_probe --target thumbv7m-none-eabi
     qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
       -semihosting-config enable=on,target=native \
       -kernel target/thumbv7m-none-eabi/release/gust_iso_probe

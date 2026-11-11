@@ -171,7 +171,7 @@ pub extern "C" fn gpio_toggle(port_base: u32, pin: u32) {
 
 // `gust:hal/gpio` exported over the SAME bodies as the C-ABI symbols above, not a
 // second implementation: the component's exports and the dissolved object's
-// `gpio_*` entry points (benches/gust/build.rs, gust_gpio probe) then cannot
+// `gpio_*` entry points (os/gust/build.rs, gust_gpio probe) then cannot
 // diverge in behaviour. Same shape exec-provider used in v0.6.0.
 #[cfg(not(kani))]
 struct Driver;

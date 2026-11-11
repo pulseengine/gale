@@ -17,7 +17,7 @@ are directly comparable.
 
 ```sh
 brew install probe-rs-tools          # one-time
-cd benches/gust
+cd os/gust
 silicon/run.sh g474re                # board you have now (Cortex-M4)
 silicon/run.sh f100                  # the STM32F100 (Cortex-M3), once connected
 ```

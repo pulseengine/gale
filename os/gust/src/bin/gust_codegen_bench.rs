@@ -28,7 +28,7 @@ fn delta(a: u32, b: u32) -> u32 {
 }
 
 // The native (LLVM) lowering of the Q8 failsafe mixer — same source as
-// benches/gust/src/main.rs and the dissolved gust_mix.
+// os/gust/src/main.rs and the dissolved gust_mix.
 #[inline(never)]
 fn mix_native(ch: u16) -> u16 {
     let v = 1500i32 + ((256i32 * (ch as i32 - 1024)) >> 8);

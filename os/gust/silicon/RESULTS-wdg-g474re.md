@@ -7,8 +7,8 @@ probe-rs 0.31.0). The IWDG is register-identical across the STM32 line (base
 0x4000_3000, KR/PR/RLR key sequence), so the F1-authored cortex-m3 `.o` programs the
 G4 watchdog verbatim (thumbv7m ⊂ thumbv7em).
 
-Firmware: `benches/gust/src/bin/gust_wdg_silicon.rs` (two-boot self-checking).
-Reproduce: `benches/gust/silicon/run-wdg.sh`.
+Firmware: `os/gust/src/bin/gust_wdg_silicon.rs` (two-boot self-checking).
+Reproduce: `os/gust/silicon/run-wdg.sh`.
 
 ## Captured evidence
 

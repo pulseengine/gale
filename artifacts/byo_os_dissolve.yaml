@@ -68,30 +68,9 @@ artifacts:
     type: finding
     title: "meld --memory shared FUSED dissolve proven end-to-end on bare metal (run-demo()=53 == wasmtime)"
     status: active
-    description: >
-      The single-merged-memory FUSED path that FIND-BYOOS-006 said "still needs
-      wit-bindgen#6" is now UNBLOCKED and demonstrated end-to-end, without
-      wit-bindgen#6, via Route B: build the components grow-free
-      (wasm32-unknown-unknown + cabi-realloc-extern), then
-      `wasm-tools component new --import-passthrough env::__cabi_arena_realloc`
-      (pulseengine/wasm-tools@feat/import-passthrough, wasm-tools#2) so the arena
-      stays an unresolved import rather than dragging in a growing allocator;
-      `meld fuse --memory shared --address-rebase` then merges the two components
-      into ONE memory (memory.grow=0); strip the fused module's exports down to
-      {memory, run-demo} so loom/synth DCE the now-vestigial cabi_realloc adapter
-      (the dead-allocator export FIND-BYOOS-006 identified); `synth compile
-      --target cortex-m3 --all-exports --relocatable` yields a self-contained
-      ET_REL object (.text ~668B, 0 undefined symbols, exports run-demo) with NO
-      TCB arena needed. Linked into the gust_fused TCB bin it boots on a
-      bare-metal Cortex-M3 (qemu lm3s6965evb, also verified at an 8KB-SRAM link)
-      and returns run-demo()=53 - identical to the SAME composed component on
-      wasmtime (crates/gale-app-demo/run.sh). This is the "components on top,
-      meld-fused into one module, run on the gust stack" vision made executable.
-      Reproduce: benches/gust/build-fused.sh; oracle: benches/gust/run-fused.sh.
-      Note this complements the per-component TCB-arena dissolve (FIND-BYOOS-006,
-      dissolve.sh): that produces one .o per component linked against an arena;
-      this produces one fused .o with no cross-component surface. meld#298 (drop
-      the vestigial adapter at fusion) would remove the manual export-strip step.
+    description: |
+      The single-merged-memory FUSED path that FIND-BYOOS-006 said "still needs wit-bindgen#6" is now UNBLOCKED and demonstrated end-to-end, without wit-bindgen#6, via Route B: build the components grow-free (wasm32-unknown-unknown + cabi-realloc-extern), then `wasm-tools component new --import-passthrough env::__cabi_arena_realloc` (pulseengine/wasm-tools@feat/import-passthrough, wasm-tools#2) so the arena stays an unresolved import rather than dragging in a growing allocator; `meld fuse --memory shared --address-rebase` then merges the two components into ONE memory (memory.grow=0); strip the fused module's exports down to {memory, run-demo} so loom/synth DCE the now-vestigial cabi_realloc adapter (the dead-allocator export FIND-BYOOS-006 identified); `synth compile --target cortex-m3 --all-exports --relocatable` yields a self-contained ET_REL object (.text ~668B, 0 undefined symbols, exports run-demo) with NO TCB arena needed. Linked into the gust_fused TCB bin it boots on a bare-metal Cortex-M3 (qemu lm3s6965evb, also verified at an 8KB-SRAM link) and returns run-demo()=53 - identical to the SAME composed component on wasmtime (crates/gale-app-demo/run.sh). This is the "components on top, meld-fused into one module, run on the gust stack" vision made executable. Reproduce: os/gust/build-fused.sh; oracle: os/gust/run-fused.sh. Note this complements the per-component TCB-arena dissolve (FIND-BYOOS-006, dissolve.sh): that produces one .o per component linked against an arena; this produces one fused .o with no cross-component surface. meld#298 (drop the vestigial adapter at fusion) would remove the manual export-strip step.
+
     tags: [byo-os, gale74, dissolve, meld, fused, shared-memory, demonstrator]
     links:
       - type: refines
@@ -103,22 +82,9 @@ artifacts:
     type: finding
     title: "North-star end-to-end: the dissolved CM composition runs ON the kiln/gust stack (kiln-async drives it as a scheduled task, bare metal)"
     status: active
-    description: >
-      Closes the "running on our stack" half of the BYO-OS north-star (the other
-      half, the dissolve, is FIND-BYOOS-007). gust_stack (benches/gust/src/bin/
-      gust_stack.rs) constructs the kiln-async Scheduler — gust's executor — and
-      drives the MELD-fused, synth-dissolved Component-Model composition
-      (gale-app-demo importing gale:kernel; gale-kiln providing it over the
-      verified gale::* deciders) as the body of a kiln task, re-polled every
-      scheduler round. Boots bare-metal on qemu Cortex-M3 (lm3s6965evb): 5000
-      poll rounds, dissolved run-demo() = 53 every round, 0 mismatches, no wasm
-      runtime. So the full path executes end-to-end: components on top (CM) ->
-      meld fuse (one merged-memory module) -> synth dissolve (native) -> driven
-      by the kiln-async scheduler on the gust stack. gust_fused proved the
-      dissolve (one-shot run-demo); this proves the components execute as
-      scheduled work on the executor. Next rungs: a richer driven example
-      (engine_control control-loop as the task body) and the same on real
-      silicon (G474RE/F100).
+    description: |
+      Closes the "running on our stack" half of the BYO-OS north-star (the other half, the dissolve, is FIND-BYOOS-007). gust_stack (os/gust/src/bin/ gust_stack.rs) constructs the kiln-async Scheduler — gust's executor — and drives the MELD-fused, synth-dissolved Component-Model composition (gale-app-demo importing gale:kernel; gale-kiln providing it over the verified gale::* deciders) as the body of a kiln task, re-polled every scheduler round. Boots bare-metal on qemu Cortex-M3 (lm3s6965evb): 5000 poll rounds, dissolved run-demo() = 53 every round, 0 mismatches, no wasm runtime. So the full path executes end-to-end: components on top (CM) -> meld fuse (one merged-memory module) -> synth dissolve (native) -> driven by the kiln-async scheduler on the gust stack. gust_fused proved the dissolve (one-shot run-demo); this proves the components execute as scheduled work on the executor. Next rungs: a richer driven example (engine_control control-loop as the task body) and the same on real silicon (G474RE/F100).
+
     tags: [byo-os, gale74, kiln, gust, on-stack, north-star, demonstrator]
     links:
       - type: verifies

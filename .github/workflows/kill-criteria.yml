@@ -76,7 +76,7 @@ jobs:
       - name: The committed silicon capture must still be dominated
         run: |
           cd drivers
-          python3 check-wcet-evt.py ../benches/gust/silicon/RESULTS-wcet-evt-f100.txt
+          python3 check-wcet-evt.py ../os/gust/silicon/RESULTS-wcet-evt-f100.txt
 
   proof-completeness:
     name: "a Rocq proof that is merely STATED cannot pass as proven"
@@ -303,7 +303,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # docs/architecture/three-modes-two-axes.md step 2 moves directories out
-      # of benches/gust/ one at a time. Each completed move is a row in the
+      # of os/gust/ one at a time. Each completed move is a row in the
       # gate's ledger; any tracked, non-historical file still naming the old
       # path fails the job. The self-test carries the shapes the scanner could
       # get wrong (a longer name, a deeper path, a historical record).
@@ -620,7 +620,7 @@ jobs:
       # `grant-hole` adds region 3 over exactly the denied range, still through the
       # verified switch_to_partition, so the probe MUST fail.
       - name: Negative control -- granting the hole must make the probe FAIL
-        working-directory: benches/gust
+        working-directory: os/gust
         run: |
           set -uo pipefail
           if cargo run --release --features grant-hole --bin gust_iso_fault_probe; then
@@ -630,7 +630,7 @@ jobs:
           echo "control failed as required: the denial is caused by the region table"
 
       - name: A write outside the granted region takes a real MemManage fault
-        working-directory: benches/gust
+        working-directory: os/gust
         run: cargo run --release --bin gust_iso_fault_probe
 
       # REQ-OS-UNPRIV-001, as a LEDGER WITH TEETH rather than a prose note.
@@ -645,7 +645,7 @@ jobs:
       # A GREEN step here means the gap is still OPEN. That reads backwards on
       # purpose; the probe's header explains why.
       - name: "Ledger: a privileged tenant can still disable its own MPU (gap open)"
-        working-directory: benches/gust
+        working-directory: os/gust
         run: cargo run --release --bin gust_iso_unpriv_probe
 
       # The other half: does the FIX work? Establishing that CONTROL.nPRIV=1 blocks
@@ -659,7 +659,7 @@ jobs:
       # one it got, so a different core reports the difference instead of looking
       # like "no fault happened".
       - name: "Mechanism: dropping to unprivileged blocks the same escape"
-        working-directory: benches/gust
+        working-directory: os/gust
         run: cargo run --release --features drop-priv --bin gust_iso_unpriv_probe
 
   # T4 (REQ-OS-WCET-001): synth's own per-function static WCET bounds. emit-wcet.sh has
