@@ -73,7 +73,7 @@ is the codegen-quality figure and is on a common time base.
 
 ```sh
 brew install espflash            # (espflash 3.x — 4.x needs an app descriptor esp-hal 0.23 predates)
-cd benches/gust/esp32c3
+cd os/gust/esp32c3
 espflash flash --port /dev/cu.usbmodem<N> target/riscv32imc-unknown-none-elf/release/gust-esp32c3
 cat /dev/cu.usbmodem<N>          # the app re-prints the ratio in a loop
 ```

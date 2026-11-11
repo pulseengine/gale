@@ -20,7 +20,7 @@ parity: not only do both firmwares build, they behave identically on silicon.
 ## STM32G474 (Cortex-M4, thumbv7em) — onboard ST-LINK V3, `probe-rs`
 
 Build: `cargo build --release --bin gust_wdg_silicon --target thumbv7em-none-eabi`
-(default feature `target-g474re`; `benches/gust/silicon/run-wdg.sh`).
+(default feature `target-g474re`; `os/gust/silicon/run-wdg.sh`).
 
 ```
 boot 1 on STM32G474 (RCC_CSR=0x14000000, no prior WDG reset). Arming the REAL IWDG
@@ -126,7 +126,7 @@ hold on the G4). What the G474 model needs, and what this task could not supply:
 
 1. An **RM0440** peripheral memory-map source for each base to be added.
 2. A **G474 gate or silicon run** exercising it — a `.repl` for the G4 map plus a
-   `renode_test` target, or a `benches/gust/silicon/` run on the NUCLEO-G474RE in
+   `renode_test` target, or a `os/gust/silicon/` run on the NUCLEO-G474RE in
    the shape of `gust_adc_silicon` (self-checking, no external wiring).
 3. Then the same `emit_wit::interfaces_for` / `emit_rs::PERIPHERALS` entries the
    F100 devices already use — the generator side needs no further work.

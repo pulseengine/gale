@@ -38,7 +38,7 @@ The `gust_i2c` demonstrator + Renode content-gate (register-effect assertion ove
 RAM-mapped I2C1 window, like `gust_spi`) and the rivet `REQ-DRV-I2C-001` /
 `VER-DRV-I2C-001` artifacts are now in place — the same closure the SPI/WDG drivers got:
 
-- **`gust_i2c_probe`** (qemu-semihosting, `benches/gust/src/bin/`) drives the dissolved
+- **`gust_i2c_probe`** (qemu-semihosting, `os/gust/src/bin/`) drives the dissolved
   `i2c-thin-cm3.o` on a `[u32;16]` RAM window: asserts `i2c_configure` writes CR2
   FREQ=0x8 / CCR=0x28 / TRISE=0x9 / CR1.PE, a read START writes CR1 = PE|START|ACK =
   0x501, over a 3-byte read the ack decision is [1,1,0] and CR1.STOP (0x201) is written

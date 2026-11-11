@@ -192,7 +192,7 @@ pub extern "C" fn uart_rx_fired() -> u32 {
 
 // `gust:hal/uart` exported over the SAME bodies as the C-ABI symbols above, not a
 // second implementation: the component's exports and the dissolved object's `uart_*`
-// entry points (benches/gust/build.rs, gust_uart demonstrator) then cannot diverge
+// entry points (os/gust/build.rs, gust_uart demonstrator) then cannot diverge
 // in behaviour. Same shape gpio-thin used.
 #[cfg(not(kani))]
 struct Driver;

@@ -32,7 +32,7 @@ if [ "${SKIP_BUILD:-0}" != "1" ]; then
 fi
 [ -f "$FUSED" ] || { echo "no composite at $FUSED (run build-fused-gustos.sh)"; exit 1; }
 
-# --target is not optional: benches/gust/.cargo/config.toml pins build.target to
+# --target is not optional: os/gust/.cargo/config.toml pins build.target to
 # thumbv7m-none-eabi for the firmware bins, and every crate below that directory
 # inherits it — including this harness, which must be built FOR THE HOST.
 HOST_TRIPLE="$(rustc -vV | sed -n 's/^host: //p')"

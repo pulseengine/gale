@@ -59,7 +59,7 @@ and filed as loom#303; not optimised here.
 
 **`timer-thin-cm3.o` is deliberately NOT regenerated**, so today's `gust_timer` link
 and the Renode content-gate are untouched. Whoever regenerates it must, in the same
-change, rename the bridge exports in `benches/gust/src/bin/gust_timer.rs` to
+change, rename the bridge exports in `os/gust/src/bin/gust_timer.rs` to
 `#[export_name = "read32"]` / `#[export_name = "write32"]`; otherwise the link fails
 on undefined `read32`/`write32`. There is no duplicate-symbol hazard — the new object
 does not mention `mmio_read32`/`mmio_write32` at all.

@@ -352,7 +352,7 @@ pub extern "C" fn wdg_is_running(state: u32) -> u32 {
 
 // `gust:hal/wdg` exported over the SAME bodies as the C-ABI symbols above, not a
 // second implementation: the component's exports and the dissolved object's `wdg_*`
-// entry points (benches/gust/build.rs, the gust_wdg / gust_wdg_probe /
+// entry points (os/gust/build.rs, the gust_wdg / gust_wdg_probe /
 // gust_wdg_silicon firmwares) then cannot diverge in behaviour. Same shape
 // gpio-thin used.
 #[cfg(not(kani))]

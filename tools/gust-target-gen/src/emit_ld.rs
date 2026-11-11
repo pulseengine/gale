@@ -2,7 +2,7 @@
 //!
 //! FLASH comes from `t.flash`, RAM from `t.sram`. LENGTH is rendered as `K`/`M`
 //! when the byte count divides evenly, else as a raw byte count — matching the
-//! hand-written `benches/gust/silicon/memory-*.x` this supersedes.
+//! hand-written `os/gust/silicon/memory-*.x` this supersedes.
 
 use crate::model::{Region, Target};
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the browser gust wasm (the same kiln-async kernel as benches/gust, as wasm).
+# Build the browser gust wasm (the same kiln-async kernel as os/gust, as wasm).
 set -euo pipefail
 cd "$(dirname "$0")"
 cargo build --release --target wasm32-unknown-unknown

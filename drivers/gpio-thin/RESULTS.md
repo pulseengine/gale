@@ -57,7 +57,7 @@ object, worth pruning before eight drivers pay it.
 **`gpio-thin-cm3.o` is deliberately NOT regenerated here**, so today's
 `gust_gpio` link and the Renode content-gate are untouched. Whoever regenerates it
 must, in the same change, rename the probe's bridge exports in
-`benches/gust/src/bin/gust_gpio.rs` to `#[export_name = "read32"]` /
+`os/gust/src/bin/gust_gpio.rs` to `#[export_name = "read32"]` /
 `#[export_name = "write32"]`; otherwise the link fails on undefined `read32`/
 `write32`. Unlike exec-provider there is no duplicate-symbol hazard — the new object
 does not mention `mmio_read32`/`mmio_write32` at all.

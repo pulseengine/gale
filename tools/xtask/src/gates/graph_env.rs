@@ -26,7 +26,7 @@ use std::process::Command;
 pub const NAME: &str = "graph-env";
 
 /// Composed / fused artifacts, relative to the REPOSITORY ROOT. The census covers
-/// exactly the two trees they live in (drivers/ and benches/gust/, see `ROOTS`), so
+/// exactly the two trees they live in (drivers/ and os/gust/, see `ROOTS`), so
 /// the sweep and the census cover the same tree. An earlier draft rooted the
 /// sweep at drivers/ and reached ../wasm-kernel/* from outside the censused
 /// area: those two were checked, but a NEW artifact beside them would not have
@@ -35,8 +35,8 @@ const COMPOSED: &[&str] = &[
     "drivers/measurements/wcet-fixture/gustos.loom.wasm",
     "drivers/measurements/wcet-fixture/gustos.loom.named.wasm",
     "drivers/os-node/repro-757/loom.wasm",
-    "benches/gust/wasm-kernel/fused.wasm",
-    "benches/gust/wasm-kernel/gust_kernel.wasm",
+    "os/gust/wasm-kernel/fused.wasm",
+    "os/gust/wasm-kernel/gust_kernel.wasm",
 ];
 
 /// Committed .wasm that are NOT composed graphs, each with its reason. Ledgered
@@ -89,9 +89,9 @@ fn imports_of(wasm: &Path) -> Result<Vec<(String, String)>, String> {
     Ok(parse_imports(&String::from_utf8_lossy(&out.stdout)))
 }
 
-/// The trees the census covers. drivers/ moved out of benches/gust in rework
+/// The trees the census covers. drivers/ moved out of os/gust in rework
 /// step 2b; both stay in scope so the move did not shrink the gate.
-const ROOTS: &[&str] = &["drivers/*.wasm", "benches/gust/*.wasm"];
+const ROOTS: &[&str] = &["drivers/*.wasm", "os/gust/*.wasm"];
 
 fn git_wasm(repo: &Path) -> Result<Vec<String>, String> {
     let out = Command::new("git")
@@ -237,11 +237,11 @@ pub fn run(repo: &Path, target: Option<&str>) -> Verdict {
     }
 
     // Name the root. "swept 5" alone reads as a claim about the repo; the sweep
-    // and its census cover drivers/ and benches/gust (VER-DRV-GRAPH-001's scope,
+    // and its census cover drivers/ and os/gust (VER-DRV-GRAPH-001's scope,
     // split in two by the step-2b move); 4 committed .wasm live outside both.
     lines.push(format!(
         "swept {} composed artifact(s), and censused every committed .wasm, under \
-         drivers/ and benches/gust/ — artifacts outside that tree are out of scope by design \
+         drivers/ and os/gust/ — artifacts outside that tree are out of scope by design \
          (VER-DRV-GRAPH-001), not checked here",
         COMPOSED.len()
     ));

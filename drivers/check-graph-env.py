@@ -38,8 +38,8 @@ import argparse, pathlib, re, subprocess, sys, tempfile
 
 # Composed / fused artifacts: the graph this requirement is about.
 # Paths are relative to the REPOSITORY ROOT, and the census covers exactly the two
-# trees these live in (drivers/ and benches/gust/), so the sweep and the census see
-# the same area. (Rooted at benches/gust until drivers/ moved to the repository root
+# trees these live in (drivers/ and os/gust/), so the sweep and the census see
+# the same area. (Rooted at os/gust until drivers/ moved to the repository root
 # in the rework, step 2b; the coverage area is unchanged.) An earlier draft rooted both at
 # drivers/ and swept ../wasm-kernel/* from outside the censused area -- those two
 # were checked but a NEW artifact beside them would not have been noticed, which is
@@ -48,8 +48,8 @@ COMPOSED = [
     "drivers/measurements/wcet-fixture/gustos.loom.wasm",
     "drivers/measurements/wcet-fixture/gustos.loom.named.wasm",
     "drivers/os-node/repro-757/loom.wasm",
-    "benches/gust/wasm-kernel/fused.wasm",
-    "benches/gust/wasm-kernel/gust_kernel.wasm",
+    "os/gust/wasm-kernel/fused.wasm",
+    "os/gust/wasm-kernel/gust_kernel.wasm",
 ]
 
 # Committed .wasm that are NOT composed graphs, with the reason. Ledgered so the
@@ -105,7 +105,7 @@ def sweep(root: pathlib.Path, wasm_tools: str) -> int:
     # A glob would sweep local build output into the ledger and fail on a clean
     # checkout that happens to have built, which is a gate that cries wolf.
     # git's pathspec `*` matches across `/`, so each spec covers its whole tree.
-    g = subprocess.run(["git", "ls-files", "--", "drivers/*.wasm", "benches/gust/*.wasm"], cwd=str(root),
+    g = subprocess.run(["git", "ls-files", "--", "drivers/*.wasm", "os/gust/*.wasm"], cwd=str(root),
                        capture_output=True, text=True)
     if g.returncode != 0:
         sys.exit("FATAL: git ls-files failed (exit 2)")

@@ -89,10 +89,10 @@ three inputs, so the objects still link the same way.
 Reproduce:
 
     for v in 0.52.0 0.53.0 0.54.0; do
-      "$HOME/pe-toolchain/synth-$v/synth" compile benches/gust/wasm-kernel/gust_kernel.wasm \
+      "$HOME/pe-toolchain/synth-$v/synth" compile os/gust/wasm-kernel/gust_kernel.wasm \
         --target cortex-m3 --all-exports --relocatable -o /tmp/k-$v.o
       arm-none-eabi-size /tmp/k-$v.o
     done
     SYNTH_GRAPH_ALLOC=1 SYNTH_GRAPH_ALLOC_STATS=1 "$HOME/pe-toolchain/synth-0.54.0/synth" \
-      compile benches/gust/wasm-kernel/gust_kernel.wasm --target cortex-m3 \
+      compile os/gust/wasm-kernel/gust_kernel.wasm --target cortex-m3 \
       --all-exports --relocatable -o /tmp/k-on.o

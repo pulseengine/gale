@@ -11,7 +11,7 @@
 //! `exec-provider` (exports `gust:os/exec`, imports `gust:os/taskdisp`), so it
 //! componentizes and can be fused with the other gust:os providers (gale#224);
 //! and the raw `exec_admit`/`exec_poll_round`/`exec_state` C-ABI symbols, which
-//! gust_exec_probe declares `extern "C"` and benches/gust/build.rs asserts are
+//! gust_exec_probe declares `extern "C"` and os/gust/build.rs asserts are
 //! defined text symbols in the dissolved object. The `Guest` impl is a pure
 //! forward to those same three functions rather than a second copy of the
 //! marshalling, so the two surfaces cannot drift apart.

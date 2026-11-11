@@ -32,9 +32,9 @@ else
   echo "regen: spar not found — using the committed spar-items fixture"
 fi
 
-# Run the HOST generator from the repo root. benches/gust/.cargo/config.toml sets
+# Run the HOST generator from the repo root. os/gust/.cargo/config.toml sets
 # target = thumbv7m-none-eabi, so invoking cargo with the cwd anywhere under
-# benches/gust cross-compiles this host tool and dies in a dependency
+# os/gust cross-compiles this host tool and dies in a dependency
 # ("can't find crate", E0463). The script was cwd-sensitive and only worked when
 # run from outside that tree.
 cd "$REPO"

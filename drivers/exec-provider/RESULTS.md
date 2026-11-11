@@ -47,7 +47,7 @@ both halves of that (residual imports; exactly one core module embedding the
 executor).
 
 The `exec_admit`/`exec_poll_round`/`exec_state` C-ABI exports are unchanged and
-still emitted (benches/gust/build.rs asserts they are defined text symbols in the
+still emitted (os/gust/build.rs asserts they are defined text symbols in the
 dissolved object); the `Guest` impl forwards to those same three bodies rather
 than duplicating the marshalling, so the component and the native object cannot
 diverge in behaviour.
@@ -93,7 +93,7 @@ bookkeeping — small and bounded, not proportional to anything unbounded.
 
 ## Oracle: `gust_exec_probe` (qemu-cortex-m3)
 
-    cd benches/gust && cargo run --release --bin gust_exec_probe
+    cd os/gust && cargo run --release --bin gust_exec_probe
     gust-exec-probe OK: both tasks Done, hi-prio first (dispatch order observed)   (exit 0, EXIT_SUCCESS)
 
 Admits two tasks at priorities 1 and 9 with a due-now deadline (0), drives one

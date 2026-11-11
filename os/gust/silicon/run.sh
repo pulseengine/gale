@@ -12,7 +12,7 @@
 # variant instead of the committed flag-off object (see synth#428).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-BENCH="$(dirname "$HERE")"   # benches/gust
+BENCH="$(dirname "$HERE")"   # os/gust
 BOARD="${1:?usage: run.sh g474re or f100}"
 
 case "$BOARD" in

@@ -72,7 +72,7 @@
 //! F100 / thumbv7m only — the object is a synth `--target cortex-m3` .o and linking
 //! it into a thumbv7em image silently yields an empty ELF, so the bin carries
 //! `required-features = ["target-f100"]` and the default g474 build skips it:
-//!   cd benches/gust && cp targets/generated/memory-stm32f100.x memory.x &&
+//!   cd os/gust && cp targets/generated/memory-stm32f100.x memory.x &&
 //!   cargo build --release --bin gust_wcet_evt --no-default-features \
 //!     --features target-f100 --target thumbv7m-none-eabi
 //! Flash + capture is the coordinator's job; this file never assumes a number.

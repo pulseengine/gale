@@ -45,7 +45,7 @@ Grounded in the registry + dependency facts, not preference:
   The flat name `gale` is already taken on crates.io + npm by unrelated crates. If
   ever published it would ship as `pulseengine-gale` (free) — but there is no
   near-term reason to.
-- **`gust`** (`benches/gust`) has hard blockers: a `path` dependency on the
+- **`gust`** (`os/gust`) has hard blockers: a `path` dependency on the
   unpublished `gale` and a `git` dependency on `kiln-async` — either makes crates.io
   refuse it — plus the taken `gust` name and no `license` field. It is a
   board-specific mini-OS bench, not a reusable library.

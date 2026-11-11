@@ -20,7 +20,7 @@ use std::path::Path;
 
 pub const NAME: &str = "renode-targets";
 
-const BUILD: &str = "benches/gust/renode-test/BUILD.bazel";
+const BUILD: &str = "os/gust/renode-test/BUILD.bazel";
 const WORKFLOW: &str = ".github/workflows/gust-renode.yml";
 
 /// `renode_test(\n    name = "X"` -- the rule's own declaration, not any mention.
