@@ -32,6 +32,10 @@ pub const MOVES: &[(&str, &str, &str)] = &[(
     "benches/gust/targets",
     "targets",
     "the AADL target model is hardware data, not a benchmark (rework step 2a)",
+), (
+    "benches/gust/drivers",
+    "drivers",
+    "drivers, providers and apps are OS components, not benchmarks (rework step 2b)",
 )];
 
 /// Dated records. They describe what was true when written, paths included.

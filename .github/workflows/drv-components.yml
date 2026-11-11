@@ -15,16 +15,16 @@ on:
   push:
     branches: [main]
     paths:
-      - "benches/gust/drivers/*-thin/**"
-      - "benches/gust/drivers/wit/**"
-      - "benches/gust/drivers/check-driver-components.py"
+      - "drivers/*-thin/**"
+      - "drivers/wit/**"
+      - "drivers/check-driver-components.py"
       - ".github/workflows/drv-components.yml"
   pull_request:
     branches: [main]
     paths:
-      - "benches/gust/drivers/*-thin/**"
-      - "benches/gust/drivers/wit/**"
-      - "benches/gust/drivers/check-driver-components.py"
+      - "drivers/*-thin/**"
+      - "drivers/wit/**"
+      - "drivers/check-driver-components.py"
       - ".github/workflows/drv-components.yml"
 
 permissions:
@@ -61,11 +61,11 @@ jobs:
       # the run must go red before any driver is checked — otherwise a broken
       # checker reports 13 green modules it never actually examined.
       - name: Negative control — a raw env import MUST be rejected
-        run: python3 benches/gust/drivers/check-driver-components.py --self-test
+        run: python3 drivers/check-driver-components.py --self-test
 
       # Builds every driver from THIS checkout rather than trusting target/.
       # An earlier draft read stale artefacts and reported four unconverted
       # drivers as clean — a gate that reads build output it did not produce is
       # reporting on code that is not checked out.
       - name: VER-DRV-COMPONENT-001 gate
-        run: python3 benches/gust/drivers/check-driver-components.py
+        run: python3 drivers/check-driver-components.py

@@ -203,7 +203,7 @@ fn main() {
     // (Kani-proven RX decision), importing only gust:hal mmio + irq. Driven by the
     // gust_uart demonstrator, whose ~10-line bridge supplies mmio_read32/write32 +
     // irq_poll. Reproduce: see drivers/uart-thin/RESULTS.md.
-    let uobj = Path::new(&manifest).join("drivers/uart-thin/uart-thin-cm3.o");
+    let uobj = Path::new(&manifest).join("../../drivers/uart-thin/uart-thin-cm3.o");
     if uobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_uart={}", uobj.display());
         println!("cargo:rerun-if-changed={}", uobj.display());
@@ -213,12 +213,12 @@ fn main() {
     // mmio only). The gust_gpio demonstrator links BOTH gpio + uart drivers: it
     // exercises gpio_configure/set/clear and emits the register-effect results over
     // USART1 for the Renode content-gate (renode-test/gust_gpio.robot).
-    let gobj = Path::new(&manifest).join("drivers/gpio-thin/gpio-thin-cm3.o");
+    let gobj = Path::new(&manifest).join("../../drivers/gpio-thin/gpio-thin-cm3.o");
     if gobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_gpio={}", gobj.display());
         println!("cargo:rerun-if-changed={}", gobj.display());
     }
-    let tobj = Path::new(&manifest).join("drivers/timer-thin/timer-thin-cm3.o");
+    let tobj = Path::new(&manifest).join("../../drivers/timer-thin/timer-thin-cm3.o");
     if tobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_timer={}", tobj.display());
         println!("cargo:rerun-if-changed={}", tobj.display());
@@ -229,7 +229,7 @@ fn main() {
     // wasm (Kani 6/6, 0 new TCB atoms — mmio only). The gust_spi demonstrator
     // asserts the CR1 write + byte shift + FSM over USART1 for the content-gate
     // (renode-test/gust_spi.robot).
-    let spobj = Path::new(&manifest).join("drivers/spi-thin/spi-thin-cm3.o");
+    let spobj = Path::new(&manifest).join("../../drivers/spi-thin/spi-thin-cm3.o");
     if spobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_spi={}", spobj.display());
         // gust_spi_probe: the LOCAL qemu-semihosting probe of the SAME dissolved .o
@@ -262,18 +262,18 @@ fn main() {
     // synth#929 miscompile (timer#sleep calls time#deadline(u64,u64), which
     // thumb-2 mismarshals; synth 0.56.0 refuses to emit it). gust_os_probe is
     // the qemu oracle for exactly that.
-    let gobj = Path::new(&manifest).join("drivers/os-node/gustos-dissolved-cm3.o");
+    let gobj = Path::new(&manifest).join("../../drivers/os-node/gustos-dissolved-cm3.o");
     if gobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_osfused_probe={}", gobj.display());
         println!("cargo:rerun-if-changed={}", gobj.display());
     }
-    let iobj = Path::new(&manifest).join("drivers/iso-core-fused-cm3.o");
+    let iobj = Path::new(&manifest).join("../../drivers/iso-core-fused-cm3.o");
     if iobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_iso={}", iobj.display());
         println!("cargo:rustc-link-arg-bin=gust_iso_probe={}", iobj.display());
         println!("cargo:rerun-if-changed={}", iobj.display());
     }
-    let wobj = Path::new(&manifest).join("drivers/wdg-thin/wdg-thin-cm3.o");
+    let wobj = Path::new(&manifest).join("../../drivers/wdg-thin/wdg-thin-cm3.o");
     if wobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_wdg={}", wobj.display());
         println!("cargo:rustc-link-arg-bin=gust_wdg_probe={}", wobj.display());
@@ -287,7 +287,7 @@ fn main() {
     // all 20 protocol fns (C-renamed), 0 SRAM, no func_N collision. Built by
     // drivers/build-breadth.sh. gust_breadth (Renode gate) + gust_breadth_probe
     // (local qemu liveness probe) link it; bridge = read32/write32/poll (3 atoms).
-    let bobj = Path::new(&manifest).join("drivers/breadth/breadth-cm3.o");
+    let bobj = Path::new(&manifest).join("../../drivers/breadth/breadth-cm3.o");
     if bobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_breadth={}", bobj.display());
         println!("cargo:rustc-link-arg-bin=gust_breadth_probe={}", bobj.display());
@@ -297,7 +297,7 @@ fn main() {
     // app importing only gust:os/time, wac-plugged with a time provider, dissolved
     // to one 0-SRAM object exporting `run`, importing only read32. gust_os_probe is
     // the local qemu liveness check.
-    let osobj = Path::new(&manifest).join("drivers/os-node/os-time-cm3.o");
+    let osobj = Path::new(&manifest).join("../../drivers/os-node/os-time-cm3.o");
     if osobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_os_probe={}", osobj.display());
         println!("cargo:rerun-if-changed={}", osobj.display());
@@ -307,7 +307,7 @@ fn main() {
     // (list<u8>) crossing the seam — wac-plugged with a time provider + a log
     // provider, dissolved to one bounded-SRAM object exporting `run`, importing only
     // read32/write32. gust_os_tl_probe is the local qemu liveness check.
-    let tlobj = Path::new(&manifest).join("drivers/os-node/os-tl-cm3.o");
+    let tlobj = Path::new(&manifest).join("../../drivers/os-node/os-tl-cm3.o");
     if tlobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_os_tl_probe={}", tlobj.display());
         println!("cargo:rerun-if-changed={}", tlobj.display());
@@ -318,7 +318,7 @@ fn main() {
     // provider + a spawn provider, dissolved to one bounded-SRAM object exporting
     // `run`, importing only read32 + the trusted `poll-task` dispatch seam
     // (gust:os/taskdisp). gust_os_ts_probe is the local qemu liveness check.
-    let tsobj = Path::new(&manifest).join("drivers/os-node/os-ts-cm3.o");
+    let tsobj = Path::new(&manifest).join("../../drivers/os-node/os-ts-cm3.o");
     if tsobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_os_ts_probe={}", tsobj.display());
         println!("cargo:rerun-if-changed={}", tsobj.display());
@@ -327,7 +327,7 @@ fn main() {
     // scheduler core (src/executor.rs), dissolved SINGLE-component (no wac plug,
     // no meld fuse -> not synth#739-blocked) via drivers/exec-provider ->
     // drivers/os-node/exec-cm3.o. gust_exec_probe is the qemu liveness oracle.
-    let eobj = Path::new(&manifest).join("drivers/os-node/exec-cm3.o");
+    let eobj = Path::new(&manifest).join("../../drivers/os-node/exec-cm3.o");
     if eobj.exists() {
         // Guard against the synth#746-class silent-skip gap disclosed in
         // exec-provider/RESULTS.md: require exec_admit/exec_poll_round/
@@ -354,8 +354,8 @@ fn main() {
         .iter()
         .find(|c| Command::new(c).arg("--version").output().is_ok());
     for (src, bin, placed) in [
-        ("drivers/os-node/repro-757/os-tl-buggy.o", "gust_iso_contain_probe", "os-tl-buggy-placed.o"),
-        ("drivers/os-node/repro-757/os-tl-fixed.o", "gust_iso_contain_ctl", "os-tl-fixed-placed.o"),
+        ("../../drivers/os-node/repro-757/os-tl-buggy.o", "gust_iso_contain_probe", "os-tl-buggy-placed.o"),
+        ("../../drivers/os-node/repro-757/os-tl-fixed.o", "gust_iso_contain_ctl", "os-tl-fixed-placed.o"),
     ] {
         let sobj = Path::new(&manifest).join(src);
         if !sobj.exists() {
@@ -394,7 +394,7 @@ fn main() {
     // synth --emit-wcet). Linked UNPLACED (no .data rename / no iso_contain.x) — this
     // bin is about timing, not the I-ISO straddle. The .o is a synth --target cortex-m3
     // object, so the bin is thumbv7m/target-f100 only (see Cargo.toml required-features).
-    let wcet_obj = Path::new(&manifest).join("drivers/os-node/repro-757/os-tl-fixed.o");
+    let wcet_obj = Path::new(&manifest).join("../../drivers/os-node/repro-757/os-tl-fixed.o");
     if wcet_obj.exists() {
         // synth#746-class guard: the two functions being timed must actually be
         // DEFINED text symbols — a silently-dropped export would otherwise surface as
@@ -416,7 +416,7 @@ fn main() {
     // SAME dissolved .o (RAM-window register effects + read-after-EOC), run before the
     // `gust-adc-renode` content-gate (renode-test/gust_adc.robot); gust_adc drives it
     // on a real STM32 model.
-    let aobj = Path::new(&manifest).join("drivers/adc-thin/adc-thin-cm3.o");
+    let aobj = Path::new(&manifest).join("../../drivers/adc-thin/adc-thin-cm3.o");
     if aobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_adc={}", aobj.display());
         println!("cargo:rustc-link-arg-bin=gust_adc_probe={}", aobj.display());
@@ -434,7 +434,7 @@ fn main() {
     // is the LOCAL qemu-semihosting demonstrator of this SAME dissolved .o (RAM-window
     // register effects + the Kani-proven glitch-free trigger-gated output), run before
     // the `gust-dac-renode` content-gate (renode-test/gust_dac.robot).
-    let dacobj = Path::new(&manifest).join("drivers/dac-thin/dac-thin-cm3.o");
+    let dacobj = Path::new(&manifest).join("../../drivers/dac-thin/dac-thin-cm3.o");
     if dacobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_dac={}", dacobj.display());
         println!("cargo:rustc-link-arg-bin=gust_dac_probe={}", dacobj.display());
@@ -451,7 +451,7 @@ fn main() {
     // LOCAL qemu-semihosting demonstrator of this SAME dissolved .o (RAM-window register
     // effects + clamp + failsafe-latch), run before the `gust-pwm-renode` content-gate
     // (renode-test/gust_pwm.robot).
-    let pobj = Path::new(&manifest).join("drivers/pwm-thin/pwm-thin-cm3.o");
+    let pobj = Path::new(&manifest).join("../../drivers/pwm-thin/pwm-thin-cm3.o");
     if pobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_pwm={}", pobj.display());
         println!("cargo:rustc-link-arg-bin=gust_pwm_probe={}", pobj.display());
@@ -466,7 +466,7 @@ fn main() {
     // .o (RAM-window register effects + ACK-all-but-last), run before the
     // `gust-i2c-renode` content-gate (renode-test/gust_i2c.robot); gust_i2c is the
     // Renode gate's ELF, driving the identical transaction over a real USART1.
-    let iobj = Path::new(&manifest).join("drivers/i2c-thin/i2c-thin-cm3.o");
+    let iobj = Path::new(&manifest).join("../../drivers/i2c-thin/i2c-thin-cm3.o");
     if iobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_i2c={}", iobj.display());
         println!("cargo:rustc-link-arg-bin=gust_i2c_probe={}", iobj.display());
@@ -480,7 +480,7 @@ fn main() {
     // TCB atoms — mmio only). gust_can_probe is the LOCAL qemu-semihosting demonstrator
     // of this SAME dissolved .o (RAM-window register effects + config-only-in-init),
     // run before the `gust-can-renode` content-gate (renode-test/gust_can.robot).
-    let cobj_can = Path::new(&manifest).join("drivers/can-thin/can-thin-cm3.o");
+    let cobj_can = Path::new(&manifest).join("../../drivers/can-thin/can-thin-cm3.o");
     if cobj_can.exists() {
         println!("cargo:rustc-link-arg-bin=gust_can={}", cobj_can.display());
         println!("cargo:rustc-link-arg-bin=gust_can_probe={}", cobj_can.display());
@@ -495,7 +495,7 @@ fn main() {
     // is the LOCAL qemu-semihosting demonstrator of this SAME dissolved .o
     // (RAM-window register effects through the seam + the ownership round-trip),
     // run before the `gust-dma-renode` content-gate (renode-test/gust_dma.robot).
-    let dmaobj = Path::new(&manifest).join("drivers/dma-own/dma-own-cm3.o");
+    let dmaobj = Path::new(&manifest).join("../../drivers/dma-own/dma-own-cm3.o");
     if dmaobj.exists() {
         println!("cargo:rustc-link-arg-bin=gust_dma={}", dmaobj.display());
         println!("cargo:rustc-link-arg-bin=gust_dma_probe={}", dmaobj.display());

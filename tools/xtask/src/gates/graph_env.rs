@@ -25,7 +25,8 @@ use std::process::Command;
 
 pub const NAME: &str = "graph-env";
 
-/// Composed / fused artifacts, relative to the GUST BENCH ROOT (benches/gust) so
+/// Composed / fused artifacts, relative to the REPOSITORY ROOT. The census covers
+/// exactly the two trees they live in (drivers/ and benches/gust/, see `ROOTS`), so
 /// the sweep and the census cover the same tree. An earlier draft rooted the
 /// sweep at drivers/ and reached ../wasm-kernel/* from outside the censused
 /// area: those two were checked, but a NEW artifact beside them would not have
@@ -34,8 +35,8 @@ const COMPOSED: &[&str] = &[
     "drivers/measurements/wcet-fixture/gustos.loom.wasm",
     "drivers/measurements/wcet-fixture/gustos.loom.named.wasm",
     "drivers/os-node/repro-757/loom.wasm",
-    "wasm-kernel/fused.wasm",
-    "wasm-kernel/gust_kernel.wasm",
+    "benches/gust/wasm-kernel/fused.wasm",
+    "benches/gust/wasm-kernel/gust_kernel.wasm",
 ];
 
 /// Committed .wasm that are NOT composed graphs, each with its reason. Ledgered
@@ -88,11 +89,16 @@ fn imports_of(wasm: &Path) -> Result<Vec<(String, String)>, String> {
     Ok(parse_imports(&String::from_utf8_lossy(&out.stdout)))
 }
 
-fn git_wasm(bench: &Path) -> Result<Vec<String>, String> {
+/// The trees the census covers. drivers/ moved out of benches/gust in rework
+/// step 2b; both stay in scope so the move did not shrink the gate.
+const ROOTS: &[&str] = &["drivers/*.wasm", "benches/gust/*.wasm"];
+
+fn git_wasm(repo: &Path) -> Result<Vec<String>, String> {
     let out = Command::new("git")
         .arg("-C")
-        .arg(bench)
-        .args(["ls-files", "*.wasm"])
+        .arg(repo)
+        .args(["ls-files", "--"])
+        .args(ROOTS)
         .output()
         .map_err(|e| format!("git: {e}"))?;
     if !out.status.success() {
@@ -145,7 +151,6 @@ fn check_one(w: &Path) -> Verdict {
 }
 
 pub fn run(repo: &Path, target: Option<&str>) -> Verdict {
-    let bench = repo.join("benches/gust");
     if Command::new("wasm-tools").arg("--version").output().is_err() {
         return Verdict::Refused("wasm-tools not on PATH".into());
     }
@@ -160,7 +165,7 @@ pub fn run(repo: &Path, target: Option<&str>) -> Verdict {
     let mut failed = false;
 
     for rel in COMPOSED {
-        let w = bench.join(rel);
+        let w = repo.join(rel);
         if !w.is_file() {
             // The correction. The Python SKIPped here and still passed.
             return Verdict::Refused(format!(
@@ -209,7 +214,7 @@ pub fn run(repo: &Path, target: Option<&str>) -> Verdict {
     // Census over COMMITTED files only -- git, not a filesystem glob. A glob
     // would sweep local build output in and fail on a clean checkout that
     // happens to have built, which is a gate that cries wolf.
-    let found = match git_wasm(&bench) {
+    let found = match git_wasm(repo) {
         Ok(f) => f,
         Err(e) => return Verdict::Refused(e),
     };
@@ -232,11 +237,11 @@ pub fn run(repo: &Path, target: Option<&str>) -> Verdict {
     }
 
     // Name the root. "swept 5" alone reads as a claim about the repo; the sweep
-    // and its census are both rooted at benches/gust, which is what
-    // VER-DRV-GRAPH-001 specifies, and 4 committed .wasm live outside it.
+    // and its census cover drivers/ and benches/gust (VER-DRV-GRAPH-001's scope,
+    // split in two by the step-2b move); 4 committed .wasm live outside both.
     lines.push(format!(
         "swept {} composed artifact(s), and censused every committed .wasm, under \
-         benches/gust — artifacts outside that tree are out of scope by design \
+         drivers/ and benches/gust/ — artifacts outside that tree are out of scope by design \
          (VER-DRV-GRAPH-001), not checked here",
         COMPOSED.len()
     ));

@@ -62,7 +62,7 @@ fn resolves(world: &Path, hal: &Path, tag: &str) -> Result<bool, String> {
 }
 
 pub fn run(repo: &Path, _target: Option<&str>) -> Verdict {
-    let hal = repo.join("benches/gust/drivers/wit/gust-hal.wit");
+    let hal = repo.join("drivers/wit/gust-hal.wit");
     let gen = repo.join("targets/generated");
 
     if !hal.is_file() {
@@ -119,7 +119,7 @@ pub fn run(repo: &Path, _target: Option<&str>) -> Verdict {
 /// naming only real ones MUST be accepted. If either half misbehaves the gate
 /// cannot distinguish, and reports so rather than claiming a clean run.
 pub fn self_test(repo: &Path, _target: Option<&str>) -> Verdict {
-    let hal = repo.join("benches/gust/drivers/wit/gust-hal.wit");
+    let hal = repo.join("drivers/wit/gust-hal.wit");
     if !hal.is_file() {
         return Verdict::Refused(format!("gust:hal seam not found at {}", hal.display()));
     }

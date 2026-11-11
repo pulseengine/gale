@@ -1,0 +1,376 @@
+#!/usr/bin/env python3
+"""Fail if a committed *-cm3.o is older than the sources that produce it.
+
+Four objects went stale for five to seven weeks without anyone noticing:
+
+    breadth-cm3.o   committed 2026-07-09, inputs changed through 2026-08-28
+    os-time-cm3.o   committed 2026-07-09, inputs changed through 2026-08-28
+    os-tl-cm3.o     committed 2026-07-23, inputs changed through 2026-08-28
+    os-ts-cm3.o     committed 2026-07-23, inputs changed through 2026-08-28
+
+That was first misdiagnosed as toolchain drift (see docs/toolchain-pin.md; the
+rustc bisect ruled rustc out — going back three versions makes os-ts LARGER, not
+smaller). The actual cause is simpler: nothing rebuilds a committed object when
+its sources change, and nothing notices.
+
+This is that check. It is deliberately git-history based rather than a rebuild:
+a rebuild needs the pinned toolchain and would not tell you WHY the bytes differ,
+whereas "an input is newer than the artifact" is exactly the condition that makes
+a committed object untrustworthy, and it is decidable in a second.
+
+Inputs are DERIVED from each builder rather than hardcoded, so adding a
+dependency to a script cannot silently escape the check: the script references
+its inputs as `$HERE/<dir>`, and those plus the script itself and the WIT
+directories are the input set.
+
+  python3 drivers/check-object-freshness.py
+  python3 drivers/check-object-freshness.py --self-test
+
+Exit codes:
+  0  every committed object is at least as new as its inputs
+  2  usage / not a git repo
+  5  an object is older than one of its inputs
+"""
+
+import argparse
+import pathlib
+import re
+import subprocess
+import sys
+
+HERE = pathlib.Path(__file__).resolve().parent
+REPO = HERE.parent       # drivers -> repo root
+
+# Builder -> the object it writes. Only builders whose output is COMMITTED are
+# listed; build-dissolve-gustos.sh's object is on UNCOVERED, and
+# build-reloc-cores.sh takes its target as an argument.
+#
+# This comment used to say build-iso-core.sh "writes into a temp dir". It does
+# not: its OUT defaults to the drivers directory, so it writes the COMMITTED
+# iso-core-fused-cm3.o in place. The object was left out on that false premise,
+# and committed_objects' pathspec (see its docstring) meant the census could not
+# report the omission either.
+BUILDERS = {
+    "build-os-ts.sh": "os-node/os-ts-cm3.o",
+    "build-os-tl.sh": "os-node/os-tl-cm3.o",
+    "build-os-time.sh": "os-node/os-time-cm3.o",
+    "build-breadth.sh": "breadth/breadth-cm3.o",
+    "build-iso-core.sh": "iso-core-fused-cm3.o",
+}
+
+# Always an input: the seam definitions every builder consumes.
+ALWAYS = ["wit", "wit-os"]
+
+# The toolchain pin, an input to EVERY gated object (gale#438). Every object
+# here is a synth output, so the pin decides its bytes as much as any source
+# does. Repo-relative, unlike the rest, because the pin lives at the root.
+PIN = "varve.toml"
+
+# Objects that are not produced by a build-*.sh but sit next to their own source.
+# Inputs are that crate's BUILD files plus the seam it generates against.
+#
+# The input list is deliberately narrow. A first draft used the whole directory
+# and flagged gpio-thin because I had edited its RESULTS.md — a doc change does
+# not invalidate an object. A second draft added wit-os for everything and
+# flagged all 13 thin drivers; thin drivers do not reference wit-os at all
+# (checked: no Cargo.toml or src file mentions it). Each widening produced false
+# positives, so the sets below are per class.
+CRATE_BUILD_FILES = ["src", "Cargo.toml", "Cargo.lock", ".cargo"]
+
+# thin drivers generate against gust:hal only
+THIN_SEAMS = ["wit"]
+# providers and dma-own also generate against the gust:os world
+OS_SEAMS = ["wit", "wit-os"]
+
+# Composed/fused objects: produced from a component GRAPH rather than one crate,
+# so "the directory next to it" is not their input set. Listed, not gated —
+# same treatment as the composed artifacts in check-driver-components.py. A new
+# object here fails the census below rather than escaping silently.
+UNCOVERED = {
+    "os-node/exec-cm3.o",
+    "os-node/gustos-dissolved-cm3.o",
+    # The frozen synth#757 repro pair: a buggy/fixed object captured from one
+    # historical synth to keep the bug reproducible. They are deliberately NOT
+    # refreshed -- refreshing them destroys the reproduction. Listed here so the
+    # census sees them; they escaped it entirely until the sweep found them,
+    # because the old glob reached only one directory deep and only matched
+    # names ending "-cm3.o".
+    "os-node/repro-757/os-tl-buggy.o",
+    "os-node/repro-757/os-tl-fixed.o",
+}
+
+# KNOWN-STALE LEDGER. These are already stale and cannot be refreshed here:
+# regenerating a committed object is a change that the precedent for a toolchain
+# re-pin (963e5c9, "every thin driver shrinks, both dies re-validated") settled by
+# re-validating on silicon, which CI cannot do.
+#
+# They are ledgered rather than skipped. The gate FAILS if a fifth object goes
+# stale, and it FAILS if one of these stops being stale — so the list shrinks to
+# empty when they are regenerated, instead of quietly outliving the problem.
+KNOWN_STALE = {
+    # Stale since #436 changed build-reloc-cores.sh (the --export=__stack_pointer
+    # fix). Independently confirmed NOT reproducible rather than merely
+    # date-stale: rebuilding from the current pin gives 15050 B against the
+    # committed 15094 B, and two consecutive rebuilds are byte-identical, so
+    # the difference is real. Refreshing it means regenerating gust_iso.elf
+    # with it -- the Renode isolation image -- which is a change of its own.
+    "iso-core-fused-cm3.o",
+    # script-built
+    "breadth/breadth-cm3.o",
+    "os-node/os-time-cm3.o",
+    "os-node/os-tl-cm3.o",
+    "os-node/os-ts-cm3.o",
+    # crate-adjacent: object predates the 2026-08-27 gust:hal seam change
+    "hm-thin/hm-thin-cm3.o",
+    "switch-thin/switch-thin-cm3.o",
+    "wdg-thin/wdg-thin-cm3.o",
+    # crate-adjacent: object predates its own source
+    "dma-own/dma-own-cm3.o",
+    "spawn-provider/spawn-provider-cm3.o",
+    "timer-provider/timer-provider-cm3.o",
+    # crate-adjacent: object predates the 2026.10.1 toolchain pin (varve.toml, 2026-10-01) and nothing
+    # else (gale#438). DATE-stale only: not rebuilt, so whether the pinned synth
+    # produces different bytes is NOT measured -- the ledger records that the
+    # repo cannot currently claim these were built by the toolchain it pins.
+    "adc-thin/adc-thin-cm3.o",
+    "can-thin/can-thin-cm3.o",
+    "dac-thin/dac-thin-cm3.o",
+    "gpio-thin/gpio-thin-cm3.o",
+    "i2c-thin/i2c-thin-cm3.o",
+    "mpu-thin/mpu-thin-cm3.o",
+    "pwm-thin/pwm-thin-cm3.o",
+    "spi-thin/spi-thin-cm3.o",
+    "timer-thin/timer-thin-cm3.o",
+    "uart-thin/uart-thin-cm3.o",
+}
+
+
+def committed_objects():
+    """Every committed .o under this directory, at ANY depth and under any name.
+
+    Enumerated from git rather than a filesystem glob for two reasons the sweep
+    made concrete: a glob of "*/*-cm3.o" reached only one level and only that
+    one suffix, so os-node/repro-757/*.o escaped the census on both counts; and
+    a filesystem walk would also pick up build outputs that were never
+    committed, which is the opposite error. The census's claim is about
+    COMMITTED objects, so git is the right oracle for it.
+    """
+    rel = "drivers"
+    # TWO pathspecs. git's "**/" requires at least one directory level, so
+    # f"{rel}/**/*.o" silently excludes an object committed at the ROOT of
+    # drivers/ -- and exactly one is: iso-core-fused-cm3.o, the object behind
+    # the Renode isolation gate. Measured: "**/*.o" = 24 files, "*.o" = 25.
+    # The docstring above claimed "at ANY depth"; depth 0 was not any depth.
+    out = git("ls-files", "--", f"{rel}/*.o", f"{rel}/**/*.o") or ""
+    return sorted(REPO / line for line in out.splitlines() if line.strip())
+
+
+def git(*args):
+    p = subprocess.run(["git", "-C", str(REPO), *args], capture_output=True, text=True)
+    return p.stdout.strip() if p.returncode == 0 else None
+
+
+def last_commit_epoch(relpath):
+    """Unix timestamp of the last commit that changed relpath's CONTENT, or None.
+
+    Follows renames and skips pure (100%) renames: moving a file does not make it
+    newer. Dating by "last commit touching the path" made every input look freshly
+    changed on the day drivers/ moved to the repository root (rework step 2b).
+    Same rule as the xtask gates' last_content_epoch.
+    """
+    out = git("log", "--follow", "-M", "--format=%x01%ct", "--name-status", "--", relpath)
+    if not out:
+        return None
+    for entry in out.split("\x01"):
+        lines = [l for l in entry.splitlines() if l.strip()]
+        if not lines:
+            continue
+        try:
+            ct = int(lines[0].strip())
+        except ValueError:
+            continue
+        statuses = lines[1:]
+        if not statuses:          # merge commit: no paths listed
+            continue
+        if all(s.startswith("R100") for s in statuses):
+            continue
+        return ct
+    return None
+
+
+def inputs_for(script_name):
+    """Derive the input set from the builder itself.
+
+    The scripts reference their sources as `$HERE/<dir>`. Deriving rather than
+    hardcoding means a new dependency is picked up automatically.
+    """
+    text = (HERE / script_name).read_text()
+    # `.` is in the class so a reference to a sibling SCRIPT is captured as the
+    # script. Without it, "$HERE/build-reloc-cores.sh" yielded
+    # "build-reloc-cores" -- a path with no file behind it, which resolved to no
+    # commit date and was silently dropped, so the script that actually builds
+    # iso-core-fused-cm3.o's components was not one of its inputs.
+    dirs = sorted(set(re.findall(r"\$HERE/([a-z0-9][a-z0-9.-]*)", text)))
+    dirs = [d.rstrip(".") for d in dirs if d.rstrip(".")]
+    # os-node is the OUTPUT directory, not an input; excluding it stops the
+    # object from being compared against itself.
+    dirs = [d for d in dirs if d != "os-node"]
+    rel = f"drivers"
+    return [f"{rel}/{script_name}"] + [f"{rel}/{d}" for d in dirs + ALWAYS] + [PIN]
+
+
+def self_test():
+    """The comparator must fire on a newer input and not on an older one."""
+    ok = True
+    if not (200 > 100):
+        print("  self-test FAIL: comparator broken"); ok = False
+    else:
+        print("  self-test ok: a newer input is detected as newer")
+    if (100 > 200):
+        print("  self-test FAIL: older input reported as newer"); ok = False
+    else:
+        print("  self-test ok: an older input is not flagged")
+    # deriving inputs must actually find some, or the gate is vacuous
+    got = inputs_for("build-os-ts.sh")
+    if len(got) < 4:
+        print(f"  self-test FAIL: derived only {len(got)} inputs for build-os-ts.sh"); ok = False
+    else:
+        print(f"  self-test ok: derived {len(got)} inputs for build-os-ts.sh (not vacuous)")
+    # the pin must be an input (gale#438), and must exist where it is looked for
+    if PIN not in got or not (REPO / PIN).is_file():
+        print("  self-test FAIL: the toolchain pin is not a builder input"); ok = False
+    else:
+        print("  self-test ok: the toolchain pin is a builder input")
+    return 0 if ok else 5
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--self-test", action="store_true")
+    args = ap.parse_args()
+    if args.self_test:
+        return self_test()
+
+    if git("rev-parse", "--git-dir") is None:
+        print("FATAL: not a git repository", file=sys.stderr); return 2
+
+    rel = "drivers"
+
+    def crate_objects():
+        """Objects that live beside their own crate, with per-class inputs."""
+        out = {}
+        for o in committed_objects():
+            d = o.parent.name
+            key = str(o.relative_to(HERE))
+            if key in UNCOVERED or key in {v for v in BUILDERS.values()}:
+                continue
+            # Only a real crate directory gets auto-covered. Without this the
+            # census below can never fire: every object would be auto-included
+            # with its own directory as the input set, so a composed artifact
+            # dropped into a non-crate directory would be silently mis-gated
+            # against the wrong inputs instead of flagged. (My own negative
+            # control caught this — the first version passed a planted object.)
+            if not (o.parent / "Cargo.toml").exists():
+                continue
+            seams = THIN_SEAMS if d.endswith("-thin") else OS_SEAMS
+            out[key] = ([f"{rel}/{d}/{b}" for b in CRATE_BUILD_FILES]
+                        + [f"{rel}/{sm}" for sm in seams] + [PIN])
+        return out
+
+    # census: an object that is neither gated nor listed must not pass silently
+    known = set(BUILDERS.values()) | UNCOVERED | set(crate_objects())
+    found = {str(o.relative_to(HERE)) for o in committed_objects()}
+    stray = sorted(found - known)
+    if stray:
+        print("FAIL: committed object(s) neither gated nor listed:")
+        for x in stray:
+            print(f"  {x}")
+        return 5
+    vanished = sorted(UNCOVERED - found)
+    if vanished:
+        print("FAIL: UNCOVERED lists object(s) that no longer exist:")
+        for x in vanished:
+            print(f"  {x}")
+        return 5
+
+    stale = []
+    print(f"  {'object':<26} {'committed':<12} {'newest input':<12} verdict")
+    for obj, inputs in sorted(crate_objects().items()):
+        obj_t = last_commit_epoch(f"{rel}/{obj}")
+        if obj_t is None:
+            continue
+        newest_t, newest_p = 0, None
+        for inp in inputs:
+            t = last_commit_epoch(inp)
+            if t and t > newest_t:
+                newest_t, newest_p = t, inp
+        import datetime as _dt
+        g = lambda t: _dt.datetime.fromtimestamp(t, _dt.timezone.utc).strftime("%Y-%m-%d") if t else "-"
+        if newest_t > obj_t:
+            stale.append((obj, g(obj_t), g(newest_t), newest_p))
+        print(f"  {obj:<26} {g(obj_t):<12} {g(newest_t):<12} "
+              f"{'STALE' if newest_t > obj_t else 'ok'}")
+
+    for script, obj in sorted(BUILDERS.items()):
+        obj_rel = f"drivers/{obj}"
+        obj_t = last_commit_epoch(obj_rel)
+        if obj_t is None:
+            print(f"  {pathlib.Path(obj).name:<22} NOT COMMITTED"); continue
+        newest_t, newest_p = 0, None
+        for inp in inputs_for(script):
+            t = last_commit_epoch(inp)
+            if t and t > newest_t:
+                newest_t, newest_p = t, inp
+        import datetime as _dt
+        f = lambda t: _dt.datetime.fromtimestamp(t, _dt.timezone.utc).strftime("%Y-%m-%d") if t else "-"
+        bad = newest_t > obj_t
+        if bad:
+            stale.append((obj, f(obj_t), f(newest_t), newest_p))
+        print(f"  {pathlib.Path(obj).name:<22} {f(obj_t):<12} {f(newest_t):<12} "
+              f"{'STALE' if bad else 'ok'}")
+
+    print()
+    stale_names = {o for o, _, _, _ in stale}
+    unexpected = sorted(stale_names - KNOWN_STALE)
+    fixed = sorted(KNOWN_STALE - stale_names)
+    if fixed:
+        print("LEDGER STALE — these are no longer older than their sources and")
+        print("must be removed from KNOWN_STALE so the gate starts holding them:")
+        for o in fixed:
+            print(f"  {o}")
+        return 5
+    if unexpected:
+        print("FAIL: committed object(s) newly older than their sources:")
+        for o, ot, nt, p in stale:
+            if o not in unexpected:
+                continue
+            print(f"  {o}")
+            print(f"    committed {ot}, but {p} changed {nt}")
+        print()
+        print("A committed object that predates its sources is not evidence of")
+        print("anything. Regenerate it with its builder, or delete it if it is no")
+        print("longer the artifact of record.")
+        return 5
+    if stale:
+        print(f"{len(stale)} object(s) stale, all on the known-stale ledger:")
+        for o, ot, nt, _ in stale:
+            print(f"  {o}  (committed {ot}, inputs {nt})")
+        print("  ledger accurate — regenerating any of them requires silicon")
+        print("  re-validation, so they are recorded rather than refreshed.")
+        return 0
+    if False:
+        print("FAIL: committed object(s) older than their sources:")
+        for obj, ot, nt, p in stale:
+            print(f"  {obj}")
+            print(f"    committed {ot}, but {p} changed {nt}")
+        print()
+        print("A committed object that predates its sources is not evidence of")
+        print("anything. Regenerate it with its builder, or delete it if it is no")
+        print("longer the artifact of record.")
+        return 5
+    print(f"All {len(BUILDERS)} committed objects are at least as new as their sources.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

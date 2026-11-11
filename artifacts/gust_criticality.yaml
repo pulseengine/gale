@@ -5,7 +5,7 @@ artifacts:
     title: gust supervisor — the privileged partition core (switch + health monitor) every tenant runs under
     status: proposed
     release: v0.11.0
-    description: "The element a mixed-criticality gust deployment has to protect: the privileged verified core that switches partitions (switch-thin) and supervises them (hm-thin), and owns the MPU. Modelled as an architecture element so a criticality can be assigned to it (gale#437, step 0: before this, none of gust's deployable elements were sw-arch-components, so REQ-OS-CRITICALITY-001 had no population to assign to). Its constituent objects are the switch-thin and hm-thin drivers under benches/gust/drivers."
+    description: "The element a mixed-criticality gust deployment has to protect: the privileged verified core that switches partitions (switch-thin) and supervises them (hm-thin), and owns the MPU. Modelled as an architecture element so a criticality can be assigned to it (gale#437, step 0: before this, none of gust's deployable elements were sw-arch-components, so REQ-OS-CRITICALITY-001 had no population to assign to). Its constituent objects are the switch-thin and hm-thin drivers under drivers."
     tags: [gust, criticality, supervisor]
     links:
       - type: allocated-from

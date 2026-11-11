@@ -1,7 +1,7 @@
 # gust:os syscall-seam drift gate (gale#214).
 #
 # The gust:os providers implement WIT Guest traits generated from
-# benches/gust/drivers/wit-os/gust-os.wit. A WIT method added without its Guest
+# drivers/wit-os/gust-os.wit. A WIT method added without its Guest
 # impl fails to compile (E0046) — but no workflow built these crates, so #202
 # added time.resolution() to the WIT without the time-provider impl and shipped
 # GREEN, silently breaking the gust_os_tl/ts dissolve until #213 caught it by
@@ -13,19 +13,19 @@ on:
   push:
     branches: [main]
     paths:
-      - "benches/gust/drivers/wit-os/**"
-      - "benches/gust/drivers/app-*/**"
-      - "benches/gust/drivers/*-provider/**"
-      - "benches/gust/drivers/check-providers.sh"
+      - "drivers/wit-os/**"
+      - "drivers/app-*/**"
+      - "drivers/*-provider/**"
+      - "drivers/check-providers.sh"
       - "tools/xtask/**"
       - ".github/workflows/gust-syscall-seam.yml"
   pull_request:
     branches: [main]
     paths:
-      - "benches/gust/drivers/wit-os/**"
-      - "benches/gust/drivers/app-*/**"
-      - "benches/gust/drivers/*-provider/**"
-      - "benches/gust/drivers/check-providers.sh"
+      - "drivers/wit-os/**"
+      - "drivers/app-*/**"
+      - "drivers/*-provider/**"
+      - "drivers/check-providers.sh"
       - "tools/xtask/**"
       - ".github/workflows/gust-syscall-seam.yml"
 
@@ -51,7 +51,7 @@ jobs:
       - name: Build every gust:os provider/app crate for wasm32 (WIT drift gate)
         id: sh_gate
         continue-on-error: true
-        run: bash benches/gust/drivers/check-providers.sh
+        run: bash drivers/check-providers.sh
 
       # SHADOW PERIOD (gale#368). Both run; verdicts must agree before the shell
       # one is retired. See gust-targets.yml for the rationale.

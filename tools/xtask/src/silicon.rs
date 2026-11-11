@@ -376,7 +376,7 @@ const MATRIX: &[Entry] = &[
     Entry {
         bin: "gust_two_tenant",
         extra: &[],
-        needs_env: Some(("GUST_TWO_TENANT_O", "benches/gust/drivers/run-two-tenant.sh (pinned synth) → /tmp/gale-two-tenant/two_tenant.o")),
+        needs_env: Some(("GUST_TWO_TENANT_O", "drivers/run-two-tenant.sh (pinned synth) → /tmp/gale-two-tenant/two_tenant.o")),
         boards: &["wb55rg"],
         not_on: &[("g474re", "96 KiB SRAM cannot hold two 64 KiB wasm pages plus a stack (needs synth's used-extent symbol, v0.69)"),
                   ("wl55jc", "64 KiB SRAM cannot hold two 64 KiB wasm pages"),
@@ -386,7 +386,7 @@ const MATRIX: &[Entry] = &[
     Entry {
         bin: "gust_two_tenant",
         extra: &["no-regions"],
-        needs_env: Some(("GUST_TWO_TENANT_O", "benches/gust/drivers/run-two-tenant.sh (pinned synth) → /tmp/gale-two-tenant/two_tenant.o")),
+        needs_env: Some(("GUST_TWO_TENANT_O", "drivers/run-two-tenant.sh (pinned synth) → /tmp/gale-two-tenant/two_tenant.o")),
         boards: &["wb55rg"],
         not_on: &[],
     },

@@ -181,12 +181,7 @@ artifacts:
     title: "dma-own — the Kani-proven ownership state machine, dissolved to native"
     status: proposed
     release: v0.2.0
-    description: >
-      benches/gust/drivers/dma-own: the verified-wasm ownership FSM (single
-      round-trip + streaming ring), exporting dma_start / dma_poll_complete /
-      dma_abort. 218 B .text dissolved (synth 0.17 cortex-m3), 0 SRAM, TCB = 3 import
-      relocations (dma_program, dma_barrier, dma_irq_poll). Barrier emitted by
-      construction at each handoff.
+    description: "drivers/dma-own: the verified-wasm ownership FSM (single round-trip + streaming ring), exporting dma_start / dma_poll_complete / dma_abort. 218 B .text dissolved (synth 0.17 cortex-m3), 0 SRAM, TCB = 3 import relocations (dma_program, dma_barrier, dma_irq_poll). Barrier emitted by construction at each handoff."
     tags: [gust, dma, fsm, verified, dissolve]
     links:
       - type: allocated-from

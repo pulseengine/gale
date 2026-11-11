@@ -195,7 +195,7 @@ toolchains cannot build the wasm at all, and the failure is silent — cargo exi
 To settle it, install the wasm32 std for an older stable and rebuild:
 
     rustup target add wasm32-unknown-unknown --toolchain 1.94.0
-    RUSTUP_TOOLCHAIN=1.94.0 bash benches/gust/drivers/build-os-ts.sh
+    RUSTUP_TOOLCHAIN=1.94.0 bash drivers/build-os-ts.sh
 
 If that reproduces 3638 bytes, rustc is confirmed as the cause and the version
 that built the committed objects is identified.

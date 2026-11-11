@@ -287,7 +287,7 @@ fn check_module(path: &Path) -> Verdict {
 }
 
 /// The committed fused core, the same module the shell job checks.
-const FIXTURE: &str = "benches/gust/drivers/measurements/wcet-fixture/gustos.loom.wasm";
+const FIXTURE: &str = "drivers/measurements/wcet-fixture/gustos.loom.wasm";
 
 /// `--module` lets the gate be aimed at an arbitrary wasm. The CI negative
 /// control needs exactly this: it plants a module with known-overlapping
