@@ -156,7 +156,7 @@ across the wasm→native boundary is **not currently supported** and must not be
   not proofs. A reader browsing `proofs/` will reasonably read these as "Rocq proofs";
   they are not. **These must be labelled WIP/stub, and the "Rocq" claim must say "10 of 13
   non-empty invariant modules proven; poll/sched/thread_lifecycle are admitted stubs."**
-  (`heap_proofs.v` is an empty file — 0 `Qed`, 0 `Admitted` — and counts as neither.)
+  (`heap_proofs.v` was an empty file — 0 `Qed`, 0 `Admitted` — that still ran as the CI target `//proofs:heap_proofs_test`; the file and the target are deleted.)
 - **All Rocq is over hand-written Z-valued models, NOT connected to the Rust** (README
   line 124 already says this). Rocq here is *design-level* invariant checking, not an
   implementation proof. Correct framing: "abstract-model theorem proving for design

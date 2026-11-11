@@ -90,8 +90,8 @@ Measured both ways at synth-0.49.0: the pre-change source (embedded executor,
 so the difference here is size (844 → 552 B text, the executor no longer being
 duplicated into this object), not lowering.
 
-The checked-in `timer-provider-cm3.o` predates all of this and was deliberately NOT
-regenerated; the measurements above were taken into a temp path.
+`timer-provider-cm3.o` is no longer committed: nothing linked or ran it (binaries.toml).
+The measurements above were taken into a temp path.
 
 ## Historical note: the synth#518 `sleep` blocker
 

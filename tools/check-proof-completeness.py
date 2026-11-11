@@ -8,7 +8,7 @@ tell the two apart. Measured on main:
 
     10 files fully discharged
      3 files ENTIRELY admitted -- 74 theorems, zero Qed
-     1 file EMPTY (heap_proofs.v, 0 bytes) but still a named CI target
+     1 file EMPTY (heap_proofs.v, 0 bytes) but still a named CI target -- since deleted, with its target
 
 The Lean half of the same workflow already learned a version of this (gale#286:
 "'0 sorry' was a grep result rather than a verification result") and the fix there
@@ -54,7 +54,7 @@ ADMITTED_LEDGER = {
 
 # Empty proof files that are nonetheless named CI targets. An empty file passes
 # `coqc` trivially, so a target pointing at one is a green check over nothing.
-EMPTY_LEDGER = {"heap_proofs.v"}
+EMPTY_LEDGER: set[str] = set()
 
 
 def census(text: str) -> tuple[int, int, int]:

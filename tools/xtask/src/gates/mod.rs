@@ -3,6 +3,7 @@
 //! invoked by nothing -- the failure mode gale#368 was opened to fix.
 
 pub mod aadl_parse;
+pub mod binary_ledger;
 pub mod criticality_axis;
 pub mod data_overlap;
 pub mod graph_env;
@@ -36,6 +37,12 @@ pub const GATES: &[Gate] = &[
         about: "every committed AADL model parses with the pinned spar (gale#441)",
         run: aadl_parse::run,
         self_test: aadl_parse::self_test,
+    },
+    Gate {
+        name: binary_ledger::NAME,
+        about: "every committed binary has a recorded reason and a live consumer",
+        run: binary_ledger::run,
+        self_test: binary_ledger::self_test,
     },
     Gate {
         name: criticality_axis::NAME,

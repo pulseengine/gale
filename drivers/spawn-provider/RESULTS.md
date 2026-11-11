@@ -44,8 +44,8 @@ component that runs the scheduler, and that is now exclusively `exec-provider`.
     synth compile loom.wasm --target cortex-m3 --all-exports --relocatable \
       --native-pointer-abi -o spawn-provider-cm3.o
 
-Measured (synth 0.45.1 + loom 1.2.0), into a temp path — the checked-in
-`spawn-provider-cm3.o` predates this change and was deliberately NOT regenerated:
+Measured (synth 0.45.1 + loom 1.2.0), into a temp path. `spawn-provider-cm3.o` is no
+longer committed: nothing linked or ran it (binaries.toml); the command above rebuilds it.
 
 | | text | data | bss | total |
 |---|---|---|---|---|

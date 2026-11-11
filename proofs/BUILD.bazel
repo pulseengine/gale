@@ -166,23 +166,6 @@ rocq_proof_test(
     deps = [":mem_slab_proofs"],
 )
 
-# ── Heap proofs ──────────────────────────────────────────────────────────
-
-rocq_library(
-    name = "heap_proofs",
-    srcs = ["heap_proofs.v"],
-    deps = [
-        "//plain:rocq_of_rust_lib",
-    ],
-    extra_flags = ["-impredicative-set"],
-)
-
-rocq_proof_test(
-    name = "heap_proofs_test",
-    srcs = ["heap_proofs.v"],
-    deps = [":heap_proofs"],
-)
-
 # ── Poll proofs ──────────────────────────────────────────────────────────
 
 rocq_library(
