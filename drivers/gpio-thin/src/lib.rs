@@ -9,7 +9,7 @@
 //! dissolved to native.
 //!
 //! REQ-DRV-COMPONENT-001: this is a wasm **component** — `world gpio-driver`
-//! (`../wit/gust-hal.wit`), importing `gust:hal/mmio` and exporting `gust:hal/gpio`.
+//! (`../../wit/hal/gust-hal.wit`), importing `gust:hal/mmio` and exporting `gust:hal/gpio`.
 //! The capability is therefore checked against a typed contract at composition
 //! time, instead of being an untyped `env` extern that only had to match by name
 //! at native link.
@@ -48,7 +48,7 @@ static ALLOC: NoAlloc = NoAlloc;
 // gust:hal mmio capability — now a WIT-typed component import (still the SAME two
 // primitives the ~10-line TCB bridge uart-thin uses; no irq atom).
 #[cfg(not(kani))]
-wit_bindgen::generate!({ world: "gpio-driver", path: "../wit", generate_all });
+wit_bindgen::generate!({ world: "gpio-driver", path: "../../wit/hal", generate_all });
 #[cfg(not(kani))]
 use crate::gust::hal::mmio::{read32, write32};
 

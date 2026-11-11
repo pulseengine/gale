@@ -21,7 +21,7 @@ on:
     branches: [main]
     paths:
       - "drivers/*-provider/**"
-      - "drivers/wit-os/**"
+      - "wit/os/**"
       - "drivers/build-gustos-components.sh"
       - "drivers/build-fused-gustos.sh"
       - "drivers/run-gustos-hostrun.sh"
@@ -32,7 +32,7 @@ on:
     branches: [main]
     paths:
       - "drivers/*-provider/**"
-      - "drivers/wit-os/**"
+      - "wit/os/**"
       - "drivers/build-gustos-components.sh"
       - "drivers/build-fused-gustos.sh"
       - "drivers/run-gustos-hostrun.sh"

@@ -678,7 +678,7 @@ fn main() -> Result<()> {
     println!();
 
     // ── phase 7: WIT return-contract observations ───────────────────────────────
-    // Separate bucket: these check the documented return values in wit-os/gust-os.wit,
+    // Separate bucket: these check the documented return values in wit/os/gust-os.wit,
     // not the one-scheduler/one-clock property. A deviation here is a real defect but
     // does NOT refute REQ-OS-COMPOSITE-EXEC-001, and must not be reported as if it did.
     println!("== phase 6: WIT return-contract observations (separate from the claim) ==");

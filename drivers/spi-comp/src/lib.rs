@@ -6,7 +6,7 @@ struct NoAlloc;
 unsafe impl GlobalAlloc for NoAlloc { unsafe fn alloc(&self,_:Layout)->*mut u8{core::ptr::null_mut()} unsafe fn dealloc(&self,_:*mut u8,_:Layout){} }
 #[global_allocator] static ALLOC: NoAlloc = NoAlloc;
 
-wit_bindgen::generate!({ world: "spi-driver", path: "../wit" });
+wit_bindgen::generate!({ world: "spi-driver", path: "../../wit/hal" });
 use crate::gust::hal::mmio::{read32, write32};
 use exports::gust::hal::spi::Guest;
 

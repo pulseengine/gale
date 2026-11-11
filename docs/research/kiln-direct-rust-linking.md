@@ -65,7 +65,7 @@ Wait queues, scheduling, spinlocks, tracing, and poll events remain in Zephyr C.
               |  Mode A: C FFI     |       |  Mode B: WIT/Kiln  |
               |  (Zephyr compat)   |       |  (direct Rust)     |
               +--------------------+       +--------------------+
-              |  ffi/src/lib.rs    |       |  wit/gale.wit      |
+              |  ffi/src/lib.rs    |       |  wit/kernel/gale.wit      |
               |  #[no_mangle]      |       |  WIT interface def |
               |  extern "C"        |       |                    |
               +--------+-----------+       +----------+---------+
@@ -226,7 +226,7 @@ for Rust-to-Rust callers before the full WIT pipeline is ready.
 ### Package Structure
 
 ```wit
-// wit/gale.wit
+// wit/kernel/gale.wit
 //
 // Package: pulseengine:gale@0.1.0
 // World:   kernel-primitives
@@ -545,7 +545,7 @@ This closes SYSREQ-KILN-002 (end-to-end verified compilation pipeline).
 
 ### Step 1: Write the WIT interface (1-2 days)
 
-- Create `wit/gale.wit` based on the design above
+- Create `wit/kernel/gale.wit` based on the design above
 - Add `wit/BUILD.bazel` with `wit_library` + `wit_bindgen` rules
 - Validate with `wit-bindgen` that bindings compile
 - Deliverable: WIT package `pulseengine:gale@0.1.0`

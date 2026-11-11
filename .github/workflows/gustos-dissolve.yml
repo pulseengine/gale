@@ -22,8 +22,8 @@ on:
     branches: [main]
     paths:
       - "drivers/*-provider/**"
-      - "drivers/wit-os/**"
-      - "drivers/wit/**"
+      - "wit/os/**"
+      - "wit/hal/**"
       - "drivers/build-gustos-components.sh"
       - "drivers/build-fused-gustos.sh"
       - "drivers/build-dissolve-gustos.sh"
@@ -32,8 +32,8 @@ on:
     branches: [main]
     paths:
       - "drivers/*-provider/**"
-      - "drivers/wit-os/**"
-      - "drivers/wit/**"
+      - "wit/os/**"
+      - "wit/hal/**"
       - "drivers/build-gustos-components.sh"
       - "drivers/build-fused-gustos.sh"
       - "drivers/build-dissolve-gustos.sh"

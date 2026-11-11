@@ -26,7 +26,7 @@ fn interfaces_for(device_class: &str) -> &'static [&'static str] {
         // Peripherals with a dissolved thin-seam driver: the driver itself reaches
         // the registers through `mmio`, and the capability it offers the rest of the
         // system is the named gust:hal interface. Both are real interfaces in
-        // drivers/wit/gust-hal.wit — check-wit-resolve.sh proves the emitted world
+        // wit/hal/gust-hal.wit — check-wit-resolve.sh proves the emitted world
         // still resolves against it.
         "gpioa" | "gpioc" => &["gpio", "mmio"],
         "tim2" => &["mmio", "timer"],
@@ -36,7 +36,7 @@ fn interfaces_for(device_class: &str) -> &'static [&'static str] {
         // level what it requires is `mmio`. Deliberately NOT gust:mpu/regs: that is
         // mpu-thin's own import (its object's undefined set is exactly ['mpu-write']),
         // a driver-level seam rather than something a board world offers. Emitting it
-        // here would put an interface in the world that drivers/wit/gust-hal.wit does
+        // here would put an interface in the world that wit/hal/gust-hal.wit does
         // not define, and check-wit-resolve.sh would rightly reject it.
         //
         // A target that DECLARES no MPU never reaches this arm -- absent devices are

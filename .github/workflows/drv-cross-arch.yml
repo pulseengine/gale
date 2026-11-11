@@ -106,7 +106,7 @@ jobs:
           base="${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
           changed="$(git diff --name-only "$base"...HEAD)"
           if printf '%s\n' "$changed" | grep -qE \
-              '^drivers/[^/]+-thin/|^drivers/wit/|^drivers/build-cross-arch\.sh$|^drivers/check-cross-arch\.py$|^\.github/workflows/drv-cross-arch\.yml$'; then
+              '^drivers/[^/]+-thin/|^wit/hal/|^drivers/build-cross-arch\.sh$|^drivers/check-cross-arch\.py$|^\.github/workflows/drv-cross-arch\.yml$'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "driver seam touched — running the gate"
           else

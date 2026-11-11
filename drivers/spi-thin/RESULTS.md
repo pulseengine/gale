@@ -42,7 +42,7 @@ no-op.
 
 The driver no longer reaches the bridge through raw `env.mmio_read32`/
 `env.mmio_write32` externs but through `wit_bindgen::generate!` against
-`world spi-driver { import mmio; export spi; }` (`../wit/gust-hal.wit` — the contract
+`world spi-driver { import mmio; export spi; }` (`../../wit/hal/gust-hal.wit` — the contract
 predates this change and is used unedited). The six exported primitives already
 matched `interface spi` field-for-field, so the `Guest` impl just forwards to the
 same bodies the `#[no_mangle] extern "C"` symbols export — component and dissolved

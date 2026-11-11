@@ -45,7 +45,7 @@ static ALLOC: NoAlloc = NoAlloc;
 // gust:hal mmio capability as a WIT-TYPED COMPONENT IMPORT (REQ-DRV-COMPONENT-001),
 // not a raw `env` extern — same two primitives, now declared in the WIT and
 // checkable on the module instead of being an undefined symbol nobody typed.
-wit_bindgen::generate!({ world: "i2c-driver", path: "../wit", generate_all });
+wit_bindgen::generate!({ world: "i2c-driver", path: "../../wit/hal", generate_all });
 use crate::gust::hal::mmio::{read32 as mmio_read32, write32 as mmio_write32};
 
 // STM32F1 I2C register map (offsets from the peripheral base, e.g. I2C1=0x4000_5400).

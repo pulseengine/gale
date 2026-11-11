@@ -7,7 +7,7 @@
 //! host UART driver exists — this *is* the driver, dissolved to native.
 //!
 //! REQ-DRV-COMPONENT-001: this is a wasm **component** — `world uart-driver`
-//! (`../wit/gust-hal.wit`), importing `gust:hal/mmio` + `gust:hal/irq` and exporting
+//! (`../../wit/hal/gust-hal.wit`), importing `gust:hal/mmio` + `gust:hal/irq` and exporting
 //! `gust:hal/uart`. Both capabilities are therefore checked against a typed contract
 //! at composition time, instead of being untyped `env` externs that only had to
 //! match by name at native link.
@@ -48,7 +48,7 @@ static ALLOC: NoAlloc = NoAlloc;
 // three primitives the ~10-line TCB bridge supplies: mmio.{read32,write32},
 // irq.poll).
 #[cfg(not(kani))]
-wit_bindgen::generate!({ world: "uart-driver", path: "../wit", generate_all });
+wit_bindgen::generate!({ world: "uart-driver", path: "../../wit/hal", generate_all });
 #[cfg(not(kani))]
 use crate::gust::hal::irq::poll as irq_poll;
 #[cfg(not(kani))]

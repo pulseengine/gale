@@ -18,7 +18,7 @@ IDR read — is verified wasm dissolved to native; the driver imports only
 
 This driver is the **axis-A pilot**: it no longer reaches the bridge through raw
 `env.mmio_read32`/`env.mmio_write32` externs but through `wit_bindgen::generate!`
-against `world gpio-driver { import mmio; export gpio; }` (`../wit/gust-hal.wit` —
+against `world gpio-driver { import mmio; export gpio; }` (`../../wit/hal/gust-hal.wit` —
 the contract predates this change and is used unedited). The five exported
 primitives already matched `interface gpio` field-for-field, so the `Guest` impl
 just forwards to the same bodies the `#[no_mangle] extern "C"` symbols export —

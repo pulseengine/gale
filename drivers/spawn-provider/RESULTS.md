@@ -1,7 +1,7 @@
 # spawn-provider — gust:os `spawn` backed by the real executor (Task 6, Step 5)
 
 Backs the `gust:os/spawn` WIT interface (world `spawn-provider`,
-`wit-os/gust-os.wit`: `start: func(entry: u32) -> u32; poll: func(handle: u32)
+`wit/os/gust-os.wit`: `start: func(entry: u32) -> u32; poll: func(handle: u32)
 -> u32;`) with the SAME verified executor `exec-provider` owns — not a
 hand-written placeholder, and no longer a private copy of it. This crate is
 STATELESS: no `Tasks` table, no `#[path]` include of `plain/src/executor.rs`, no

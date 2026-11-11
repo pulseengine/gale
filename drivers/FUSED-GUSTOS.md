@@ -51,7 +51,7 @@ composite was structurally fused but **semantically triplicated**. Separately,
 `timer-provider` and `time-provider` each hardcoded `const TIM2_CNT = 0x4000_0024`
 and read it independently — one clock only because two constants happened to match.
 
-`wit-os/gust-os.wit` already promised otherwise: `timer.sleep`'s doc calls its
+`wit/os/gust-os.wit` already promised otherwise: `timer.sleep`'s doc calls its
 argument "the handle the app holds from spawn.start". The WIT specified a shared
 handle space; the implementation did not provide one.
 
@@ -66,7 +66,7 @@ untouched and still embedded in exec-provider only; it carries the Verus/Kani pr
 
 ### `gust:sched@0.1.0` — a separate package on purpose
 
-The internal seam lives in `wit-os/deps/sched/gust-sched.wit`, NOT in `gust:os`.
+The internal seam lives in `wit/os/deps/sched/gust-sched.wit`, NOT in `gust:os`.
 `world app` is the published surface; a tenant that imports `gust:os` must not be
 able to reach scheduler mutation (`admit`, `wake`, `set-deadline`, …). Because the
 composite satisfies `gust:sched/tasks` in place, the name never appears in the fused

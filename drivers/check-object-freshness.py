@@ -58,8 +58,9 @@ BUILDERS = {
     "build-iso-core.sh": "iso-core-fused-cm3.o",
 }
 
-# Always an input: the seam definitions every builder consumes.
-ALWAYS = ["wit", "wit-os"]
+# Always an input: the seam definitions every builder consumes. Repo-relative,
+# like PIN: the seams moved to the root wit/ in rework step 2c.
+ALWAYS = ["wit/hal", "wit/os"]
 
 # The toolchain pin, an input to EVERY gated object (gale#438). Every object
 # here is a synth output, so the pin decides its bytes as much as any source
@@ -78,9 +79,9 @@ PIN = "varve.toml"
 CRATE_BUILD_FILES = ["src", "Cargo.toml", "Cargo.lock", ".cargo"]
 
 # thin drivers generate against gust:hal only
-THIN_SEAMS = ["wit"]
+THIN_SEAMS = ["wit/hal"]
 # providers and dma-own also generate against the gust:os world
-OS_SEAMS = ["wit", "wit-os"]
+OS_SEAMS = ["wit/hal", "wit/os"]
 
 # Composed/fused objects: produced from a component GRAPH rather than one crate,
 # so "the directory next to it" is not their input set. Listed, not gated —
@@ -216,7 +217,7 @@ def inputs_for(script_name):
     # object from being compared against itself.
     dirs = [d for d in dirs if d != "os-node"]
     rel = f"drivers"
-    return [f"{rel}/{script_name}"] + [f"{rel}/{d}" for d in dirs + ALWAYS] + [PIN]
+    return [f"{rel}/{script_name}"] + [f"{rel}/{d}" for d in dirs] + ALWAYS + [PIN]
 
 
 def self_test():
@@ -274,7 +275,7 @@ def main():
                 continue
             seams = THIN_SEAMS if d.endswith("-thin") else OS_SEAMS
             out[key] = ([f"{rel}/{d}/{b}" for b in CRATE_BUILD_FILES]
-                        + [f"{rel}/{sm}" for sm in seams] + [PIN])
+                        + list(seams) + [PIN])
         return out
 
     # census: an object that is neither gated nor listed must not pass silently

@@ -6,7 +6,7 @@ struct NoAlloc;
 unsafe impl GlobalAlloc for NoAlloc { unsafe fn alloc(&self,_:Layout)->*mut u8{core::ptr::null_mut()} unsafe fn dealloc(&self,_:*mut u8,_:Layout){} }
 #[global_allocator] static ALLOC: NoAlloc = NoAlloc;
 
-wit_bindgen::generate!({ world: "uart-driver", path: "../wit" });
+wit_bindgen::generate!({ world: "uart-driver", path: "../../wit/hal" });
 use crate::gust::hal::mmio::{read32, write32};
 use crate::gust::hal::irq::poll as irq_poll;
 use exports::gust::hal::uart::Guest;

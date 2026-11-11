@@ -16,14 +16,14 @@ on:
     branches: [main]
     paths:
       - "drivers/*-thin/**"
-      - "drivers/wit/**"
+      - "wit/hal/**"
       - "drivers/check-driver-components.py"
       - ".github/workflows/drv-components.yml"
   pull_request:
     branches: [main]
     paths:
       - "drivers/*-thin/**"
-      - "drivers/wit/**"
+      - "wit/hal/**"
       - "drivers/check-driver-components.py"
       - ".github/workflows/drv-components.yml"
 

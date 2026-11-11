@@ -48,7 +48,7 @@ static ALLOC: NoAlloc = NoAlloc;
 // gust:hal mmio capability as a WIT-TYPED COMPONENT IMPORT (REQ-DRV-COMPONENT-001),
 // not a raw `env` extern — same two primitives, now declared in the WIT and
 // checkable on the module instead of being an undefined symbol nobody typed.
-wit_bindgen::generate!({ world: "can-driver", path: "../wit", generate_all });
+wit_bindgen::generate!({ world: "can-driver", path: "../../wit/hal", generate_all });
 use crate::gust::hal::mmio::{read32 as mmio_read32, write32 as mmio_write32};
 
 // STM32F1 bxCAN register map (offsets from the peripheral base, e.g. CAN1=0x4000_6400).

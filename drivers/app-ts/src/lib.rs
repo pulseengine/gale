@@ -1,4 +1,4 @@
-//! gust:os step-3 app (world `app-ts`, wit-os/gust-os.wit): imports gust:os
+//! gust:os step-3 app (world `app-ts`, wit/os/gust-os.wit): imports gust:os
 //! {time, spawn} — spawn is the first EXECUTOR-BACKED capability crossing the
 //! syscall seam. `run()` starts one task and polls its handle in a bounded loop
 //! (<= 4 polls), returning the LAST poll result: 1 (= done) is the pass value,
@@ -24,7 +24,7 @@ unsafe impl GlobalAlloc for Bump {
 }
 #[global_allocator] static A: Bump = Bump;
 
-wit_bindgen::generate!({ world: "gust:os/app-ts@0.1.0", path: ["../wit", "../wit-os"], generate_all });
+wit_bindgen::generate!({ world: "gust:os/app-ts@0.1.0", path: ["../../wit/hal", "../../wit/os"], generate_all });
 use crate::gust::os::time::now;
 use crate::gust::os::spawn::{poll, start};
 

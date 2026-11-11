@@ -1,6 +1,6 @@
 //! Verified wrap-safe time math for the **gust:os `time`** capability seam
 //! (REQ-OS-SYSCALL-001 / REQ-OS-TIMER-001). The `time` interface in
-//! `drivers/wit-os/gust-os.wit` documents its deadline/elapsed helpers as
+//! `wit/os/gust-os.wit` documents its deadline/elapsed helpers as
 //! *wrap-safe over the counter domain, widened to u64* — this crate is the
 //! single implementation of that math, Kani-proven, so the time-provider is a
 //! thin binding over a verified core rather than carrying the arithmetic inline.

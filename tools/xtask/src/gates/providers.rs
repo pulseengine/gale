@@ -1,7 +1,7 @@
 //! gust:os syscall-seam drift gate (gale#214).
 //!
 //! The gust:os providers implement WIT Guest traits generated from
-//! `drivers/wit-os/gust-os.wit` via `wit_bindgen::generate!`. If the WIT gains a
+//! `wit/os/gust-os.wit` via `wit_bindgen::generate!`. If the WIT gains a
 //! method but a Guest impl is not updated, the provider crate fails to compile
 //! (E0046 "not all trait items implemented") -- but NOTHING in CI built these
 //! crates, so the break shipped GREEN and only surfaced when the dissolve path
@@ -89,7 +89,7 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
 
     if !failed.is_empty() {
         lines.push(format!("gust:os provider drift gate FAILED: {}", failed.join(" ")));
-        lines.push("A WIT change in drivers/wit-os/gust-os.wit likely outran a Guest impl".into());
+        lines.push("A WIT change in wit/os/gust-os.wit likely outran a Guest impl".into());
         lines.push("(E0046). Update the provider's impl to match the WIT interface.".into());
         return Verdict::Fail(lines);
     }

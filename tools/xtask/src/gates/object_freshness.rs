@@ -39,8 +39,9 @@ const BUILDERS: &[(&str, &str)] = &[
     ("build-iso-core.sh", "iso-core-fused-cm3.o"),
 ];
 
-/// Always an input: the seam definitions every builder consumes.
-const ALWAYS: &[&str] = &["wit", "wit-os"];
+/// Always an input: the seam definitions every builder consumes. Repo-relative,
+/// like PIN: the seams moved to the root `wit/` in rework step 2c.
+const ALWAYS: &[&str] = &["wit/hal", "wit/os"];
 
 /// The toolchain pin, an input to EVERY gated object (gale#438). Every object
 /// here is a synth output, so the pin decides its bytes as much as any source
@@ -56,8 +57,8 @@ const PIN: &str = "varve.toml";
 /// and flagged all 13 thin drivers, which do not reference wit-os at all. Each
 /// widening produced false positives, so the sets are per class.
 const CRATE_BUILD_FILES: &[&str] = &["src", "Cargo.toml", "Cargo.lock", ".cargo"];
-const THIN_SEAMS: &[&str] = &["wit"];
-const OS_SEAMS: &[&str] = &["wit", "wit-os"];
+const THIN_SEAMS: &[&str] = &["wit/hal"];
+const OS_SEAMS: &[&str] = &["wit/hal", "wit/os"];
 
 /// Composed/fused objects: produced from a component GRAPH rather than one
 /// crate, so "the directory next to it" is not their input set. Listed, not
@@ -217,7 +218,7 @@ fn inputs_for(repo: &Path, script: &str) -> Vec<String> {
     }
     let mut out = vec![format!("{REL}/{script}")];
     out.extend(dirs.iter().map(|d| format!("{REL}/{d}")));
-    out.extend(ALWAYS.iter().map(|s| format!("{REL}/{s}")));
+    out.extend(ALWAYS.iter().map(|s| s.to_string()));
     out.push(PIN.to_string());
     out
 }
@@ -257,7 +258,7 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
         let seams = if leaf.ends_with("-thin") { THIN_SEAMS } else { OS_SEAMS };
         let mut inputs: Vec<String> =
             CRATE_BUILD_FILES.iter().map(|b| format!("{REL}/{dir}/{b}")).collect();
-        inputs.extend(seams.iter().map(|s| format!("{REL}/{s}")));
+        inputs.extend(seams.iter().map(|s| s.to_string()));
         inputs.push(PIN.to_string());
         gated.insert(key.clone(), inputs);
     }
