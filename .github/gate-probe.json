@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "detectors": [
+    {
+      "command": [
+        "tools/ci/detect-changes.sh"
+      ],
+      "outputs": [
+        "code"
+      ],
+      "controls": [
+        "docs/safety/verification-honesty.md"
+      ],
+      "negative_controls": [
+        "docs/byo-os-architecture.md"
+      ]
+    }
+  ]
+}
