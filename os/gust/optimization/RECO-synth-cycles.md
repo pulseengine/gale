@@ -1,6 +1,6 @@
 # Recommendation for `pulseengine/synth` (+ `loom`): close the per-function **cycle** gap on the gust hot path
 
-**Context.** `benches/gust/src/bin/gust_codegen_bench.rs` times the *same* source
+**Context.** `os/gust/src/bin/gust_codegen_bench.rs` times the *same* source
 function lowered two ways — native (LLVM → thumbv7m) vs dissolved
 (wasm → loom → synth → cortex-m3) — under one SysTick harness (qemu `-icount`,
 deterministic; M3 has no cache so instr ≈ cycles). The target is `gust_mix`, the

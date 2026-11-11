@@ -131,7 +131,7 @@ pub extern "C" fn timer_ack(base: u32) {
 
 // `gust:hal/timer` exported over the SAME bodies as the C-ABI symbols above, not a
 // second implementation: the component's exports and the dissolved object's
-// `timer_*` entry points (benches/gust/build.rs, gust_timer probe) then cannot
+// `timer_*` entry points (os/gust/build.rs, gust_timer probe) then cannot
 // diverge in behaviour. Same shape gpio-thin used.
 #[cfg(not(kani))]
 struct Driver;

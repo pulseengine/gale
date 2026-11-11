@@ -24,10 +24,10 @@ use std::process::Command;
 
 pub const NAME: &str = "fixture-freshness";
 
-const REL: &str = "benches/gust/renode-test";
-const BENCH_DIR: &str = "benches/gust";
-const BIN_DIR: &str = "benches/gust/src/bin";
-const BUILD_RS: &str = "benches/gust/build.rs";
+const REL: &str = "os/gust/renode-test";
+const BENCH_DIR: &str = "os/gust";
+const BIN_DIR: &str = "os/gust/src/bin";
+const BUILD_RS: &str = "os/gust/build.rs";
 
 /// Fixtures whose bin source is not `src/bin/<stem>.rs`. An ELF that is neither
 /// derivable nor listed here fails the census rather than escaping silently.
@@ -35,7 +35,7 @@ const SOURCE_OVERRIDE: &[(&str, &str)] = &[
     // The dissolved gust kernel: built from the crate's own `src/main.rs` and
     // committed under a different name (REFLASH.md still calls it `--bin
     // gust_wasm`, which no longer resolves).
-    ("gust_wasm.elf", "benches/gust/src/main.rs"),
+    ("gust_wasm.elf", "os/gust/src/main.rs"),
 ];
 
 /// INPUTS ARE NARROW, deliberately. Each fixture is compared against:
@@ -168,7 +168,7 @@ fn linked_objects(repo: &Path, bin: &str) -> Vec<String> {
 /// Resolve `.` and `..` lexically, so a build.rs path that climbs out of the
 /// crate (`../../drivers/x.o`, after drivers/ moved to the repository root)
 /// becomes the repository path git knows (`drivers/x.o`), not
-/// `benches/gust/../../drivers/x.o`.
+/// `os/gust/../../drivers/x.o`.
 fn normalize(p: &str) -> String {
     let mut parts: Vec<&str> = Vec::new();
     for c in p.split('/') {
@@ -346,7 +346,7 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     // path must RESOLVE, not merely end in the right name.
     ck(
         "a climbing build.rs path normalizes to the repository path",
-        normalize("benches/gust/../../drivers/x-cm3.o") == "drivers/x-cm3.o",
+        normalize("os/gust/../../drivers/x-cm3.o") == "drivers/x-cm3.o",
     );
     ck(
         "every derived object path actually exists",

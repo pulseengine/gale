@@ -1,7 +1,7 @@
 # Deploy the "gust in the browser" demo, and trusted-base.json (gale#467), to GitHub Pages on merge to main.
 #
-# Builds the SAME kiln-async kernel as benches/gust to wasm32 and publishes
-# benches/gust/browser/web/ (index.html + the freshly-built gust.wasm). The
+# Builds the SAME kiln-async kernel as os/gust to wasm32 and publishes
+# os/gust/browser/web/ (index.html + the freshly-built gust.wasm). The
 # browser crate depends on pulseengine/kiln via a public git dep, so this builds
 # hermetically in CI. Served at https://<org>.github.io/gale/.
 #
@@ -13,7 +13,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'benches/gust/browser/**'
+      - 'os/gust/browser/**'
       - '.github/workflows/pages.yml'
       # gale#467: trusted-base.json is published here, so every change that can
       # move the inventory redeploys it.
@@ -46,7 +46,7 @@ jobs:
       - name: Build gust browser wasm
         run: |
           set -euo pipefail
-          cd benches/gust/browser
+          cd os/gust/browser
           cargo build --release --target wasm32-unknown-unknown
           cp target/wasm32-unknown-unknown/release/gust_browser.wasm web/gust.wasm
           echo "built web/gust.wasm ($(wc -c < web/gust.wasm) bytes)"
@@ -62,13 +62,13 @@ jobs:
       # be measured exits non-zero and fails the deploy rather than publishing
       # an empty inventory.
       - name: Measure the trusted base
-        run: cargo xtask trusted-base --out benches/gust/browser/web/trusted-base.json
+        run: cargo xtask trusted-base --out os/gust/browser/web/trusted-base.json
 
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
-          path: benches/gust/browser/web
+          path: os/gust/browser/web
 
   deploy:
     needs: build

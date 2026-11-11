@@ -304,7 +304,7 @@ pub extern "C" fn spi_abort(state: u32) -> u32 {
 
 // `gust:hal/spi` exported over the SAME bodies as the C-ABI symbols above, not a
 // second implementation: the component's exports and the dissolved object's `spi_*`
-// entry points (benches/gust/build.rs, gust_spi/gust_spi_probe) then cannot diverge
+// entry points (os/gust/build.rs, gust_spi/gust_spi_probe) then cannot diverge
 // in behaviour. Same shape gpio-thin used.
 #[cfg(not(kani))]
 struct Driver;

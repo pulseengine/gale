@@ -4,7 +4,7 @@
 //! (Renode content-gate), this firmware points the DISSOLVED adc-thin-cm3.o at the
 //! REAL STM32F100 ADC1 (0x4001_2400) and reads the on-chip **Vrefint** (channel 17,
 //! the 1.2 V internal reference) — a self-contained silicon check needing no external
-//! wiring. Flash + capture:  benches/gust/silicon/run-adc.sh
+//! wiring. Flash + capture:  os/gust/silicon/run-adc.sh
 //!
 //! Expected: Vrefint is factory-nominal ≈ 1.20 V (spec 1.16..1.24 V). The raw code
 //! depends on the board's VDDA reference: on the STM32VLDISCOVERY VDDA ≈ **3.0 V**

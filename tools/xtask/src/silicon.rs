@@ -14,7 +14,7 @@
 //! openocd interface/target scripts, the claim name, and HOW its probe is pinned. Where a
 //! board is plugged in — the probe host, and the USB port path that pins it there — is
 //! private bench topology and is read at run time from the environment (see
-//! [`resolve`] and benches/gust/silicon/README.md). A board with no configured host is
+//! [`resolve`] and os/gust/silicon/README.md). A board with no configured host is
 //! REFUSED with the variable to set, never run against a default. Memory maps and
 //! register addresses are NOT here either: they come from the measured target models
 //! (targets/*.aadl -> generated/).
@@ -194,7 +194,7 @@ fn resolve(b: &Board, get: impl Fn(&str) -> Option<String>) -> Result<Site, Stri
     let host = match get(&hk).as_deref() {
         None => return Err(format!(
             "{}: {hk} is not set — set it to `local` or to the ssh destination of the host \
-             this board's probe is plugged into (benches/gust/silicon/README.md)", b.name)),
+             this board's probe is plugged into (os/gust/silicon/README.md)", b.name)),
         Some("local") => Host::Local,
         Some(h) => Host::Ssh(h.to_string()),
     };
@@ -458,7 +458,7 @@ fn local_registry_serial(claim: &str) -> Option<String> {
     None
 }
 
-/// Restores benches/gust/memory.x however the build ends.
+/// Restores os/gust/memory.x however the build ends.
 struct MemoryGuard {
     path: PathBuf,
     original: Vec<u8>,
@@ -470,7 +470,7 @@ impl Drop for MemoryGuard {
 }
 
 fn build(root: &Path, b: &Board, bin: &str, extra: &[&str]) -> Result<PathBuf, String> {
-    let gust = root.join("benches/gust");
+    let gust = root.join("os/gust");
     let mem = gust.join("memory.x");
     let gen = gust.join(format!("targets/generated/memory-{}.x", b.stem));
     let original = fs::read(&mem).map_err(|e| format!("read {}: {e}", mem.display()))?;
@@ -728,7 +728,7 @@ pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: 
         Err(e) => return Verdict::Refused(e),
     };
 
-    let log = root.join(format!("benches/gust/target/silicon-logs/{}-{bin}{}.log", b.name,
+    let log = root.join(format!("os/gust/target/silicon-logs/{}-{bin}{}.log", b.name,
         if extra.is_empty() { String::new() } else { format!("-{}", extra.join("-")) }));
     let _ = fs::create_dir_all(log.parent().unwrap());
     let _ = fs::write(&log, &text);
@@ -784,7 +784,7 @@ pub fn usage() -> &'static str {
        GALE_SILICON_<BOARD>_HOST          `local`, or the ssh destination of the probe host\n  \
        GALE_SILICON_<BOARD>_USB_LOCATION  openocd `adapter usb location` (wl55jc, wb55rg, g031k8)\n  \
        BENCH_REGISTRY                     local probe's serial registry (default ~/.config/pulseengine/bench-devices.yaml)\n  \
-       An unset variable REFUSES the board and names the variable. See benches/gust/silicon/README.md.\n\n\
+       An unset variable REFUSES the board and names the variable. See os/gust/silicon/README.md.\n\n\
      EXIT CODES: 0 pass, 1 fail, 2 usage, 3 could not run (busy probe, no verdict, unconfigured board) — NOT a pass\n"
 }
 

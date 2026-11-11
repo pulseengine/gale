@@ -20,7 +20,7 @@
 # boot lands on the CONFIRMED path.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-BENCH="$(dirname "$HERE")"   # benches/gust
+BENCH="$(dirname "$HERE")"   # os/gust
 CHIP=STM32G474RETx
 cd "$BENCH"
 

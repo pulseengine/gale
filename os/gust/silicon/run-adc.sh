@@ -23,7 +23,7 @@ set -euo pipefail
 # default ssh user on the bench host resolves, so no user prefix is needed.
 PI_HOST="${PI_HOST:-${GUST_BENCH_HOST:?set GUST_BENCH_HOST (or PI_HOST) to the bench host}}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-BENCH="$(dirname "$HERE")"   # benches/gust
+BENCH="$(dirname "$HERE")"   # os/gust
 cd "$BENCH"
 
 cp memory.x /tmp/gust-memory.x.bak

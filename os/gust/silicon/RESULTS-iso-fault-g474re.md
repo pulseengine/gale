@@ -6,7 +6,7 @@ via `probe-rs run --chip STM32G474RETx`.
 ## Why this exists
 
 Every MPU **enforcement** result gale held was qemu. The probe had never run on
-silicon: no reference under `benches/gust/silicon/`, and no board region map.
+silicon: no reference under `os/gust/silicon/`, and no board region map.
 
 A downstream (gale#348) then measured **stock Renode 1.16.1 on an emulated RT1176**
 and found the MPU register file fully modelled — `MPU_TYPE`, `CTRL`, `RBAR`, `RASR`
@@ -14,7 +14,7 @@ all reading back byte-perfect — while an out-of-region write **landed**, `CFSR
 MemManage. Renode models the register file, not the MPU.
 
 They asked which platform gale's contradicting result came from. The answer is qemu
-(`benches/gust/.cargo/config.toml` → `qemu-system-arm -machine lm3s6965evb`), and gale
+(`os/gust/.cargo/config.toml` → `qemu-system-arm -machine lm3s6965evb`), and gale
 had already found the same Renode behaviour on the M3 (`mpu_spike_renode.rs`, recorded
 in `gust_switch_2core.robot`'s scope note).
 

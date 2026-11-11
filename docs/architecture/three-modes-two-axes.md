@@ -25,7 +25,7 @@ formally verified port of zephyr/kernel/sem.c"). That is no longer what gale is:
   the CPU. The rest is decision logic (what a give, take, schedule or switch should do) with no
   dependency on Zephyr.
 - **The OS exists, in the wrong place.** gust — partition switch, health monitor, scheduler, 29
-  driver/provider/app crates, the `gust:hal` / `gust:os` / `gust:sched` WIT seams — lives under `benches/gust/`. It is
+  driver/provider/app crates, the `gust:hal` / `gust:os` / `gust:sched` WIT seams — lives under `os/gust/`. It is
   referenced from 9 of 29 workflows and 8 rivet artifact files (30 path mentions).
 - **The host seam exists, unnamed.** gust on bare metal runs on a small trusted native shim (see
   DOC-BYOOS-ARCH, `SAC-BYOOS-SCAFFOLD`): boot/reset, scheduler start, device init, MMIO, IRQ entry,

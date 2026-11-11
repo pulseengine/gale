@@ -58,7 +58,7 @@ addend `+8` — the log string-copy's head-chunk source pointer) is bound to
 Re-verified live before the oracle was built: `gust_os_tl_probe` linked against
 `os-tl-buggy.o` FAILs with exactly the head-byte signature above
 (`[2, 0, 0, 0, 1, 0, 0, 32, 117, 112, 10]`). The containment probe then places
-the renamed `.data` at `0x2000_BFF0` (see `../../../benches/gust/iso_contain.x`) so
+the renamed `.data` at `0x2000_BFF0` (see `../../../os/gust/iso_contain.x`) so
 `seg_0+8 = 0x2000_BFF8` sits in MPU-denied SRAM while everything the correct
 program needs is granted, programs the MPU through the VERIFIED
 `gale::mpu_switch` core, and observes the miscompiled read MemManage-fault at

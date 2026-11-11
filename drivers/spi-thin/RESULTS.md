@@ -80,7 +80,7 @@ and filed as loom#303; not optimised here.
 **`spi-thin-cm3.o` is deliberately NOT regenerated**, so today's `gust_spi` /
 `gust_spi_probe` links and the Renode content-gate are untouched. Whoever regenerates
 it must, in the same change, rename the bridge exports in BOTH
-`benches/gust/src/bin/gust_spi.rs` and `benches/gust/src/bin/gust_spi_probe.rs` to
+`os/gust/src/bin/gust_spi.rs` and `os/gust/src/bin/gust_spi_probe.rs` to
 `#[export_name = "read32"]` / `#[export_name = "write32"]`; otherwise the link fails
 on undefined `read32`/`write32`. There is no duplicate-symbol hazard — the new object
 does not mention `mmio_read32`/`mmio_write32` at all.

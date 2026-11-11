@@ -1,6 +1,6 @@
 # gust on Renode — the dissolved-artifact cycle-class gate (hermetic, Bazel).
 #
-# Runs the self-contained benches/gust/renode-test module (own MODULE.bazel +
+# Runs the self-contained os/gust/renode-test module (own MODULE.bazel +
 # git_override on pulseengine/renode-bazel-rules) across three Cortex-M3 device
 # classes. rules_renode downloads its own hermetic Renode portable (linux) and
 # .NET — no system deps. This is the CI runner that makes the gust Renode
@@ -60,7 +60,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: benches/gust/renode-test
+        working-directory: os/gust/renode-test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -69,7 +69,7 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/bazel
-          key: gust-renode-bazel-${{ hashFiles('benches/gust/renode-test/MODULE.bazel') }}
+          key: gust-renode-bazel-${{ hashFiles('os/gust/renode-test/MODULE.bazel') }}
           restore-keys: gust-renode-bazel-
 
       # ubuntu-22.04 ships bazelisk as `bazel`; it reads the root .bazelversion (9.1.0).
@@ -100,5 +100,5 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: gust-renode-testlogs
-          path: benches/gust/renode-test/bazel-testlogs/
+          path: os/gust/renode-test/bazel-testlogs/
           retention-days: 7

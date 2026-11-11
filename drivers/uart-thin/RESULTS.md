@@ -155,7 +155,7 @@ regenerated object should use is a follow-up decision.
 
 **`uart-thin-cm3.o` is deliberately NOT regenerated**, so today's `gust_uart` link
 and the Renode content-gate are untouched. Whoever regenerates it must, in the same
-change, rename the bridge exports in `benches/gust/src/bin/gust_uart.rs` to
+change, rename the bridge exports in `os/gust/src/bin/gust_uart.rs` to
 `#[export_name = "read32"]` / `#[export_name = "write32"]` / `#[export_name =
 "poll"]`; otherwise the link fails on undefined `read32`/`write32`/`poll`. There is
 no duplicate-symbol hazard — the new object does not mention the old names at all.

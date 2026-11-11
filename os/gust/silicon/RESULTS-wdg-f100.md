@@ -58,7 +58,7 @@ Two consecutive runs, `wdg-f100-run{1,2}.log`, identical in outcome:
 
 ## Reproduce
 
-    benches/gust/silicon/run-wdg-f100.sh          # needs an ST-LINK + openocd
+    os/gust/silicon/run-wdg-f100.sh          # needs an ST-LINK + openocd
 
 ## Re-validated under synth 0.52.0 (2026-07-29)
 

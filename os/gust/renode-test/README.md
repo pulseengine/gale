@@ -7,7 +7,7 @@ target checks in its **own** `.repl` (no dependency on the pinned Renode's
 bundled platform set), matching this module's self-contained design.
 
 ```sh
-cd benches/gust/renode-test
+cd os/gust/renode-test
 bazel test //:gust-renode //:gust-control-renode //:gust-f100-renode   # Linux
 ```
 
