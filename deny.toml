@@ -1,0 +1,41 @@
+# PulseEngine org-standard cargo-deny policy.
+# Applied per repo; per-repo advisory ignores go in [advisories].ignore with a
+# written reason (see scry's deny.toml for the pattern).
+
+[advisories]
+# Vulnerabilities are denied by default (cargo-deny >= 0.16). Yanked crates
+# warn. Per-repo ignores below must each carry a reason in a comment.
+yanked = "warn"
+ignore = []
+
+[licenses]
+confidence-threshold = 0.8
+# Agreed org allowlist (2026-11): permissive licenses only. OpenSSL is NOT on
+# the list. Anything not listed is denied.
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "MIT-0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "0BSD",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "MPL-2.0",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "Unlicense",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+deny = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
