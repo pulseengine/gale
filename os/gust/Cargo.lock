@@ -80,9 +80,14 @@ dependencies = [
  "cortex-m-rt",
  "cortex-m-semihosting",
  "gale",
+ "gust-armv7m",
  "kiln-async",
  "panic-halt",
 ]
+
+[[package]]
+name = "gust-armv7m"
+version = "0.1.0"
 
 [[package]]
 name = "kiln-async"
