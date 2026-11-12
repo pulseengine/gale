@@ -31,3 +31,7 @@ Dissolved gust kernel boots and runs on STM32F100RB (8K SRAM)
     Execute Command           emulation RunFor "2"
     ${instr}=                 Execute Command    sysbus.cpu ExecutedInstructions
     Log To Console            \n[gust-f100] dissolved gust kernel on Renode STM32F100RB (8 KB SRAM) — executed instructions: ${instr}
+    # A floor, so a dead image fails: on 2026-11-12 a mis-linked gust_wasm.elf
+    # faulted after 8 instructions and this test still passed. The scheduler loop runs the whole 2 s budget (0x0BEBC200 = 200,000,000 on main).
+    ${n}=                     Evaluate    int("""${instr}""".strip(), 16)
+    Should Be True            ${n} >= 100000000    executed only ${n} instructions (floor 100000000): the image faulted or halted early

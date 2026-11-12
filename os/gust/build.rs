@@ -82,6 +82,15 @@ fn check_defined_text_symbols(obj: &Path, required: &[&str]) {
 
 fn main() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    // The Renode 8 KB-SRAM targets (gust-renode, gust-f100-renode) run the main
+    // binary, whose memory.x stack top lies outside their SRAM. `cargo xtask
+    // renode-elfs` passes renode-test/stack-8k.x here; it moves the stack and fails
+    // the link if .data+.bss do not fit. Only the `gust` bin; unset in every other build.
+    println!("cargo:rerun-if-env-changed=GUST_RENODE_LINK_SCRIPT");
+    if let Ok(script) = std::env::var("GUST_RENODE_LINK_SCRIPT") {
+        println!("cargo:rerun-if-changed={script}");
+        println!("cargo:rustc-link-arg-bin=gust=-T{script}");
+    }
     let obj = Path::new(&manifest).join("wasm-kernel/fused.o");
     if obj.exists() {
         // Two-tenant demonstrator (#1145). Object comes from an UNPINNED synth 0.62.0 --

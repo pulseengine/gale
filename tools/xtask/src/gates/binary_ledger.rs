@@ -13,9 +13,9 @@
 //! - an entry's consumer file is missing, or no longer contains its needle.
 //!
 //! "Binary" means a non-empty tracked file that holds a NUL byte in its first
-//! 8 KiB or is not valid UTF-8. The freshness gates (object-freshness,
-//! fixture-freshness) are not consumers: they track a binary BECAUSE it is
-//! committed, so naming one would make every entry justify itself.
+//! 8 KiB or is not valid UTF-8. The object-freshness gate is not a consumer:
+//! it tracks a binary BECAUSE it is committed, so naming it would make every
+//! entry justify itself.
 //!
 //! Blind spot, stated: the needle check proves the consumer still NAMES the
 //! binary, not that the code path using it still runs. A build.rs branch that is

@@ -18,3 +18,7 @@ Dissolved gust boots and runs on Cortex-M3 8K
     # a bad image faults on cycle 1. (Locally: ~200M instr, no fault.) The count is the
     # deterministic fuel->cycles WCET seed (M3 has no cache -> instr ~= cycles).
     Log To Console            \n[gust] dissolved on Renode Cortex-M3 + 8 KB SRAM — executed instructions: ${instr}
+    # A floor, so a dead image fails: on 2026-11-12 a mis-linked gust_wasm.elf
+    # faulted after 8 instructions and this test still passed. The scheduler loop runs the whole 2 s budget (0x0BEBC200 = 200,000,000 on main).
+    ${n}=                     Evaluate    int("""${instr}""".strip(), 16)
+    Should Be True            ${n} >= 100000000    executed only ${n} instructions (floor 100000000): the image faulted or halted early

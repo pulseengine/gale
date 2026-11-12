@@ -46,3 +46,6 @@ __pycache__/
 
 # CI scratch output of the loom job (loom.yml tees into it); never commit it.
 /loom.out
+
+# Renode test images: built from source by `cargo xtask renode-elfs`, never committed.
+/os/gust/renode-test/*.elf

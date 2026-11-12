@@ -7,9 +7,16 @@ target checks in its **own** `.repl` (no dependency on the pinned Renode's
 bundled platform set), matching this module's self-contained design.
 
 ```sh
+cargo xtask renode-elfs          # from the repo root: build the images from source
 cd os/gust/renode-test
 bazel test //:gust-renode //:gust-control-renode //:gust-f100-renode   # Linux
 ```
+
+The `.elf` images are **not committed**. `cargo xtask renode-elfs` builds every image a
+target names (`<stem>.elf` = release bin `<stem>` of os/gust, default features;
+`gust_wasm.elf` = the crate's main binary) and copies it here, and CI does the same
+before `bazel test`. Until 2026-11-11 they were committed, and only 1 of 17 still
+matched what the source built.
 
 Self-contained module (own `MODULE.bazel`, `git_override` on
 `pulseengine/renode-bazel-rules`) — it does **not** touch gale's root bazel or
