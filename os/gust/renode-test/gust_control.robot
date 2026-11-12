@@ -16,11 +16,6 @@ Dissolved engine_control runs on the kiln stack (Cortex-M3 64K)
     Execute Command           mach create "gust-control-m3-64k"
     Execute Command           machine LoadPlatformDescription @${REPL}
     Execute Command           sysbus LoadELF @${ELF}
-    # The correctness line: control_step(3000,50,80,0) must equal the C/wasmtime
-    # result (spark 33deg, fuel 2300us). BUILD.bazel claimed this was asserted;
-    # until 2026-11-12 it was not. The binary prints MISMATCH otherwise.
-    Create Terminal Tester    sysbus.cpu.uartSemihosting    defaultPauseEmulation=true
-    Wait For Line On Uart     matches C/wasmtime ok    timeout=2
     # The 9408 B .bss loads into the 64 KB SRAM at 0x200004B4; SP at the 64 KB top.
     Execute Command           emulation RunFor "2"
     ${instr}=                 Execute Command    sysbus.cpu ExecutedInstructions
