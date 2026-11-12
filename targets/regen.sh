@@ -45,8 +45,10 @@ for BOARD in \
   "STM32WL55::Board.nucleo" \
   "STM32WB55::Board.nucleo" \
   "STM32G031::Board.nucleo"; do
+  STEM="$(printf '%s' "${BOARD%%::*}" | tr '[:upper:]' '[:lower:]')"
   cargo run --quiet --manifest-path "$REPO/tools/gust-target-gen/Cargo.toml" -- \
-    --items "$FIXTURE" --board "$BOARD" --out "$GEN"
+    --items "$FIXTURE" --board "$BOARD" --out "$GEN" \
+    --reference "$REPO/targets/reference/$STEM.peripherals.tsv"
 done
 
 echo "regen: generated/ is up to date."
