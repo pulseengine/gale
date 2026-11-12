@@ -20,3 +20,7 @@ Dissolved engine_control runs on the kiln stack (Cortex-M3 64K)
     Execute Command           emulation RunFor "2"
     ${instr}=                 Execute Command    sysbus.cpu ExecutedInstructions
     Log To Console            \n[gust-control] dissolved engine_control on the kiln stack, Renode Cortex-M3 64K — executed instructions: ${instr}
+    # A floor, so a dead image fails: on 2026-11-12 a mis-linked gust_wasm.elf
+    # faulted after 8 instructions and this test still passed. The control loop completes after about 1.46 M instructions (0x16533E on 2026-11-12).
+    ${n}=                     Evaluate    int("""${instr}""".strip(), 16)
+    Should Be True            ${n} >= 1000000    executed only ${n} instructions (floor 1000000): the image faulted or halted early

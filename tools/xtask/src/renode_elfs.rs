@@ -9,7 +9,8 @@
 //!
 //! Mapping: `<stem>.elf` is the release build of bin `<stem>` in os/gust, with
 //! default features, except `gust_wasm.elf`, which is the crate's main binary
-//! (`gust`, src/main.rs).
+//! (`gust`, src/main.rs), linked with its stack at the 8 KB SRAM top because
+//! both targets that run it model an 8 KB part (see build.rs).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -17,6 +18,11 @@ use std::process::Command;
 pub const BENCH: &str = "os/gust";
 pub const RENODE: &str = "os/gust/renode-test";
 const TARGET: &str = "thumbv7m-none-eabi";
+const TARGET_DIR: &str = "target/renode";
+/// Linker script putting the stack at the top of the 8 KB SRAM both 8 KB Renode
+/// platforms map at 0x20000000, with a fit ASSERT. Only the `gust` bin
+/// (gust_wasm.elf) runs there; build.rs applies it to that bin alone.
+const STACK_SCRIPT_8K: &str = "stack-8k.x";
 
 /// Every image a renode_test target names, in BUILD.bazel order, deduplicated.
 /// Any `":<name>.elf"` label counts, whatever the variable is called: the
@@ -74,7 +80,11 @@ pub fn run(repo: &Path) -> i32 {
         return 1;
     }
     let mut cmd = Command::new("cargo");
-    cmd.current_dir(repo.join(BENCH)).args(["build", "--release"]);
+    // Own target dir: GUST_RENODE_LINK_SCRIPT changes how the `gust` bin links, and
+    // must never leak into a normal build's cache.
+    cmd.current_dir(repo.join(BENCH))
+        .args(["build", "--release", "--target-dir", TARGET_DIR])
+        .env("GUST_RENODE_LINK_SCRIPT", repo.join(RENODE).join(STACK_SCRIPT_8K));
     for s in &stems {
         cmd.args(["--bin", bin_for(s)]);
     }
@@ -90,7 +100,7 @@ pub fn run(repo: &Path) -> i32 {
             return 3;
         }
     }
-    let out_dir = repo.join(BENCH).join("target").join(TARGET).join("release");
+    let out_dir = repo.join(BENCH).join(TARGET_DIR).join(TARGET).join("release");
     for s in &stems {
         let from = out_dir.join(bin_for(s));
         let to = repo.join(RENODE).join(format!("{s}.elf"));
