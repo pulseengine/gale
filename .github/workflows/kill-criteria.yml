@@ -146,6 +146,15 @@ jobs:
       - name: Every committed binary has a reason and a live consumer
         run: cargo xtask check binary-ledger
 
+      # SoC facts are DATA (targets/*.aadl -> targets/generated). A peripheral
+      # address typed into a binary or driver bypasses the model; unmodelled ones
+      # are ledgered and the ledger can only shrink.
+      - name: Negative control — an unmodelled peripheral address must be caught
+        run: cargo xtask check peripheral-addresses --self-test
+
+      - name: Every peripheral address comes from the target model
+        run: cargo xtask check peripheral-addresses
+
   zephyr-fork-pin:
     # The pinned pulseengine/zephyr revision must still be REACHABLE from the branch
     # gale takes fork changes on. CI used to clone that branch by name, so a run's
