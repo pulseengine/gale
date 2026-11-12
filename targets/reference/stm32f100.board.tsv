@@ -1,0 +1,8 @@
+# stm32vl_disco board pins, from pulseengine/zephyr@9550d256a582f4a19bc5bee650310b29a606c64b boards/st/stm32vl_disco/stm32vl_disco.dts (sha256 c99e92cf8c32ecc6a3eeccaad0af03aa7c23d60a4c4c72ad8e136b6dde364c40).
+# Facts only (the devicetree is not vendored). Reference: targets/*.aadl is authoritative;
+# gust-target-gen --board-reference cross-checks it. Regenerate with import_boards.py.
+# kind	name	port|tx	pin|rx	active
+led	ld3	C	9	high
+led	ld4	C	8	high
+button	button	A	0	low
+console	USART1	A9	A10	-

@@ -306,6 +306,60 @@ public
       Gust_Target_Props::Address_Only => true;
   end Wwdg;
   -- END targets/reference import
+  -- Board-level pins: the user LEDs, buttons and the console UART (the one the board
+  -- routes to its debug probe's serial port), from the board devicetree of the pinned
+  -- Zephyr fork; cross-checked against targets/reference/stm32wl55.board.tsv.
+  device Led_Led1  -- PB15
+    properties
+      Gust_Target_Props::Board_Led => true;
+      Gust_Target_Props::Gpio_Port  => 1;
+      Gust_Target_Props::Gpio_Pin   => 15;
+      Gust_Target_Props::Active_Low => false;
+  end Led_Led1;
+  device Led_Led2  -- PB9
+    properties
+      Gust_Target_Props::Board_Led => true;
+      Gust_Target_Props::Gpio_Port  => 1;
+      Gust_Target_Props::Gpio_Pin   => 9;
+      Gust_Target_Props::Active_Low => false;
+  end Led_Led2;
+  device Led_Led3  -- PB11
+    properties
+      Gust_Target_Props::Board_Led => true;
+      Gust_Target_Props::Gpio_Port  => 1;
+      Gust_Target_Props::Gpio_Pin   => 11;
+      Gust_Target_Props::Active_Low => false;
+  end Led_Led3;
+  device Button_Sw1  -- PA0
+    properties
+      Gust_Target_Props::Board_Button => true;
+      Gust_Target_Props::Gpio_Port  => 0;
+      Gust_Target_Props::Gpio_Pin   => 0;
+      Gust_Target_Props::Active_Low => true;
+  end Button_Sw1;
+  device Button_Sw2  -- PA1
+    properties
+      Gust_Target_Props::Board_Button => true;
+      Gust_Target_Props::Gpio_Port  => 0;
+      Gust_Target_Props::Gpio_Pin   => 1;
+      Gust_Target_Props::Active_Low => true;
+  end Button_Sw2;
+  device Button_Sw3  -- PC6
+    properties
+      Gust_Target_Props::Board_Button => true;
+      Gust_Target_Props::Gpio_Port  => 2;
+      Gust_Target_Props::Gpio_Pin   => 6;
+      Gust_Target_Props::Active_Low => true;
+  end Button_Sw3;
+  device Board_Console  -- LPUART1
+    properties
+      Gust_Target_Props::Base    => 16#40008000#;
+      Gust_Target_Props::Console => true;
+      Gust_Target_Props::Tx_Port => 0;
+      Gust_Target_Props::Tx_Pin  => 2;
+      Gust_Target_Props::Rx_Port => 0;
+      Gust_Target_Props::Rx_Pin  => 3;
+  end Board_Console;
   system Board
     annex EMV2 {**
       error types
@@ -327,6 +381,13 @@ public
       mpu   : device Mpu;
       iwdg  : device Iwdg;
       rcc   : device Rcc;
+      led_led1 : device Led_Led1;
+      led_led2 : device Led_Led2;
+      led_led3 : device Led_Led3;
+      button_sw1 : device Button_Sw1;
+      button_sw2 : device Button_Sw2;
+      button_sw3 : device Button_Sw3;
+      board_console : device Board_Console;
       -- BEGIN targets/reference import
       periph_adc1 : device Adc1;
       periph_adc1_common : device Adc1_Common;

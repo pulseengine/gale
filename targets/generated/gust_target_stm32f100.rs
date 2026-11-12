@@ -47,6 +47,18 @@ pub mod periph {
     pub const USART3: u32 = 0x4000_4800;
     pub const WWDG: u32 = 0x4000_2C00;
 }
+/// Board-level pins (targets/reference board table, cross-checked). Ports: A = 0.
+pub mod board {
+    pub const BOARD_CONSOLE_BASE: u32 = 0x4001_3800;
+    pub const BOARD_CONSOLE_TX: (u32, u32) = (0, 9);
+    pub const BOARD_CONSOLE_RX: (u32, u32) = (0, 10);
+    pub const BUTTON_USER: (u32, u32) = (0, 0);
+    pub const BUTTON_USER_ACTIVE_LOW: bool = true;
+    pub const LED_LD3: (u32, u32) = (2, 9);
+    pub const LED_LD3_ACTIVE_LOW: bool = false;
+    pub const LED_LD4: (u32, u32) = (2, 8);
+    pub const LED_LD4_ACTIVE_LOW: bool = false;
+}
 pub const USART1_BASE: u32 = 0x4001_3800;
 pub const USART1_SR: u32 = 0x4001_3800;
 pub const USART1_DR: u32 = 0x4001_3804;

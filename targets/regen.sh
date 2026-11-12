@@ -48,7 +48,8 @@ for BOARD in \
   STEM="$(printf '%s' "${BOARD%%::*}" | tr '[:upper:]' '[:lower:]')"
   cargo run --quiet --manifest-path "$REPO/tools/gust-target-gen/Cargo.toml" -- \
     --items "$FIXTURE" --board "$BOARD" --out "$GEN" \
-    --reference "$REPO/targets/reference/$STEM.peripherals.tsv"
+    --reference "$REPO/targets/reference/$STEM.peripherals.tsv" \
+    --board-reference "$REPO/targets/reference/$STEM.board.tsv"
 done
 
 echo "regen: generated/ is up to date."

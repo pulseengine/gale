@@ -264,6 +264,39 @@ public
       Gust_Target_Props::Address_Only => true;
   end Wwdg;
   -- END targets/reference import
+  -- Board-level pins: the user LEDs, buttons and the console UART (the one the board
+  -- routes to its debug probe's serial port), from the board devicetree of the pinned
+  -- Zephyr fork; cross-checked against targets/reference/stm32f100.board.tsv.
+  device Led_Ld3  -- PC9
+    properties
+      Gust_Target_Props::Board_Led => true;
+      Gust_Target_Props::Gpio_Port  => 2;
+      Gust_Target_Props::Gpio_Pin   => 9;
+      Gust_Target_Props::Active_Low => false;
+  end Led_Ld3;
+  device Led_Ld4  -- PC8
+    properties
+      Gust_Target_Props::Board_Led => true;
+      Gust_Target_Props::Gpio_Port  => 2;
+      Gust_Target_Props::Gpio_Pin   => 8;
+      Gust_Target_Props::Active_Low => false;
+  end Led_Ld4;
+  device Button_User  -- PA0
+    properties
+      Gust_Target_Props::Board_Button => true;
+      Gust_Target_Props::Gpio_Port  => 0;
+      Gust_Target_Props::Gpio_Pin   => 0;
+      Gust_Target_Props::Active_Low => true;
+  end Button_User;
+  device Board_Console  -- USART1
+    properties
+      Gust_Target_Props::Base    => 16#40013800#;
+      Gust_Target_Props::Console => true;
+      Gust_Target_Props::Tx_Port => 0;
+      Gust_Target_Props::Tx_Pin  => 9;
+      Gust_Target_Props::Rx_Port => 0;
+      Gust_Target_Props::Rx_Pin  => 10;
+  end Board_Console;
   system Board
     annex EMV2 {**
       error types
@@ -291,6 +324,10 @@ public
       gpioc  : device Gpioc;
       tim2   : device Tim2;
       spi1   : device Spi1;
+      led_ld3 : device Led_Ld3;
+      led_ld4 : device Led_Ld4;
+      button_user : device Button_User;
+      board_console : device Board_Console;
       -- BEGIN targets/reference import
       periph_adc1_common : device Adc1_Common;
       periph_afio : device Afio;

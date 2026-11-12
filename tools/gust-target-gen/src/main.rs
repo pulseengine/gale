@@ -1,7 +1,7 @@
 //! gust-target-gen — generate per-target constants, linker memory maps, and
 //! gust:hal WIT worlds from a spar/AADL hardware model.
 //!
-//!   gust-target-gen --items <spar-items.json> --board <Pkg::Type.impl> --out <dir> [--reference <tsv>]
+//!   gust-target-gen --items <spar-items.json> --board <Pkg::Type.impl> --out <dir> [--reference <tsv> [--board-reference <tsv>]]
 //!
 //! Reads `spar items --format json` output, resolves the named board system
 //! implementation, and writes three DO-NOT-EDIT artifacts into <dir>:
@@ -44,14 +44,19 @@ fn main() {
         let tsv = std::fs::read_to_string(&r)
             .unwrap_or_else(|e| panic!("gust-target-gen: cannot read --reference `{r}`: {e}"));
         let reference = reference::parse(&tsv).unwrap_or_else(|e| panic!("gust-target-gen: {r}: {e}"));
-        let bad = reference::check(&target, &reference);
+        let mut bad = reference::check(&target, &reference);
+        if let Some(b) = arg("--board-reference") {
+            let tsv = std::fs::read_to_string(&b)
+                .unwrap_or_else(|e| panic!("gust-target-gen: cannot read --board-reference `{b}`: {e}"));
+            bad.extend(reference::check_board(&target, &tsv, &reference));
+        }
         if !bad.is_empty() {
             for b in &bad {
                 eprintln!("gust-target-gen: REFERENCE MISMATCH {b}");
             }
             std::process::exit(1);
         }
-        eprintln!("gust-target-gen: {stem}: every SoC device agrees with {r}");
+        eprintln!("gust-target-gen: {stem}: every SoC device (and board pin, when given) agrees with {r}");
     }
 
     let out = PathBuf::from(&out);

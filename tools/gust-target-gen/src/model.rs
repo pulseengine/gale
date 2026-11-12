@@ -226,11 +226,17 @@ pub fn parse_items(json: &str, board_impl: &str) -> Target {
             }
             "device" => devices.push(Device {
                 name: sub.classifier.clone(),
+                // A board LED or button is a pin, not a memory-mapped peripheral: it
+                // alone may omit Base (recorded as 0). Every other device must carry one.
                 base: base.unwrap_or_else(|| {
-                    panic!(
-                        "gust-target-gen: device subcomponent `{}` has no Base property",
-                        sub.name
-                    )
+                    if props.get("Board_Led") == Some(&1) || props.get("Board_Button") == Some(&1) {
+                        0
+                    } else {
+                        panic!(
+                            "gust-target-gen: device subcomponent `{}` has no Base property",
+                            sub.name
+                        )
+                    }
                 }),
                 present,
                 props,

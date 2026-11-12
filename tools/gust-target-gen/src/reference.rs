@@ -43,6 +43,12 @@ pub fn parse(tsv: &str) -> Result<BTreeMap<String, u32>, String> {
     Ok(out)
 }
 
+/// Board-level devices (user LEDs, buttons, the console) are checked against the
+/// board reference by `check_board`, not here.
+pub fn is_board(d: &crate::model::Device) -> bool {
+    ["Board_Led", "Board_Button", "Console"].iter().any(|k| d.props.get(*k) == Some(&1))
+}
+
 fn reference_name(device: &str) -> String {
     let up = device.to_ascii_uppercase();
     ALIASES
@@ -56,7 +62,7 @@ fn reference_name(device: &str) -> String {
 pub fn check(t: &Target, reference: &BTreeMap<String, u32>) -> Vec<String> {
     let mut bad = Vec::new();
     for d in &t.devices {
-        if d.base >= PPB {
+        if d.base >= PPB || is_board(d) {
             continue;
         }
         let r = reference_name(&d.name);
@@ -71,6 +77,74 @@ pub fn check(t: &Target, reference: &BTreeMap<String, u32>) -> Vec<String> {
             )),
             Some(_) => {}
         }
+    }
+    bad
+}
+
+
+/// Port letter to the model's number (A = 0).
+fn port(letter: &str) -> Option<u32> {
+    let c = letter.bytes().next()?;
+    c.is_ascii_uppercase().then(|| u32::from(c - b'A'))
+}
+
+/// `P9`-style pin split into (port, pin): "A9" -> (0, 9).
+fn port_pin(s: &str) -> Option<(u32, u32)> {
+    Some((port(&s[..1])?, s[1..].parse().ok()?))
+}
+
+/// Cross-check the board-level devices against targets/reference/<soc>.board.tsv:
+/// the sets of user LEDs and buttons (port, pin, active-low) must be equal, and
+/// there must be exactly one console whose TX/RX pins match and whose base is the
+/// reference base of the UART the board table names.
+pub fn check_board(t: &Target, board_tsv: &str, peripherals: &BTreeMap<String, u32>) -> Vec<String> {
+    use std::collections::BTreeSet;
+    let mut bad = Vec::new();
+    let (mut leds, mut buttons) = (BTreeSet::new(), BTreeSet::new());
+    let mut console: Option<(String, (u32, u32), (u32, u32))> = None;
+    for line in board_tsv.lines().filter(|l| !l.is_empty() && !l.starts_with('#')) {
+        let f: Vec<&str> = line.split('\t').collect();
+        if f.len() != 5 {
+            bad.push(format!("board reference: malformed line `{line}`"));
+            continue;
+        }
+        match f[0] {
+            "led" | "button" => {
+                let row = (port(f[2]).unwrap_or(99), f[3].parse::<u32>().unwrap_or(99), f[4] == "low");
+                if f[0] == "led" { leds.insert(row) } else { buttons.insert(row) };
+            }
+            "console" => match (port_pin(f[2]), port_pin(f[3])) {
+                (Some(tx), Some(rx)) => console = Some((f[1].to_string(), tx, rx)),
+                _ => bad.push(format!("board reference: bad console pins `{line}`")),
+            },
+            other => bad.push(format!("board reference: unknown kind `{other}`")),
+        }
+    }
+    let p = |d: &crate::model::Device, k: &str| d.props.get(k).copied().unwrap_or(u32::MAX);
+    let row = |d: &crate::model::Device| (p(d, "Gpio_Port"), p(d, "Gpio_Pin"), d.props.get("Active_Low") == Some(&1));
+    let model_leds: BTreeSet<_> = t.devices.iter().filter(|d| d.props.get("Board_Led") == Some(&1)).map(row).collect();
+    let model_buttons: BTreeSet<_> = t.devices.iter().filter(|d| d.props.get("Board_Button") == Some(&1)).map(row).collect();
+    if model_leds != leds {
+        bad.push(format!("{}: user LEDs {model_leds:?} != board reference {leds:?}", t.name));
+    }
+    if model_buttons != buttons {
+        bad.push(format!("{}: user buttons {model_buttons:?} != board reference {buttons:?}", t.name));
+    }
+    let consoles: Vec<_> = t.devices.iter().filter(|d| d.props.get("Console") == Some(&1)).collect();
+    match (consoles.as_slice(), &console) {
+        ([d], Some((uart, tx, rx))) => {
+            let mtx = (p(d, "Tx_Port"), p(d, "Tx_Pin"));
+            let mrx = (p(d, "Rx_Port"), p(d, "Rx_Pin"));
+            if (mtx, mrx) != (*tx, *rx) {
+                bad.push(format!("{}: console pins tx {mtx:?} rx {mrx:?} != board reference tx {tx:?} rx {rx:?}", t.name));
+            }
+            match peripherals.get(uart) {
+                Some(&b) if b == d.base => {}
+                Some(&b) => bad.push(format!("{}: console base 0x{:08X} != reference {uart} 0x{b:08X}", t.name, d.base)),
+                None => bad.push(format!("{}: board reference console `{uart}` is not a reference peripheral", t.name)),
+            }
+        }
+        (c, _) => bad.push(format!("{}: model has {} console device(s); board reference has {}", t.name, c.len(), u8::from(console.is_some()))),
     }
     bad
 }
@@ -117,6 +191,41 @@ mod tests {
         assert!(check(&target(&[("Mpu", 0xE000_ED90)]), &reference()).is_empty());
     }
 
+    fn board_target(led: (u32, u32, bool), console_base: u32) -> Target {
+        let mut t = target(&[]);
+        let mk = |name: &str, props: &[(&str, u32)], base: u32| Device {
+            name: name.into(),
+            base,
+            present: true,
+            props: props.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+        };
+        t.devices.push(mk("Ld", &[("Board_Led", 1), ("Gpio_Port", led.0), ("Gpio_Pin", led.1), ("Active_Low", u32::from(led.2))], 0));
+        t.devices.push(mk("Con", &[("Console", 1), ("Tx_Port", 0), ("Tx_Pin", 9), ("Rx_Port", 0), ("Rx_Pin", 10)], console_base));
+        t
+    }
+
+    const BOARD: &str = "# c\nled\tld\tC\t9\thigh\nconsole\tUSART1\tA9\tA10\t-\n";
+
+    #[test]
+    fn agreeing_board_passes() {
+        assert!(check_board(&board_target((2, 9, false), 0x4001_3800), BOARD, &reference()).is_empty());
+    }
+
+    #[test]
+    fn moved_led_fails() {
+        assert_eq!(check_board(&board_target((2, 8, false), 0x4001_3800), BOARD, &reference()).len(), 1);
+    }
+
+    #[test]
+    fn inverted_led_fails() {
+        assert_eq!(check_board(&board_target((2, 9, true), 0x4001_3800), BOARD, &reference()).len(), 1);
+    }
+
+    #[test]
+    fn console_on_wrong_uart_fails() {
+        assert_eq!(check_board(&board_target((2, 9, false), 0x4000_4400), BOARD, &reference()).len(), 1);
+    }
+
     #[test]
     fn empty_reference_refused() {
         assert!(parse("# only comments\n").is_err());
@@ -139,7 +248,14 @@ mod tests {
                 env!("CARGO_MANIFEST_DIR")
             ))
             .unwrap();
-            let bad = check(&t, &parse(&tsv).unwrap());
+            let peripherals = parse(&tsv).unwrap();
+            let mut bad = check(&t, &peripherals);
+            let board = std::fs::read_to_string(format!(
+                "{}/../../targets/reference/{stem}.board.tsv",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+            .unwrap();
+            bad.extend(check_board(&t, &board, &peripherals));
             assert!(bad.is_empty(), "{bad:?}");
         }
     }

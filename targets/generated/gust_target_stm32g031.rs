@@ -52,3 +52,11 @@ pub mod periph {
     pub const VREFINTCAL: u32 = 0x1FFF_75AA;
     pub const WWDG: u32 = 0x4000_2C00;
 }
+/// Board-level pins (targets/reference board table, cross-checked). Ports: A = 0.
+pub mod board {
+    pub const BOARD_CONSOLE_BASE: u32 = 0x4000_4400;
+    pub const BOARD_CONSOLE_TX: (u32, u32) = (0, 2);
+    pub const BOARD_CONSOLE_RX: (u32, u32) = (0, 3);
+    pub const LED_LD3: (u32, u32) = (2, 6);
+    pub const LED_LD3_ACTIVE_LOW: bool = false;
+}
