@@ -72,6 +72,20 @@ jobs:
           key: gust-renode-bazel-${{ hashFiles('os/gust/renode-test/MODULE.bazel') }}
           restore-keys: gust-renode-bazel-
 
+      # The images are built from the current source, not committed: on
+      # 2026-11-11 only 1 of 17 committed ELFs matched what main builds, so the
+      # gates were running binaries the source no longer produced.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          targets: thumbv7m-none-eabi
+
+      # From the repo root: under os/gust/, .cargo/config.toml sets the build target
+      # to thumbv7m and would build xtask itself for the microcontroller.
+      - name: Build the Renode images from source
+        working-directory: .
+        run: cargo xtask renode-elfs
+
       # ubuntu-22.04 ships bazelisk as `bazel`; it reads the root .bazelversion (9.1.0).
       - name: Run the M3 device-class + driver Renode tests
         run: |

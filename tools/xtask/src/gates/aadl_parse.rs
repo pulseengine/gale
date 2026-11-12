@@ -19,8 +19,7 @@
 //! the point of this gate is as much to keep them parsing as to surface the two
 //! that do not.
 //!
-//! LEDGER, both directions, same shape as object-freshness and
-//! fixture-freshness: a newly-unparseable model fails, AND a ledgered model
+//! LEDGER, both directions, same shape as object-freshness: a newly-unparseable model fails, AND a ledgered model
 //! that starts parsing fails until it is removed from the ledger -- so the list
 //! shrinks to empty when the models are fixed instead of outliving the problem.
 //!

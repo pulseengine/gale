@@ -134,7 +134,7 @@ jobs:
       - name: Negative control — an ungated target must be caught
         run: cargo xtask check renode-targets --self-test
 
-      - name: Every defined target is gated, and its ELF exists
+      - name: Every defined target is gated, and its image has a source bin
         run: cargo xtask check renode-targets
 
       # binaries.toml records why each committed binary exists and which file
@@ -425,25 +425,6 @@ jobs:
       - name: Hardcoded tool versions agree with varve.toml
         run: cargo xtask check pin-agreement
 
-  fixture-freshness:
-    name: "committed Renode ELF fixtures are not older than their sources"
-    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","rust-cpu"]') }}
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0        # the gate compares git commit dates
-
-      # The Renode targets are gale's main EXECUTION oracle, and BUILD.bazel
-      # hands renode_test a COMMITTED ELF that nothing rebuilds — measured at 11
-      # of 16 older than their own bin source, some by three months (gale#413).
-      # Found while regenerating a dissolved object for gale#411: without this,
-      # refreshing the object leaves the gate green about the OLD one.
-      - name: Negative control — the comparator, the ledger and the link derivation must bite
-        run: cargo xtask check fixture-freshness --self-test
-
-      - name: Committed Renode ELF fixtures are not older than their sources
-        run: cargo xtask check fixture-freshness
 
   object-freshness:
     name: "committed objects are not older than their sources"

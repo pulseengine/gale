@@ -5,6 +5,7 @@
 //! exits 2 with usage on stderr, and structured output is `--format json`.
 
 mod gates;
+mod renode_elfs;
 mod silicon;
 mod verdict;
 
@@ -21,6 +22,7 @@ fn usage() -> String {
            cargo xtask check <gate> [--self-test] [--module PATH] [--format json]\n  \
            cargo xtask check            list the gates\n  \
            cargo xtask silicon ...      gust firmware on physical boards (see `xtask silicon`)\n  \
+           cargo xtask renode-elfs              build the Renode test images from source (os/gust/renode-test)\n  \
            cargo xtask trusted-base [--out PATH | --write-doc]\n  \
                                         the trusted-base inventory as JSON (gale#467)\n\n\
          EXIT CODES:\n  \
@@ -67,6 +69,13 @@ fn main() {
             exit(EXIT_USAGE);
         };
         exit(silicon::main(&root, &args[1..]));
+    }
+    if args[0] == "renode-elfs" {
+        let Some(root) = repo_root() else {
+            eprintln!("xtask: not a git repository");
+            exit(EXIT_USAGE);
+        };
+        exit(renode_elfs::run(&root));
     }
     if args[0] == "trusted-base" {
         let Some(root) = repo_root() else {

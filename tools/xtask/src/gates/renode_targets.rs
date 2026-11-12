@@ -80,18 +80,22 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
 
     // A target whose ELF is absent cannot run even when listed -- that is how
     // gust-iso-renode stayed invisible. Checked separately from gating.
-    let dir = bp.parent().unwrap_or(repo);
     let mut missing_elf = Vec::new();
     let mut rest = build.as_str();
     while let Some(p) = rest.find("renode_test(") {
         let after = &rest[p..];
         let block_end = after.find("\n)").map(|e| e + 2).unwrap_or(after.len());
         let block = &after[..block_end];
-        if let (Some(np), Some(ep)) = (block.find("name = \""), block.find("\"ELF\": \":")) {
+        if let Some(np) = block.find("name = \"") {
             let name = block[np + 8..].split('"').next().unwrap_or("").to_string();
-            let elf = block[ep + 9..].split('"').next().unwrap_or("").to_string();
-            if !elf.is_empty() && !dir.join(&elf).is_file() {
-                missing_elf.push(format!("{name} -> {elf}"));
+            // The images are built from source (`cargo xtask renode-elfs`), not
+            // committed, so the check is that the bin producing each one exists.
+            // Every `:<name>.elf` label counts (ELF, ELF0, ELF1, ...).
+            for stem in crate::renode_elfs::elf_stems(block) {
+                let src = crate::renode_elfs::source_for(&stem);
+                if !repo.join(&src).is_file() {
+                    missing_elf.push(format!("{name} -> {stem}.elf (no source {})", src.display()));
+                }
             }
         }
         rest = &after[block_end.max(1)..];
@@ -106,7 +110,7 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
         failed = true;
     }
     if !missing_elf.is_empty() {
-        lines.push(format!("FAIL: {} target(s) reference an ELF that does not exist:", missing_elf.len()));
+        lines.push(format!("FAIL: {} target(s) reference an ELF whose source bin does not exist:", missing_elf.len()));
         lines.extend(missing_elf.iter().map(|m| format!("  {m}")));
         failed = true;
     }
