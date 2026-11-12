@@ -127,8 +127,6 @@ KNOWN_STALE = {
     "wdg-thin/wdg-thin-cm3.o",
     # crate-adjacent: object predates its own source
     "dma-own/dma-own-cm3.o",
-    "spawn-provider/spawn-provider-cm3.o",
-    "timer-provider/timer-provider-cm3.o",
     # crate-adjacent: object predates the 2026.10.1 toolchain pin (varve.toml, 2026-10-01) and nothing
     # else (gale#438). DATE-stale only: not rebuilt, so whether the pinned synth
     # produces different bytes is NOT measured -- the ledger records that the

@@ -8,7 +8,7 @@
 //! ```text
 //! 10 files fully discharged
 //!  3 files ENTIRELY admitted -- 74 theorems, zero Qed
-//!  1 file EMPTY (heap_proofs.v, 0 bytes) but still a named CI target
+//!  1 file EMPTY (heap_proofs.v, 0 bytes) but still a named CI target -- since deleted, with its target
 //! ```
 //!
 //! Ported from tools/check-proof-completeness.py (gale#368). It does NOT demand
@@ -32,7 +32,7 @@ const ADMITTED_LEDGER: &[(&str, usize)] = &[
 
 /// Empty proof files that are nonetheless named CI targets. An empty file passes
 /// `coqc` trivially, so a target pointing at one is a green check over nothing.
-const EMPTY_LEDGER: &[&str] = &["heap_proofs.v"];
+const EMPTY_LEDGER: &[&str] = &[];
 
 /// A line-initial `Admitted.` / `admit.` tactic.
 ///

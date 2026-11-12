@@ -226,8 +226,6 @@ def main() -> int:
         "os-node/os-time-cm3.o",
         "os-node/os-tl-cm3.o",
         "os-node/os-ts-cm3.o",
-        "spawn-provider/spawn-provider-cm3.o",
-        "timer-provider/timer-provider-cm3.o",
     }
     gated_dirs = {d.name for d in drivers}
     found, stray = set(), []
