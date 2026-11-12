@@ -38,7 +38,20 @@ def main(src: str) -> int:
             "# name\tbase",
         ] + [f"{n}\t0x{a:08X}" for n, a in rows]
         (out / f"{soc}.peripherals.tsv").write_text("\n".join(lines) + "\n")
-        print(f"{soc}: {len(rows)} peripherals")
+        # Pin muxing: which pin can carry which peripheral signal, and through which
+        # alternate function (`-` on the F1, which remaps instead of numbering AFs).
+        pins = sorted(
+            (p["name"], q["signal"], q["pin"], "-" if q.get("af") is None else str(q["af"]))
+            for p in core["peripherals"]
+            for q in p.get("pins", [])
+        )
+        plines = [
+            f"# {chip} pin functions, from {REPO}@{COMMIT} data/chips/{chip}.json (sha256 {got}).",
+            "# Reference only, like <soc>.peripherals.tsv. Regenerate with import.py, never by hand.",
+            "# peripheral\tsignal\tpin\taf",
+        ] + ["\t".join(r) for r in pins]
+        (out / f"{soc}.pins.tsv").write_text("\n".join(plines) + "\n")
+        print(f"{soc}: {len(rows)} peripherals, {len(pins)} pin functions")
     return 0
 
 if __name__ == "__main__":
