@@ -12,7 +12,9 @@
 //! `LEDGER`, and the ledger is two-sided: an entry whose literal is gone fails
 //! until it is removed, so the list only shrinks as the models grow.
 //!
-//! Blind spots, stated: an address built arithmetically (`BASE + 0x400`) or
+//! Blind spots, stated: a literal passes if its block is modelled for ANY target,
+//! because a binary does not declare its chip; an accidental cross-chip match is
+//! pinned in `PINNED` once found, but nothing finds a new one. An address built arithmetically (`BASE + 0x400`) or
 //! written in decimal is not a literal this sees; architecture addresses
 //! (0xE000_xxxx, the PPB) are out of range by design, they belong to
 //! ports/arch; and a literal inside a modelled block passes even if it names the
@@ -33,11 +35,6 @@ const GENERATED: &str = "targets/generated";
 /// (file, literal, why it is not (yet) modelled). Remove an entry when its
 /// literal is modelled or gone; the gate fails on a stale entry.
 const LEDGER: &[(&str, u32, &str)] = &[
-    ("os/gust/src/bin/gust_can.rs", 0x4000_6400, "bxCAN window of the Renode gate .repl; not modelled (the F100 value line has no bxCAN)"),
-    ("os/gust/src/bin/gust_dac.rs", 0x4000_7400, "DAC; not yet in the F100 model"),
-    ("os/gust/src/bin/gust_dma.rs", 0x4002_0000, "DMA1; not yet in the F100 model"),
-    ("os/gust/src/bin/gust_i2c.rs", 0x4000_5400, "I2C1; not yet in the F100 model"),
-    ("os/gust/src/bin/gust_pwm.rs", 0x4001_2C00, "TIM1; not yet in the F100 model"),
     ("os/gust/src/bin/gust_priv_region_probe.rs", 0x5157_2A10, "a magic value, not an address"),
     ("os/gust/src/bin/gust_two_tenant.rs", 0x51AE_0010, "a step marker, not an address"),
     ("os/gust/src/bin/gust_two_tenant.rs", 0x51AE_0011, "a step marker, not an address"),
@@ -46,6 +43,16 @@ const LEDGER: &[(&str, u32, &str)] = &[
     ("os/gust/src/bin/mpu_spike_renode.rs", 0x51AE_0002, "a step marker, not an address"),
     ("os/gust/src/bin/mpu_spike_renode.rs", 0x51AE_0003, "a step marker, not an address"),
 ];
+
+/// Literals that DO fall in a modelled block, but only by accident: the block is
+/// modelled for a different chip than the one the code means. The gate matches a
+/// block on ANY target (a binary does not declare its chip), so these are pinned
+/// by hand: each is valid while its literal exists, and fails once it is gone.
+const PINNED: &[(&str, u32, &str)] = &[(
+    "os/gust/src/bin/gust_can.rs",
+    0x4000_6400,
+    "F1-style bxCAN window of the Renode gate .repl; the block is modelled only as the G474's FDCAN1, a different controller, and the F100 has no CAN",
+)];
 
 /// Hex literals (`0x` + 8 digits, `_` allowed) in a line's code, i.e. before `//`.
 pub fn literals(line: &str) -> Vec<u64> {
@@ -83,11 +90,18 @@ fn in_range(v: u64) -> bool {
 }
 
 /// The decision, separated from I/O for the self-test. `code` is (file, line no, text).
-pub fn judge(modelled: &BTreeSet<u64>, code: &[(String, usize, String)], ledger: &[(&str, u32, &str)]) -> Vec<String> {
+pub fn judge(
+    modelled: &BTreeSet<u64>,
+    code: &[(String, usize, String)],
+    ledger: &[(&str, u32, &str)],
+    pinned: &[(&str, u32, &str)],
+) -> Vec<String> {
     let mut bad = Vec::new();
     let mut found: BTreeSet<(String, u64)> = BTreeSet::new();
+    let mut present: BTreeSet<(String, u64)> = BTreeSet::new();
     for (f, n, text) in code {
         for v in literals(text).into_iter().filter(|v| in_range(*v)) {
+            present.insert((f.clone(), v));
             if modelled.contains(&(v >> 10)) {
                 continue;
             }
@@ -100,6 +114,11 @@ pub fn judge(modelled: &BTreeSet<u64>, code: &[(String, usize, String)], ledger:
     for (lf, lv, _) in ledger {
         if !found.contains(&(lf.to_string(), u64::from(*lv))) {
             bad.push(format!("ledger entry {lf} 0x{lv:08X} no longer matches an unmodelled literal -- remove it"));
+        }
+    }
+    for (pf, pv, _) in pinned {
+        if !present.contains(&(pf.to_string(), u64::from(*pv))) {
+            bad.push(format!("pinned entry {pf} 0x{pv:08X} no longer matches a literal -- remove it"));
         }
     }
     bad
@@ -139,12 +158,13 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
             code.push((f.clone(), i + 1, line.to_string()));
         }
     }
-    let bad = judge(&modelled, &code, LEDGER);
+    let bad = judge(&modelled, &code, LEDGER, PINNED);
     let mut lines = vec![format!(
-        "{} modelled 1 KiB peripheral block(s); {} source line(s) scanned; {} ledgered literal(s)",
+        "{} modelled 1 KiB peripheral block(s); {} source line(s) scanned; {} ledgered, {} pinned literal(s)",
         modelled.len(),
         code.len(),
-        LEDGER.len()
+        LEDGER.len(),
+        PINNED.len()
     )];
     if bad.is_empty() {
         lines.push("PASS".into());
@@ -170,11 +190,13 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
     ck("literal in a comment ignored", literals("let x = 1; // 0x4000_5400").is_empty());
     ck("short hex not an address", literals("let m = 0x80;").is_empty());
     ck("identifier tail not a literal", literals("let a0x40005400 = 1;").is_empty());
-    ck("modelled block passes", judge(&modelled, &c("const U: u32 = 0x4001_3804;"), &[]).is_empty());
-    ck("unmodelled literal fails", judge(&modelled, &c("const I: u32 = 0x4000_5400;"), &[]).len() == 1);
-    ck("ledgered literal passes", judge(&modelled, &c("const I: u32 = 0x4000_5400;"), &[("a.rs", 0x4000_5400, "w")]).is_empty());
-    ck("stale ledger entry fails", judge(&modelled, &c("let x = 0;"), &[("a.rs", 0x4000_5400, "w")]).len() == 1);
-    ck("out-of-range literal ignored", judge(&modelled, &c("const S: u32 = 0xE000_ED90;"), &[]).is_empty());
+    ck("modelled block passes", judge(&modelled, &c("const U: u32 = 0x4001_3804;"), &[], &[]).is_empty());
+    ck("unmodelled literal fails", judge(&modelled, &c("const I: u32 = 0x4000_5400;"), &[], &[]).len() == 1);
+    ck("ledgered literal passes", judge(&modelled, &c("const I: u32 = 0x4000_5400;"), &[("a.rs", 0x4000_5400, "w")], &[]).is_empty());
+    ck("stale ledger entry fails", judge(&modelled, &c("let x = 0;"), &[("a.rs", 0x4000_5400, "w")], &[]).len() == 1);
+    ck("pinned entry with its literal passes", judge(&modelled, &c("const U: u32 = 0x4001_3800;"), &[], &[("a.rs", 0x4001_3800, "w")]).is_empty());
+    ck("pinned entry without its literal fails", judge(&modelled, &c("let x = 0;"), &[], &[("a.rs", 0x4001_3800, "w")]).len() == 1);
+    ck("out-of-range literal ignored", judge(&modelled, &c("const S: u32 = 0xE000_ED90;"), &[], &[]).is_empty());
     if ok {
         lines.push("PASS".into());
         Verdict::Pass(lines)

@@ -88,6 +88,9 @@ fn read_props(properties: &[RawProperty]) -> (Option<u32>, bool, BTreeMap<String
         } else if let Some(b) = p.as_boolean() {
             if key == "Present" {
                 present = b;
+            } else {
+                // Other boolean flags (Address_Only) ride in `props` as 0/1.
+                props.insert(key.to_string(), u32::from(b));
             }
         }
     }

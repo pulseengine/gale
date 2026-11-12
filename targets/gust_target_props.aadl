@@ -2,6 +2,10 @@ property set Gust_Target_Props is
   Base           : aadlinteger applies to (memory, device);
   Length         : aadlinteger applies to (memory);
   Present        : aadlboolean applies to (device);
+  -- Imported from targets/reference (vendor-derived, cross-checked): the model carries
+  -- its base for completeness, but no driver claims it, so it gets an address constant
+  -- (target::periph::NAME) and NO gust:hal capability until a driver models it fully.
+  Address_Only   : aadlboolean applies to (device);
   Csr_Offset     : aadlinteger applies to (device);  -- RCC_CSR offset from RCC base
   Apb2enr_Offset : aadlinteger applies to (device);  -- RCC_APB2ENR offset from RCC base
   Iwdgrstf_Bit   : aadlinteger applies to (device);  -- bit index of the IWDG reset flag

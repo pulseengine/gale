@@ -162,9 +162,35 @@ pub fn emit_rs(t: &Target) -> String {
         ));
     }
 
+    // Address-only peripherals: imported from targets/reference and cross-checked
+    // against it, but claimed by no driver yet. Base only, in their own module so a
+    // reference name (e.g. FLASH, the flash CONTROLLER) cannot collide with a modelled
+    // const (FLASH_BASE, the flash MEMORY), and so a use of one reads as what it is.
+    let mut addr_only: Vec<&crate::model::Device> = t
+        .devices
+        .iter()
+        .filter(|d| d.props.get("Address_Only") == Some(&1))
+        .collect();
+    addr_only.sort_by(|a, b| a.name.cmp(&b.name));
+    if !addr_only.is_empty() {
+        out.push_str("/// Address-only peripherals (targets/reference, cross-checked); no driver claims these yet.\n");
+        out.push_str("pub mod periph {\n");
+        for d in addr_only {
+            out.push_str(&format!(
+                "    pub const {}: u32 = {};\n",
+                d.name.to_ascii_uppercase(),
+                hex(d.base)
+            ));
+        }
+        out.push_str("}\n");
+    }
+
     // Peripherals whose bases the board's model carries (see PERIPHERALS).
     for (dev, prefix, regs) in PERIPHERALS {
-        if let Some(d) = device_opt(t, dev) {
+        // An Address_Only import is cross-checked for its base only; it must not
+        // pass as a hand-modelled peripheral (that would hand the G4 F1-layout
+        // register names it has no proven offsets for). It lives in `periph`.
+        if let Some(d) = device_opt(t, dev).filter(|d| d.props.get("Address_Only") != Some(&1)) {
             out.push_str(&format!(
                 "pub const {prefix}_BASE: u32 = {base};\n",
                 base = hex(d.base)
