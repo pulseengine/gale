@@ -20,8 +20,43 @@ use std::path::Path;
 
 pub const NAME: &str = "renode-targets";
 
-const BUILD: &str = "os/gust/renode-test/BUILD.bazel";
-const WORKFLOW: &str = ".github/workflows/gust-renode.yml";
+/// Every committed BUILD file that declares `renode_test`, mapped to the
+/// workflow that runs its targets. This was a single hardcoded BUILD path, and
+/// the gate was blind to `renode/BUILD.bazel` -- three targets pointing at ELFs
+/// that never existed, in a package whose rule set the root MODULE.bazel had
+/// already removed (gale#387). A gate scoped to one file, auditing a defect
+/// class that exists in two. The census below makes an unmapped BUILD file a
+/// failure instead of a blind spot.
+const SUITES: &[(&str, &str)] = &[(
+    "os/gust/renode-test/BUILD.bazel",
+    ".github/workflows/gust-renode.yml",
+)];
+
+/// Committed BUILD files that declare a `renode_test` rule.
+fn declaring_builds(repo: &Path) -> Option<Vec<String>> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["ls-files", "--", "BUILD", "BUILD.bazel", "**/BUILD", "**/BUILD.bazel"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let mut v: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .filter(|l| {
+            std::fs::read_to_string(repo.join(l))
+                .map(|t| !defined_targets(&t).is_empty())
+                .unwrap_or(false)
+        })
+        .map(String::from)
+        .collect();
+    v.sort();
+    Some(v)
+}
 
 /// `renode_test(\n    name = "X"` -- the rule's own declaration, not any mention.
 fn defined_targets(build: &str) -> Vec<String> {
@@ -62,63 +97,120 @@ fn gated_targets(wf: &str) -> Vec<String> {
 }
 
 pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
-    let (bp, wp) = (repo.join(BUILD), repo.join(WORKFLOW));
-    let Ok(build) = std::fs::read_to_string(&bp) else {
-        return Verdict::Refused(format!("cannot read {}", bp.display()));
+    let Some(builds) = declaring_builds(repo) else {
+        return Verdict::Refused("git ls-files failed -- the gate cannot answer".into());
     };
-    let Ok(wf) = std::fs::read_to_string(&wp) else {
-        return Verdict::Refused(format!("cannot read {}", wp.display()));
-    };
-    let defined = defined_targets(&build);
-    if defined.is_empty() {
+    if builds.is_empty() {
         return Verdict::Refused("no renode_test targets found -- the sweep would be vacuous".into());
     }
-    let gated = gated_targets(&wf);
-
     let mut lines = Vec::new();
-    let ungated: Vec<&String> = defined.iter().filter(|d| !gated.contains(d)).collect();
-
-    // A target whose ELF is absent cannot run even when listed -- that is how
-    // gust-iso-renode stayed invisible. Checked separately from gating.
-    let mut missing_elf = Vec::new();
-    let mut rest = build.as_str();
-    while let Some(p) = rest.find("renode_test(") {
-        let after = &rest[p..];
-        let block_end = after.find("\n)").map(|e| e + 2).unwrap_or(after.len());
-        let block = &after[..block_end];
-        if let Some(np) = block.find("name = \"") {
-            let name = block[np + 8..].split('"').next().unwrap_or("").to_string();
-            // The images are built from source (`cargo xtask renode-elfs`), not
-            // committed, so the check is that the bin producing each one exists.
-            // Every `:<name>.elf` label counts (ELF, ELF0, ELF1, ...).
-            for stem in crate::renode_elfs::elf_stems(block) {
-                let src = crate::renode_elfs::source_for(&stem);
-                if !repo.join(&src).is_file() {
-                    missing_elf.push(format!("{name} -> {stem}.elf (no source {})", src.display()));
-                }
-            }
-        }
-        rest = &after[block_end.max(1)..];
-    }
-
-    lines.push(format!("{} renode_test target(s) defined, {} gated", defined.len(), defined.len() - ungated.len()));
     let mut failed = false;
-    if !ungated.is_empty() {
-        lines.push(format!("FAIL: {} defined but NOT run by CI:", ungated.len()));
-        lines.extend(ungated.iter().map(|u| format!("  {u}")));
-        lines.push("Add it to the target list in gust-renode.yml, or delete the target.".into());
+
+    // Census: a BUILD file declaring renode_test that no workflow is mapped to.
+    let unmapped: Vec<&String> =
+        builds.iter().filter(|b| !SUITES.iter().any(|(s, _)| s == b)).collect();
+    if !unmapped.is_empty() {
+        lines.push(format!(
+            "FAIL: {} BUILD file(s) declare renode_test with no workflow mapped to run them:",
+            unmapped.len()
+        ));
+        lines.extend(unmapped.iter().map(|u| format!("  {u}")));
+        lines.push("Map it in SUITES with the workflow that runs it, or delete the targets.".into());
         failed = true;
     }
-    if !missing_elf.is_empty() {
-        lines.push(format!("FAIL: {} target(s) reference an ELF whose source bin does not exist:", missing_elf.len()));
-        lines.extend(missing_elf.iter().map(|m| format!("  {m}")));
-        failed = true;
+    for (b, _) in SUITES {
+        if !builds.iter().any(|x| x == b) {
+            lines.push(format!("FAIL: SUITES lists {b}, which declares no renode_test (remove it)"));
+            failed = true;
+        }
+    }
+
+    for b in &builds {
+        let bp = repo.join(b);
+        let Ok(build) = std::fs::read_to_string(&bp) else {
+            return Verdict::Refused(format!("cannot read {}", bp.display()));
+        };
+        let defined = defined_targets(&build);
+        let wf_path = SUITES.iter().find(|(s, _)| s == b).map(|(_, w)| *w);
+        let gated = match wf_path {
+            Some(w) => match std::fs::read_to_string(repo.join(w)) {
+                Ok(t) => gated_targets(&t),
+                Err(_) => return Verdict::Refused(format!("cannot read {w}")),
+            },
+            None => Vec::new(),
+        };
+        let ungated: Vec<&String> = defined.iter().filter(|d| !gated.contains(d)).collect();
+        lines.push(format!(
+            "{b}: {} renode_test target(s) defined, {} gated",
+            defined.len(),
+            defined.len() - ungated.len()
+        ));
+        if wf_path.is_some() && !ungated.is_empty() {
+            lines.push(format!("FAIL: {} defined but NOT run by CI:", ungated.len()));
+            lines.extend(ungated.iter().map(|u| format!("  {u}")));
+            lines.push("Add it to the workflow's target list, or delete the target.".into());
+            failed = true;
+        }
+        // A target whose ELF is absent cannot run even when listed -- that is how
+        // gust-iso-renode stayed invisible. Checked separately from gating.
+        let from_source = b == &format!("{}/BUILD.bazel", crate::renode_elfs::RENODE);
+        let missing = missing_elfs(&build, bp.parent().unwrap_or(repo), repo, from_source);
+        if !missing.is_empty() {
+            lines.push(format!(
+                "FAIL: {} target(s) in {b} reference an image that cannot exist:",
+                missing.len()
+            ));
+            lines.extend(missing.iter().map(|m| format!("  {m}")));
+            failed = true;
+        }
     }
     if failed {
         Verdict::Fail(lines)
     } else {
         Verdict::Pass(lines)
     }
+}
+
+/// Every quoted value ending in `.elf` inside each renode_test block -- `ELF`,
+/// `ELF0`/`ELF1`, `:label` or plain path alike. Matching only `"ELF": "` missed
+/// the 2-core target's ELF0/ELF1 images entirely.
+fn elf_refs(block: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for part in block.split('"').skip(1).step_by(2) {
+        if part.ends_with(".elf") {
+            out.push(part.trim_start_matches(':').to_string());
+        }
+    }
+    out
+}
+
+/// A referenced image that cannot exist when the target runs. For the gust suite
+/// the images are built from source (`cargo xtask renode-elfs`), so the bin that
+/// produces each one must exist; for any other suite the file itself must.
+fn missing_elfs(build: &str, dir: &Path, repo: &Path, built_from_source: bool) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = build;
+    while let Some(p) = rest.find("renode_test(") {
+        let after = &rest[p..];
+        let block_end = after.find("\n)").map(|e| e + 2).unwrap_or(after.len());
+        let block = &after[..block_end];
+        if let Some(np) = block.find("name = \"") {
+            let name = block[np + 8..].split('"').next().unwrap_or("").to_string();
+            for elf in elf_refs(block) {
+                if built_from_source {
+                    let stem = elf.strip_suffix(".elf").unwrap_or(&elf);
+                    let src = crate::renode_elfs::source_for(stem);
+                    if !repo.join(&src).is_file() {
+                        out.push(format!("{name} -> {elf} (no source {})", src.display()));
+                    }
+                } else if !dir.join(&elf).is_file() {
+                    out.push(format!("{name} -> {elf}"));
+                }
+            }
+        }
+        rest = &after[block_end.max(1)..];
+    }
+    out
 }
 
 pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
@@ -137,5 +229,20 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
     // A mention that is not a rule declaration must not count as defined.
     ck("comment mentioning renode_test not counted",
        defined_targets("# see renode_test( above\n").is_empty());
+    // Both ELF spellings are checked (the first version saw only `":label`).
+    let tmp = std::env::temp_dir();
+    let lab = "renode_test(\n    name = \"x\",\n    variables_with_label = {\n        \"ELF\": \":nope-label.elf\",\n    },\n)\n";
+    let pth = "renode_test(\n    name = \"y\",\n    variables_with_label = {\n        \"ELF\": \"elfs/nope-path.elf\",\n    },\n)\n";
+    ck("a missing :label ELF is reported", missing_elfs(lab, &tmp, &tmp, false).len() == 1);
+    ck("a missing plain-path ELF is reported", missing_elfs(pth, &tmp, &tmp, false).len() == 1);
+    let two = "renode_test(\n    name = \"z\",\n    variables_with_label = {\n        \"ELF0\": \":a.elf\",\n        \"ELF1\": \":b.elf\",\n    },\n)\n";
+    ck("ELF0/ELF1 images are both checked", missing_elfs(two, &tmp, &tmp, false).len() == 2);
+    ck("a built-from-source image with no source bin is reported",
+       missing_elfs(lab, &tmp, &tmp, true).len() == 1);
+    // The census must see more than the one file it used to hardcode.
+    match declaring_builds(_repo) {
+        Some(b) => ck("the census finds the hardcoded suite", b.iter().any(|x| x == SUITES[0].0)),
+        None => ck("declaring_builds could not run", false),
+    }
     if broken { Verdict::Fail(lines) } else { Verdict::Pass(lines) }
 }
