@@ -137,6 +137,15 @@ jobs:
       - name: Every defined target is gated, and its ELF exists
         run: cargo xtask check renode-targets
 
+      # binaries.toml records why each committed binary exists and which file
+      # reads it. An unlisted binary, or a consumer that stopped naming its
+      # binary, is red: a binary nothing reads is deleted, not kept.
+      - name: Negative control — an unlisted binary must be caught
+        run: cargo xtask check binary-ledger --self-test
+
+      - name: Every committed binary has a reason and a live consumer
+        run: cargo xtask check binary-ledger
+
   zephyr-fork-pin:
     # The pinned pulseengine/zephyr revision must still be REACHABLE from the branch
     # gale takes fork changes on. CI used to clone that branch by name, so a run's

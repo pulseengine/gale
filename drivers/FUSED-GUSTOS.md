@@ -314,5 +314,7 @@ Read this section before repeating any claim from this file.
   edited, so its proofs stand exactly as before; nothing here proves anything new
   about its contents. What changed is which components may hold its state.
 - **Checked-in objects are stale by choice.** `os-node/os-ts-cm3.o`,
-  `spawn-provider-cm3.o` and `timer-provider-cm3.o` were NOT regenerated, so they and
-  the probes that link them reflect the pre-change composition.
+  `spawn-provider-cm3.o` and `timer-provider-cm3.o` were NOT regenerated. Nothing linked or
+  ran the two provider objects, so they are no longer committed (binaries.toml); rebuild
+  them with the commands in each RESULTS.md. `os-ts-cm3.o` and the probes that link it
+  reflect the pre-change composition.
