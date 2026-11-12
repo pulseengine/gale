@@ -81,12 +81,17 @@ dependencies = [
  "cortex-m-semihosting",
  "gale",
  "gust-armv7m",
+ "gust-baremetal",
  "kiln-async",
  "panic-halt",
 ]
 
 [[package]]
 name = "gust-armv7m"
+version = "0.1.0"
+
+[[package]]
+name = "gust-baremetal"
 version = "0.1.0"
 
 [[package]]
