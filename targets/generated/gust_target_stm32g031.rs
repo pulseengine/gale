@@ -11,3 +11,52 @@ pub const SRAM_BASE: u32 = 0x2000_0000;
 pub const SRAM_LEN: u32 = 8192;
 pub const MPU_PRESENT: bool = true;
 pub const MPU_DREGION: u32 = 8;
+/// Address-only peripherals (targets/reference, cross-checked); no driver claims these yet.
+pub mod periph {
+    pub const ADC1: u32 = 0x4001_2400;
+    pub const ADC1_COMMON: u32 = 0x4001_2708;
+    pub const CRC: u32 = 0x4002_3000;
+    pub const DBGMCU: u32 = 0x4001_5800;
+    pub const DMA1: u32 = 0x4002_0000;
+    pub const DMAMUX1: u32 = 0x4002_0800;
+    pub const EXTI: u32 = 0x4002_1800;
+    pub const FLASH: u32 = 0x4002_2000;
+    pub const GPIOA: u32 = 0x5000_0000;
+    pub const GPIOB: u32 = 0x5000_0400;
+    pub const GPIOC: u32 = 0x5000_0800;
+    pub const GPIOD: u32 = 0x5000_0C00;
+    pub const GPIOF: u32 = 0x5000_1400;
+    pub const I2C1: u32 = 0x4000_5400;
+    pub const I2C2: u32 = 0x4000_5800;
+    pub const LPTIM1: u32 = 0x4000_7C00;
+    pub const LPTIM2: u32 = 0x4000_9400;
+    pub const LPUART1: u32 = 0x4000_8000;
+    pub const PWR: u32 = 0x4000_7000;
+    pub const RTC: u32 = 0x4000_2800;
+    pub const SPI1: u32 = 0x4001_3000;
+    pub const SPI2: u32 = 0x4000_3800;
+    pub const SYSCFG: u32 = 0x4001_0000;
+    pub const TAMP: u32 = 0x4000_B000;
+    pub const TIM1: u32 = 0x4001_2C00;
+    pub const TIM14: u32 = 0x4000_2000;
+    pub const TIM16: u32 = 0x4001_4400;
+    pub const TIM17: u32 = 0x4001_4800;
+    pub const TIM2: u32 = 0x4000_0000;
+    pub const TIM3: u32 = 0x4000_0400;
+    pub const TS_CAL1: u32 = 0x1FFF_75A8;
+    pub const TS_CAL2: u32 = 0x1FFF_75CA;
+    pub const UID: u32 = 0x1FFF_7590;
+    pub const USART1: u32 = 0x4001_3800;
+    pub const USART2: u32 = 0x4000_4400;
+    pub const VREFBUF: u32 = 0x4001_0030;
+    pub const VREFINTCAL: u32 = 0x1FFF_75AA;
+    pub const WWDG: u32 = 0x4000_2C00;
+}
+/// Board-level pins (targets/reference board table, cross-checked). Ports: A = 0.
+pub mod board {
+    pub const BOARD_CONSOLE_BASE: u32 = 0x4000_4400;
+    pub const BOARD_CONSOLE_TX: (u32, u32) = (0, 2);
+    pub const BOARD_CONSOLE_RX: (u32, u32) = (0, 3);
+    pub const LED_LD3: (u32, u32) = (2, 6);
+    pub const LED_LD3_ACTIVE_LOW: bool = false;
+}

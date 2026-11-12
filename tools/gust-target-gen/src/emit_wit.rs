@@ -57,6 +57,10 @@ pub fn emit_wit(t: &Target) -> String {
         .devices
         .iter()
         .filter(|d| d.present)
+        // Address-only devices (targets/reference imports) grant no gust:hal capability;
+        // the unknown-class panic below still guards every device a driver models.
+        .filter(|d| d.props.get("Address_Only") != Some(&1))
+        .filter(|d| !crate::reference::is_board(d))
         .map(|d| d.name.to_lowercase())
         .collect();
 

@@ -1,0 +1,11 @@
+# nucleo_wb55rg board pins, from pulseengine/zephyr@9550d256a582f4a19bc5bee650310b29a606c64b boards/st/nucleo_wb55rg/nucleo_wb55rg.dts (sha256 3ac719a7554fd8b5052adfefd026a692c3294da402dd9961846e40895549610d).
+# Facts only (the devicetree is not vendored). Reference: targets/*.aadl is authoritative;
+# gust-target-gen --board-reference cross-checks it. Regenerate with import_boards.py.
+# kind	name	port|tx	pin|rx	active
+led	led_0	B	5	high
+led	led_1	B	0	high
+led	led_2	B	1	high
+button	button_0	C	4	low
+button	button_1	D	0	low
+button	button_2	D	1	low
+console	USART1	B6	B7	-

@@ -1,7 +1,7 @@
 //! gust-target-gen — generate per-target constants, linker memory maps, and
 //! gust:hal WIT worlds from a spar/AADL hardware model.
 //!
-//!   gust-target-gen --items <spar-items.json> --board <Pkg::Type.impl> --out <dir>
+//!   gust-target-gen --items <spar-items.json> --board <Pkg::Type.impl> --out <dir> [--reference <tsv> [--board-reference <tsv>]]
 //!
 //! Reads `spar items --format json` output, resolves the named board system
 //! implementation, and writes three DO-NOT-EDIT artifacts into <dir>:
@@ -13,6 +13,7 @@ mod emit_ld;
 mod emit_rs;
 mod emit_wit;
 mod model;
+mod reference;
 
 use std::path::PathBuf;
 
@@ -36,6 +37,27 @@ fn main() {
         .unwrap_or_else(|e| panic!("gust-target-gen: cannot read --items `{items}`: {e}"));
     let target = model::parse_items(&json, &board);
     let stem = board.split("::").next().unwrap_or(&board).to_lowercase();
+
+    // Cross-check against the pinned vendor-derived reference before writing anything:
+    // a model that disagrees with it must not regenerate quietly.
+    if let Some(r) = arg("--reference") {
+        let tsv = std::fs::read_to_string(&r)
+            .unwrap_or_else(|e| panic!("gust-target-gen: cannot read --reference `{r}`: {e}"));
+        let reference = reference::parse(&tsv).unwrap_or_else(|e| panic!("gust-target-gen: {r}: {e}"));
+        let mut bad = reference::check(&target, &reference);
+        if let Some(b) = arg("--board-reference") {
+            let tsv = std::fs::read_to_string(&b)
+                .unwrap_or_else(|e| panic!("gust-target-gen: cannot read --board-reference `{b}`: {e}"));
+            bad.extend(reference::check_board(&target, &tsv, &reference));
+        }
+        if !bad.is_empty() {
+            for b in &bad {
+                eprintln!("gust-target-gen: REFERENCE MISMATCH {b}");
+            }
+            std::process::exit(1);
+        }
+        eprintln!("gust-target-gen: {stem}: every SoC device (and board pin, when given) agrees with {r}");
+    }
 
     let out = PathBuf::from(&out);
     std::fs::create_dir_all(&out).expect("gust-target-gen: cannot create --out dir");

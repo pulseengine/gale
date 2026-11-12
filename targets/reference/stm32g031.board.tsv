@@ -1,0 +1,6 @@
+# nucleo_g031k8 board pins, from pulseengine/zephyr@9550d256a582f4a19bc5bee650310b29a606c64b boards/st/nucleo_g031k8/nucleo_g031k8.dts (sha256 dedff17ac9a86e1d7cfdd0afa42b11a31ee443f4bb8abe10005413203a7dd565).
+# Facts only (the devicetree is not vendored). Reference: targets/*.aadl is authoritative;
+# gust-target-gen --board-reference cross-checks it. Regenerate with import_boards.py.
+# kind	name	port|tx	pin|rx	active
+led	led_3	C	6	high
+console	USART2	A2	A3	-

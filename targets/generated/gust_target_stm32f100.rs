@@ -14,6 +14,51 @@ pub const ADC_BASE: u32 = 0x4001_2400;
 pub const VREFINT_CH: u32 = 17;
 pub const MPU_PRESENT: bool = false;
 pub const MPU_DREGION: u32 = 0;
+/// Address-only peripherals (targets/reference, cross-checked); no driver claims these yet.
+pub mod periph {
+    pub const ADC1_COMMON: u32 = 0x4001_2400;
+    pub const AFIO: u32 = 0x4001_0000;
+    pub const BKP: u32 = 0x4000_6C00;
+    pub const CEC: u32 = 0x4000_7800;
+    pub const CRC: u32 = 0x4002_3000;
+    pub const DAC1: u32 = 0x4000_7400;
+    pub const DBGMCU: u32 = 0xE004_2000;
+    pub const DMA1: u32 = 0x4002_0000;
+    pub const EXTI: u32 = 0x4001_0400;
+    pub const FLASH: u32 = 0x4002_2000;
+    pub const GPIOB: u32 = 0x4001_0C00;
+    pub const GPIOD: u32 = 0x4001_1400;
+    pub const GPIOE: u32 = 0x4001_1800;
+    pub const I2C1: u32 = 0x4000_5400;
+    pub const I2C2: u32 = 0x4000_5800;
+    pub const PWR: u32 = 0x4000_7000;
+    pub const RTC: u32 = 0x4000_2800;
+    pub const SPI2: u32 = 0x4000_3800;
+    pub const TIM1: u32 = 0x4001_2C00;
+    pub const TIM15: u32 = 0x4001_4000;
+    pub const TIM16: u32 = 0x4001_4400;
+    pub const TIM17: u32 = 0x4001_4800;
+    pub const TIM3: u32 = 0x4000_0400;
+    pub const TIM4: u32 = 0x4000_0800;
+    pub const TIM6: u32 = 0x4000_1000;
+    pub const TIM7: u32 = 0x4000_1400;
+    pub const UID: u32 = 0x1FFF_F7E8;
+    pub const USART2: u32 = 0x4000_4400;
+    pub const USART3: u32 = 0x4000_4800;
+    pub const WWDG: u32 = 0x4000_2C00;
+}
+/// Board-level pins (targets/reference board table, cross-checked). Ports: A = 0.
+pub mod board {
+    pub const BOARD_CONSOLE_BASE: u32 = 0x4001_3800;
+    pub const BOARD_CONSOLE_TX: (u32, u32) = (0, 9);
+    pub const BOARD_CONSOLE_RX: (u32, u32) = (0, 10);
+    pub const BUTTON_USER: (u32, u32) = (0, 0);
+    pub const BUTTON_USER_ACTIVE_LOW: bool = true;
+    pub const LED_LD3: (u32, u32) = (2, 9);
+    pub const LED_LD3_ACTIVE_LOW: bool = false;
+    pub const LED_LD4: (u32, u32) = (2, 8);
+    pub const LED_LD4_ACTIVE_LOW: bool = false;
+}
 pub const USART1_BASE: u32 = 0x4001_3800;
 pub const USART1_SR: u32 = 0x4001_3800;
 pub const USART1_DR: u32 = 0x4001_3804;

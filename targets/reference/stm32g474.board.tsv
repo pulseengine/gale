@@ -1,0 +1,7 @@
+# nucleo_g474re board pins, from pulseengine/zephyr@9550d256a582f4a19bc5bee650310b29a606c64b boards/st/nucleo_g474re/nucleo_g474re.dts (sha256 383035fe5d200ed0f2c948477f0cb0839fce473a67312f27fdcd754b5662e636).
+# Facts only (the devicetree is not vendored). Reference: targets/*.aadl is authoritative;
+# gust-target-gen --board-reference cross-checks it. Regenerate with import_boards.py.
+# kind	name	port|tx	pin|rx	active
+led	led_0	A	5	high
+button	button	C	13	low
+console	LPUART1	A2	A3	-

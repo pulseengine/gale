@@ -2,6 +2,23 @@ property set Gust_Target_Props is
   Base           : aadlinteger applies to (memory, device);
   Length         : aadlinteger applies to (memory);
   Present        : aadlboolean applies to (device);
+  -- Imported from targets/reference (vendor-derived, cross-checked): the model carries
+  -- its base for completeness, but no driver claims it, so it gets an address constant
+  -- (target::periph::NAME) and NO gust:hal capability until a driver models it fully.
+  Address_Only   : aadlboolean applies to (device);
+  -- Board-level pins (targets/reference/<soc>.board.tsv cross-checks them). A port is
+  -- numbered from A = 0. A user LED or button is a pin, not a peripheral: no Base.
+  Board_Led      : aadlboolean applies to (device);
+  Board_Button   : aadlboolean applies to (device);
+  Active_Low     : aadlboolean applies to (device);
+  Gpio_Port      : aadlinteger applies to (device);
+  Gpio_Pin       : aadlinteger applies to (device);
+  -- The UART the board routes to its debug probe's serial port; Base is that UART's.
+  Console        : aadlboolean applies to (device);
+  Tx_Port        : aadlinteger applies to (device);
+  Tx_Pin         : aadlinteger applies to (device);
+  Rx_Port        : aadlinteger applies to (device);
+  Rx_Pin         : aadlinteger applies to (device);
   Csr_Offset     : aadlinteger applies to (device);  -- RCC_CSR offset from RCC base
   Apb2enr_Offset : aadlinteger applies to (device);  -- RCC_APB2ENR offset from RCC base
   Iwdgrstf_Bit   : aadlinteger applies to (device);  -- bit index of the IWDG reset flag

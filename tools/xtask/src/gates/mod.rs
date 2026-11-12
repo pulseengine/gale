@@ -10,6 +10,7 @@ pub mod graph_env;
 pub mod job_timeouts;
 pub mod moved_paths;
 pub mod object_freshness;
+pub mod peripheral_addresses;
 pub mod pin_agreement;
 pub mod proof_completeness;
 pub mod providers;
@@ -72,6 +73,12 @@ pub const GATES: &[Gate] = &[
         about: "no committed object is older than the sources that produce it",
         run: object_freshness::run,
         self_test: object_freshness::self_test,
+    },
+    Gate {
+        name: peripheral_addresses::NAME,
+        about: "every peripheral address the code uses comes from the AADL target model",
+        run: peripheral_addresses::run,
+        self_test: peripheral_addresses::self_test,
     },
     Gate {
         name: pin_agreement::NAME,
