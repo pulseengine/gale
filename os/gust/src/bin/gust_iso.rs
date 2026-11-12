@@ -102,19 +102,16 @@ extern "C" {
 }
 
 const USART1: u32 = 0x4001_3800;
-const USART_SR: u32 = 0x00;
-const USART_DR: u32 = 0x04;
 const USART_BRR: u32 = 0x08;
 const USART_CR1: u32 = 0x0C;
-const TXE: u32 = 1 << 7;
 
+// Debug console: SR/DR come from the AADL target model, the loop from ports/host/baremetal
+// (rework step 3). The Renode STM32_UART model is the F1-class USART these addresses describe.
+#[path = "../../../../targets/generated/gust_target_stm32f100.rs"]
+#[allow(dead_code)]
+mod target;
 fn tx(s: &[u8]) {
-    for &b in s {
-        unsafe {
-            while read_volatile((USART1 + USART_SR) as *const u32) & TXE == 0 {}
-            write_volatile((USART1 + USART_DR) as *mut u32, (b as u32) & 0xFF);
-        }
-    }
+    gust_baremetal::console::tx(target::USART1_SR, target::USART1_DR, s);
 }
 
 fn ok(cond: bool, good: &[u8], bad: &[u8]) {
