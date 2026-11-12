@@ -1,0 +1,400 @@
+# Every committed binary file, and why it exists.
+#
+# `cargo xtask check binary-ledger` fails when a tracked binary has no entry here, when an
+# entry names a file that is gone, or when its consumer no longer contains its needle
+# (the string the consumer uses to reach it; default: the file name). A binary nothing
+# reads is not committed. Format: [[binary]] tables of `key = "string"` lines only.
+
+[[binary]]
+path = "drivers/adc-thin/adc-thin-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The adc-thin driver dissolved to ARMv7-M by synth; linked into the gust adc binaries."
+regenerate = "drivers/adc-thin/RESULTS.md"
+
+[[binary]]
+path = "drivers/breadth/breadth-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The fused driver-breadth composition, linked into gust_breadth."
+regenerate = "drivers/build-breadth.sh"
+
+[[binary]]
+path = "drivers/can-thin/can-thin-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The can-thin driver dissolved to ARMv7-M by synth; linked into the gust can binaries."
+regenerate = "drivers/can-thin/RESULTS.md"
+
+[[binary]]
+path = "drivers/dac-thin/dac-thin-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The dac-thin driver dissolved to ARMv7-M by synth; linked into the gust dac binaries."
+regenerate = "drivers/dac-thin/RESULTS.md"
+
+[[binary]]
+path = "drivers/dma-own/dma-own-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The DMA own<buffer> ownership FSM, dissolved; linked into the dma demonstrator."
+regenerate = "drivers/dma-own/RESULTS.md"
+
+[[binary]]
+path = "drivers/gpio-thin/gpio-thin-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The gpio-thin driver dissolved to ARMv7-M by synth; linked into the gust gpio binaries."
+regenerate = "drivers/gpio-thin/RESULTS.md"
+
+[[binary]]
+path = "drivers/hm-thin/hm-thin-cm3.o"
+kind = "synth-object"
+consumer = "drivers/check-driver-components.py"
+needle = "root.glob(\"*-thin\")"
+why = "The standalone health-monitor core, dissolved. Not linked on its own (iso-core-fused-cm3.o fuses it); drv-components checks its imports stay WIT-shaped."
+regenerate = "drivers/hm-thin/RESULTS.md"
+
+[[binary]]
+path = "drivers/i2c-thin/i2c-thin-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The i2c-thin driver dissolved to ARMv7-M by synth; linked into the gust i2c binaries."
+regenerate = "drivers/i2c-thin/RESULTS.md"
+
+[[binary]]
+path = "drivers/iso-core-fused-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "switch+hm+mpu fused into one object; linked into gust_iso, whose Renode gate runs it."
+regenerate = "drivers/build-iso-core.sh"
+
+[[binary]]
+path = "drivers/measurements/wcet-fixture/gustos.loom.named.wasm"
+kind = "wasm-input"
+consumer = "tools/xtask/src/gates/graph_env.rs"
+why = "The same module with its name section kept, so graph-env can attribute an import to the component that made it."
+regenerate = "drivers/build-dissolve-gustos.sh"
+
+[[binary]]
+path = "drivers/measurements/wcet-fixture/gustos.loom.wasm"
+kind = "wasm-input"
+consumer = ".github/workflows/kill-criteria.yml"
+needle = "wcet-fixture/gustos.loom.wasm"
+why = "The fused gust:os core module the WCET and data-overlap gates measure."
+regenerate = "drivers/build-dissolve-gustos.sh"
+
+[[binary]]
+path = "drivers/mpu-thin/mpu-thin-cm3.o"
+kind = "synth-object"
+consumer = "drivers/check-driver-components.py"
+needle = "root.glob(\"*-thin\")"
+why = "The standalone MPU region-programmer core, dissolved. Not linked on its own (iso-core-fused-cm3.o fuses it); drv-components checks its imports stay WIT-shaped."
+regenerate = "drivers/mpu-thin/RESULTS.md"
+
+[[binary]]
+path = "drivers/os-node/exec-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The executor provider, dissolved. Linked into the gust OS probes."
+regenerate = "drivers/exec-provider/RESULTS.md"
+
+[[binary]]
+path = "drivers/os-node/gustos-dissolved-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The whole gust:os composition dissolved to one object (gale-nano). Linked into the gust OS probes."
+regenerate = "drivers/build-dissolve-gustos.sh"
+
+[[binary]]
+path = "drivers/os-node/os-time-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The os-time node, dissolved. Linked into the gust OS probes."
+regenerate = "drivers/build-os-time.sh"
+
+[[binary]]
+path = "drivers/os-node/os-tl-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The os-tl (time + log) node, dissolved. Linked into the gust OS probes."
+regenerate = "drivers/build-os-tl.sh"
+
+[[binary]]
+path = "drivers/os-node/os-ts-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The os-ts (time + spawn) node, dissolved. Linked into the gust OS probes."
+regenerate = "drivers/build-os-ts.sh"
+
+[[binary]]
+path = "drivers/os-node/repro-757/loom.wasm"
+kind = "repro"
+consumer = "tools/xtask/src/gates/graph_env.rs"
+needle = "repro-757/loom.wasm"
+why = "The frozen os-tl node both repro objects were compiled from: graph-env censuses it, emit-wcet.sh compiles it for the WCET fixture, and the miscompile can be re-derived from it."
+regenerate = "drivers/os-node/repro-757/REPRO.md"
+
+[[binary]]
+path = "drivers/os-node/repro-757/os-tl-buggy.o"
+kind = "repro"
+consumer = "os/gust/build.rs"
+why = "The archived synth#757 miscompile (one wrong R_ARM_ABS32). The containment demo needs the BUGGY object: the MPU must deny its stale read. Cannot be regenerated by a fixed synth."
+regenerate = "drivers/os-node/repro-757/REPRO.md"
+
+[[binary]]
+path = "drivers/os-node/repro-757/os-tl-fixed.o"
+kind = "repro"
+consumer = "os/gust/build.rs"
+why = "The same module from a fixed synth: the no-fault control for the containment demo, and the WCET fixture input."
+regenerate = "drivers/os-node/repro-757/REPRO.md"
+
+[[binary]]
+path = "drivers/pwm-thin/pwm-thin-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The pwm-thin driver dissolved to ARMv7-M by synth; linked into the gust pwm binaries."
+regenerate = "drivers/pwm-thin/RESULTS.md"
+
+[[binary]]
+path = "drivers/spi-thin/spi-thin-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The spi-thin driver dissolved to ARMv7-M by synth; linked into the gust spi binaries."
+regenerate = "drivers/spi-thin/RESULTS.md"
+
+[[binary]]
+path = "drivers/switch-thin/switch-thin-cm3.o"
+kind = "synth-object"
+consumer = "drivers/check-driver-components.py"
+needle = "root.glob(\"*-thin\")"
+why = "The standalone partition-switch core, dissolved. Not linked on its own (iso-core-fused-cm3.o fuses it); drv-components checks its imports stay WIT-shaped."
+regenerate = "drivers/switch-thin/RESULTS.md"
+
+[[binary]]
+path = "drivers/timer-thin/timer-thin-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The timer-thin driver dissolved to ARMv7-M by synth; linked into the gust timer binaries."
+regenerate = "drivers/timer-thin/RESULTS.md"
+
+[[binary]]
+path = "drivers/uart-thin/uart-thin-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The uart-thin driver dissolved to ARMv7-M by synth; linked into the gust uart binaries."
+regenerate = "drivers/uart-thin/RESULTS.md"
+
+[[binary]]
+path = "drivers/wdg-thin/wdg-thin-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The wdg-thin driver dissolved to ARMv7-M by synth; linked into the gust wdg binaries."
+regenerate = "drivers/wdg-thin/RESULTS.md"
+
+[[binary]]
+path = "os/gust/esp32c3/gust_mix-esp32c3.o"
+kind = "synth-object"
+consumer = "os/gust/esp32c3/build.rs"
+why = "The mixer dissolved for RISC-V (ESP32-C3), linked by the esp32c3 crate."
+regenerate = "os/gust/esp32c3/RESULTS.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_adc.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_adc.elf"
+why = "The image the gust_adc Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_breadth.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_breadth.elf"
+why = "The image the gust_breadth Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_can.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_can.elf"
+why = "The image the gust_can Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_control.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_control.elf"
+why = "The image the gust_control Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_dac.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_dac.elf"
+why = "The image the gust_dac Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_dma.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_dma.elf"
+why = "The image the gust_dma Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_estimator_part.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_estimator_part.elf"
+why = "The image the gust_estimator_part Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_gpio.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_gpio.elf"
+why = "The image the gust_gpio Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_i2c.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_i2c.elf"
+why = "The image the gust_i2c Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_iso.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_iso.elf"
+why = "The image the gust_iso Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_pwm.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_pwm.elf"
+why = "The image the gust_pwm Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_spi.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_spi.elf"
+why = "The image the gust_spi Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_switch_renode.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_switch_renode.elf"
+why = "The image the gust_switch_renode Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_timer.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_timer.elf"
+why = "The image the gust_timer Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_uart.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_uart.elf"
+why = "The image the gust_uart Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_wasm.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_wasm.elf"
+why = "The image the gust_wasm Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/renode-test/gust_wdg.elf"
+kind = "renode-fixture"
+consumer = "os/gust/renode-test/BUILD.bazel"
+needle = ":gust_wdg.elf"
+why = "The image the gust_wdg Renode gate runs. Committed because CI runs it without rebuilding it; staleness is tracked by fixture-freshness. To be built in CI instead (follow-up)."
+regenerate = "os/gust/renode-test/README.md"
+
+[[binary]]
+path = "os/gust/wasm-kernel/control_step-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The dissolved engine_control step for M3, linked into gust_control."
+regenerate = "os/gust/README.md"
+
+[[binary]]
+path = "os/gust/wasm-kernel/control_step-cm4.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The same step for M4 (silicon G474RE)."
+regenerate = "os/gust/README.md"
+
+[[binary]]
+path = "os/gust/wasm-kernel/dec_diff.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The dissolved gale deciders (sem/msgq/mutex/event, all 8 verified primitives) for the gale_decider_diff regression differential."
+regenerate = "os/gust/README.md"
+
+[[binary]]
+path = "os/gust/wasm-kernel/fused.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The gale-app-demo + gale-kiln Component-Model composition, meld-fused and dissolved; linked into the gust_fused demonstrator and published on the pages site."
+regenerate = "os/gust/README.md"
+
+[[binary]]
+path = "os/gust/wasm-kernel/fused.wasm"
+kind = "wasm-input"
+consumer = ".github/workflows/pages.yml"
+needle = "fused.wasm"
+why = "The meld-fused component; the browser demo loads it and the driver build scripts start from it."
+regenerate = "os/gust/build-fused.sh"
+
+[[binary]]
+path = "os/gust/wasm-kernel/gust_kernel-cortex-m3.o"
+kind = "synth-object"
+consumer = "os/gust/src/bin/gust_codegen_bench.rs"
+why = "The dissolved kernel; gust_codegen_bench compares it against native LLVM."
+regenerate = "os/gust/compare-codegen.sh"
+
+[[binary]]
+path = "os/gust/wasm-kernel/gust_kernel.wasm"
+kind = "wasm-input"
+consumer = "os/gust/build.rs"
+why = "The gust kernel wasm module the gust_mix objects are dissolved from (loom optimize, then synth compile)."
+regenerate = "os/gust/README.md"
+
+[[binary]]
+path = "os/gust/wasm-kernel/gust_mix-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The dissolved fixed-point mixer (gust_mix) for M3/F100; the codegen micro-bench and silicon_bench time it against native LLVM."
+regenerate = "os/gust/README.md"
+
+[[binary]]
+path = "os/gust/wasm-kernel/gust_mix-cm4.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The same mixer for M4 (G474RE silicon), and the artifact for the M4-vs-LLVM comparison (synth#428)."
+regenerate = "os/gust/README.md"

@@ -43,3 +43,6 @@ os/gust/browser-nano/web/*.wasm
 # Python bytecode
 __pycache__/
 *.pyc
+
+# CI scratch output of the loom job (loom.yml tees into it); never commit it.
+/loom.out
