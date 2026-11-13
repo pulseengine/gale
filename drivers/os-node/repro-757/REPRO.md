@@ -79,3 +79,22 @@ exactly `MMFAR == 0x2000_BFF8` with 0 bytes reaching the log sink.
   `CFSR=0x82`). They are not yet wired into a CI job — the isolation claim is
   reproduced locally with the one-command recipe above, not gated in the
   pipeline. Silicon and CI gating are follow-ons.
+
+## The data segments overlap — deliberately kept, and probably the trigger
+
+Recorded 2026-10-21 (gale#439), because nothing said so and an unrecorded overlap is
+indistinguishable from a regression. `loom.wasm`'s three active data segments all start
+at the wasm-ld default base:
+
+    data 0 [1048576..1048588)   data 1 [1048576..1048588)   data 2 [1048576..1048600)
+
+That is the gale#266 condition (`--memory shared` without `--address-rebase`). Wasm
+applies active segments in order, so after instantiation `1048576+8 = 1048584` holds
+seg_2's bytes — `"gust:os up\n"` — and the miscompile above binds that same address to
+`__synth_wasm_seg_0` instead. The address lies inside all three segments, so which
+segment "owns" it is exactly the question an overlap makes ambiguous. **Consistent with
+the overlap being the trigger of synth#757, not proven** — no non-overlapping variant of
+this module has been dissolved with synth 0.45.0 to show the defect disappears.
+
+The `data-overlap` gate ledgers this artifact (`KNOWN_OVERLAP`, both twins) rather than
+skipping it: if it ever stops overlapping, the gate fails until the entry is removed.
