@@ -229,8 +229,11 @@
 //!   heap.c:312-388  sys_heap_aligned_alloc — alignment + padding overflow
 //!   heap.c:467-492  sys_heap_realloc — shrink/grow/copy decision
 //!
-//! Verified: HP1-HP8 (bounds, conservation, alloc gating, free exactness,
-//! double-free, alignment, overflow, merge invariant).
+//! NOT the verified code: these exports reimplement the heap logic inline and
+//! never call `gale::heap`, so the Verus proofs of HP1-HP8 (bounds, conservation,
+//! alloc gating, free exactness, double-free, alignment, overflow, merge
+//! invariant) do not cover them. Partial cover: bounded Kani harnesses below
+//! (gale#509).
 //!
 //! ## MMU (gale_mmu_*)
 //!
@@ -240,8 +243,9 @@
 //!   mmu.c:819-847   k_mem_update_flags — size/flags checks
 //!   mmu.c:1008-1021 k_mem_region_align — alignment arithmetic
 //!
-//! Verified: MM1-MM8 (size alignment, user+uninit, cache flags,
-//! guard overflow, known flags, W^X, overlap, no overflow).
+//! Target MM1-MM8 (size alignment, user+uninit, cache flags, guard overflow,
+//! known flags, W^X, overlap, no overflow): assumed, not verified -- every
+//! `gale::mmu` function is `external_body` (gale#509).
 //!
 //! ## PM (gale_pm_*)
 //!
@@ -251,8 +255,9 @@
 //!   pm.c:182-189         forced/policy selection in pm_system_suspend
 //!   policy_default.c:27-38  min-residency check
 //!
-//! Verified: PM1-PM7 (state enum bounds, transition validity, terminal
-//! SOFT_OFF, forced single-use, residency policy, substate bounds).
+//! Target PM1-PM7 (state enum bounds, transition validity, terminal SOFT_OFF,
+//! forced single-use, residency policy, substate bounds): assumed, not
+//! verified -- every `gale::pm` function is `external_body` (gale#509).
 //!
 //! ## Usage (gale_usage_*)
 //!
@@ -266,8 +271,9 @@
 //!   usage.c:283-293  k_sys_runtime_stats_enable  — sys_enable_decide
 //!   usage.c:317-326  k_sys_runtime_stats_disable — sys_disable_decide
 //!
-//! Verified: US1-US6 (tracking guard, accumulate-only-when-started,
-//! track_usage toggle, idempotent sys ops, no divide-by-zero, monotone cycles).
+//! Target US1-US6 (tracking guard, accumulate-only-when-started, track_usage
+//! toggle, idempotent sys ops, no divide-by-zero, monotone cycles): assumed,
+//! not verified -- every `gale::usage` function is `external_body` (gale#509).
 //!
 //! ## ZMS — Zephyr Memory Storage (gale_zms_*)
 //!
@@ -5566,7 +5572,7 @@ pub const GALE_MEM_DOMAIN_ACTION_ADD_ERROR: u8 = 1;
 ///   domain_sizes:    array of 16 sizes (0 = free slot)
 ///   num_partitions:  current active partition count
 ///
-/// Verified: MD1-MD6.
+/// Target (NOT the verified code: inline reimplementation, no gale:: call; gale#509): MD1-MD6.
 #[cfg(feature = "mem_domain")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mem_domain_add_partition_decide(
@@ -5656,7 +5662,7 @@ pub const GALE_MEM_DOMAIN_ACTION_REMOVE_ERROR: u8 = 1;
 ///   domain_sizes:    array of 16 sizes
 ///   num_partitions:  current active partition count
 ///
-/// Verified: MD5 (remove preserves invariant).
+/// Target (NOT the verified code: inline reimplementation, no gale:: call; gale#509): MD5 (remove preserves invariant).
 #[cfg(feature = "mem_domain")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_k_mem_domain_remove_partition_decide(
@@ -7997,7 +8003,7 @@ pub const GALE_HEAP_ACTION_ALLOC_FAILED: u8 = 2;
 ///   found_chunk_sz:   size of the found chunk (in chunk units)
 ///   needed_chunk_sz:  requested size (in chunk units)
 ///
-/// Verified: HP1 (bounds), HP2 (conservation), HP3 (alloc gating),
+/// Target (NOT the verified code: inline reimplementation, no gale:: call; gale#509): HP1 (bounds), HP2 (conservation), HP3 (alloc gating),
 ///           HP7 (no overflow).
 #[cfg(feature = "heap")]
 #[unsafe(no_mangle)]
@@ -8074,7 +8080,7 @@ pub const GALE_HEAP_ACTION_FREE_REJECTED: u8 = 1;
 ///   left_neighbor_free:    1 if left neighbor exists and is free
 ///   bounds_check_passed:   1 if left_chunk(right_chunk(c)) == c
 ///
-/// Verified: HP4 (exact free), HP5 (double-free), HP8 (coalesce).
+/// Target (NOT the verified code: inline reimplementation, no gale:: call; gale#509): HP4 (exact free), HP5 (double-free), HP8 (coalesce).
 #[cfg(feature = "heap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sys_heap_free_decide(
@@ -8131,7 +8137,7 @@ pub const GALE_HEAP_ALIGN_REJECT: u8 = 2;
 ///   align:               requested alignment (must be power of 2 or 0)
 ///   chunk_header_bytes:  chunk header size (4 or 8 depending on heap)
 ///
-/// Verified: HP6 (alignment), HP7 (overflow in padding computation).
+/// Target (NOT the verified code: inline reimplementation, no gale:: call; gale#509): HP6 (alignment), HP7 (overflow in padding computation).
 #[cfg(feature = "heap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sys_heap_aligned_alloc_decide(
@@ -8203,7 +8209,7 @@ pub const GALE_HEAP_REALLOC_REJECT: u8 = 3;
 ///   right_neighbor_free:  1 if right neighbor is free, 0 otherwise
 ///   right_neighbor_sz:    size of right neighbor (in chunk units, 0 if N/A)
 ///
-/// Verified: HP1 (bounds), HP7 (overflow), HP8 (split/merge).
+/// Target (NOT the verified code: inline reimplementation, no gale:: call; gale#509): HP1 (bounds), HP7 (overflow), HP8 (split/merge).
 #[cfg(feature = "heap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sys_heap_realloc_decide(
@@ -8248,7 +8254,7 @@ pub extern "C" fn gale_sys_heap_realloc_decide(
 /// Returns:
 ///   0 (OK) if valid, -EINVAL if too small.
 ///
-/// Verified: HP1 (capacity > 0 after overhead).
+/// Target (NOT the verified code: inline reimplementation, no gale:: call; gale#509): HP1 (capacity > 0 after overhead).
 #[cfg(feature = "heap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sys_heap_init_validate(
@@ -8274,7 +8280,7 @@ pub extern "C" fn gale_sys_heap_init_validate(
 /// Returns:
 ///   right_sz on success (> 0), 0 on invalid parameters.
 ///
-/// Verified: HP2 (conservation), HP8 (split invariant).
+/// Target (NOT the verified code: inline reimplementation, no gale:: call; gale#509): HP2 (conservation), HP8 (split invariant).
 #[cfg(feature = "heap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sys_heap_split_validate(
@@ -8304,7 +8310,7 @@ pub extern "C" fn gale_sys_heap_split_validate(
 /// Returns:
 ///   0 (OK) if valid, -EINVAL if not.
 ///
-/// Verified: HP2 (conservation), HP7 (no overflow), HP8 (merge invariant).
+/// Target (NOT the verified code: inline reimplementation, no gale:: call; gale#509): HP2 (conservation), HP7 (no overflow), HP8 (merge invariant).
 #[cfg(feature = "heap")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_sys_heap_merge_validate(
@@ -10532,7 +10538,7 @@ pub const GALE_USAGE_SYS_APPLY: u8 = 1;
 ///   GALE_USAGE_SYS_NOOP  (0) — already enabled; do nothing
 ///   GALE_USAGE_SYS_APPLY (1) — not yet enabled; apply to all CPUs
 ///
-/// Verified: US4 (idempotent enable).
+/// Target (assumed via external_body, not verified; gale#509): US4 (idempotent enable).
 #[cfg(feature = "usage")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_usage_sys_enable_decide(current_tracking: u32) -> u8 {
@@ -10552,7 +10558,7 @@ pub extern "C" fn gale_usage_sys_enable_decide(current_tracking: u32) -> u8 {
 ///   GALE_USAGE_SYS_NOOP  (0) — already disabled; do nothing
 ///   GALE_USAGE_SYS_APPLY (1) — currently enabled; apply to all CPUs
 ///
-/// Verified: US4 (idempotent disable).
+/// Target (assumed via external_body, not verified; gale#509): US4 (idempotent disable).
 #[cfg(feature = "usage")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_usage_sys_disable_decide(current_tracking: u32) -> u8 {
@@ -10577,7 +10583,7 @@ pub const GALE_USAGE_START_RECORD_WINDOW: u8 = 1;
 ///   GALE_USAGE_START_RECORD_ONLY   (0) — set usage0=now only
 ///   GALE_USAGE_START_RECORD_WINDOW (1) — set usage0=now, also update window
 ///
-/// Verified: US1 (window tracking only when track_usage set).
+/// Target (assumed via external_body, not verified; gale#509): US1 (window tracking only when track_usage set).
 #[cfg(feature = "usage")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_usage_start_decide(track_usage: u32) -> u8 {
@@ -10601,7 +10607,7 @@ pub const GALE_USAGE_STOP_ACCUMULATE: u8 = 1;
 ///   GALE_USAGE_STOP_SKIP       (0) — usage0 == 0; do nothing
 ///   GALE_USAGE_STOP_ACCUMULATE (1) — usage0 != 0; compute and accumulate cycles
 ///
-/// Verified: US2 (accumulate only when usage0 != 0).
+/// Target (assumed via external_body, not verified; gale#509): US2 (accumulate only when usage0 != 0).
 #[cfg(feature = "usage")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_usage_stop_decide(usage0: u32) -> u8 {
@@ -10628,7 +10634,7 @@ pub extern "C" fn gale_usage_stop_decide(usage0: u32) -> u8 {
 ///   0 (OK)      — result written to *out_average
 ///   -EINVAL     — null pointer
 ///
-/// Verified: US5 (no division by zero when num_windows == 0).
+/// Target (assumed via external_body, not verified; gale#509): US5 (no division by zero when num_windows == 0).
 #[cfg(feature = "usage")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_usage_average_cycles(
@@ -10653,7 +10659,7 @@ pub extern "C" fn gale_usage_average_cycles(
 /// The hardware cycle counter is u32 and wraps around; wrapping subtraction
 /// handles the wrap-around correctly.
 ///
-/// Verified: US2 (elapsed cycles used by stop path).
+/// Target (assumed via external_body, not verified; gale#509): US2 (elapsed cycles used by stop path).
 #[cfg(feature = "usage")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_usage_elapsed_cycles(now: u32, usage0: u32) -> u32 {
@@ -10865,7 +10871,7 @@ pub const GALE_PM_FORCE_TERMINAL: u8 = 1;
 /// C extracts whether the CPU is currently in SOFT_OFF; Rust decides
 /// if the force is permissible (PM4: SOFT_OFF blocks all forces).
 ///
-/// Verified: PM4, PM5.
+/// Target (assumed via external_body, not verified; gale#509): PM4, PM5.
 #[cfg(feature = "pm")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_pm_force_decide(
@@ -10916,7 +10922,7 @@ pub const GALE_PM_ACTION_STAY_ACTIVE: u8 = 1;
 /// C shim extracts: whether a forced state is pending, which state the
 /// policy chose.  Rust decides which one to use (PM5: forced wins).
 ///
-/// Verified: PM5.
+/// Target (assumed via external_body, not verified; gale#509): PM5.
 #[cfg(feature = "pm")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_pm_suspend_decide(
@@ -10962,7 +10968,7 @@ pub extern "C" fn gale_pm_suspend_decide(
 /// C shim converts min_residency_us + exit_latency_us to ticks and
 /// passes both to Rust. Rust decides if there is enough time.
 ///
-/// Verified: PM6.
+/// Target (assumed via external_body, not verified; gale#509): PM6.
 #[cfg(feature = "pm")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_pm_residency_ok(
@@ -11039,7 +11045,7 @@ pub struct GaleNetBufAllocDecision {
 ///   allocated: current number of buffers in use
 ///   capacity:  total pool size (buf_count)
 ///
-/// Verified: NB1 (bounds), no overflow.
+/// Target (assumed via external_body, not verified; gale#509): NB1 (bounds), no overflow.
 #[cfg(feature = "net_buf")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_net_buf_alloc_decide(
@@ -11061,7 +11067,7 @@ pub extern "C" fn gale_net_buf_alloc_decide(
 /// Arguments:
 ///   allocated: current number of buffers in use
 ///
-/// Verified: NB2 (free decrements), NB6 (no double-free).
+/// Target (assumed via external_body, not verified; gale#509): NB2 (free decrements), NB6 (no double-free).
 #[cfg(feature = "net_buf")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_net_buf_free_decide(
@@ -11092,7 +11098,7 @@ pub struct GaleNetBufRefDecision {
 /// Arguments:
 ///   ref_count: current reference count (must be >= 1)
 ///
-/// Verified: NB3 (ref count monotone increment), no overflow.
+/// Target (assumed via external_body, not verified; gale#509): NB3 (ref count monotone increment), no overflow.
 #[cfg(feature = "net_buf")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_net_buf_ref_decide(
@@ -11113,7 +11119,7 @@ pub extern "C" fn gale_net_buf_ref_decide(
 /// Arguments:
 ///   ref_count: current reference count
 ///
-/// Verified: NB3 (ref count tracks owners), NB6 (no double-free).
+/// Target (assumed via external_body, not verified; gale#509): NB3 (ref count tracks owners), NB6 (no double-free).
 #[cfg(feature = "net_buf")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_net_buf_unref_decide(
@@ -11152,7 +11158,7 @@ pub struct GaleNetBufDataDecision {
 ///   size:        total buffer size
 ///   bytes:       number of bytes to add
 ///
-/// Verified: NB4 (bounds), NB5 (tailroom check), no overflow.
+/// Target (assumed via external_body, not verified; gale#509): NB4 (bounds), NB5 (tailroom check), no overflow.
 #[cfg(feature = "net_buf")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_net_buf_add_decide(
@@ -11177,7 +11183,7 @@ pub extern "C" fn gale_net_buf_add_decide(
 ///   len:         current data length
 ///   bytes:       number of bytes to remove
 ///
-/// Verified: NB4 (bounds), NB5 (len >= bytes check), no underflow.
+/// Target (assumed via external_body, not verified; gale#509): NB4 (bounds), NB5 (len >= bytes check), no underflow.
 #[cfg(feature = "net_buf")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_net_buf_remove_decide(
@@ -11202,7 +11208,7 @@ pub extern "C" fn gale_net_buf_remove_decide(
 ///   len:         current data length
 ///   bytes:       number of bytes to push
 ///
-/// Verified: NB4 (bounds preserved), NB5 (headroom >= bytes), no underflow.
+/// Target (assumed via external_body, not verified; gale#509): NB4 (bounds preserved), NB5 (headroom >= bytes), no underflow.
 #[cfg(feature = "net_buf")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_net_buf_push_decide(
@@ -11228,7 +11234,7 @@ pub extern "C" fn gale_net_buf_push_decide(
 ///   size:        total buffer size (for postcondition)
 ///   bytes:       number of bytes to pull
 ///
-/// Verified: NB4 (bounds preserved), NB5 (len >= bytes), no underflow.
+/// Target (assumed via external_body, not verified; gale#509): NB4 (bounds preserved), NB5 (len >= bytes), no underflow.
 #[cfg(feature = "net_buf")]
 #[unsafe(no_mangle)]
 pub extern "C" fn gale_net_buf_pull_decide(

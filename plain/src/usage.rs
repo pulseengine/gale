@@ -1,8 +1,11 @@
-//! Verified thread runtime statistics model for Zephyr RTOS.
+//! Thread runtime statistics model for Zephyr RTOS.
 //!
-//! This is a formally verified model of Zephyr's thread runtime statistics
-//! from kernel/usage.c. All safety-critical decision properties are proven
-//! with Verus (SMT/Z3).
+//! STATUS: trusted, not verified. Every function in this module is
+//! `#[verifier::external_body]`: Verus assumes the contracts below and
+//! checks none of the bodies (gale#509).
+//!
+//! This is a model of Zephyr's thread runtime statistics
+//! from kernel/usage.c.
 //!
 //! This module models the **decision logic** of the usage tracking subsystem:
 //! when to start/stop tracking, whether tracking is currently active, and
@@ -25,7 +28,7 @@
 //!   - CONFIG_OBJ_CORE_STATS_* — object core wrappers (pass-through)
 //!   - k_spin_lock / k_spin_unlock — synchronization primitives
 //!
-//! ASIL-D verified properties:
+//! Target properties (assumed by Verus via external_body, not checked):
 //!   US1: tracking only starts when track_usage flag is set
 //!   US2: stop accumulates cycles only when start was called (usage0 != 0)
 //!   US3: enable sets track_usage; disable clears it (state toggle)

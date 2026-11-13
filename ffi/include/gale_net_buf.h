@@ -1,10 +1,10 @@
 /*
- * Gale Net Buffer FFI — verified pool allocation tracking and data
+ * Gale Net Buffer FFI — pool allocation tracking and data
  * pointer arithmetic for lib/net_buf/buf.c and buf_simple.c.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Verified properties:
+ * Target properties (assumed via external_body in gale::net_buf, NOT verified -- gale#509):
  *   NB1: alloc never exceeds pool capacity
  *   NB2: free returns buffer to pool
  *   NB3: ref count tracks owners

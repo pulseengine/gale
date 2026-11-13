@@ -33,7 +33,8 @@ Rust replacement for Zephyr RTOS kernel primitives, ASIL-D targeted (not certifi
 > **Honest reading of "formally verified"** (full claims ledger:
 > [docs/safety/verification-honesty.md](docs/safety/verification-honesty.md)):
 > the proofs are on the Rust/wasm **source** — Verus SMT on 39 modules (subject to
-> 133 named `external_body` trust units), 10 Rocq abstract-model invariant proofs
+> 135 named `external_body` trust units; five modules -- ipc, net_buf, pm, mmu,
+> usage -- are wholly `external_body`, so nothing in them is checked), 10 Rocq abstract-model invariant proofs
 > (incl. the gust executor's no-lost-wakeups; poll/sched/thread_lifecycle are WIP
 > `Admitted` stubs, not yet proven), and Lean
 > scheduling theory. Two limits stated up front: **(1)** Rocq/Lean reason about
@@ -47,10 +48,12 @@ Part of the [PulseEngine](https://github.com/pulseengine) WebAssembly Component 
 
 ## Modules
 
-39 Rust modules covering the full Zephyr kernel surface. All 39 pass Verus SMT verification (805 verified, 0 errors)¹:
+39 Rust modules covering the full Zephyr kernel surface. Verus reports 805 verified, 0 errors¹ -- but see the footnote: five modules (ipc, net_buf, pm, mmu, usage) are wholly `external_body` and are trusted, not verified (gale#509):
 
 ¹ "Verified" here = the bodies Verus checked against requires/ensures
-contracts. Trusted-base inventory (133 `#[verifier::external_body]`
+contracts. The count includes 72 vacuous proof fns (`ensures true` or none, empty
+body) listed by `cargo xtask check vacuous-lemmas`, which check nothing.
+Trusted-base inventory (135 `#[verifier::external_body]`
 shims + 2 `assume_specification` calls): see
 [docs/safety/verification-honesty.md](docs/safety/verification-honesty.md).
 The headline number is anchored by the `formal-verification.yml` CI job
@@ -80,7 +83,7 @@ until it goes green again.
 | lifo | kernel/lifo | LI01-LI06 | Verified |
 | queue | kernel/queue.c | QU01-QU06 | Verified |
 | ring_buf | sys/ring_buffer | RB01-RB08 | Verified |
-| poll | kernel/poll.c | PL01-PL08 | Verified (external_body for array mutation) |
+| poll | kernel/poll.c | PL01-PL08 | Partial: two array helpers are `external_body` |
 
 **Timing**
 
@@ -107,7 +110,7 @@ until it goes green again.
 
 | Module | Zephyr Source | Properties | Status |
 |--------|---------------|------------|--------|
-| sched | kernel/sched.c | SC01-SC16 | Verified (external_body for array mutation) + Lean proofs |
+| sched | kernel/sched.c | SC01-SC16 | Partial: `RunQueue::add` and three helpers are `external_body`, `remove_best` does not ensure the invariant, `sched_proofs.v` is all `Admitted` (gale#509); Lean scheduling theory is separate |
 | thread | kernel/thread.c | TH01-TH06 | Verified |
 | thread_lifecycle | kernel/thread.c | TL01-TL06 | Verified |
 | priority | kernel/priority | - | Verified + Lean proofs |
@@ -135,7 +138,7 @@ src/*.rs          Verus-annotated Rust (39 modules, single source of truth)
     +---> verus-strip ---> plain/src/*.rs (auto-generated plain Rust)
     |       |                |
     |       |                +---> cargo test (unit + integration + proptest)
-    |       |                +---> Kani BMC (185 harnesses)
+    |       |                +---> Kani BMC (root + ffi/)   
     |       |                +---> clippy ASIL-D lint profile
     |       |
     |       +--standalone--> plain/*.rs ---> Rocq proofs (9 modules)
@@ -151,10 +154,10 @@ src/*.rs          Verus-annotated Rust (39 modules, single source of truth)
 
 ### Formal verification (via Bazel + Nix, CI-gated on source changes):
 
-- **Verus (SMT/Z3):** 39/39 modules, 805 properties verified by Z3 (0 errors). Includes poll and sched with `external_body` trusted array helpers.
+- **Verus (SMT/Z3):** 805 verified by Z3 (0 errors). That figure counts 72 vacuous proof fns, and 135 functions are `external_body` (assumed): all of ipc, net_buf, pm, mmu and usage, plus helpers in poll, sched and the hardware seams (gale#509).
 - **Rocq:** 10 fully-proven abstract invariant modules (0 Admitted): 9 over Z-valued math for the Zephyr primitives, plus `executor_proofs.v` — an N-bitmask model of the gust executor proving no-lost-wakeups (see below). NOT connected to the Rust code — proofs reason about hand-written mathematical models, not the rocq-of-rust translation. poll/sched/thread_lifecycle remain `Admitted` WIP stubs.
-- **Lean 4:** 3 mathematical proofs — RMA bound, priority ceiling protocol, priority queue ordering. Pure scheduling theory, not implementation proofs.
-- **Kani BMC:** 185 bounded model checking harnesses (87 model + 98 FFI). Not in CI until Bazel workflow is confirmed working.
+- **Lean 4:** mathematical proofs — RMA bound, priority ceiling protocol, priority queue ordering. Pure scheduling theory, not implementation proofs.
+- **Kani BMC:** bounded model checking harnesses at the repo root and in `ffi/`, run by the Formal Verification workflow. The 67 harnesses under `drivers/` run in no CI workflow (gale#509).
 
 ### Executor no-lost-wakeups: one property, three independent tracks
 
@@ -198,7 +201,7 @@ track alone can no longer silently invalidate the property.
 > **Honesty note:** Formal verification requires Bazel + Nix and runs via the Formal Verification
 > workflow (triggered on src/proofs/ffi changes + weekly cron). Functional tests run on every commit.
 > See [verification honesty assessment](docs/safety/verification-honesty.md) for the full gap analysis.
-- **Kani BMC:** 185 bounded model checking harnesses (87 model + 98 FFI, Bazel-only)
+- **Kani BMC:** bounded model checking harnesses (repo root and `ffi/` in CI; `drivers/` not in CI)
 - **Differential testing:** POSIX/FreeRTOS reference models validate spec independence
 - **Property-based testing:** Proptest with random operation sequences
 - **Fuzz testing:** Coverage-guided mutation via cargo-fuzz
@@ -253,7 +256,7 @@ cargo test
 # Verus verification
 bazel test //:verus_test
 
-# verus-strip gate (plain/ sync check)
+# verus-strip gate (plain/ sync check; its file list covers 43 of the 55 src/ files, gale#509)
 cargo test --manifest-path tools/verus-strip/Cargo.toml --test gate
 
 # Zephyr integration (requires west + Zephyr SDK)

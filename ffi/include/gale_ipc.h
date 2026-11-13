@@ -3,14 +3,14 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Gale IPC service FFI — formally verified IPC endpoint lifecycle.
+ * Gale IPC service FFI — IPC endpoint lifecycle.
  *
  * These functions replace the validation and state-machine logic from
  * subsys/ipc/ipc_service/ipc_service.c.  Backend transport (rpmsg,
  * icmsg), interrupt wiring, and shared-memory setup remain native
  * Zephyr C.
  *
- * Verified properties (Verus SMT/Z3):
+ * Target properties (assumed via external_body in gale::ipc, NOT verified -- gale#509):
  *   IPC1: Endpoint state is always a valid variant
  *   IPC2: Open only succeeds from Closed state (no double-open)
  *   IPC3: send/send_critical only when endpoint is Bound
@@ -63,7 +63,7 @@ extern "C" {
  *
  * @return  0 on success, -EINVAL when instance_valid is false.
  *
- * Verified: IPC2.
+ * Target (assumed, not verified): IPC2.
  */
 int32_t gale_ipc_open_decide(bool instance_valid);
 
@@ -76,7 +76,7 @@ int32_t gale_ipc_open_decide(bool instance_valid);
  *
  * @return  0 on success, -EINVAL when instance_valid is false.
  *
- * Verified: IPC4.
+ * Target (assumed, not verified): IPC4.
  */
 int32_t gale_ipc_close_decide(bool instance_valid);
 
@@ -97,7 +97,7 @@ int32_t gale_ipc_close_decide(bool instance_valid);
  *
  * @return  0 on success, -EINVAL on null params, -ENOMEM when full.
  *
- * Verified: IPC1, IPC2, IPC5.
+ * Target (assumed, not verified): IPC1, IPC2, IPC5.
  */
 int32_t gale_ipc_register_decide(bool     params_valid,
                                   uint32_t registered_count,
@@ -116,7 +116,7 @@ int32_t gale_ipc_register_decide(bool     params_valid,
  *
  * @return  0 on success, -EINVAL on null endpoint, -ENOENT if not registered.
  *
- * Verified: IPC1, IPC4, IPC5.
+ * Target (assumed, not verified): IPC1, IPC4, IPC5.
  */
 int32_t gale_ipc_deregister_decide(bool     endpoint_valid,
                                     bool     endpoint_registered,
@@ -140,7 +140,7 @@ int32_t gale_ipc_deregister_decide(bool     endpoint_valid,
  *
  * @return  0 on success, -EINVAL or -ENOENT on failure.
  *
- * Verified: IPC1, IPC3, IPC6.
+ * Target (assumed, not verified): IPC1, IPC3, IPC6.
  */
 int32_t gale_ipc_send_decide(bool     endpoint_valid,
                               bool     endpoint_registered,
@@ -152,7 +152,7 @@ int32_t gale_ipc_send_decide(bool     endpoint_valid,
  *
  * ipc_service.c:147-169.
  *
- * Verified: IPC1, IPC3, IPC6.
+ * Target (assumed, not verified): IPC1, IPC3, IPC6.
  */
 int32_t gale_ipc_send_critical_decide(bool     endpoint_valid,
                                        bool     endpoint_registered,
@@ -169,7 +169,7 @@ int32_t gale_ipc_send_critical_decide(bool     endpoint_valid,
  *
  * @return  0 on success, -EINVAL or -ENOENT on failure.
  *
- * Verified: IPC1, IPC3, IPC6.
+ * Target (assumed, not verified): IPC1, IPC3, IPC6.
  */
 int32_t gale_ipc_receive_decide(bool     endpoint_valid,
                                  bool     endpoint_registered,
@@ -187,7 +187,7 @@ int32_t gale_ipc_receive_decide(bool     endpoint_valid,
  *
  * @return  0 when size is valid, -EINVAL or -ENOENT otherwise.
  *
- * Verified: IPC1, IPC5, IPC6.
+ * Target (assumed, not verified): IPC1, IPC5, IPC6.
  */
 int32_t gale_ipc_validate_buffer_size(bool     endpoint_valid,
                                        bool     endpoint_registered,
@@ -206,7 +206,7 @@ int32_t gale_ipc_validate_buffer_size(bool     endpoint_valid,
  *
  * @return  0 on success, -EALREADY when not in Closed.
  *
- * Verified: IPC2.
+ * Target (assumed, not verified): IPC2.
  */
 int32_t gale_ipc_transition_open(uint32_t current_state,
                                   uint32_t *new_state_out);
@@ -219,7 +219,7 @@ int32_t gale_ipc_transition_open(uint32_t current_state,
  *
  * @return  0 on success, -EINVAL when not in Open.
  *
- * Verified: IPC1.
+ * Target (assumed, not verified): IPC1.
  */
 int32_t gale_ipc_transition_bound(uint32_t current_state,
                                    uint32_t *new_state_out);
@@ -233,7 +233,7 @@ int32_t gale_ipc_transition_bound(uint32_t current_state,
  *
  * @return  0.
  *
- * Verified: IPC4.
+ * Target (assumed, not verified): IPC4.
  */
 int32_t gale_ipc_transition_close(uint32_t *new_state_out);
 

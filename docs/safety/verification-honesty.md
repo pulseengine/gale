@@ -8,7 +8,7 @@
 |-------|------|---------------|
 | Runtime tests | `cargo test` | Functions produce expected outputs, no panics (~995 tests) |
 | Lint | `cargo clippy` | No common Rust pitfalls (pedantic + safety-critical lints) |
-| Strip gate | `verus-strip gate` | plain/src/ is in sync with src/ (no stale stripped code) |
+| Strip gate | `verus-strip gate` | plain/src/ is in sync with src/ for the 43 files on its list; 12 src files (cpu_mask, ipi, ipc, mmu, mpu, net_buf, pm, spinlock_validate, systick, usage, zms, cbprintf) are not on it (gale#509) |
 | Zephyr integration | west + QEMU | 36 upstream test suites pass with Gale replacing C code |
 | Multi-arch | Renode | Semaphore tests pass on M4F, M33, R5 hardware emulation |
 | Coverage | cargo-llvm-cov + gcov | Line coverage metrics uploaded to Codecov |
@@ -94,11 +94,13 @@ Do not edit the block by hand: run `cargo xtask trusted-base --write-doc`.
 | **total** | **74** |
 <!-- trusted-base:end -->
 
-Where the trust concentrates: network-buffer FFI (pointer offsets, raw byte access),
-power-management and IPC shims over hardware and cross-CPU notifications, page-table
-arithmetic and TLB operations, CPU-usage counters on shared state, and the thin
-wrappers around context-switch and MPU primitives in `partition_switch`, `mpu_switch`
-and `executor`. The two `assume_specification` items are `PartialEq::eq` for
+Where the trust concentrates: 118 of the 135 are the whole of five modules --
+`net_buf` (36), `ipc` (22), `pm` (22), `mmu` (20) and `usage` (18). These are pure
+decision logic, not hardware shims: they contain no `unsafe`, raw pointers or externs,
+so nothing about them needs to be trusted; they are simply unproven (gale#509). The
+remainder are the thin wrappers around context-switch and MPU primitives in
+`partition_switch`, `mpu_switch` and `executor` (the genuine hardware seams), and
+array helpers in `sched`, `poll` and `mpu`. The two `assume_specification` items are `PartialEq::eq` for
 `ThreadId` and `ThreadState` in `src/sched.rs`. The Rocq admits are the three
 stub files the proof-completeness gate already ledgers.
 
@@ -108,7 +110,7 @@ The "39/39 modules, 805 verified, 0 errors" claim refers to what Verus *checked*
 
 A reader citing the bench numbers should know:
 - The verified bodies are SMT-checked.
-- The `external_body` shims are reviewed-by-eye against the C they bridge to, with FFI-contract docstrings.
+- The `external_body` functions are not checked. For the five wholly-trusted modules their contracts are not even reviewed against the bodies: a review found `mmu::region_align_decide` returns `aligned_size == 0` for size 0 although its `ensures` requires `> 0` (gale#509).
 - `verus --no-cheating` would intentionally reject these and is not the gate we run.
 
 ---

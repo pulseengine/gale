@@ -1,6 +1,10 @@
-//! Verified MMU virtual address space management model.
+//! MMU virtual address space management model.
 //!
-//! This is a formally verified model of Zephyr's MMU virtual address space
+//! STATUS: trusted, not verified. Every function in this module is
+//! `#[verifier::external_body]`: Verus assumes the contracts below and
+//! checks none of the bodies (gale#509).
+//!
+//! This is a model of Zephyr's MMU virtual address space
 //! management, based on kernel/mmu.c.  The module covers the decision and
 //! validation logic only — hardware page table manipulation, TLB flushes,
 //! and physical page frame accounting all remain in C.
@@ -15,7 +19,7 @@
 //! Zephyr MMU flag constants (K_MEM_PERM_*, K_MEM_CACHE_*, K_MEM_MAP_*):
 //!   include/zephyr/sys/mem_manage.h
 //!
-//! ASIL-D verified properties:
+//! Target properties (assumed by Verus via external_body, not checked):
 //!   MM1: page-aligned size check (size % page_size == 0, size > 0)
 //!   MM2: user+uninit combination is forbidden
 //!   MM3: cache flag mutual exclusion (at most one cache policy)
