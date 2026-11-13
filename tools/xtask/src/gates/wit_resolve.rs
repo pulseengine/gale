@@ -1,4 +1,5 @@
-//! Every generated per-target WIT world must RESOLVE against the real gust:hal
+//! Every generated per-target WIT world, and every gust:bus package (wit/bus,
+//! gale#511), must RESOLVE against the real gust:hal
 //! seam -- its imports must name interfaces that actually exist in
 //! wit/hal/gust-hal.wit. Catches a generated world drifting from the seam.
 //!
@@ -106,10 +107,41 @@ pub fn run(repo: &Path, _target: Option<&str>) -> Verdict {
             Err(e) => return Verdict::Refused(format!("{base}: {e}")),
         }
     }
+    // gust:bus (gale#511) imports gust:hal/mmio@0.1.0 in its driver world, so it
+    // must resolve against the same seam. Swept by directory, not by a name list,
+    // and an empty sweep is REFUSED like the generated worlds above.
+    let bus = repo.join("wit/bus");
+    let mut bus_pkgs: Vec<PathBuf> = match fs::read_dir(&bus) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|x| x == "wit"))
+            .collect(),
+        Err(e) => return Verdict::Refused(format!("{}: {e}", bus.display())),
+    };
+    bus_pkgs.sort();
+    if bus_pkgs.is_empty() {
+        return Verdict::Refused(format!("no .wit package in {}", bus.display()));
+    }
+    for w in &bus_pkgs {
+        let base = w.file_name().unwrap_or_default().to_string_lossy().to_string();
+        match resolves(w, &hal, "resolve-bus") {
+            Ok(true) => lines.push(format!("wit/bus/{base}: resolves against gust:hal")),
+            Ok(false) => {
+                lines.push(format!("wit/bus/{base}: does NOT resolve against gust:hal"));
+                failed = true;
+            }
+            Err(e) => return Verdict::Refused(format!("wit/bus/{base}: {e}")),
+        }
+    }
+
     if failed {
         Verdict::Fail(lines)
     } else {
-        lines.push(format!("{} world(s) checked", worlds.len()));
+        lines.push(format!(
+            "{} world(s) and {} gust:bus package(s) checked",
+            worlds.len(),
+            bus_pkgs.len()
+        ));
         Verdict::Pass(lines)
     }
 }
