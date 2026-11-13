@@ -1,5 +1,5 @@
 /*
- * Gale Usage FFI — verified thread runtime statistics decision logic.
+ * Gale Usage FFI — thread runtime statistics decision logic.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -43,7 +43,7 @@ extern "C" {
  * @return GALE_USAGE_SYS_NOOP if already enabled,
  *         GALE_USAGE_SYS_APPLY otherwise.
  *
- * Verified: US4 (idempotent enable).
+ * Target (assumed, not verified): US4 (idempotent enable).
  */
 uint8_t gale_usage_sys_enable_decide(uint32_t current_tracking);
 
@@ -58,7 +58,7 @@ uint8_t gale_usage_sys_enable_decide(uint32_t current_tracking);
  * @return GALE_USAGE_SYS_NOOP if already disabled,
  *         GALE_USAGE_SYS_APPLY otherwise.
  *
- * Verified: US4 (idempotent disable).
+ * Target (assumed, not verified): US4 (idempotent disable).
  */
 uint8_t gale_usage_sys_disable_decide(uint32_t current_tracking);
 
@@ -73,7 +73,7 @@ uint8_t gale_usage_sys_disable_decide(uint32_t current_tracking);
  * @return GALE_USAGE_START_RECORD_ONLY   — set cpu->usage0 = now only.
  *         GALE_USAGE_START_RECORD_WINDOW — set usage0 and update window.
  *
- * Verified: US1 (window tracking only when track_usage set).
+ * Target (assumed, not verified): US1 (window tracking only when track_usage set).
  */
 uint8_t gale_usage_start_decide(uint32_t track_usage);
 
@@ -88,7 +88,7 @@ uint8_t gale_usage_start_decide(uint32_t track_usage);
  * @return GALE_USAGE_STOP_SKIP       — usage0 == 0; do nothing.
  *         GALE_USAGE_STOP_ACCUMULATE — compute and accumulate cycles.
  *
- * Verified: US2 (accumulate only when usage0 != 0).
+ * Target (assumed, not verified): US2 (accumulate only when usage0 != 0).
  */
 uint8_t gale_usage_stop_decide(uint32_t usage0);
 
@@ -103,7 +103,7 @@ uint8_t gale_usage_stop_decide(uint32_t usage0);
  *
  * @return 0 on success, -EINVAL if out_average is NULL.
  *
- * Verified: US5 (no division by zero).
+ * Target (assumed, not verified): US5 (no division by zero).
  */
 int32_t gale_usage_average_cycles(uint64_t total_cycles,
                                    uint32_t num_windows,
@@ -120,7 +120,7 @@ int32_t gale_usage_average_cycles(uint64_t total_cycles,
  *
  * @return Elapsed cycles (wrapping arithmetic).
  *
- * Verified: US2 (elapsed used by stop accumulation path).
+ * Target (assumed, not verified): US2 (elapsed used by stop accumulation path).
  */
 uint32_t gale_usage_elapsed_cycles(uint32_t now, uint32_t usage0);
 
@@ -136,7 +136,7 @@ uint32_t gale_usage_elapsed_cycles(uint32_t now, uint32_t usage0);
  *         -EOVERFLOW      — would overflow u64; *total_cycles unchanged.
  *         -EINVAL         — null pointer.
  *
- * Verified: US6 (total_cycles monotonically non-decreasing).
+ * Target (assumed, not verified): US6 (total_cycles monotonically non-decreasing).
  */
 int32_t gale_usage_accumulate(uint64_t *total_cycles, uint32_t cycles);
 

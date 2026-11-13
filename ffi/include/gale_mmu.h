@@ -1,5 +1,5 @@
 /*
- * Gale MMU FFI — verified virtual address space management decisions.
+ * Gale MMU FFI — virtual address space management decisions.
  *
  * These functions replace the validation logic in kernel/mmu.c.
  * The C shim calls Rust to decide whether a map/unmap/update-flags

@@ -184,12 +184,13 @@ artifacts:
 
   - id: FV-SEM-002
     type: sw-verification
-    title: Rocq theorem proofs (coq_of_rust)
+    title: Rocq theorem proofs (model + coq_of_rust import)
     status: approved
     description: >
       Rocq proof scripts in proofs/sem_proofs.v targeting semaphore
-      properties via theorem proving on the coq_of_rust translation of
-      the plain Rust code. Independent verification path from Verus.
+      properties via theorem proving on a hand-written model that imports the coq_of_rust translation of
+      plain/sem.rs for structural facts (the only Rocq file that does;
+      gale#509). Independent verification path from Verus.
       Executed via: bazel test //proofs:sem_proofs_test
     tags: [formal-verification, rocq, theorem-proving, swe-6]
     fields:
@@ -907,13 +908,13 @@ artifacts:
 
   - id: FV-MUT-002
     type: sw-verification
-    title: Mutex Rocq theorem proofs (coq_of_rust)
+    title: Mutex Rocq theorem proofs (abstract model)
     status: approved
     description: >
       Rocq proof scripts in proofs/mutex_proofs.v targeting mutex invariant
       preservation (ownership correspondence, reentrant depth, lock/unlock
-      roundtrip, ownership transfer) via theorem proving on the coq_of_rust
-      translation of plain Rust code. Independent verification path from
+      roundtrip, ownership transfer) via theorem proving on a hand-written abstract model in Rocq (not the coq_of_rust translation;
+      the proof is not connected to the Rust code, gale#509). Independent verification path from
       Verus.
       Executed via: bazel test //proofs:mutex_proofs_test
     tags: [formal-verification, rocq, theorem-proving, swe-6]
@@ -987,13 +988,13 @@ artifacts:
 
   - id: FV-CV-002
     type: sw-verification
-    title: CondVar Rocq theorem proofs (coq_of_rust)
+    title: CondVar Rocq theorem proofs (abstract model)
     status: approved
     description: >
       Rocq proof scripts in proofs/condvar_proofs.v targeting condvar
       invariant preservation (signal/broadcast/wait semantics, emptying,
-      idempotency, signal-broadcast equivalence) via theorem proving on
-      the coq_of_rust translation. Independent verification path from
+      idempotency, signal-broadcast equivalence) via theorem proving on a hand-written abstract model in Rocq (not the coq_of_rust translation;
+      the proof is not connected to the Rust code, gale#509). Independent verification path from
       Verus.
       Executed via: bazel test //proofs:condvar_proofs_test
     tags: [formal-verification, rocq, theorem-proving, swe-6]
@@ -1069,13 +1070,13 @@ artifacts:
 
   - id: FV-MQ-002
     type: sw-verification
-    title: MsgQ Rocq theorem proofs (coq_of_rust)
+    title: MsgQ Rocq theorem proofs (abstract model)
     status: approved
     description: >
       Rocq proof scripts in proofs/msgq_proofs.v targeting message queue
       invariant preservation (ring buffer index safety, put/get modular
-      arithmetic, purge reset, conservation) via theorem proving on the
-      coq_of_rust translation. Independent verification path from Verus.
+      arithmetic, purge reset, conservation) via theorem proving on a hand-written abstract model in Rocq (not the coq_of_rust translation;
+      the proof is not connected to the Rust code, gale#509). Independent verification path from Verus.
       Executed via: bazel test //proofs:msgq_proofs_test
     tags: [formal-verification, rocq, theorem-proving, swe-6]
     fields:
@@ -1142,13 +1143,13 @@ artifacts:
 
   - id: FV-SK-002
     type: sw-verification
-    title: Stack Rocq theorem proofs (coq_of_rust)
+    title: Stack Rocq theorem proofs (abstract model)
     status: approved
     description: >
       Rocq proof scripts in proofs/stack_proofs.v targeting stack invariant
       preservation (push/pop bounds, capacity conservation, roundtrip,
-      full-rejects-push, empty-rejects-pop) via theorem proving on the
-      coq_of_rust translation. Independent verification path from Verus.
+      full-rejects-push, empty-rejects-pop) via theorem proving on a hand-written abstract model in Rocq (not the coq_of_rust translation;
+      the proof is not connected to the Rust code, gale#509). Independent verification path from Verus.
       Executed via: bazel test //proofs:stack_proofs_test
     tags: [formal-verification, rocq, theorem-proving, swe-6]
     fields:
@@ -1215,13 +1216,13 @@ artifacts:
 
   - id: FV-PP-002
     type: sw-verification
-    title: Pipe Rocq theorem proofs (coq_of_rust)
+    title: Pipe Rocq theorem proofs (abstract model)
     status: approved
     description: >
       Rocq proof scripts in proofs/pipe_proofs.v targeting pipe invariant
       preservation (state machine correctness, write/read byte accounting,
-      conservation, reset empties, close clears flags) via theorem proving
-      on the coq_of_rust translation. Independent verification path from
+      conservation, reset empties, close clears flags) via theorem proving on a hand-written abstract model in Rocq (not the coq_of_rust translation;
+      the proof is not connected to the Rust code, gale#509). Independent verification path from
       Verus.
       Executed via: bazel test //proofs:pipe_proofs_test
     tags: [formal-verification, rocq, theorem-proving, swe-6]
@@ -3856,12 +3857,12 @@ artifacts:
 
   - id: FV-TM-002
     type: sw-verification
-    title: Timer Rocq theorem proofs (coq_of_rust)
+    title: Timer Rocq theorem proofs (abstract model)
     status: approved
     description: >
       Rocq proof scripts in proofs/timer_proofs.v targeting timer expiry
-      counter invariant preservation via theorem proving on the
-      coq_of_rust translation. Independent verification path from Verus.
+      counter invariant preservation via theorem proving on a hand-written abstract model in Rocq (not the coq_of_rust translation;
+      the proof is not connected to the Rust code, gale#509). Independent verification path from Verus.
       Executed via: bazel test //proofs:timer_proofs_test
     tags: [formal-verification, rocq, theorem-proving, swe-6]
     fields:
@@ -3878,12 +3879,12 @@ artifacts:
 
   - id: FV-EV-002
     type: sw-verification
-    title: Event Rocq theorem proofs (coq_of_rust)
+    title: Event Rocq theorem proofs (abstract model)
     status: approved
     description: >
       Rocq proof scripts in proofs/event_proofs.v targeting event bitmask
-      invariant preservation via theorem proving on the coq_of_rust
-      translation. Independent verification path from Verus.
+      invariant preservation via theorem proving on a hand-written abstract model in Rocq (not the coq_of_rust translation;
+      the proof is not connected to the Rust code, gale#509). Independent verification path from Verus.
       Executed via: bazel test //proofs:event_proofs_test
     tags: [formal-verification, rocq, theorem-proving, swe-6]
     fields:
@@ -3900,12 +3901,12 @@ artifacts:
 
   - id: FV-MS-002
     type: sw-verification
-    title: MemSlab Rocq theorem proofs (coq_of_rust)
+    title: MemSlab Rocq theorem proofs (abstract model)
     status: approved
     description: >
       Rocq proof scripts in proofs/mem_slab_proofs.v targeting mem_slab
-      block allocation counter invariant preservation via theorem proving
-      on the coq_of_rust translation. Independent verification path from
+      block allocation counter invariant preservation via theorem proving on a hand-written abstract model in Rocq (not the coq_of_rust translation;
+      the proof is not connected to the Rust code, gale#509). Independent verification path from
       Verus.
       Executed via: bazel test //proofs:mem_slab_proofs_test
     tags: [formal-verification, rocq, theorem-proving, swe-6]

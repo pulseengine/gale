@@ -1,5 +1,5 @@
 /*
- * Gale PM FFI — verified power management state machine decisions.
+ * Gale PM FFI — power management state machine decisions.
  *
  * SPDX-License-Identifier: Apache-2.0
  */

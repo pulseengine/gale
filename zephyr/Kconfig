@@ -446,14 +446,17 @@ config GALE_KERNEL_CPU_MASK
 	  Requires a Rust toolchain for the target architecture.
 
 config GALE_KERNEL_USAGE
-	bool "Use Gale formally verified thread runtime statistics"
+	bool "Use Gale thread runtime statistics"
 	depends on SCHED_THREAD_USAGE
 	help
-	  Replace kernel/usage.c with the Gale formally verified Rust
+	  NOTE: every function in the Rust module is #[verifier::external_body],
+	  so Verus assumes its contracts and checks none of the bodies
+	  (trusted, not verified; gale#509).
+	  Replace kernel/usage.c with the Gale Rust
 	  implementation. The start/stop tracking decision logic, idempotent
 	  sys enable/disable guards, average-cycles computation (division-by-zero
 	  protection), and overflow-safe cycle accumulation are handled by
-	  verified Rust code. Timing hardware, spinlocks, per-CPU arrays,
+	  Rust code. Timing hardware, spinlocks, per-CPU arrays,
 	  k_cycle_get_32(), and the obj_core stat wrappers remain native
 	  Zephyr C.
 	  Requires a Rust toolchain for the target architecture.
@@ -471,43 +474,52 @@ config GALE_KERNEL_RB
 	  Requires a Rust toolchain for the target architecture.
 
 config GALE_KERNEL_MMU
-	bool "Use Gale formally verified MMU validation"
+	bool "Use Gale MMU validation"
 	depends on MMU
 	help
-	  Add Gale formally verified validation guards for kernel/mmu.c.
+	  NOTE: every function in the Rust module is #[verifier::external_body],
+	  so Verus assumes its contracts and checks none of the bodies
+	  (trusted, not verified; gale#509).
+	  Add Gale validation guards for kernel/mmu.c.
 	  Map/unmap/update-flags pre-condition checks (page-aligned size,
 	  user+uninit exclusion, guard-page overflow detection, known-flag
 	  validation) and region-alignment arithmetic are handled by
-	  verified Rust code. Virtual address space allocation, physical
+	  Rust code. Virtual address space allocation, physical
 	  page frame accounting, arch_mem_map/arch_mem_unmap, TLB
 	  maintenance, demand paging, and spinlock serialization remain
 	  native Zephyr C.
 
 config GALE_KERNEL_NET_BUF
-	bool "Use Gale formally verified network buffer management"
+	bool "Use Gale network buffer management"
 	depends on NET_BUF
 	help
-	  Add Gale formally verified pool allocation tracking and data
+	  NOTE: every function in the Rust module is #[verifier::external_body],
+	  so Verus assumes its contracts and checks none of the bodies
+	  (trusted, not verified; gale#509).
+	  Add Gale pool allocation tracking and data
 	  pointer arithmetic for lib/net_buf/buf.c and buf_simple.c.
-	  This is the highest-impact component to verify: net_buf is
+	  This is the highest-impact component: net_buf is
 	  referenced by 6,164 BLE sites, 519 networking sites, and 427
 	  USB sites — buffer corruption cascades across all wireless
 	  protocols.
 	  Pool alloc/free bounds (NB1/NB2), reference count tracking
 	  (NB3/NB6), and data pointer bounds for add/remove/push/pull
-	  (NB4/NB5) are handled by verified Rust code. The k_lifo free
+	  (NB4/NB5) are handled by Rust code. The k_lifo free
 	  list, k_spinlock, fragment chain traversal, DMA data callbacks,
 	  and actual buffer memory remain native Zephyr C.
 	  Requires a Rust toolchain for the target architecture.
 
 config GALE_KERNEL_PM
-	bool "Use Gale formally verified power management state machine"
+	bool "Use Gale power management state machine"
 	depends on PM
 	help
-	  Add Gale formally verified policy decision and state machine logic
+	  NOTE: every function in the Rust module is #[verifier::external_body],
+	  so Verus assumes its contracts and checks none of the bodies
+	  (trusted, not verified; gale#509).
+	  Add Gale policy decision and state machine logic
 	  for subsys/pm/pm.c. State transition validity (PM2/PM3/PM4),
 	  forced-state single-use enforcement (PM5), and minimum-residency
-	  policy checks (PM6) are handled by verified Rust code. Hardware
+	  policy checks (PM6) are handled by Rust code. Hardware
 	  sleep entry (pm_state_set/pm_state_exit_post_ops), device
 	  suspend/resume, clock management, spinlock serialization, tracing,
 	  and the scheduler lock remain native Zephyr C.
@@ -528,17 +540,20 @@ config GALE_KERNEL_CBPRINTF
 	  Requires a Rust toolchain for the target architecture.
 
 config GALE_IPC_SERVICE
-	bool "Use Gale formally verified IPC service lifecycle"
+	bool "Use Gale IPC service lifecycle"
 	depends on IPC_SERVICE
 	help
+	  NOTE: every function in the Rust module is #[verifier::external_body],
+	  so Verus assumes its contracts and checks none of the bodies
+	  (trusted, not verified; gale#509).
 	  Replace subsys/ipc/ipc_service/ipc_service.c with the Gale
-	  formally verified Rust implementation. Endpoint state machine
+	  Rust implementation. Endpoint state machine
 	  transitions (Closed->Open->Bound->Closed), registration capacity
 	  bounds, send/receive precondition checks, and buffer-size
-	  validation are handled by verified Rust code.
+	  validation are handled by Rust code.
 	  Backend transport (rpmsg, icmsg), interrupt wiring, shared-memory
 	  setup, and the no-copy TX/RX buffer path remain native Zephyr C.
-	  Verified properties: IPC1 (state valid), IPC2 (open from Closed),
+	  Target properties (assumed, not verified): IPC1 (state valid), IPC2 (open from Closed),
 	  IPC3 (send when Bound), IPC4 (close to Closed), IPC5 (count
 	  bounded), IPC6 (buffer length bounded).
 	  Requires a Rust toolchain for the target architecture.

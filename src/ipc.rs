@@ -1,7 +1,10 @@
-//! Verified IPC service model for Zephyr RTOS.
+//! IPC service model for Zephyr RTOS.
 //!
-//! This is a formally verified port of zephyr/subsys/ipc/ipc_service/ipc_service.c.
-//! All safety-critical properties are proven with Verus (SMT/Z3).
+//! STATUS: trusted, not verified. Every function in this module is
+//! `#[verifier::external_body]`: Verus assumes the contracts below and
+//! checks none of the bodies (gale#509).
+//!
+//! This is a port of zephyr/subsys/ipc/ipc_service/ipc_service.c.
 //!
 //! This module models the **endpoint state machine, registration lifecycle,
 //! and send/receive validation** of Zephyr's IPC service subsystem.
@@ -25,7 +28,7 @@
 //!   - LOG_* tracing — instrumentation
 //!   - CONFIG_IPC_SERVICE_* Kconfig variants — backend selection
 //!
-//! ASIL-D verified properties:
+//! Target properties (assumed by Verus via external_body, not checked):
 //!   IPC1: Endpoint state is always a valid IpcEndpointState variant
 //!   IPC2: open only succeeds from Closed state (no double-open)
 //!   IPC3: send/send_critical only accepted when endpoint is Bound

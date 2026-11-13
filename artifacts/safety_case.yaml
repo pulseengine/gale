@@ -238,10 +238,11 @@ artifacts:
     description: >
       Verus formal verification proofs covering arithmetic no-overflow
       postconditions across all kernel primitives.  Key artifacts:
-      FV-SEM-001 (semaphore), FV-MUT-001 (mutex), FV-SC-001 (scheduler
-      priority arithmetic), FV-TO-001 (timeout tick arithmetic),
-      FV-SK-001 (stack index arithmetic).  All proofs check via Z3 as part
-      of the CI pipeline.  NB: Z3 is an UNCHECKED oracle here — its verdict is
+      FV-SEM-001 (semaphore), FV-MUT-001 (mutex), FV-TO-001 (timeout tick
+      arithmetic), FV-SK-001 (stack index arithmetic).  All proofs check via
+      Z3 as part of the CI pipeline.  The scheduler (FV-SC-001) is NOT
+      evidence here: that artifact is draft and not passing, RunQueue::add is
+      external_body, and sched_proofs.v is all Admitted (gale#509).  NB: Z3 is an UNCHECKED oracle here — its verdict is
       trusted, not certificate-backed.  The by(bit_vector) LEAF obligations are
       being re-discharged with certificate-checked evidence (see Sn-5): the
       cpu_mask + mpu leaves are now obligation-proof via ordeal LRAT certs;
@@ -249,7 +250,7 @@ artifacts:
     tags: [safety, asil-d, formal-verification, verus]
     fields:
       evidence-type: formal-proof
-      evidence-ref: FV-SEM-001, FV-MUT-001, FV-TO-001, FV-SK-001, FV-SC-001
+      evidence-ref: FV-SEM-001, FV-MUT-001, FV-TO-001, FV-SK-001
       confidence: high
     links:
       - type: supports
@@ -275,20 +276,22 @@ artifacts:
 
   - id: Sn-3
     type: safety-solution
-    title: Rocq theorem proofs and Kani BMC for deadlock freedom
+    title: Rocq model proofs and Kani equivalence harnesses toward deadlock freedom (incomplete)
     status: approved
     description: >
-      Two complementary evidence sources for deadlock freedom.
-      FV-MUT-002: Rocq (Coq) theorem proofs of mutex ownership-transfer
-      and forward-progress invariants.  FV-CV-002: Rocq proofs of condvar
-      wait/notify protocol correctness.  FV-TRACTOR-EQ: Kani bounded model
-      checking exhaustively explores state spaces for mutex+condvar
-      interactions within a bounded number of threads.
+      Partial evidence toward deadlock freedom; it does not establish it.
+      FV-MUT-002: Rocq theorems over a hand-written Z-valued lock-count model
+      (ownership and count invariants); proofs/mutex_proofs.v contains no
+      progress or deadlock statement.  FV-CV-002: Rocq model of condvar
+      wait/notify.  FV-TRACTOR-EQ: Kani single-call equivalence harnesses;
+      they do not explore multi-thread mutex+condvar interleavings
+      (tests/kani_equivalence.rs).  Confidence lowered to low until a
+      progress property is stated and proved (gale#509).
     tags: [safety, asil-d, formal-verification, rocq, kani]
     fields:
       evidence-type: formal-proof
       evidence-ref: FV-MUT-002, FV-CV-002, FV-TRACTOR-EQ
-      confidence: high
+      confidence: low
     links:
       - type: supports
         target: G-4

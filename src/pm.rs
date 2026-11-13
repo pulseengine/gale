@@ -1,8 +1,11 @@
-//! Verified power management state machine model for Zephyr RTOS.
+//! Power management state machine model for Zephyr RTOS.
 //!
-//! This is a formally verified model of Zephyr's PM subsystem lifecycle
-//! from subsys/pm/pm.c and subsys/pm/state.c. All safety-critical
-//! properties are proven with Verus (SMT/Z3).
+//! STATUS: trusted, not verified. Every function in this module is
+//! `#[verifier::external_body]`: Verus assumes the contracts below and
+//! checks none of the bodies (gale#509).
+//!
+//! This is a model of Zephyr's PM subsystem lifecycle
+//! from subsys/pm/pm.c and subsys/pm/state.c.
 //!
 //! This module models the **power state machine and policy decision logic**
 //! of Zephyr's PM subsystem. Actual hardware power control, device
@@ -23,7 +26,7 @@
 //!   - pm_suspend_devices / pm_resume_devices — device power management
 //!   - arch pm_state_set / pm_state_exit_post_ops — hardware sleep entry
 //!
-//! ASIL-D verified properties:
+//! Target properties (assumed by Verus via external_body, not checked):
 //!   PM1: state is always a valid PmState variant (enum bounds)
 //!   PM2: from ACTIVE the system can transition to any lower-power state
 //!   PM3: from any low-power state the system always returns to ACTIVE

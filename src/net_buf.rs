@@ -1,6 +1,10 @@
-//! Verified network buffer management model for Zephyr RTOS.
+//! Network buffer management model for Zephyr RTOS.
 //!
-//! This is a formally verified model of Zephyr's net_buf subsystem,
+//! STATUS: trusted, not verified. Every function in this module is
+//! `#[verifier::external_body]`: Verus assumes the contracts below and
+//! checks none of the bodies (gale#509).
+//!
+//! This is a model of Zephyr's net_buf subsystem,
 //! sourced from lib/net_buf/buf.c and lib/net_buf/buf_simple.c.
 //! The net_buf subsystem is referenced by 6,164 BLE sites, 519 networking
 //! sites, and 427 USB sites — buffer corruption here cascades across all
@@ -28,7 +32,7 @@
 //!   - CONFIG_NET_BUF_LOG — debug tracing
 //!   - CONFIG_USERSPACE — syscall marshaling
 //!
-//! ASIL-D verified properties:
+//! Target properties (assumed by Verus via external_body, not checked):
 //!   NB1: alloc never exceeds pool capacity (0 <= allocated <= capacity)
 //!   NB2: free returns buffer to pool (allocated decrements correctly)
 //!   NB3: ref count tracks owners (ref_count >= 1 while in use)
