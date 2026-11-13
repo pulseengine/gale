@@ -27,6 +27,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # Moves with varve.toml: pin-agreement checks it against the wasm-tools the pinned layer ships.
+  WASM_TOOLS_VERSION: "1.263.0"
+
 jobs:
   gust-targets:
     name: "gust target model (generator + drift gate)"
@@ -54,7 +58,7 @@ jobs:
           fi
 
       - name: Install wasm-tools
-        run: cargo install wasm-tools --version 1.245.1 --locked
+        run: cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
 
       # SHADOW PERIOD (gale#368). The gates are moving to one compiled language.
       # A port is not retired on review: the failure mode of this migration is

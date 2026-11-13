@@ -24,3 +24,20 @@ retired-roots = [
   # 2026.08.0 to 2026.09.1 was signed by it and none of them verify here.
   { key = "4e771dc62a08be89e3450f8cd807da58ff70af4a4e124ebf2d2b71684cfd9973", retired = "2026-09-07", last-layer = "2026.09.1" },
 ]
+
+# The realm covalent composes for wasm-tools (gale pins covalent; see varve.toml).
+# The payloads are upstream's, the signature is PulseEngine's, which is why the
+# realm is not named after the upstream. `varve inspect` shows each payload's
+# proof of origin; wasm-tools 1.263.0 carries build provenance from upstream's
+# publish workflow. Definition copied from pulseengine/kiln and
+# pulseengine/rules_wasm_component, which agree on both values.
+[realm.pulseengine-wasm]
+registry   = "oci://ghcr.io/pulseengine/wasm-layers"
+trust-root = "f1300acb791d330da9b81951d4137f5b1fb0c5efc50213deee4d7a981be28745"
+
+# The composing realm gale pins (pulseengine/covalent-layers). It carries no
+# payload of its own: its root signs only the pairing of the two realms above,
+# and each composed layer is still verified against its own root.
+[realm.covalent]
+registry   = "oci://ghcr.io/pulseengine/covalent-layers"
+trust-root = "32d09d12ec3dcd448fcfd9f5768327126d3d9c54a74fe01266882b43362eb8a5"

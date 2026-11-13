@@ -45,6 +45,10 @@ fn tool_for(var: &str) -> Option<&'static str> {
         "SPAR" => "spar",
         "WSC" => "wsc",
         "KILND" => "kilnd",
+        // From the composed pulseengine-wasm layer (covalent). Before it was a
+        // var, nine `cargo install wasm-tools --version 1.245.1` lines drifted
+        // from nothing, because nothing checked them.
+        "WASM_TOOLS" => "wasm-tools",
         _ => return None,
     })
 }
@@ -263,6 +267,7 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
 
     ck("tool_for maps SYNTH", tool_for("SYNTH") == Some("synth"));
     ck("tool_for rejects an unknown var", tool_for("NODE").is_none());
+    ck("tool_for maps WASM_TOOLS", tool_for("WASM_TOOLS") == Some("wasm-tools"));
 
     let obj = r#""kind":"tool","name":"synth","version":"0.78.0""#;
     ck("field reads name", field(obj, "name") == "synth");
@@ -279,6 +284,12 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     // wrong reason — a broken scanner looking identical to the goal state.
     let found = hardcoded(repo);
     ck("scanner finds at least one hardcoded version", !found.is_empty());
+    // The var with an underscore in the tool part must be found as WASM_TOOLS,
+    // not split at the first underscore and dropped as an unknown tool.
+    ck(
+        "scanner finds WASM_TOOLS_VERSION",
+        found.iter().any(|(_, v, _, _)| v == "WASM_TOOLS"),
+    );
     ck(
         "scanner captures file, var, version and line",
         found.iter().all(|(f, v, ver, l)| !f.is_empty() && !v.is_empty() && !ver.is_empty() && *l > 0),

@@ -34,6 +34,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # Moves with varve.toml: pin-agreement checks it against the wasm-tools the pinned layer ships.
+  WASM_TOOLS_VERSION: "1.263.0"
+
 jobs:
   driver-components:
     name: "no raw env + componentizes + object agrees with source (13 thin drivers)"
@@ -47,7 +51,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-tools
-        run: cargo install wasm-tools --version 1.245.1 --locked
+        run: cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
 
       # nm, for reading the committed Cortex-M objects. The object-axis check
       # compares each committed .o's undefined symbols against the field names

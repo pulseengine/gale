@@ -3,17 +3,16 @@
 manifest-version = 1
 
 [toolchain]
-realm   = "pulseengine"
+realm   = "covalent"
 channel = "rolling"
-# 2026.10.35 (gale#462-era bump, 2026-11-04): the last layer of the 2026.10 line --
-# the 2026.11 line has started, so this line's anti-rollback mark should not
-# advance again (the reason 2026.10.1 was once refused: counter 2 against a mark
-# of 26). It carries meld 0.66.0 (`--memory-page-size 1`, meld#530: domain
-# memories declared at their packed byte extent) and synth 0.89.0 (multi-memory
-# under --native-pointer-abi, synth#1145; byte-sized memories). Both are the
-# v0.11.0 two-domain chain; the image still needs synth#1622 (i64 on a
-# non-default memory) and loom#457 (loom reads (pagesize 1)). 2026.11.1 exists
-# (meld 0.67.0, spar 0.48.1) and is the next candidate. Digest verified against
-# the realm root by `varve install`.
-layer   = "2026.10.35"
-digest  = "sha256:c00162ed1bae1cd17a1eaaea04fefaeddfcf49859c3c6fa28ac0958ec3a8fd13"
+# covalent 2026.11.1 composes pulseengine 2026.10.35 (the previous pin, unchanged:
+# meld 0.66.0, synth 0.89.0, loom 1.4.1, rivet 0.41.1, ...) with pulseengine-wasm
+# 2026.10.6, which adds wasm-tools 1.263.0. Before this, wasm-tools came from
+# `cargo install --version 1.245.1` in 9 CI steps and from whatever was on PATH
+# locally, and no gate compared the two. CI's WASM_TOOLS_VERSION now moves with
+# this pin, and pin-agreement checks it. 2026.10.35 was the last layer of the
+# 2026.10 line; covalent 2026.11.7 (pulseengine 2026.11.14: synth 0.90.0,
+# meld 0.67.0) is the next candidate. Every composed digest is verified against
+# its realm's root by `varve install`.
+layer   = "2026.11.1"
+digest  = "sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315"

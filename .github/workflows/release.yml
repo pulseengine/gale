@@ -44,6 +44,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Moves with varve.toml: pin-agreement checks it against the wasm-tools the pinned layer ships.
+  WASM_TOOLS_VERSION: "1.263.0"
+
 jobs:
   # ── Build the wasm-cross-LTO modules (gale's release "binaries") ──────────
   # ci-base has the Zephyr SDK (arm-zephyr-eabi-objcopy for the import renames);
@@ -165,7 +169,7 @@ jobs:
           # has neither loom/synth nor wasm-tools. Without it `wasm-tools print` fails
           # silently → 0-byte .wat → GitHub rejects the asset upload (HTTP 400 Bad
           # Content-Length). Pin for reproducibility (recorded via build-env).
-          cargo install wasm-tools --version 1.245.1 --locked
+          cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
 
       - name: Build distribution
         env:

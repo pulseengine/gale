@@ -56,6 +56,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
+  # Moves with varve.toml: pin-agreement checks it against the wasm-tools the pinned layer ships.
+  WASM_TOOLS_VERSION: "1.263.0"
   # KEEP IN SYNC WITH varve.toml. This workflow downloads its own synth/loom
   # rather than resolving them through varve, so the pin exists twice and can
   # drift. It just did: the gate passes --embedder-data-init/--embedder-global-init,
@@ -146,7 +148,7 @@ jobs:
         # the wasm's import section, so it needs wasm-tools -- the old shell gate
         # only ran nm and did not. Pinned to the same version drv-components.yml
         # uses, so the two gates read imports through identical tooling.
-        run: cargo install wasm-tools --version 1.245.1 --locked
+        run: cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
 
       - name: Install binutils (nm)
         if: steps.guard.outputs.run == 'true'
