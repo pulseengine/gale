@@ -30,8 +30,11 @@ package gust:bus@0.1.0;
 ///                       0x05 timeout      a bounded hardware wait expired
 ///                       0x06 invalid-arg  addr7 > 0x7F, count == 0 or count > 255,
 ///                                         or read not in {0, 1}
-///                     After nack, arb-lost or timeout the driver has already
-///                     issued STOP (where the IP allows) and the bus is idle.
+///                       0x07 bus-error    misplaced START or STOP seen on the bus
+///                     After nack, arb-lost, timeout or bus-error the driver has
+///                     already issued STOP or reset the peripheral (whichever the
+///                     IP allows) and the peripheral is idle. A slave that still
+///                     holds SDA low needs bus recovery outside this interface.
 ///
 ///   state             bits 0..=7   bytes remaining (0..=255)
 ///                     bit  8       direction: 1 = read, 0 = write
