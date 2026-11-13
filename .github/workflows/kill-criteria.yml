@@ -32,6 +32,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # Moves with varve.toml: pin-agreement checks it against the wasm-tools the pinned layer ships.
+  WASM_TOOLS_VERSION: "1.263.0"
+
 jobs:
   wcet-evt:
     name: "VER-OS-WCET-001 kill-criterion can still fail"
@@ -339,7 +343,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install wasm-tools
-        run: cargo install wasm-tools --version 1.245.1 --locked
+        run: cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
 
       # This gate exists BECAUSE a silent failure got through: meld exits 0 and
       # prints "Fusion complete!" while three components' .rodata stack on the same
@@ -556,7 +560,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install wasm-tools
-        run: cargo install wasm-tools --version 1.245.1 --locked
+        run: cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
 
       - name: Negative control -- a raw env import must be caught
         run: python3 drivers/check-graph-env.py --self-test
