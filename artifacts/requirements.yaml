@@ -5684,3 +5684,17 @@ artifacts:
     links:
       - type: derives-from
         target: SYSREQ-COV-001
+
+  - id: REQ-DIFF-ZEPHYR-001
+    type: sw-req
+    title: gale's primitives agree with the real Zephyr C implementation on generated operation sequences, and the Zephyr matrices gate merges
+    status: proposed
+    description: "From gale#478. The existing differential_* tests compare pure-Rust replicas of the FFI against the Verus model; both sides are gale's, so they cannot catch a spec that misreads Zephyr. SHALL: (1) for at least sched, sem and mutex, a harness drives the same proptest-generated operation sequences through the real Zephyr C implementation (the pulseengine/zephyr fork at its pinned revision) and through gale, and compares observable state after every step (return codes, counts, owner, wait-queue order). (2) The Zephyr primitive matrices (zephyr-tests.yml) are required checks, with a committed ratchet listing known-failing suites that can only shrink. Kill-criteria: a generated sequence on which gale and Zephyr C disagree with no ledgered rationale; a matrix suite that newly fails but merges. Constraint: required matrices add runner load against the 2-PR CI ceiling, so measure their duration before making them required. Scheduled after #467 (trusted-base JSON)."
+    tags: [differential, zephyr, ci, gale#478]
+    links:
+      - type: derives-from
+        target: SYSREQ-TRACTOR-001
+      - type: traces-to
+        target: FIND-002
+      - type: traces-to
+        target: G-5
