@@ -79,9 +79,9 @@ regenerate = "drivers/build-dissolve-gustos.sh"
 [[binary]]
 path = "drivers/measurements/wcet-fixture/gustos.loom.wasm"
 kind = "wasm-input"
-consumer = ".github/workflows/kill-criteria.yml"
+consumer = "tools/xtask/src/gates/graph_env.rs"
 needle = "wcet-fixture/gustos.loom.wasm"
-why = "The fused gust:os core module the WCET and data-overlap gates measure."
+why = "The fused gust:os core module. graph-env and data-overlap both sweep it through graph-env's COMPOSED list (gale#439); the WCET sidecar names it as its module."
 regenerate = "drivers/build-dissolve-gustos.sh"
 
 [[binary]]
