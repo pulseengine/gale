@@ -59,8 +59,12 @@ interface i2c-master {
     /// byte the next state's phase is complete. Returns an error otherwise.
     xfer: func(state: u32, out: u32) -> u32;
 
-    /// Issue STOP if needed and return the bus to idle. Returns 0 (the idle state)
-    /// or timeout. Safe to call from any state, including after an error.
+    /// Issue STOP if needed and return the bus to idle. Returns 0 (the idle state),
+    /// or the error the end of the transaction produced: nack (an IP that reports
+    /// the last written byte's NACK only once STOP completes reports it here),
+    /// arb-lost, bus-error or timeout. The peripheral is idle either way. Safe to
+    /// call from any state, including after an error; abandoning an active
+    /// transaction resets the peripheral.
     end: func(state: u32) -> u32;
 }
 
