@@ -37,11 +37,18 @@ right is therefore the CR2 word and the byte count, and those are what is proven
 - **Dissolve, pinned loom 1.4.1 and synth 0.89.0:**
   `loom optimize --passes inline` then
   `synth compile --target cortex-m3 --all-exports --relocatable --embedder-data-init --embedder-global-init`:
-  text 2578 / data 0 / bss 0. Undefined symbols: exactly `read32`, `write32`.
-  The wasm carries the 16-byte `.rodata` segment that wit-bindgen 0.52 emits in
-  every driver (uart-comp has the identical bytes); no code reads it, and the
-  object has 0 r9 and 0 0x100000 references, which `drivers/check-cross-arch.py`
-  checks.
+  text 2366 / data 0 / bss 0. Undefined symbols: exactly `read32`, `write32`.
+  The object has 0 r9 references and 0 `[fp, …]` (linear-memory) accesses, counted
+  with `arm-none-eabi-objdump -d`.
+- **No linear-memory access.** wit-bindgen's default `run_ctors_once` guard makes
+  every export entry read, and on first call write, a flag at linear address
+  0x10000C. Dissolved, that is `ldrb/strb [fp, ip]` with ip = 0x10000C, built from
+  `movw`/`movt`. `drivers/check-cross-arch.py` looks only for the text `100000`, so
+  it cannot see this (gale#516). This crate has no constructors, so
+  `generate!` sets `disable_run_ctors_once_workaround: true`. The wasm then has no
+  load, store or global access, and the object has no `[fp, …]` access.
+  The 16-byte `.rodata` segment that wit-bindgen 0.52 emits is still in the wasm;
+  no code reads it.
 
 ## What is not shown
 

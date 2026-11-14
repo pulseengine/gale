@@ -53,6 +53,11 @@ wit_bindgen::generate!({
     world: "gust:i2c-v2/driver",
     path: ["../../wit/hal", "../../wit/bus", "wit"],
     generate_all,
+    // The default guard calls `run_ctors_once` at every export entry, which reads
+    // and writes a flag in linear memory (0x10000C). This crate has no
+    // constructors (`__wasm_call_ctors` is empty), and the dissolved object must
+    // not touch linear memory.
+    disable_run_ctors_once_workaround: true,
 });
 
 // ───────────────────────────── target ─────────────────────────────
