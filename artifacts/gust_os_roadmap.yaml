@@ -1139,3 +1139,33 @@ artifacts:
       model: claude-opus-5
       timestamp: 2026-09-30T04:51:06Z
     release: v0.13.0
+
+  - id: REQ-DRV-SEN66-001
+    type: sw-req
+    title: The SEN66 air-quality sensor is a thin-seam device driver exporting gust:sen66/air
+    status: approved
+    description: "The Sensirion SEN66 driver SHALL be a Component-Model component that imports only gust:bus/i2c-master@0.1.0 and exports gust:sen66/air@0.1.0 (start, read, stop) in the normative encoding of wit/sensor/gust-sen66.wit. read SHALL return one packed u64 per sample from a single Read Measured Values (0x0300): CO2 ppm in bits 0..15, PM2.5 x10 in bits 16..31, VOC index x10 in bits 32..47, a valid bit per field in bits 48..50, and bit 63 for an error with its code in bits 0..7. A sample SHALL be returned only when Get Data Ready (0x0202) was CRC-valid and true and every word of the frame passed its CRC-8 (polynomial 0x31, init 0xFF). A field the sensor reports as unknown (0xFFFF for uint16, 0x7FFF for int16) SHALL have its valid bit clear and its value 0. Not-ready and CRC failure SHALL be errors, never values. The driver SHALL keep no memory and SHALL bound every retry. Facts SHALL come from the SEN6x datasheet D1 v1.0 (October 2026). Representation decided by the owner on gale#511 on 2026-11-14. Consumer: the wohl air node (seam gale-wohl/air-sensor-read)."
+    tags: [gust, driver, sensor, thin-seam, gust-bus, wohl]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-BREADTH-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-14T04:31:24Z
+
+  - id: VER-DRV-SEN66-001
+    type: sw-verification
+    title: "SEN66 driver: Kani 9/9 including the seam kill criterion, 9 planted faults caught, dissolves with no linear-memory access"
+    status: draft
+    description: "Local run, kani 0.67.0, cargo kani in drivers/sen66-thin: 9 of 9 harnesses verified (c1 datasheet CRC example, c2/c3 every 1- and 2-bit error in a received word rejected, c4 check_word exact, c5 unknown values per Table 34, c6 pack encoding, c7 accumulator equals a direct decode of every 27-byte frame, c8 against a sensor model serving arbitrary bytes with any bus call able to fail and up to one address NACK per transaction, read returns a sample only after a CRC-valid true data-ready and 9 CRC-valid words, and the sample equals pack of words 8, 1, 6, c9 start/stop encoding). Negative controls, each caught (exit 1): not-ready treated as ready (c8), CRC failure ignored (c8), CO2 from word 5 (c7), unknown VOC kept (c6), polynomial 0x07 (c1), init 0x00 (c1), CRC over one byte (c2), RH as uint16 (c5), and a planted assert that every result is an error (c8 fails, so samples are reachable). Unit tests 9 of 9 against the model. Dissolve with the pinned loom 1.4.1 and synth 0.89.0 (--target cortex-m3 --all-exports --relocatable --embedder-data-init --embedder-global-init): text 3898 / data 0 / bss 0, undefined symbols exactly begin, end, xfer, 0 r9 references and 0 [fp, ...] linear-memory accesses; the wasm has no load, store or global access. SCOPE: the sensor model is written from the datasheet; c8 holds against that model, not the device. Under Kani the retry bound is 2. Nothing has run on a real SEN66, Renode or silicon; device status is not read. The driver Kani harnesses do not run in CI (gale#509). The wasm-to-native dissolve is differentially trusted, not proven equivalent. Status stays draft until the harnesses run in CI and a read returns a sample from a real SEN66. Kill criterion: a harness fails, a planted fault passes, or the dissolved object gains a data or bss byte, an r9 or [fp, ...] access, or an undefined symbol other than begin, end and xfer."
+    tags: [gust, sensor, kani, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-SEN66-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-14T04:31:24Z
