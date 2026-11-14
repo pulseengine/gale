@@ -1169,3 +1169,35 @@ artifacts:
       created-by: ai-assisted
       model: claude-opus-5-5
       timestamp: 2026-11-14T04:31:24Z
+
+  - id: REQ-DRV-I2C-V2-001
+    type: sw-req
+    title: The I2C v2 block (WB55, G0, G4) is a thin-seam bus driver exporting gust:bus/i2c-master
+    status: approved
+    description: "The STM32 I2C v2 master path (TIMINGR setup; CR2 address, direction, NBYTES, AUTOEND, START; ISR-polled TXDR/RXDR) SHALL be a Component-Model driver that imports only gust:hal/mmio (read32, write32) and exports gust:bus/i2c-master@0.1.0 in the normative encoding of wit/bus/gust-bus.wit, plus a driver-local setup interface (gust:i2c-v2/setup, configure(timingr)) because TIMINGR is specific to this IP and to the board clock. Every accepted begin SHALL program CR2 with the 7-bit address in SADD[7:1], NBYTES equal to the byte count, RELOAD clear and AUTOEND set, which is the configuration in which the hardware NACKs the last read byte and issues STOP. xfer SHALL move exactly count bytes and then refuse; an error flag (BERR, ARLO, NACKF) SHALL stop the transfer before any further byte moves; end SHALL report a NACK of the final written byte; every hardware wait SHALL be bounded. Register facts SHALL come from the pinned stm32-data snapshot. Consumer: the wohl air node (seam gale-wohl/air-sensor-read, gale#511)."
+    tags: [gust, driver, i2c, thin-seam, gust-bus, wohl]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DRV-I2C-001
+      - type: related-to
+        target: REQ-DRV-BREADTH-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-14T00:15:29Z
+
+  - id: VER-DRV-I2C-V2-001
+    type: sw-verification
+    title: "I2C v2 driver: Kani 9/9 on the decision core, 4 planted faults caught, dissolves with 0 data and 0 bss"
+    status: draft
+    description: "Local run, kani 0.67.0, cargo kani in drivers/i2c-v2-thin: 9 of 9 harnesses verified, 0 failures (k1 begin contract and CR2 fields, k2 RELOAD clear + AUTOEND set + NBYTES == count, k3 exactly count moves then Complete, k4 seam encoding never collides with errors, k5 error flags win over the data flag, k6 decode total, k7 end plan total, k8 TIMINGR reserved bits refused, k9 end reports the final byte's NACK). Negative controls: setting RELOAD fails k2, NBYTES = count-1 fails k1, checking the data flag before the error flags fails k5, dropping the NACK check in end fails k9. Dissolve with the pinned loom 1.4.1 and synth 0.89.0 (--target cortex-m3 --all-exports --relocatable --embedder-data-init --embedder-global-init): text 2366 / data 0 / bss 0, undefined symbols exactly read32 and write32, 0 r9 references and 0 [fp, ...] linear-memory accesses (generate! sets disable_run_ctors_once_workaround; gale#516). SCOPE: Kani proves the pure decision functions (plan_begin, classify, classify_end, decode, advance, plan_end, configure_ok); the register shell that calls them (bounded polling loops, recover, soft_reset) is not proven and has not run on a model or silicon. ASSUMED, not proven: that the I2C v2 hardware NACKs the last byte and issues STOP when NBYTES is reached with RELOAD = 0 and AUTOEND = 1 (reference manual behaviour). The 7-bit SADD[7:1] placement is not in the register data and was cross-checked against one HAL. The driver Kani harnesses do not run in CI (gale#509). The wasm-to-native dissolve is differentially trusted, not proven equivalent. Status stays draft until the harnesses run in CI and the transaction runs on a WB55, G0 or G4. Kill criterion: a harness fails, a planted fault passes, or the dissolved object gains a data or bss byte, an r9 or [fp, ...] access, or an undefined symbol other than read32 and write32."
+    tags: [gust, i2c, kani, verification]
+    links:
+      - type: verifies
+        target: REQ-DRV-I2C-V2-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-14T00:15:39Z

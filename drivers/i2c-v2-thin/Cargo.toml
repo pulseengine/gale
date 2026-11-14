@@ -1,0 +1,32 @@
+# Standalone (not part of the gust workspace) — built ad-hoc for wasm32 + dissolve.
+# gust-OS driver breadth: the I2C v2 block (TIMINGR/NBYTES/AUTOEND) as a thin-seam
+# bus driver that exports the portable gust:bus/i2c-master interface (gale#511).
+[workspace]
+
+[package]
+name = "gust-i2c-v2-thin"
+version = "0.1.0"
+edition = "2021"
+description = "gust:bus i2c-master over the STM32 I2C v2 block (WB55/G0/G4): a Kani-proven scalar transaction FSM in verified wasm, importing only gust:hal/mmio"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# The I2C1 base comes from the generated target model, never typed here.
+default = ["stm32wb55"]
+stm32wb55 = []
+stm32g474 = []
+stm32g031 = []
+
+[dependencies]
+wit-bindgen = { version = "0.52", default-features = false, features = ["macros"] }
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
