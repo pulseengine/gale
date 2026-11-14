@@ -1,0 +1,16 @@
+package gust:i2c-v2@0.1.0;
+
+/// Setup for the I2C v2 block only. Kept out of gust:bus on purpose: TIMINGR is
+/// specific to this IP and to the board's I2C kernel clock, so it is not part of the
+/// portable i2c-master interface. The board bring-up calls `configure` once, after it
+/// has enabled the peripheral clock and routed the pins, and before the first `begin`.
+interface setup {
+    /// Disable the peripheral, write TIMINGR, enable it. Returns 0, or
+    /// 0xFFFF_FF06 (invalid-arg) if `timingr` sets the reserved bits 24..=27.
+    configure: func(timingr: u32) -> u32;
+}
+
+world driver {
+    include gust:bus/i2c-master-driver@0.1.0;
+    export setup;
+}

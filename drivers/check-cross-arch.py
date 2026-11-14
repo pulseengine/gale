@@ -87,6 +87,9 @@ RISCV_KNOWN_BAD = {
     "adc-thin", "can-thin", "dac-thin", "gpio-thin", "hm-thin", "i2c-thin",
     "mpu-thin", "pwm-thin", "spi-thin", "switch-thin", "timer-thin",
     "uart-thin", "wdg-thin",
+    # i2c-v2-thin (gale#511) declines on #1254 like the rest, and also on synth#1724:
+    # a call inside a block with an operand beneath its arguments (`Call(0)`).
+    "i2c-v2-thin",
 }
 RISCV_TRACKER = (
     "synth#1102 — FIXED in synth 0.61.0: rv32 now REFUSES loudly (exit 1) rather than "

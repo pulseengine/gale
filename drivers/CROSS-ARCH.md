@@ -25,6 +25,11 @@ Reproduce: `python3 drivers/check-cross-arch.py`.
 | uart-thin | `poll read32 write32` | 27 T, 3 U — complete | 16 T, 4 U — 1 of 17 skipped, **1 dangling** |
 | wdg-thin | `read32 write32` | 35 T, 2 U — complete | 20 T, 3 U — 1 of 21 skipped, **1 dangling** |
 
+Added 2026-11-14 on synth 0.89.0, so not comparable to the rows above: **i2c-v2-thin**
+(`read32 write32`): ARM 6 T, 2 U, complete, undefined set equals its imports. RV32 declines
+with no object: #1254 like every driver, plus synth#1724 (a call inside a block with an
+operand beneath its arguments), which only this driver hits.
+
 **ARM: 13 of 13 lower completely**, and each object's undefined set is *exactly* the
 set of names its wasm imports — no leak, no truncation. That half of the claim holds.
 
