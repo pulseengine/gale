@@ -70,7 +70,7 @@ constant in `src/lib.rs` names its section or table.
   The last one fails, so c8 reaches its success branch: samples are reachable, not ruled out by the harness.
 - **Dissolve, pinned loom 1.4.1 and synth 0.89.0:**
   - `loom optimize --passes inline`, then `synth compile --target cortex-m3 --all-exports --relocatable --embedder-data-init --embedder-global-init`.
-  - text 3898 / data 0 / bss 0.
+  - text 3714 / data 0 / bss 0 (3898 before the `pack` change below).
   - Undefined symbols: exactly `begin`, `end`, `xfer`.
   - 0 r9 references and 0 `[fp, …]` (linear-memory) accesses (`arm-none-eabi-objdump -d`).
 - **No linear-memory access.** The wasm has no load, store or global access. Three things were needed:
@@ -83,6 +83,25 @@ constant in `src/lib.rs` names its section or table.
   - ARM: the undefined set equals the imports.
   - RV32: synth 0.89.0 emits an object whose undefined set is `begin`, `end`, `xfer`. This is the first thin driver that crosses to RV32 on this ledger. The emitted RV32 code has not been inspected or run.
 - **`cargo xtask check wit-resolve`** resolves `wit/sensor/gust-sen66.wit` against gust:hal plus gust:bus. A planted import typo makes it fail (exit 1).
+
+## The dissolved object is wrong on synth 0.89.0
+
+**The wasm is correct. The dissolved ARM object returns wrong samples. Do not deploy it until synth#1710 and synth#1711 are fixed and `gust-sen66-renode` passes.**
+
+Found by running the dissolved driver on Renode's model of the STM32 I2C v2 block, against a SEN66 slave model (`os/gust/renode-test/gust_sen66.robot`, branch `feat/air-sensor-renode`). Six reads, with expected values computed independently from the encoding:
+
+- **The u32 calls are correct:** `start`, `stop`, the bus driver's `configure`, and both not-ready reads.
+- **The VOC bytes cross the bus correctly,** so the register path works.
+- **The sample values are wrong.**
+
+The same wasm, raw and loom-inlined, gives every expected value under wasmtime against the same sensor model and the same six steps. So the defect is in the wasm-to-ARM step.
+
+Minimized under qemu (Cortex-M3), with wasmtime as the oracle, there are two open synth defects:
+
+- **synth#1711.** An i64 `select` whose condition is a compare computed after the operands gets garbled halves. That is the shape rustc emits for `if known(x) { v |= … }` over u64. `pack` now builds two u32 halves and joins them in a non-inlined function. Kani c6 and c8 re-verify it, the tests pass, and the wasm has no i64 `select` left.
+- **synth#1710.** An explicit `return` of an i64, even a constant, moves only the low half into r0, and r1 keeps a stale value. rustc emits such a `return` for every early exit of `read`. There is no reliable source-level workaround, so the object stays wrong until synth fixes it. After the `pack` change, the Renode run shows correct low words, high words of 0, and the CRC error returned as `0x0000001100000011`.
+
+`synth compile --verify` exits 0 on this wasm. It validates the i32 selection rules and lists the i64 ops only as `I64Const × 23: register-operation`, so this class is outside what it checks.
 
 ## What is not shown
 

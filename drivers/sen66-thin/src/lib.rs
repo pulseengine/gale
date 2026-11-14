@@ -205,17 +205,35 @@ pub const fn err64(c: u8) -> u64 {
 /// and its value bits 0. Bit 63 is never set.
 #[inline(always)]
 pub const fn pack(co2: u16, pm25: u16, voc: u16) -> u64 {
-    let mut v = 0u64;
-    if known(Field::Co2, co2) {
-        v |= co2 as u64 | VALID_CO2;
+    // Built as two u32 halves on purpose. Written over u64, each `if` lowers to an
+    // i64 `select` on a computed compare, which synth 0.89.0 miscompiles on ARM
+    // (synth#1711): the dissolved object returned wrong samples on Renode's I2C v2
+    // model (os/gust/renode-test/gust_sen66.robot). The value is unchanged; c6 checks it.
+    let kc = known(Field::Co2, co2);
+    let kp = known(Field::Pm25, pm25);
+    let kv = known(Field::Voc, voc);
+    let mut lo: u32 = 0;
+    let mut hi: u32 = 0;
+    if kc {
+        lo |= co2 as u32;
+        hi |= 1 << 16; // VALID_CO2 is bit 48
     }
-    if known(Field::Pm25, pm25) {
-        v |= ((pm25 as u64) << 16) | VALID_PM25;
+    if kp {
+        lo |= (pm25 as u32) << 16;
+        hi |= 1 << 17; // VALID_PM25 is bit 49
     }
-    if known(Field::Voc, voc) {
-        v |= ((voc as u64) << 32) | VALID_VOC;
+    if kv {
+        hi |= voc as u32;
+        hi |= 1 << 18; // VALID_VOC is bit 50
     }
-    v
+    join(hi, lo)
+}
+
+/// The u64 from its halves. Not inlined, so LLVM cannot push the zero-extension
+/// into the selects in `pack` and turn them back into i64 selects (synth#1711).
+#[inline(never)]
+pub const fn join(hi: u32, lo: u32) -> u64 {
+    ((hi as u64) << 32) | lo as u64
 }
 
 // ───────────────────────────── frame accumulator ─────────────────────────────
