@@ -1,0 +1,24 @@
+# Standalone (not part of the gust workspace), built ad hoc for wasm32 and dissolve.
+# gust-OS driver breadth: the SEN66 air-quality sensor as a thin device driver that
+# imports only gust:bus/i2c-master (gale#511). This commit carries the pure core
+# (CRC, framing, field validity); the exported interface follows the #511 decision on
+# the reading representation.
+[workspace]
+
+[package]
+name = "gust-sen66-thin"
+version = "0.1.0"
+edition = "2021"
+description = "SEN66 air-quality sensor over gust:bus/i2c-master: Kani-proven CRC-8 framing and field validity"
+
+[lib]
+crate-type = ["rlib"]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
