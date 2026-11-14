@@ -140,6 +140,10 @@ jobs:
             # dash rejects `set -o pipefail` outright ("Illegal option"), which fails
             # every attempt on the option itself. Downloading then running needs no
             # pipefail, works under sh and bash, and removes truncation ambiguity.
+            # llvm.sh downloads the signing key only when this file is absent, and
+            # writes it through `wget | tee`, so a failed fetch leaves an empty file
+            # that every later attempt reuses (NO_PUBKEY on all 5; PR #512). Remove it.
+            rm -f /etc/apt/trusted.gpg.d/apt.llvm.org.asc
             if wget -qO- https://apt.llvm.org/llvm.sh > /tmp/llvm.sh && bash /tmp/llvm.sh "${RUST_LLVM}" all; then
               _ok=1; break
             fi
