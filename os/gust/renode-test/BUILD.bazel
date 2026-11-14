@@ -182,6 +182,24 @@ renode_test(
     },
 )
 
+# Air-sensor stack (gale#511): the dissolved SEN66 device driver composed with the
+# dissolved I2C v2 bus driver, on Renode's STM32 I2C v2 model (STM32F7_I2C) with a SEN66
+# slave model (sen66_model.cs). The robot queues the sensor's answers (a sample,
+# not-ready, a corrupt CRC, unknown fields, a negative VOC, no new sample) and checks
+# each packed result against values it computes itself, plus the model's counters.
+# Emulation evidence only. Red on synth 0.89.0 (synth#1710, synth#1711): the dissolved
+# object returns wrong samples while the wasm is correct under wasmtime.
+renode_test(
+    name = "gust-sen66-renode",
+    timeout = "short",
+    robot_test = "gust_sen66.robot",
+    variables_with_label = {
+        "ELF": ":gust_sen66.elf",
+        "REPL": ":gust_sen66.repl",
+        "MODEL": ":sen66_model.cs",
+    },
+)
+
 # Thin-seam CAN (bxCAN) driver content gate — the dissolved driver (verified-wasm
 # bxCAN master path, Kani-proven config-only-in-init) exercised on a RAM-mapped CAN1
 # window on a real STM32 model; asserts the exact MCR/BTR/TIxR/RF0R register effects

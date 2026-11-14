@@ -262,3 +262,17 @@ kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The same mixer for M4 (G474RE silicon), and the artifact for the M4-vs-LLVM comparison (synth#428)."
 regenerate = "os/gust/README.md"
+
+[[binary]]
+path = "drivers/i2c-v2-thin/i2c-v2-thin-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The i2c-v2-thin bus driver (gust:bus/i2c-master over the STM32 I2C v2 block) dissolved to ARMv7-M by synth, cabi_realloc localized; linked into gust_sen66."
+regenerate = "drivers/i2c-v2-thin/RESULTS.md"
+
+[[binary]]
+path = "drivers/sen66-thin/sen66-thin-cm3.o"
+kind = "synth-object"
+consumer = "os/gust/build.rs"
+why = "The sen66-thin device driver (gust:sen66/air) dissolved to ARMv7-M by synth, cabi_realloc localized; linked into gust_sen66."
+regenerate = "drivers/sen66-thin/RESULTS.md"

@@ -69,3 +69,17 @@ right is therefore the CR2 word and the byte count, and those are what is proven
 
     cargo build --release --target wasm32-unknown-unknown
     cargo kani
+
+## Regenerate the committed object
+
+    cargo build --release --target wasm32-unknown-unknown
+    loom optimize --passes inline <wasm> -o opt.wasm
+    synth compile opt.wasm --target cortex-m3 --all-exports --relocatable \
+        --embedder-data-init --embedder-global-init -o i2c-v2-thin-cm3.o
+    arm-none-eabi-objcopy --localize-symbol=cabi_realloc \
+        --localize-symbol=cabi_realloc_wit_bindgen_0_52_0 i2c-v2-thin-cm3.o
+
+loom 1.4.1 and synth 0.89.0 from the pinned layer. The `objcopy` step makes the two
+wit-bindgen `cabi_realloc` exports local so this object can be linked next to another
+wit-bindgen driver (gust_sen66 links two); nothing calls them, because every function
+crosses the seam as a scalar. synth has no option to keep an export local (synth#1726).

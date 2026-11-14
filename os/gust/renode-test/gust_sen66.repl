@@ -1,0 +1,19 @@
+// Cortex-M4 + 64 KB SRAM / 512 KB flash with Renode's model of the STM32 I2C v2 block
+// (STM32F7_I2C: TIMINGR/NBYTES/AUTOEND, the block WB55, G0 and G4 share) at the I2C1
+// base those chips use, and the SEN66 slave model (sen66_model.cs) at 0x6B on it.
+// Cortex-M4 because WB55 and G4 are M4; the G0 is an M0+, which synth does not target,
+// so no dissolved gust driver runs on it. Flash at 0 and SRAM at 0x20000000 match
+// os/gust memory.x, as in the other gust gates. USART1 carries the result lines.
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m4"
+    nvic: nvic
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    -> cpu@0
+flash: Memory.MappedMemory @ sysbus 0x0
+    size: 0x80000
+sram: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x10000
+i2c1: I2C.STM32F7_I2C @ sysbus 0x40005400
+sen66: Sensors.SEN66 @ i2c1 0x6B
+usart1: UART.STM32_UART @ sysbus <0x40013800, +0x100>
+    -> nvic@37

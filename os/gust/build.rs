@@ -482,6 +482,19 @@ fn main() {
         println!("cargo:rerun-if-changed={}", iobj.display());
     }
 
+    // The air-sensor stack (gale#511): the dissolved SEN66 device driver and the I2C v2
+    // bus driver it binds to, linked together into gust_sen66 for the `gust-sen66-renode`
+    // gate (renode-test/gust_sen66.robot) on Renode's STM32 I2C v2 model with a SEN66
+    // slave model. gust_sen66.rs carries the begin/xfer/end composition shims.
+    let s66 = Path::new(&manifest).join("../../drivers/sen66-thin/sen66-thin-cm3.o");
+    let i2v = Path::new(&manifest).join("../../drivers/i2c-v2-thin/i2c-v2-thin-cm3.o");
+    if s66.exists() && i2v.exists() {
+        println!("cargo:rustc-link-arg-bin=gust_sen66={}", s66.display());
+        println!("cargo:rustc-link-arg-bin=gust_sen66={}", i2v.display());
+        println!("cargo:rerun-if-changed={}", s66.display());
+        println!("cargo:rerun-if-changed={}", i2v.display());
+    }
+
     // The dissolved thin-seam CAN (bxCAN) driver (drivers/can-thin -> loom -> synth):
     // the whole STM32F1 bxCAN master path — BTR bit-timing config (write-protected to
     // Init only), the INRQ/INAK init handshake, and TX-mailbox / RX-FIFO gating, with
