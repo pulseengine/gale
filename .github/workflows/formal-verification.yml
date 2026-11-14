@@ -60,7 +60,7 @@ jobs:
     # changed. Same globs as the old filter, plus BUILD/MODULE which were on the
     # push filter but not the pull_request one.
     name: "proofs needed?"
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","light"]') }}
     timeout-minutes: 45
     outputs:
       run: ${{ steps.q.outputs.run }}

@@ -51,7 +51,7 @@ jobs:
     # pull_request diffs against the PR base, merge_group against
     # merge_group.base_sha.
     name: "docs-only change?"
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","light"]') }}
     timeout-minutes: 10
     # The workflow-level HOME=/root is for the Zephyr containers. This job runs
     # on the bare hosted runner, where checkout cannot stat /root/.gitconfig.

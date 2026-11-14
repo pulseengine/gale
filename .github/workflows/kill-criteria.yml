@@ -265,10 +265,14 @@ jobs:
 
   zephyr-module-archive:
     name: "the Zephyr module archive is reproducible, self-contained, and named"
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted","light"]') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Self-hosted `light` runners do not promise a preinstalled toolchain.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
 
       # gale#463: releases ship gale-zephyr-module-<v>.tar.gz under the cosign
       # signature, for varve to carry gale as a verified Zephyr module. The
@@ -283,10 +287,14 @@ jobs:
 
   vacuous-lemmas:
     name: "no proof fn proves nothing, and no new contract is assumed"
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted","light"]') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Self-hosted `light` runners do not promise a preinstalled toolchain.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
 
       # gale#462: 117 proof fns had `ensures true` (or none) and an empty body --
       # the property written as COMMENTS -- and 98 functions were
@@ -302,10 +310,14 @@ jobs:
 
   trusted-base:
     name: "the honesty doc states the measured trusted base (gale#467)"
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted","light"]') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Self-hosted `light` runners do not promise a preinstalled toolchain.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
 
       # gale#467: the doc said 133 external_body while the source had 135 (and
       # #388's grep said 142, counting comments). The doc's figures are now a
@@ -319,10 +331,14 @@ jobs:
 
   moved-paths:
     name: "a directory moved in the rework leaves no live reference"
-    runs-on: ubuntu-24.04
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted","light"]') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Self-hosted `light` runners do not promise a preinstalled toolchain.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
 
       # docs/architecture/three-modes-two-axes.md step 2 moves directories out
       # of os/gust/ one at a time. Each completed move is a row in the
