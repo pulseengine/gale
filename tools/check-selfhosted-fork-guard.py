@@ -32,6 +32,7 @@ from failing open.
 
 Exit 0 = every self-hosted job is guarded; 1 = a violation or nothing found.
 """
+import json
 import pathlib
 import re
 import sys
@@ -94,6 +95,25 @@ def check(wfdir):
             t = ro.strip()
             if HOSTED.match(t):
                 continue
+            if MATRIX.match(t):
+                # The form trusts any runner that does not contain 'self-hosted', so a
+                # value like ["linux","light"] would send a fork to the pool. Each value
+                # must be a hosted image or a label list that names self-hosted.
+                vals = matrix_values(spec, "runner") or []
+                wrong = []
+                for v in vals:
+                    try:
+                        r = json.loads(v) if isinstance(v, str) else v
+                    except ValueError:
+                        r = None
+                    if not ((isinstance(r, str) and HOSTED.match(r)) or
+                            (isinstance(r, list) and "self-hosted" in r)):
+                        wrong.append(v)
+                if not vals or wrong:
+                    bad[where] = (f"matrix.runner value(s) neither a hosted image nor a list naming "
+                                  f"self-hosted: {wrong or 'none found'}")
+                    seen.append(where)
+                    continue
             if LITERAL.match(t) or MATRIX.match(t):
                 seen.append(where)
                 untrusted = sorted(str(e) for e in events - TRUSTED)
@@ -137,6 +157,9 @@ CASES = [  # (name, workflow text, expect_pass)
     ("fail-closed literal", f"on: [pull_request, push]\njobs:\n{G}", True),
     ("fail-closed matrix", f"on: pull_request\njobs:\n  a:\n    runs-on: {MATRIX_GOOD}\n    strategy:\n"
      "      matrix:\n        include:\n          - runner: '[\"self-hosted\", \"rust-cpu\"]'\n", True),
+    ("fail-closed matrix with a hosted image entry", f"on: pull_request\njobs:\n  a:\n    runs-on: {MATRIX_GOOD}\n"
+     "    strategy:\n      matrix:\n        include:\n          - runner: '[\"self-hosted\", \"rust-cpu\"]'\n"
+     "          - runner: '\"ubuntu-24.04\"'\n", True),
     ("hosted image next to a guarded job", f"on: pull_request\njobs:\n  a:\n    runs-on: ubuntu-24.04\n{G}", True),
     ("matrix.os of hosted images", f"on: pull_request\njobs:\n  a:\n    runs-on: ${{{{ matrix.os }}}}\n"
      f"    strategy:\n      matrix:\n        os: [ubuntu-22.04, macos-15]\n{G}", True),
@@ -149,6 +172,10 @@ CASES = [  # (name, workflow text, expect_pass)
     ("runner group", f"on: pull_request\njobs:\n  a:\n    runs-on:\n      group: pool\n{G}", False),
     ("matrix value is a pool label", f"on: pull_request\njobs:\n  a:\n    runs-on: ${{{{ matrix.os }}}}\n"
      f"    strategy:\n      matrix:\n        os: [ubuntu-22.04, light]\n{G}", False),
+    ("fail-closed matrix with a pool label list lacking self-hosted", f"on: pull_request\njobs:\n  a:\n    runs-on: {MATRIX_GOOD}\n"
+     "    strategy:\n      matrix:\n        include:\n          - runner: '[\"linux\", \"light\"]'\n" + G, False),
+    ("fail-closed matrix with a bare pool label", f"on: pull_request\njobs:\n  a:\n    runs-on: {MATRIX_GOOD}\n"
+     "    strategy:\n      matrix:\n        include:\n          - runner: '\"light\"'\n" + G, False),
     ("runner from a needs output", f"on: pull_request\njobs:\n  a:\n    runs-on: ${{{{ needs.x.outputs.r }}}}\n{G}", False),
     ("runner from vars", f"on: pull_request\njobs:\n  a:\n    runs-on: ${{{{ vars.RUNNER }}}}\n{G}", False),
     ("fail-open fork form", "on: pull_request\njobs:\n  a:\n    runs-on: ${{ github.event.pull_request.head.repo.fork && "
