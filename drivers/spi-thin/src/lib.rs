@@ -436,3 +436,86 @@ mod kani_proofs {
         assert_eq!(v & !allowed, 0);
     }
 }
+
+#[cfg(kani)]
+mod proofbench_k {
+    use super::*;
+
+    /// Kills: spi_begin -> 0, spi_begin -> 1.
+    #[kani::proof]
+    fn begin_scalar_abi() {
+        let rem: u32 = kani::any();
+        let count: u32 = kani::any();
+        // callers only submit counts that fit the 30-bit remaining field
+        kani::assume(count <= REM_MASK);
+        let idle_state = rem & REM_MASK; // phase bits 00 = Idle
+        let r = spi_begin(idle_state, count);
+        if count > 0 {
+            kani::cover!(count > 1);
+            assert_eq!(r, (1u32 << 30) | count);
+        } else {
+            kani::cover!(count == 0);
+            assert_eq!(r, SPI_FAULT);
+        }
+    }
+
+    /// Kills: spi_begin -> 0, spi_begin -> 1 (busy bus must give SPI_FAULT).
+    #[kani::proof]
+    fn begin_busy_faults() {
+        let rem: u32 = kani::any();
+        let count: u32 = kani::any();
+        kani::assume(count <= REM_MASK);
+        let busy = if kani::any::<bool>() { 1u32 << 30 } else { 2u32 << 30 };
+        let st = busy | (rem & REM_MASK);
+        kani::cover!(count > 0);
+        assert_eq!(spi_begin(st, count), SPI_FAULT);
+    }
+
+    /// Kills: spi_step -> 0, spi_step -> 1.
+    #[kani::proof]
+    fn step_scalar_abi() {
+        let rem: u32 = kani::any();
+        // Active always carries at least one outstanding byte
+        kani::assume(rem > 0 && rem <= REM_MASK);
+        let st = (1u32 << 30) | rem;
+        let r = spi_step(st);
+        if rem == 1 {
+            kani::cover!(rem == 1);
+            assert_eq!(r, 2u32 << 30);
+        } else {
+            kani::cover!(rem > 1);
+            assert_eq!(r, (1u32 << 30) | (rem - 1));
+        }
+    }
+
+    /// Kills: spi_step -> 0, spi_step -> 1 (non-active gives SPI_FAULT).
+    #[kani::proof]
+    fn step_nonactive_faults() {
+        let rem: u32 = kani::any();
+        let phase = if kani::any::<bool>() { 0u32 } else { 2u32 << 30 };
+        let st = phase | (rem & REM_MASK);
+        kani::cover!(phase != 0);
+        assert_eq!(spi_step(st), SPI_FAULT);
+    }
+
+    /// Kills: spi_is_complete -> 0, spi_is_complete -> 1.
+    #[kani::proof]
+    fn is_complete_exact() {
+        let rem: u32 = kani::any();
+        let r = rem & REM_MASK;
+        kani::cover!(true);
+        assert_eq!(spi_is_complete((2u32 << 30) | r), 1);
+        assert_eq!(spi_is_complete((1u32 << 30) | r), 0);
+        assert_eq!(spi_is_complete(r), 0);
+    }
+
+    /// Kills: spi_abort -> 1.
+    #[kani::proof]
+    fn abort_returns_idle_scalar() {
+        let s: u32 = kani::any();
+        kani::cover!(s >> 30 == 1);
+        let r = spi_abort(s);
+        assert_eq!(r, 0);
+        assert_eq!(unpack(r), Xfer::idle());
+    }
+}

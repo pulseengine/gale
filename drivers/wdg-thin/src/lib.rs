@@ -524,3 +524,144 @@ mod kani_proofs {
         assert_eq!(unlock(running), Err(Fault::WrongPhase));
     }
 }
+
+#[cfg(kani)]
+mod proofbench_k {
+    use super::*;
+
+    const BASE: u32 = 0x4000_3000;
+
+    fn mk(code: u32, psc: u32, rld: u32) -> u32 {
+        (code << 30) | (psc << 12) | rld
+    }
+
+    /// Kills: pr_bits -> 0, pr_bits -> 1, rlr_bits -> 0, rlr_bits -> 1.
+    #[kani::proof]
+    fn k1_bits_exact() {
+        let psc: u32 = kani::any();
+        let rlr: u32 = kani::any();
+        assert_eq!(pr_bits(psc), psc & 0x7);
+        assert_eq!(rlr_bits(rlr), rlr & 0x0FFF);
+        kani::cover!(psc > 7 && (psc & 7) > 1);
+        kani::cover!(rlr > 0x0FFF && (rlr & 0x0FFF) > 1);
+    }
+
+    /// Kills: is_running -> true, wdg_is_running -> 0, wdg_is_running -> 1.
+    #[kani::proof]
+    fn k2_is_running_exact() {
+        let phase_code: u32 = kani::any();
+        kani::assume(phase_code < 4); // a packed phase is a 2-bit field
+        let psc: u32 = kani::any::<u32>() & 0x7;
+        let rld: u32 = kani::any::<u32>() & 0x0FFF;
+        let w = unpack(mk(phase_code, psc, rld));
+        assert_eq!(is_running(w), phase_code == 3);
+        assert_eq!(wdg_is_running(mk(phase_code, psc, rld)), (phase_code == 3) as u32);
+        let s: u32 = kani::any();
+        assert_eq!(wdg_is_running(s), (s >> 30 == 3) as u32);
+        kani::cover!(phase_code == 3);
+        kani::cover!(phase_code != 3);
+    }
+
+    /// Kills: lock (delete Unlocked arm), wdg_lock -> 0, wdg_lock -> 1, wdg_unlock -> 0, wdg_unlock -> 1.
+    #[kani::proof]
+    fn k3_lock_unlock_exact() {
+        let code: u32 = kani::any();
+        kani::assume(code < 4); // 2-bit phase field
+        let psc: u32 = kani::any::<u32>() & 0x7;
+        let rld: u32 = kani::any::<u32>() & 0x0FFF;
+        let w = unpack(mk(code, psc, rld));
+        match lock(w) {
+            Ok(n) => {
+                assert_eq!(code, 1);
+                assert_eq!(n, Iwdg { phase: Phase::Configured, prescaler: psc, reload: rld });
+            }
+            Err(f) => {
+                assert!(code != 1);
+                assert_eq!(f, Fault::WrongPhase);
+            }
+        }
+        let s = mk(code, psc, rld);
+        let l = wdg_lock(s);
+        if code == 1 {
+            assert_eq!(l, mk(2, psc, rld));
+        } else {
+            assert_eq!(l, WDG_FAULT);
+        }
+        let u = wdg_unlock(BASE, s);
+        if code == 0 || code == 2 {
+            assert_eq!(u, mk(1, psc, rld));
+        } else {
+            assert_eq!(u, WDG_FAULT);
+        }
+        kani::cover!(code == 1);
+        kani::cover!(code == 2);
+    }
+
+    /// Kills: wdg_configure -> 0, wdg_configure -> 1.
+    #[kani::proof]
+    #[kani::unwind(3)]
+    fn k4_configure_exact() {
+        let code: u32 = kani::any();
+        kani::assume(code < 4); // 2-bit phase field
+        let spsc: u32 = kani::any::<u32>() & 0x7;
+        let srld: u32 = kani::any::<u32>() & 0x0FFF;
+        let psc: u32 = kani::any();
+        let rld: u32 = kani::any();
+        let r = wdg_configure(BASE, mk(code, spsc, srld), psc, rld);
+        if code == 1 {
+            assert_eq!(r, mk(1, psc & 7, rld & 0x0FFF));
+        } else {
+            assert_eq!(r, WDG_FAULT);
+        }
+        kani::cover!(code == 1 && (psc & 7) > 1 && (rld & 0x0FFF) > 1);
+        kani::cover!(code != 1);
+    }
+
+    /// Kills: wdg_start -> 0, wdg_start -> 1, wdg_refresh -> 0, wdg_refresh -> 1.
+    #[kani::proof]
+    fn k5_start_refresh_exact() {
+        let code: u32 = kani::any();
+        kani::assume(code < 4); // 2-bit phase field
+        let psc: u32 = kani::any::<u32>() & 0x7;
+        let rld: u32 = kani::any::<u32>() & 0x0FFF;
+        let s = mk(code, psc, rld);
+        let st = wdg_start(BASE, s);
+        if code == 2 {
+            assert_eq!(st, mk(3, psc, rld));
+        } else {
+            assert_eq!(st, WDG_FAULT);
+        }
+        let rf = wdg_refresh(BASE, s);
+        if code == 3 {
+            assert_eq!(rf, s);
+        } else {
+            assert_eq!(rf, WDG_FAULT);
+        }
+        kani::cover!(code == 2);
+        kani::cover!(code == 3);
+    }
+
+    /// Full key-sequence through the ABI: Idle -> unlock -> configure -> lock -> start -> refresh.
+    /// Kills: wdg_unlock/configure/lock/start/refresh -> 0/1, is_running mutants.
+    #[kani::proof]
+    #[kani::unwind(3)]
+    fn k6_abi_sequence() {
+        let psc: u32 = kani::any();
+        let rld: u32 = kani::any();
+        let s0 = pack(Iwdg::idle());
+        assert_eq!(wdg_is_running(s0), 0);
+        let s1 = wdg_unlock(BASE, s0);
+        assert_eq!(s1 >> 30, 1);
+        let s2 = wdg_configure(BASE, s1, psc, rld);
+        assert_eq!(s2, mk(1, psc & 7, rld & 0x0FFF));
+        let s3 = wdg_lock(s2);
+        assert_eq!(s3, mk(2, psc & 7, rld & 0x0FFF));
+        let s4 = wdg_start(BASE, s3);
+        assert_eq!(s4, mk(3, psc & 7, rld & 0x0FFF));
+        assert_eq!(wdg_is_running(s4), 1);
+        assert_eq!(wdg_refresh(BASE, s4), s4);
+        assert_eq!(wdg_unlock(BASE, s4), WDG_FAULT);
+        assert_eq!(wdg_start(BASE, s4), WDG_FAULT);
+        kani::cover!((psc & 7) != 0 && (rld & 0x0FFF) != 0);
+    }
+}

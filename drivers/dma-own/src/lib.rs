@@ -444,3 +444,69 @@ mod kani_proofs {
         }
     }
 }
+
+#[cfg(kani)]
+mod proofbench_k {
+    use super::*;
+
+    /// Kills: Barrier::code -> 0, Barrier::code -> 1.
+    #[kani::proof]
+    fn pb_barrier_code_exact() {
+        let b = if kani::any() { Barrier::CleanDsb } else { Barrier::InvalidateDmb };
+        kani::cover!(b == Barrier::InvalidateDmb);
+        kani::cover!(b == Barrier::CleanDsb);
+        assert_eq!(Barrier::CleanDsb.code(), 0);
+        assert_eq!(Barrier::InvalidateDmb.code(), 1);
+        match b {
+            Barrier::CleanDsb => assert_eq!(b.code(), 0),
+            Barrier::InvalidateDmb => assert_eq!(b.code(), 1),
+        }
+    }
+
+    /// Kills: Ring::may_access < -> <= (index == RING must be denied, not panic).
+    #[kani::proof]
+    fn pb_may_access_out_of_range() {
+        let r = Ring::new();
+        let i: usize = kani::any();
+        kani::assume(i >= RING);
+        kani::cover!(i == RING);
+        assert!(!r.may_access(i));
+        assert!(!r.may_access(RING));
+        // in-range chunk of fresh ring is accessible
+        let j: usize = kani::any();
+        kani::assume(j < RING);
+        assert!(r.may_access(j));
+    }
+
+    /// Kills: enc -> 0, enc -> 1.
+    #[kani::proof]
+    fn pb_enc_exact() {
+        let o = if kani::any() { Owner::Wasm } else { Owner::Dma };
+        kani::cover!(o == Owner::Dma);
+        kani::cover!(o == Owner::Wasm);
+        assert_eq!(enc(Owner::Wasm), 0);
+        assert_eq!(enc(Owner::Dma), 1);
+        match o {
+            Owner::Wasm => assert_eq!(enc(o), 0),
+            Owner::Dma => assert_eq!(enc(o), 1),
+        }
+    }
+
+    /// Kills: dec == -> != (and enc mutants via roundtrip).
+    #[kani::proof]
+    fn pb_dec_exact_and_roundtrip() {
+        let s: u32 = kani::any();
+        kani::cover!(s == 0);
+        kani::cover!(s == 1);
+        kani::cover!(s > 1);
+        if s == 0 {
+            assert_eq!(dec(s), Owner::Wasm);
+        } else {
+            assert_eq!(dec(s), Owner::Dma);
+        }
+        assert_eq!(dec(0), Owner::Wasm);
+        assert_eq!(dec(1), Owner::Dma);
+        let o = if kani::any() { Owner::Wasm } else { Owner::Dma };
+        assert_eq!(dec(enc(o)), o);
+    }
+}
