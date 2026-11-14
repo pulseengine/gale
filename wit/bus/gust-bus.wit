@@ -1,0 +1,80 @@
+package gust:bus@0.1.0;
+
+/// gust:bus — portable bus protocols that sit ABOVE the gust:hal capability seam.
+///
+/// A bus driver component imports `gust:hal/mmio` (the only TCB primitive it needs)
+/// and EXPORTS one of these interfaces; device drivers (e.g. a sensor) import the
+/// interface and never see peripheral registers. This is a separate package from
+/// gust:hal on purpose: gust:hal@0.1.0 is published (the gust:os components on
+/// ghcr import gust:hal/mmio@0.1.0) and ~20 committed objects carry its import
+/// names, so new protocols are added here rather than by re-versioning gust:hal.
+/// Decision record: gale#511 (seam gale-wohl/air-sensor-read).
+///
+/// Every function is scalar u32 -> u32, so the Component-Model canonical ABI stays
+/// FLAT: no return pointer, no realloc, no linear memory. A bus driver therefore
+/// keeps the thin-seam 0-SRAM property. Errors are reserved values inside the u32,
+/// not a `result<>` (a two-value result would force a return pointer).
+
+/// I2C master, 7-bit addressing, one transaction = START, address, 1..=255 data
+/// bytes in one direction, STOP. Portable across I2C IP blocks: peripheral setup
+/// (bus timing, pins, enable) is per-chip init done by the exporting driver before
+/// first use and is NOT part of this interface.
+///
+/// ENCODING (normative; the exporting drivers' Kani harnesses check it):
+///
+///   error values      0xFFFF_FF00 | code. Any return >= 0xFFFF_FF00 is an error.
+///                       0x01 nack         address or data byte not acknowledged
+///                       0x02 arb-lost     arbitration lost (another master)
+///                       0x03 bus-busy     bus not idle at begin (hardware BUSY)
+///                       0x04 not-active   `state` is not a transaction in progress,
+///                                         or `begin` found the peripheral not set up
+///                       0x05 timeout      a bounded hardware wait expired
+///                       0x06 invalid-arg  addr7 > 0x7F, count == 0 or count > 255,
+///                                         or read not in {0, 1}
+///                       0x07 bus-error    misplaced START or STOP seen on the bus
+///                     After nack, arb-lost, timeout or bus-error the driver has
+///                     already issued STOP or reset the peripheral (whichever the
+///                     IP allows) and the peripheral is idle. A slave that still
+///                     holds SDA low needs bus recovery outside this interface.
+///
+///   state             bits 0..=7   bytes remaining (0..=255)
+///                     bit  8       direction: 1 = read, 0 = write
+///                     bits 9..=10  phase: 0 idle, 1 active, 2 complete
+///                     all other bits 0, so every state is < 0x800.
+///
+///   xfer read result  (byte << 16) | next-state; byte is bits 16..=23.
+///
+/// Exclusive bus: the exporting driver keeps no memory, so it does not track
+/// owners. Mutual exclusion comes from the hardware BUSY flag checked by `begin`
+/// and from there being ONE caller per bus (gale#511: only gale driver components
+/// issue transactions). The ACK-all-but-last rule for reads is the driver's job:
+/// every read byte except the last is ACKed, the last is NACKed, then STOP.
+interface i2c-master {
+    /// Start a transaction to `addr7` moving `count` bytes; `read` is 1 for a read,
+    /// 0 for a write. Returns the active state, or an error.
+    begin: func(addr7: u32, count: u32, read: u32) -> u32;
+
+    /// Move one byte. Write: sends the low 8 bits of `out`, returns the next state.
+    /// Read: `out` is ignored, returns (byte << 16) | next-state. After the last
+    /// byte the next state's phase is complete. Returns an error otherwise.
+    xfer: func(state: u32, out: u32) -> u32;
+
+    /// Issue STOP if needed and return the bus to idle. Returns 0 (the idle state),
+    /// or the error the end of the transaction produced: nack (an IP that reports
+    /// the last written byte's NACK only once STOP completes reports it here),
+    /// arb-lost, bus-error or timeout. The peripheral is idle either way. Safe to
+    /// call from any state, including after an error; abandoning an active
+    /// transaction resets the peripheral.
+    end: func(state: u32) -> u32;
+}
+
+/// A bus driver component: register access in, the portable I2C master out.
+world i2c-master-driver {
+    import gust:hal/mmio@0.1.0;
+    export i2c-master;
+}
+
+/// A device driver that talks to one I2C device through the portable master.
+world i2c-device {
+    import i2c-master;
+}
