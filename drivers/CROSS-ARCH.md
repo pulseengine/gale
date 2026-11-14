@@ -25,6 +25,13 @@ Reproduce: `python3 drivers/check-cross-arch.py`.
 | uart-thin | `poll read32 write32` | 27 T, 3 U — complete | 16 T, 4 U — 1 of 17 skipped, **1 dangling** |
 | wdg-thin | `read32 write32` | 35 T, 2 U — complete | 20 T, 3 U — 1 of 21 skipped, **1 dangling** |
 
+Added 2026-11-14 on synth 0.89.0, so not comparable to the rows above: **i2c-v2-thin**
+(`read32 write32`): ARM complete, undefined set equals its imports. RV32 declines with no
+object, only on synth#1724 (a call inside a block with an operand beneath its arguments).
+It does not hit #1254. The #1254 address on every other driver here is 0x100000+k, and
+that is wit-bindgen's `run_ctors_once` flag at 0x10000C. This driver disables that guard
+(gale#516), so it has no linear-memory access for #1254 to fold.
+
 **ARM: 13 of 13 lower completely**, and each object's undefined set is *exactly* the
 set of names its wasm imports — no leak, no truncation. That half of the claim holds.
 
