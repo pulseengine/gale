@@ -1,0 +1,60 @@
+package gust:sen66@0.1.0;
+
+/// gust:sen66 — the Sensirion SEN66 air-quality sensor as a device-driver interface.
+///
+/// The exporting driver imports only `gust:bus/i2c-master` and keeps no memory. A
+/// consumer (wohl's air node, gale#511 seam gale-wohl/air-sensor-read) imports
+/// `air` and never sees the bus. Every function returns one scalar, so the
+/// canonical ABI stays flat: no return pointer, no linear memory.
+///
+/// Facts come from the SEN6x datasheet, D1 v1.0, October 2026.
+///
+/// ENCODING (normative; the exporting driver's Kani harnesses check it):
+///
+///   u32 error values  0xFFFF_FF00 | code. Any return >= 0xFFFF_FF00 is an error.
+///   u64 error values  bit 63 set, code in bits 0..=7, all other bits 0.
+///
+///   codes   0x01..=0x07  passed through from gust:bus/i2c-master (nack, arb-lost,
+///                        bus-busy, not-active, timeout, invalid-arg, bus-error)
+///           0x10 not-ready    no new sample since the last read (Get Data Ready
+///                             false; also false when no measurement is running)
+///           0x11 crc          a received word failed its CRC-8
+///           0x12 no-response  the sensor NACKed its address on every attempt
+///                             (it NACKs while processing a command, §4.5)
+///
+///   read sample (bit 63 clear), from one Read Measured Values (0x0300):
+///           bits  0..=15  CO2 [ppm]
+///           bits 16..=31  PM2.5 [µg/m³] × 10
+///           bits 32..=47  VOC index × 10, int16 two's-complement bit pattern
+///           bit  48       CO2 valid
+///           bit  49       PM2.5 valid
+///           bit  50       VOC valid
+///           bits 51..=63  0
+///         A field the sensor reports as unknown (0xFFFF for CO2 and PM2.5, 0x7FFF
+///         for VOC) has its valid bit clear and its value bits 0. Scaling is the
+///         datasheet's; the consumer descales. Decided on gale#511, 2026-11-14.
+interface air {
+    /// Start continuous measurement (0x0021, idle mode only). Returns 0 or an error.
+    /// The first sample is available after about 1.1 s; CO2 stays unknown for up
+    /// to 6 s.
+    start: func() -> u32;
+
+    /// One sample, or an error. Returns not-ready rather than repeating an old
+    /// sample.
+    read: func() -> u64;
+
+    /// Stop measurement (0x0104). Returns 0 or an error. Wait at least 1400 ms
+    /// before the next start.
+    stop: func() -> u32;
+}
+
+/// The SEN66 driver component: the portable I2C master in, `air` out.
+world sen66-driver {
+    import gust:bus/i2c-master@0.1.0;
+    export air;
+}
+
+/// A component that consumes SEN66 samples.
+world air-consumer {
+    import air;
+}

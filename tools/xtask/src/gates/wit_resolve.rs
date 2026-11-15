@@ -1,6 +1,7 @@
 //! Every generated per-target WIT world, and every gust:bus package (wit/bus,
 //! gale#511), must RESOLVE against the real gust:hal
-//! seam -- its imports must name interfaces that actually exist in
+//! seam; every device-driver package (wit/sensor) must resolve against gust:hal
+//! plus gust:bus. The seam -- its imports must name interfaces that actually exist in
 //! wit/hal/gust-hal.wit. Catches a generated world drifting from the seam.
 //!
 //! Ported from check-wit-resolve.sh (gale#368). The shell version was correctly
@@ -49,10 +50,19 @@ impl Drop for Scratch {
 /// Does one world resolve against one hal? `Ok(true/false)` is a verdict;
 /// `Err` means the check could not be performed at all.
 fn resolves(world: &Path, hal: &Path, tag: &str) -> Result<bool, String> {
+    resolves_with(world, &[("hal", hal)], tag)
+}
+
+/// Like `resolves`, with each `(name, file)` copied to `deps/<name>/`.
+fn resolves_with(world: &Path, deps: &[(&str, &Path)], tag: &str) -> Result<bool, String> {
     let s = Scratch::new(tag).map_err(|e| format!("scratch dir: {e}"))?;
     fs::copy(world, s.path().join("world.wit")).map_err(|e| format!("copy world: {e}"))?;
-    fs::copy(hal, s.path().join("deps/hal/gust-hal.wit"))
-        .map_err(|e| format!("copy hal: {e}"))?;
+    for (name, file) in deps {
+        let dir = s.path().join("deps").join(name);
+        fs::create_dir_all(&dir).map_err(|e| format!("deps/{name}: {e}"))?;
+        let base = file.file_name().ok_or_else(|| format!("deps/{name}: no file name"))?;
+        fs::copy(file, dir.join(base)).map_err(|e| format!("copy {name}: {e}"))?;
+    }
 
     let out = Command::new("wasm-tools")
         .args(["component", "wit"])
@@ -134,13 +144,44 @@ pub fn run(repo: &Path, _target: Option<&str>) -> Verdict {
         }
     }
 
+    // Device-driver packages (gale#511: gust:sen66) import gust:bus, which imports
+    // gust:hal, so they resolve against both. Swept by directory; empty is REFUSED.
+    let bus_wit = bus.join("gust-bus.wit");
+    if !bus_wit.is_file() {
+        return Verdict::Refused(format!("gust:bus not found at {}", bus_wit.display()));
+    }
+    let sensor = repo.join("wit/sensor");
+    let mut dev_pkgs: Vec<PathBuf> = match fs::read_dir(&sensor) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|x| x == "wit"))
+            .collect(),
+        Err(e) => return Verdict::Refused(format!("{}: {e}", sensor.display())),
+    };
+    dev_pkgs.sort();
+    if dev_pkgs.is_empty() {
+        return Verdict::Refused(format!("no .wit package in {}", sensor.display()));
+    }
+    for w in &dev_pkgs {
+        let base = w.file_name().unwrap_or_default().to_string_lossy().to_string();
+        match resolves_with(w, &[("hal", &hal), ("bus", &bus_wit)], "resolve-dev") {
+            Ok(true) => lines.push(format!("wit/sensor/{base}: resolves against gust:hal + gust:bus")),
+            Ok(false) => {
+                lines.push(format!("wit/sensor/{base}: does NOT resolve against gust:hal + gust:bus"));
+                failed = true;
+            }
+            Err(e) => return Verdict::Refused(format!("wit/sensor/{base}: {e}")),
+        }
+    }
+
     if failed {
         Verdict::Fail(lines)
     } else {
         lines.push(format!(
-            "{} world(s) and {} gust:bus package(s) checked",
+            "{} world(s), {} gust:bus package(s) and {} device package(s) checked",
             worlds.len(),
-            bus_pkgs.len()
+            bus_pkgs.len(),
+            dev_pkgs.len()
         ));
         Verdict::Pass(lines)
     }
@@ -196,6 +237,39 @@ pub fn self_test(repo: &Path, _target: Option<&str>) -> Verdict {
             broken = true;
         }
         Err(e) => return Verdict::Refused(format!("good-world control: {e}")),
+    }
+
+    // The same matched pair for the device-package path (deps hal + bus): a world
+    // naming a gust:bus interface that does not exist MUST be rejected.
+    let bus_wit = repo.join("wit/bus/gust-bus.wit");
+    if !bus_wit.is_file() {
+        return Verdict::Refused(format!("gust:bus not found at {}", bus_wit.display()));
+    }
+    let dbad = s.path().join("dev-planted-bad.wit");
+    let dgood = s.path().join("dev-planted-good.wit");
+    let dbad_src = "package gale:selftest@0.1.0;\n\nworld planted {\n  \
+                    import gust:bus/this-interface-does-not-exist@0.1.0;\n}\n";
+    let dgood_src = "package gale:selftest@0.1.0;\n\nworld planted {\n  \
+                     import gust:bus/i2c-master@0.1.0;\n}\n";
+    if let Err(e) = fs::write(&dbad, dbad_src).and_then(|_| fs::write(&dgood, dgood_src)) {
+        return Verdict::Refused(format!("planting: {e}"));
+    }
+    let deps = [("hal", hal.as_path()), ("bus", bus_wit.as_path())];
+    match resolves_with(&dbad, &deps, "st-dbad") {
+        Ok(false) => lines.push("planted bad device world REJECTED (control bites)".into()),
+        Ok(true) => {
+            lines.push("planted bad device world was ACCEPTED — the gate cannot distinguish".into());
+            broken = true;
+        }
+        Err(e) => return Verdict::Refused(format!("bad-device control: {e}")),
+    }
+    match resolves_with(&dgood, &deps, "st-dgood") {
+        Ok(true) => lines.push("planted good device world ACCEPTED (no false positive)".into()),
+        Ok(false) => {
+            lines.push("planted good device world was REJECTED — the gate fails clean input".into());
+            broken = true;
+        }
+        Err(e) => return Verdict::Refused(format!("good-device control: {e}")),
     }
 
     if broken {
