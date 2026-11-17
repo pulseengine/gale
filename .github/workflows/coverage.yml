@@ -30,7 +30,7 @@ jobs:
     # pull_request diffs against the PR base, merge_group against
     # merge_group.base_sha.
     name: "docs-only change?"
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     outputs:
       code: ${{ steps.filter.outputs.code }}
