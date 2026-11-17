@@ -17,7 +17,7 @@ unsafe impl GlobalAlloc for NoAlloc {
 #[global_allocator]
 static ALLOC: NoAlloc = NoAlloc;
 
-wit_bindgen::generate!({ world: "hm-thin", path: "wit" });
+wit_bindgen::generate!({ world: "hm-thin", path: "wit", disable_run_ctors_once_workaround: true });
 
 mod hm {
 pub fn fresh(age_ms: u32, limit_ms: u32) -> bool {

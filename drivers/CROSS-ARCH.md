@@ -32,6 +32,15 @@ It does not hit #1254. The #1254 address on every other driver here is 0x100000+
 that is wit-bindgen's `run_ctors_once` flag at 0x10000C. This driver disables that guard
 (gale#516), so it has no linear-memory access for #1254 to fold.
 
+Updated 2026-11-17 on synth 0.89.0 (gale#516): every wit-bindgen driver's `generate!`
+now sets `disable_run_ctors_once_workaround`. The wasm of each of the 13 drivers above
+then has 0 `run_ctors_once` references (a control build of uart-thin without the flag
+has 5). **RISC-V: 11 of 13 now cross**, with each object's undefined set equal to its
+imports: adc, can, dac, gpio, hm, i2c, pwm, spi, timer, uart and wdg -thin. The
+0x100000+k address they all failed at was that guard. mpu-thin and switch-thin still
+decline and stay on the ledger. The rows above are the earlier measurement and are kept
+as history; `check-cross-arch.py` is the current verdict.
+
 **ARM: 13 of 13 lower completely**, and each object's undefined set is *exactly* the
 set of names its wasm imports — no leak, no truncation. That half of the claim holds.
 

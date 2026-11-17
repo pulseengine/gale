@@ -51,7 +51,7 @@ static ALLOC: NoAlloc = NoAlloc;
 // primitives the ~10-line TCB bridge gpio-thin/uart-thin use). No irq/dma atom: a
 // thin-seam polled SPI needs only register reads/writes.
 #[cfg(not(kani))]
-wit_bindgen::generate!({ world: "spi-driver", path: "../../wit/hal", generate_all });
+wit_bindgen::generate!({ world: "spi-driver", path: "../../wit/hal", generate_all, disable_run_ctors_once_workaround: true });
 #[cfg(not(kani))]
 use crate::gust::hal::mmio::{read32, write32};
 

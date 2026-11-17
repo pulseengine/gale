@@ -84,9 +84,11 @@ HERE = pathlib.Path(__file__).resolve().parent
 # Note we are still PINNED to 0.58.0; the above was measured against a
 # downloaded 0.61.0. The gate's behaviour on the pin is unchanged.
 RISCV_KNOWN_BAD = {
-    "adc-thin", "can-thin", "dac-thin", "gpio-thin", "hm-thin", "i2c-thin",
-    "mpu-thin", "pwm-thin", "spi-thin", "switch-thin", "timer-thin",
-    "uart-thin", "wdg-thin",
+    # gale#516: adc, can, dac, gpio, hm, i2c, pwm, spi, timer, uart and wdg -thin
+    # left this ledger once their generate! set disable_run_ctors_once_workaround.
+    # Their only access at 0x100000+k (the #1254 trigger) was wit-bindgen's
+    # run_ctors_once guard; without it all 11 cross RV32 on synth 0.89.0.
+    "mpu-thin", "switch-thin",
     # i2c-v2-thin (gale#511) declines only on synth#1724: a call inside a block with
     # an operand beneath its arguments (`Call(0)`). It does not hit #1254, because it
     # sets disable_run_ctors_once_workaround and so has no access at 0x100000+k
@@ -97,7 +99,9 @@ RISCV_TRACKER = (
     "synth#1102 — FIXED in synth 0.61.0: rv32 now REFUSES loudly (exit 1) rather than "
     "emitting an unlinkable object with exit 0. The 13 drivers still do not cross, but "
     "the failure is now the documented refusal, not the silent defect this ledger was "
-    "opened for. Re-verified under layer 2026.09.3 (synth 0.65.0): all 13 still decline, and the root cause is now identified — the RV32 selector folds a constant memory address into the 12-bit signed load/store immediate, so every driver fails at 0x100000+k (wasm-ld's data base). Filed as synth#1254; one fix would clear the whole leg. Earlier verification under layer 2026.09.1 read: `#1102: 5 retained function(s) relocate "
+    "opened for. gale#516 (synth 0.89.0): 11 of those 13 now cross, because the address "
+    "they failed at was wit-bindgen's run_ctors_once guard, which their generate! now "
+    "disables; mpu-thin and switch-thin remain. Re-verified under layer 2026.09.3 (synth 0.65.0): all 13 still decline, and the root cause is now identified — the RV32 selector folds a constant memory address into the 12-bit signed load/store immediate, so every driver fails at 0x100000+k (wasm-ld's data base). Filed as synth#1254; one fix would clear the whole leg. Earlier verification under layer 2026.09.1 read: `#1102: 5 retained function(s) relocate "
     "against function(s) this compile DECLINED ... refusing to emit it rather than "
     "shipping an unlinkable object with exit 0`."
 )
@@ -154,18 +158,24 @@ NEEDS_NATIVE_PTR = {"mpu-thin", "switch-thin"}
 
 
 def globals_or_data_refs(obj, objdump="arm-none-eabi-objdump"):
-    """(r9_refs, data_region_refs) in the emitted code.
+    """(r9_refs, linear_memory_refs) in the emitted code.
 
     This is the assumption the two --embedder-*-init flags rest on. r9 is the
-    globals-table base; 0x100000 is the wasm data region's base address. Zero
-    of both means nothing can read an unmaterialized region, so the flags are
-    checked rather than trusted.
+    globals-table base; fp (r11) is the linear-memory base, so every load or
+    store into wasm linear memory is an `[fp, ...]` operand (the stack uses sp).
+    Zero of both means nothing can read an unmaterialized region, so the flags
+    are checked rather than trusted.
+
+    gale#516: this used to count the text `100000` (the data base), which never
+    appears when the address is built by movw/movt -- every wit-bindgen driver
+    read and wrote [fp + 0x10000C] (the run_ctors_once flag) and the gate
+    reported 0. The self-test now plants such an object.
     """
     p = run([objdump, "-d", str(obj)])
     if p.returncode != 0:
         return None, None
     return (len(re.findall(r"\br9\b", p.stdout)),
-            len(re.findall(r"\b100000\b", p.stdout)))
+            len(re.findall(r"\[fp, ", p.stdout)))
 
 
 def build(driver, synth, nm):
@@ -201,9 +211,62 @@ def build(driver, synth, nm):
             undefined(rv, nm) if os.path.exists(rv) else None)
 
 
+PLANTED_BAD = """
+    .syntax unified
+    .thumb
+    .text
+    .global bad
+bad:
+    movw ip, #12
+    movt ip, #16
+    ldrb.w r1, [fp, ip]
+    mov r0, r9
+    bx lr
+"""
+PLANTED_CLEAN = """
+    .syntax unified
+    .thumb
+    .text
+    .global clean
+clean:
+    ldr r1, [sp, #4]
+    adds r0, r0, r1
+    bx lr
+"""
+
+
+def planted_refs(src, tag):
+    """Assemble `src` for Cortex-M3 and return globals_or_data_refs on it."""
+    import tempfile
+    asm = os.environ.get("AS", "arm-none-eabi-as")
+    with tempfile.TemporaryDirectory() as d:
+        s_path, o_path = os.path.join(d, f"{tag}.s"), os.path.join(d, f"{tag}.o")
+        with open(s_path, "w") as f:
+            f.write(src)
+        p = run([asm, "-mcpu=cortex-m3", "-mthumb", "-o", o_path, s_path])
+        if p.returncode != 0:
+            sys.exit(f"FATAL: {asm} could not assemble the planted {tag} object (exit 2)")
+        return globals_or_data_refs(o_path)
+
+
 def self_test():
-    """Both controls must fire, or the gate proves nothing."""
+    """Every control must fire, or the gate proves nothing."""
     ok = True
+    # Control 0 (gale#516): the linear-memory check itself. A planted object that
+    # loads [fp + 0x10000C] through movw/movt and reads r9 must be FLAGGED, and a
+    # clean one (stack access through sp only) must not be.
+    need(os.environ.get("AS", "arm-none-eabi-as"), [os.environ.get("AS", "arm-none-eabi-as"), "--version"])
+    need("arm-none-eabi-objdump", ["arm-none-eabi-objdump", "--version"])
+    r9, mem = planted_refs(PLANTED_BAD, "bad")
+    if r9 and mem:
+        print(f"  self-test ok: planted [fp, ip] load + r9 read is flagged (r9 x{r9}, [fp, ...] x{mem})")
+    else:
+        print(f"  self-test FAIL: planted bad object not flagged (r9 x{r9}, [fp, ...] x{mem})"); ok = False
+    r9, mem = planted_refs(PLANTED_CLEAN, "clean")
+    if r9 == 0 and mem == 0:
+        print("  self-test ok: planted clean object (sp-only) passes")
+    else:
+        print(f"  self-test FAIL: clean object flagged (r9 x{r9}, [fp, ...] x{mem})"); ok = False
     # Control 1: a superset (a leaked symbol) must be REJECTED. This is the
     # exact shape the old `> 0` rule accepted on every RISC-V object.
     if {"read32", "write32"} == {"read32", "write32", "synth_func_18"}:
@@ -258,7 +321,7 @@ def main():
                     print("     it no longer needs the native-pointer path; drop it from the set")
                     arm_fail.append(d)
             elif r9 or dref:
-                print(f"  {d}: reads globals (r9 x{r9}) or data (0x100000 x{dref}),")
+                print(f"  {d}: reads globals (r9 x{r9}) or linear memory ([fp, ...] x{dref}),")
                 print("     so --embedder-*-init is a real promise here, not a vacuous one.")
                 print("     Move it to NEEDS_NATIVE_PTR and build it via build-iso-core.sh.")
                 arm_fail.append(d)

@@ -59,7 +59,7 @@ static ALLOC: NoAlloc = NoAlloc;
 // gust:hal mmio capability — now a WIT-typed component import (still the SAME two
 // primitives the ~10-line TCB bridge the other thin-seam drivers use; no irq atom).
 #[cfg(not(kani))]
-wit_bindgen::generate!({ world: "wdg-driver", path: "../../wit/hal", generate_all });
+wit_bindgen::generate!({ world: "wdg-driver", path: "../../wit/hal", generate_all, disable_run_ctors_once_workaround: true });
 #[cfg(not(kani))]
 use crate::gust::hal::mmio::{read32, write32};
 
