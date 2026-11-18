@@ -905,16 +905,35 @@ artifacts:
 
   - id: REQ-TARGET-MODEL-001
     type: sw-req
-    title: "Board/SoC/device facts are defined once in the spar/AADL target model and generated, never hand-written"
-    status: verified
+    title: "Board/SoC/device facts are defined once in the spar/AADL target model, generated, and every peripheral address in firmware agrees with it"
+    status: implemented
     release: v0.10.0
-    description: "The per-target hardware facts a driver needs — peripheral base addresses, the memory map (flash/SRAM origin+length), the RCC reset-flag register offset and bit positions, and peripheral presence — SHALL be defined once in a spar/AADL target model (targets/*.aadl), analyzed by spar (parse + EMV2 fault propagation), and turned into the firmware constants, linker memory map, and gust:hal WIT world by a build-time generator (gust-target-gen). Firmware SHALL NOT hand-write these constants. Retargeting a verified driver across an SoC family (e.g. STM32F1 <-> STM32G4, whose IWDG driver differs ONLY in the RCC_CSR offset 0x24/0x94 and the RMVF bit 24/23) SHALL be achieved by selecting a target model, not by editing code. The generated artifacts SHALL be committed and a CI drift gate SHALL fail if they fall out of sync with the model. Zero runtime cost: the constants bake into the dissolved object; nothing here adds a TCB atom or SRAM. This is the scaling mechanism behind driver breadth and multi-board silicon validation (G474RE + F100)."
+    description: "The per-target hardware facts a driver needs — peripheral base addresses, the memory map (flash/SRAM origin+length), the RCC reset-flag register offset and bit positions, and peripheral presence — SHALL be defined once in a spar/AADL target model (targets/*.aadl), analyzed by spar (parse + EMV2 fault propagation), and turned into the firmware constants, linker memory map, and gust:hal WIT world by a build-time generator (gust-target-gen). Every 8-digit peripheral address literal in firmware (os/gust/src, drivers, ports) SHALL fall inside a 1 KiB peripheral block the generated target constants define, or sit on a reviewed ledger; `cargo xtask check peripheral-addresses` gates this, with a self-test. That is agreement with the model, not generation from it: on 2026-11-18 (main c2ccc27) 73 such literals in 25 files are still hand-written inside modelled blocks (67 under os/gust), and 7 ledgered literals sit outside the model. Removing the hand-written literals is REQ-TARGET-MODEL-002. Retargeting a verified driver across an SoC family (e.g. STM32F1 <-> STM32G4, whose IWDG driver differs ONLY in the RCC_CSR offset 0x24/0x94 and the RMVF bit 24/23) SHALL be achieved by selecting a target model, not by editing code. The generated artifacts SHALL be committed and a CI drift gate SHALL fail if they fall out of sync with the model. Zero runtime cost: the constants bake into the dissolved object; nothing here adds a TCB atom or SRAM. This is the scaling mechanism behind driver breadth and multi-board silicon validation (G474RE + F100)."
     tags: [gust, target-model, aadl, spar, codegen, generator, build-time, driver-breadth]
     links:
+      - type: related-to
+        target: REQ-TARGET-MODEL-002
       - type: derives-from
         target: SYSREQ-BYOOS-001
       - type: related-to
         target: REQ-DRV-WDG-001
+
+  - id: REQ-TARGET-MODEL-002
+    type: sw-req
+    title: "No peripheral address is hand-written inside a modelled block: firmware takes it from the generated target constants"
+    status: proposed
+    release: v0.12.0
+    description: "Follow-up to REQ-TARGET-MODEL-001, whose gate checks only that a literal falls in a modelled block (requirements review 2026-11-17, row CC3; owner decision on notice 20261117T211732-3e3c34). Firmware in os/gust/src, drivers and ports SHALL take every peripheral address inside a modelled block from the generated target constants, not from a hand-written literal. The peripheral-addresses gate SHALL fail on an in-model literal that is not on a ratchet ledger, and the ledger SHALL only shrink, from 73 occurrences in 25 files measured on 2026-11-18 (main c2ccc27) to 0. Kill criterion: a new hand-written in-model literal merges, or a ledger entry outlives its literal. The gate ships a planted in-model literal as its negative control."
+    tags: [gust, target-model, aadl, codegen, gate, req-review]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-TARGET-MODEL-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-18T06:00:00Z
 
   - id: VER-TARGET-IWDG-001
     type: sw-verification
