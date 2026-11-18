@@ -87,6 +87,12 @@ fn plant_garbage(dir: &Path) {
     std::fs::write(dir.join(WDG_OBJ), b"13 bytes junk").expect("plant garbage");
 }
 
+fn assert_refuses(dir: &Path, name: &str, names: &str) {
+    let (rc, text) = gate(dir, name);
+    assert_eq!(rc, 3, "{name} must REFUSE (exit 3), got {rc}:\n{text}");
+    assert!(text.contains(names), "{name} refused, but without naming `{names}`:\n{text}");
+}
+
 fn assert_fails(dir: &Path, name: &str, why: &str) {
     let (rc, text) = gate(dir, name);
     assert_eq!(rc, 1, "{name} must FAIL (exit 1), got {rc}:\n{text}");
@@ -146,4 +152,27 @@ fn expired_ledger_entry_fails() {
         Some(if l.starts_with("stale_expires") { "stale_expires = \"2020-01-01\"".to_string() } else { l.to_string() })
     });
     assert_fails(&dir, "object-freshness", "EXPIRED");
+}
+
+/// An input with no commit date must REFUSE, not be skipped. wdg-thin is made a
+/// FRESH claim (its stale lines removed), so the date cross-check runs, and an
+/// untracked source file is added to its input dir. Skipping undated inputs
+/// (a `filter_map`) let the newest date come from the rest.
+#[test]
+fn undated_input_of_a_fresh_claim_refuses() {
+    let dir = clone("undated-input");
+    edit_entry(&dir, WDG_OBJ, |l| (!l.starts_with("stale_")).then(|| l.to_string()));
+    std::fs::write(dir.join("drivers/wdg-thin/src/planted.rs"), "// untracked\n").expect("plant file");
+    assert_refuses(&dir, "object-freshness", "drivers/wdg-thin/src/planted.rs");
+}
+
+/// A declared input that resolves to no file must REFUSE, naming it.
+#[test]
+fn input_that_does_not_exist_refuses() {
+    let dir = clone("missing-input");
+    let p = dir.join("drivers/build-os-ts.sh");
+    let mut sh = std::fs::read_to_string(&p).expect("builder");
+    sh.push_str("# planted: \"$HERE/no-such-input\"\n");
+    std::fs::write(&p, sh).expect("edit builder");
+    assert_refuses(&dir, "object-freshness", "drivers/no-such-input");
 }

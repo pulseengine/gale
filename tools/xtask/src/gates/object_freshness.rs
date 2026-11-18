@@ -179,6 +179,11 @@ fn committed_objects(repo: &Path) -> Option<Vec<String>> {
 /// their sources as `$HERE/<dir>`. Deriving rather than hardcoding means a new
 /// dependency is picked up automatically.
 fn inputs_for(repo: &Path, script: &str) -> Vec<String> {
+    let own_dir = BUILDERS
+        .iter()
+        .find(|(s, _)| *s == script)
+        .and_then(|(_, o)| o.rsplit_once('/').map(|(d, _)| d))
+        .unwrap_or("");
     let text = std::fs::read_to_string(repo.join(REL).join(script)).unwrap_or_default();
     let mut dirs: BTreeSet<String> = BTreeSet::new();
     let bytes = text.as_bytes();
@@ -206,11 +211,13 @@ fn inputs_for(repo: &Path, script: &str) -> Vec<String> {
             }
             if j > start {
                 let d = &text[start..j];
-                // os-node is the OUTPUT directory, not an input; excluding it
-                // stops the object from being compared against itself.
+                // The builder's OUTPUT directory (os-node, breadth) is not an
+                // input; excluding it stops the object from being compared
+                // against itself, and stops an input that holds only the
+                // object from tripping the unresolved-input refusal.
                 // Trailing '.' from e.g. "$HERE/foo." is not a real name.
                 let d = d.trim_end_matches('.');
-                if d != "os-node" && !d.is_empty() {
+                if d != "os-node" && d != own_dir && !d.is_empty() {
                     dirs.insert(d.to_string());
                 }
             }
@@ -320,6 +327,41 @@ fn input_files(repo: &Path, inputs: &[String], outputs: &BTreeSet<String>) -> Op
     Some(files.into_iter().collect())
 }
 
+fn is_optional_input(i: &str) -> bool {
+    i.ends_with("/.cargo")
+}
+
+/// The newest of a set of commit dates, failing CLOSED: a file with no commit
+/// date (untracked, or never committed under this path) is an Err naming it,
+/// never skipped. Skipping it -- a `filter_map` -- let an object be judged
+/// fresh against the inputs that happened to be dated.
+pub fn newest_dated(dated: &[(String, Option<i64>)]) -> Result<i64, String> {
+    let mut newest: Option<i64> = None;
+    for (path, t) in dated {
+        let Some(t) = t else {
+            return Err(format!("no commit date for input `{path}` — cannot cross-check a freshness claim"));
+        };
+        newest = Some(newest.map_or(*t, |n| n.max(*t)));
+    }
+    newest.ok_or_else(|| "no inputs to date".to_string())
+}
+
+/// Whether git dates contradict a freshness claim: the object's last content
+/// commit predates that of one of its input files or the pin files. Each FILE
+/// is dated, not each declared directory: a directory dated as one path
+/// through `git log --follow` does not reliably see a file added inside it.
+/// Fails closed through `newest_dated`.
+fn dated_older_than_inputs(repo: &Path, obj: &str, files: &[String]) -> Result<bool, String> {
+    let obj_t = last_commit_epoch(repo, obj).ok_or(format!("no commit date for {obj}"))?;
+    let dated: Vec<(String, Option<i64>)> = files
+        .iter()
+        .map(String::as_str)
+        .chain(TOOLCHAIN_FILES.iter().copied())
+        .map(|f| (f.to_string(), last_commit_epoch(repo, f)))
+        .collect();
+    Ok(newest_dated(&dated)? > obj_t)
+}
+
 /// The digest of an input set: SHA-256 over `path NUL sha256(content) LF` for
 /// each file, sorted by path. Paths are part of it, so a rename is a change.
 pub fn fold_digest(files: &[(String, String)]) -> String {
@@ -340,17 +382,33 @@ pub fn fold_digest(files: &[(String, String)]) -> String {
 /// (build-breadth.sh names `$HERE/breadth`, where its own object lands), and an
 /// object must not be an input of itself. `outputs` is every committed object,
 /// repo-relative.
-fn inputs_digest(repo: &Path, inputs: &[String], outputs: &BTreeSet<String>) -> Result<(String, usize), String> {
+///
+/// Every declared input path must resolve to at least one file, or the gate
+/// REFUSES and names it: a path that resolves to nothing contributes nothing to
+/// the digest or the dates, which is how a derived input silently dropped out
+/// before (gale#417). The one exception is a crate's `.cargo`, which only the
+/// raw `extern "C"` crates have; when one appears it is picked up.
+fn inputs_digest(
+    repo: &Path,
+    inputs: &[String],
+    outputs: &BTreeSet<String>,
+) -> Result<(String, Vec<String>), String> {
     let files = input_files(repo, inputs, outputs).ok_or("git ls-files failed on the input set")?;
     if files.is_empty() {
         return Err("the input set resolves to no files — a digest of nothing is vacuous".into());
+    }
+    for i in inputs.iter().filter(|i| !is_optional_input(i)) {
+        let prefix = format!("{i}/");
+        if !files.iter().any(|f| f == i || f.starts_with(&prefix)) {
+            return Err(format!("declared input `{i}` resolves to no file — refusing rather than dropping it"));
+        }
     }
     let mut hashed = Vec::with_capacity(files.len());
     for f in &files {
         let bytes = std::fs::read(repo.join(f)).map_err(|e| format!("{f}: {e}"))?;
         hashed.push((f.clone(), crate::sha256::hex(&bytes)));
     }
-    Ok((fold_digest(&hashed), files.len()))
+    Ok((fold_digest(&hashed), files))
 }
 
 /// `key = "value"` inside `[section]` of a flat TOML file, None if absent.
@@ -523,7 +581,7 @@ fn is_freshness_entry(e: &Entry) -> bool {
 
 /// Measured state of every gated object: (repo-relative path, input paths,
 /// object sha256, inputs digest, input file count).
-type Measured = Vec<(String, Vec<String>, String, String, usize)>;
+type Measured = Vec<(String, Vec<String>, String, String, Vec<String>)>;
 
 fn measure(repo: &Path) -> Result<Measured, Verdict> {
     let gated = subjects(repo)?;
@@ -537,9 +595,9 @@ fn measure(repo: &Path) -> Result<Measured, Verdict> {
         let path = format!("{REL}/{obj}");
         let bytes = std::fs::read(repo.join(&path))
             .map_err(|e| Verdict::Refused(format!("{path}: cannot read the committed object: {e}")))?;
-        let (digest, n) =
+        let (digest, files) =
             inputs_digest(repo, &inputs, &outputs).map_err(|m| Verdict::Refused(format!("{path}: {m}")))?;
-        out.push((path, inputs, crate::sha256::hex(&bytes), digest, n));
+        out.push((path, inputs, crate::sha256::hex(&bytes), digest, files));
     }
     Ok(out)
 }
@@ -567,7 +625,8 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
     let mut fails: Vec<String> = Vec::new();
     let (mut fresh, mut stale) = (0usize, 0usize);
     let mut earliest: Option<String> = None;
-    for (path, inputs, obj_sha, digest, n) in &measured {
+    for (path, _inputs, obj_sha, digest, files) in &measured {
+        let n = files.len();
         let short = path.rsplit('/').next().unwrap_or(path);
         let Some(e) = entries.iter().find(|e| &e.path == path) else {
             fails.push(format!("{path}: gated object with no [[binary]] entry in {LEDGER}"));
@@ -577,19 +636,10 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
         // The date cross-check is only for a freshness CLAIM; a ledgered entry
         // already says the object is not a build of its inputs.
         let dated = if e.stale_issue.is_none() && e.stale_expires.is_none() {
-            let Some(obj_t) = last_commit_epoch(repo, path) else {
-                return Verdict::Refused(format!("no commit date for {path} — cannot cross-check its freshness claim"));
-            };
-            let newest = inputs
-                .iter()
-                .map(String::as_str)
-                .chain(TOOLCHAIN_FILES.iter().copied())
-                .filter_map(|i| last_commit_epoch(repo, i))
-                .max();
-            let Some(newest) = newest else {
-                return Verdict::Refused(format!("no commit date for any input of {path}"));
-            };
-            Some(newest > obj_t)
+            match dated_older_than_inputs(repo, path, files) {
+                Ok(b) => Some(b),
+                Err(m) => return Verdict::Refused(format!("{path}: {m}")),
+            }
         } else {
             None
         };
@@ -650,7 +700,8 @@ pub fn record(repo: &Path) -> Result<Vec<String>, String> {
     let measured = measure(repo).map_err(|v| v.to_string())?;
     let tc = toolchain(repo)?;
     let mut out = Vec::new();
-    for (path, _, obj_sha, digest, n) in measured {
+    for (path, _, obj_sha, digest, files) in measured {
+        let n = files.len();
         out.push(format!("path = \"{path}\""));
         out.push(format!("sha256 = \"{obj_sha}\""));
         out.push(format!("inputs_sha256 = \"{digest}\"  # {n} input file(s)"));
@@ -769,6 +820,37 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
         fold_digest(&[("a".into(), "1".into()), ("b".into(), "2".into())])
             == fold_digest(&[("b".into(), "2".into()), ("a".into(), "1".into())]),
     );
+    let d = |p: &str, t: Option<i64>| (p.to_string(), t);
+    ck("dating: newest of dated inputs", newest_dated(&[d("a", Some(1)), d("b", Some(5))]) == Ok(5));
+    ck(
+        "dating: an undated input (untracked file) REFUSES, never skipped",
+        newest_dated(&[d("a", Some(9)), d("drivers/x/src/new.rs", None)])
+            .is_err_and(|m| m.contains("drivers/x/src/new.rs")),
+    );
+    ck("dating: no inputs at all REFUSES", newest_dated(&[]).is_err());
+    // The same, through the function run() calls, against the real repo: a
+    // committed input dates, a path git has never seen REFUSES.
+    ck(
+        "dating against the repo: committed inputs date",
+        dated_older_than_inputs(repo, "drivers/wdg-thin/wdg-thin-cm3.o", &["drivers/wdg-thin/src/lib.rs".into()]).is_ok(),
+    );
+    ck(
+        "dating against the repo: an uncommitted input REFUSES, naming it",
+        dated_older_than_inputs(
+            repo,
+            "drivers/wdg-thin/wdg-thin-cm3.o",
+            &["drivers/wdg-thin/src/lib.rs".into(), "drivers/wdg-thin/src/never-committed.rs".into()],
+        )
+        .is_err_and(|m| m.contains("never-committed.rs")),
+    );
+    match inputs_digest(repo, &["drivers/wdg-thin/src".into(), "drivers/no-such-input".into()], &BTreeSet::new()) {
+        Err(m) => ck("a declared input that resolves to nothing REFUSES, naming it", m.contains("drivers/no-such-input")),
+        Ok(_) => ck("a declared input that resolves to nothing REFUSES, naming it", false),
+    }
+    ck(
+        "a crate's absent .cargo is the one optional input",
+        inputs_digest(repo, &["drivers/wdg-thin/src".into(), "drivers/wdg-thin/.cargo".into()], &BTreeSet::new()).is_ok(),
+    );
     ck("ymd epoch 0", ymd(0) == "1970-01-01");
     ck("ymd 1787000000", ymd(1_787_000_000) == "2026-08-17");
     ck("parse_day round-trips 2026-11-18", parse_day("2026-11-18").map(|d| ymd(d * 86_400)).as_deref() == Some("2026-11-18"));
@@ -814,7 +896,7 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
         _ => ck("input_files could not run", false),
     }
     match inputs_digest(repo, &["drivers/wdg-thin/src".to_string(), "wit/hal".to_string()], &none) {
-        Ok((_, n)) => ck("a thin driver's input set resolves to files (not vacuous)", n >= 2),
+        Ok((_, f)) => ck("a thin driver's input set resolves to files (not vacuous)", f.len() >= 2),
         Err(_) => ck("a thin driver's input set could not be digested", false),
     }
     if broken {
