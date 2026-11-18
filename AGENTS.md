@@ -129,6 +129,21 @@ prepend Nix's profile bin dir (typical install paths are
 `/nix/var/nix/profiles/default/bin` or `~/.nix-profile/bin`) to PATH
 and rerun.
 
+### Process priority on shared build hosts
+
+Agents share the build hosts with the desktop and other sessions. On them:
+
+- Run heavy work (cargo build/test/kani, bazel, verus, rocq, Renode, west,
+  mutation runs, and the `drivers/build-*.sh` and `benches/*` scripts) under
+  `nice -n 19`.
+- Run short tools (linters, rivet, the `tools/*.py` checkers) under `nice -n 10`.
+- Export `CARGO_BUILD_JOBS=2`.
+- Never use `taskpolicy -b`. Background QoS once left rustc stalled in state U for
+  2.5 hours.
+
+This is a convention for interactive and agent runs. Nothing in the repo or in CI
+enforces it, and CI runners set their own limits.
+
 ## Conventions
 
 - Artifact IDs follow the pattern: PREFIX-NNN (e.g., REQ-001, FEAT-042)
