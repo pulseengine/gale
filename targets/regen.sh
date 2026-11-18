@@ -40,10 +40,21 @@ echo "regen: $SPAR_VERSION ($SPAR) -- regenerating $FIXTURE from targets/*.aadl"
 
 # Write to a temp file and move it into place, so a failing spar cannot leave a
 # truncated fixture behind for the generator to consume.
+# The TRACKED top-level models, the same list `cargo xtask check target-reference`
+# feeds spar (git ls-files order), so a stray local .aadl cannot make the
+# committed fixture look stale -- or fresh.
+MODELS=()
+while IFS= read -r m; do
+  case "${m#targets/}" in */*) continue ;; esac
+  MODELS+=("$m")
+done < <(git ls-files -- 'targets/*.aadl')
+[ ${#MODELS[@]} -gt 0 ] || die "no tracked targets/*.aadl"
+
 TMP="$(mktemp "${FIXTURE}.XXXXXX")"
 trap 'rm -f "$TMP"' EXIT
-"$SPAR" items --format json "$HERE"/*.aadl > "$TMP" || die "spar items rejected the models"
+"$SPAR" items --format json "${MODELS[@]}" > "$TMP" || die "spar items rejected the models"
 [ -s "$TMP" ] || die "spar items produced no output"
+chmod 644 "$TMP"   # mktemp creates 0600; the committed fixture is 0644
 mv "$TMP" "$FIXTURE"
 trap - EXIT
 
