@@ -902,3 +902,17 @@ jobs:
         run: python3 tools/check-selfhosted-fork-guard.py --self-test
       - name: Every self-hosted job is fail-closed against forks
         run: python3 tools/check-selfhosted-fork-guard.py
+
+  published-trusted-base:
+    name: "the post-deploy trusted-base check can tell a wrong SHA apart"
+    # The live check runs in pages.yml after each deploy to main. Its negative
+    # control also runs here, on every PR, so a change that blinds the check is
+    # caught before it merges rather than at the next deploy (R23, 2026-11-17).
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Negative control — a wrong SHA, a stale copy and an unreachable URL are caught
+        run: python3 tools/check-published-trusted-base.py --self-test

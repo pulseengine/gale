@@ -5680,7 +5680,7 @@ artifacts:
     fields:
       priority: must
       req-type: constraint
-      verification-criteria: "`cargo xtask check trusted-base --self-test` passes (a hand-edited total, a hand-edited row, a new source trust unit, a missing block and a duplicated block are each caught); `cargo xtask check trusted-base` passes on main; injecting one #[verifier::external_body] into src/ turns it red; the Pages deploy publishes trusted-base.json whose commit equals the deployed SHA."
+      verification-criteria: "`cargo xtask check trusted-base --self-test` passes (a hand-edited total, a hand-edited row, a new source trust unit, a missing block and a duplicated block are each caught); `cargo xtask check trusted-base` passes on main; injecting one #[verifier::external_body] into src/ turns it red; the Pages deploy publishes trusted-base.json whose commit equals the deployed SHA, observed after each deploy by the pages.yml verify job (`tools/check-published-trusted-base.py`, whose `--self-test` catches a wrong SHA, a stale copy and an unreachable URL on every PR)."
     links:
       - type: derives-from
         target: SYSREQ-COV-001

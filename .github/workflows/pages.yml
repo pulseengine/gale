@@ -15,6 +15,7 @@ on:
     paths:
       - 'os/gust/browser/**'
       - '.github/workflows/pages.yml'
+      - 'tools/check-published-trusted-base.py'
       # gale#467: trusted-base.json is published here, so every change that can
       # move the inventory redeploys it.
       - 'src/**'
@@ -81,3 +82,24 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
+
+  # REQ-HONESTY-TCB-001: the published trusted-base.json's commit must equal the
+  # deployed SHA. Writing it with GITHUB_SHA held that by construction; this
+  # fetches the live URL and observes it (requirements review 2026-11-17, R23).
+  # The negative control runs first, so a green result means the check can tell a
+  # wrong SHA apart. The script retries through the CDN cache lifetime itself.
+  verify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Negative control — a wrong SHA must be caught
+        run: python3 tools/check-published-trusted-base.py --self-test
+
+      - name: The published trusted-base.json is at the deployed SHA
+        run: >-
+          python3 tools/check-published-trusted-base.py
+          --url https://pulseengine.github.io/gale/trusted-base.json
+          --sha "${{ github.sha }}"
