@@ -109,3 +109,98 @@ artifacts:
       created-by: ai-assisted
       model: claude-opus-5-5
       timestamp: 2026-11-08T10:30:17Z
+
+  - id: FIND-ARCH-NORTHSTAR-001
+    type: finding
+    title: "gale's architecture order follows synth's support levels and the bench: ARMv6-M, then RV32, then ARMv7E-M, ARMv8-M deferred"
+    status: active
+    description: "Owner option dialogue 2026-11-18 set gale's order to M0+ then RV32 then M7 then M33, ARMv8-M deferred with no TrustZone in v1, and asked synth for a declared RV32IMC profile. synth's plan is epic synth#1741, where its RQ-91-SUPPORTLEVELS defines L3 experimental, L2 execution-tested (CI-wired wasmtime differential plus loud-decline tripwires) and L1 verified (Rocq proofs, required differential, required WCET gate, acceptance rung); WCET is strict at L1, so M7, R5, AArch64 and x86-64 stop at L2. State on 2026-11-18: ARMv7-M is L1 in synth and silicon-verified in gale on five boards (VER-SILICON-MATRIX-001); ARMv6-M has an accepted register contract (synth#1301, notice 20261118T091556-9870f8) with lanes building; RV32IMAC is L2; ARMv7E-M has a spec-execution leg; ARMv8-M is an unknown target triple in synth. gale has one arch port (ports/arch/armv7m), and CTX-1 still scopes the deployment context to ARM Cortex-M with an MPU. Two open issues say the cross-arch gates cannot change verdict (gale#506, gale#389)."
+    tags: [architecture, north-star, synth, multi-arch]
+    fields:
+      action-required: true
+      relevance: high
+      source: synth roadmap message 2026-11-18; owner option dialogue 2026-11-18; rivet survey of origin/main
+    links:
+      - type: generates
+        target: REQ-ARCH-ARMV6M-001
+      - type: generates
+        target: REQ-ARCH-ARMV7EM-001
+      - type: generates
+        target: REQ-ARCH-ARMV8M-001
+      - type: related-to
+        target: REQ-OS-TARGET-RV32-001
+      - type: related-to
+        target: CTX-1
+      - type: related-to
+        target: VER-SILICON-MATRIX-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-18T10:30:00Z
+
+  - id: REQ-ARCH-ARMV6M-001
+    type: sw-req
+    title: "A dissolved object runs on ARMv6-M silicon (G031K8) under the accepted R9-R11 register contract"
+    status: proposed
+    release: v0.12.0
+    description: "SHALL: wdg-thin, dissolved by synth for ARMv6-M at support level L2 or better (synth#1741, synth#1301), runs on the NUCLEO-G031K8 and joins the dissolved-IWDG two-boot row of the silicon matrix. The register contract is the ARMv7-M one, unchanged: R11 memory-0 base, R10 memory-0 size, R9 globals base (owner agreed 2026-11-18, notice 20261118T091556-9870f8). gale's obligation is its boot shims: on ARMv6-M they set R9-R11 through a low register (movs r0,#0; mov r11,r0), because mov.w r11,#0 has no ARMv6-M encoding. The arch port is ports/arch/armv6m per REQ-ARCH-ARCHPORT-001. NOT IN SCOPE: isolation and the criticality arms, excluded by hardware because ARMv6-M PMSA has no AP encodings that distinguish privileged from unprivileged access. Today the G031K8 runs native Rust only and gust_wdg_silicon is refused for target-g031k8 by compile_error!."
+    tags: [architecture, armv6m, north-star, silicon, synth]
+    fields:
+      priority: should
+      req-type: functional
+      verification-criteria: "cargo xtask silicon matrix reports PASS for the dissolved wdg-thin two-boot reset on g031k8, the verdict taken from the firmware's own OK line. Planted bad input: a shim that writes r11 with the ARMv7-M encoding fails to assemble or is rejected by synth verify-embedder's ARMv6-M leg. The compile_error! for target-g031k8 is removed in the same change."
+    links:
+      - type: derives-from
+        target: SYSREQ-ARCH-MODES-001
+      - type: related-to
+        target: REQ-ARCH-ARCHPORT-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-18T10:30:00Z
+
+  - id: REQ-ARCH-ARMV7EM-001
+    type: sw-req
+    title: "gust runs on the ARMv7E-M deployment target (Pixhawk 6X-RT, i.MX RT1176 Cortex-M7) from a generated target model"
+    status: proposed
+    release: v0.14.0
+    description: "SHALL: an i.MX RT1176 target model generated per REQ-TARGET-MODEL-001, and one dissolved driver written against the part's real registers, observed acting on the Pixhawk 6X-RT. synth caps ARMv7E-M at support level L2 because WCET declines on the M7 (synth#1741, TP-004), so gale SHALL NOT cite a WCET bound for this target; timing evidence is high-water-mark only. The M4 coprocessor and the secure element are out of scope for this requirement."
+    tags: [architecture, armv7em, cortex-m7, north-star, synth]
+    fields:
+      priority: should
+      req-type: functional
+      verification-criteria: "cargo xtask silicon matrix reports PASS for the driver on the 6X-RT, and the target-model drift gate is green for the new model. Planted bad input: a hand-written peripheral address in the driver fails the target-model gate (REQ-TARGET-MODEL-002)."
+    links:
+      - type: derives-from
+        target: SYSREQ-ARCH-MODES-001
+      - type: related-to
+        target: REQ-ARCH-ARCHPORT-001
+      - type: related-to
+        target: REQ-TARGET-MODEL-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-18T10:30:00Z
+
+  - id: REQ-ARCH-ARMV8M-001
+    type: sw-req
+    title: "ARMv8-M (Cortex-M33) is deferred: no bench board, and no TrustZone secure/non-secure split in v1"
+    status: proposed
+    release: "-"
+    description: "Owner decision 2026-11-18: gale has no ARMv8-M board, so it asks synth for no M33 lane yet and needs no TrustZone in v1. The only coverage is the Renode target SWARCH-TGT-003 (STM32L552), which cannot stand in for the memory-protection check because Renode's MPU model is more permissive than silicon. Re-plan when a board is on the bench; non-TrustZone first, matching synth's TP-005 order."
+    tags: [architecture, armv8m, deferred, north-star]
+    fields:
+      priority: should
+      req-type: functional
+      verification-criteria: "Kill-criterion: any gale release claims M33 or TrustZone support while this requirement is deferred."
+    links:
+      - type: derives-from
+        target: SYSREQ-ARCH-MODES-001
+      - type: related-to
+        target: REQ-ARCH-ARCHPORT-001
+      - type: related-to
+        target: SWARCH-TGT-003
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-18T10:30:00Z
