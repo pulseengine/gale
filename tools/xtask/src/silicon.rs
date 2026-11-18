@@ -329,7 +329,7 @@ const MATRIX: &[Entry] = &[
         boards: &["f100", "wl55jc", "wb55rg", "g474re"],
         not_on: &[("g031k8", "links an ARMv7-M gust:os object (synth#1301)")],
     },
-    // --- module COMBINATIONS: composed/fused images, verdict by semihosting exit ---
+    // --- module COMBINATIONS: composed/fused images, verdict by the firmware's OK/FAIL line ---
     // gust_two_tenant never exits (Renode-gated); it needs a self-check before it can be
     // a silicon row. gust_breadth used to exit SUCCESS unconditionally (Renode reads its
     // UART lines); under target-f100 it now clocks its peripherals and reports a
@@ -498,7 +498,36 @@ fn gust_target_dir(gust: &Path, cargo_target_dir: Option<std::ffi::OsString>) ->
     }
 }
 
-fn build(root: &Path, b: &Board, bin: &str, extra: &[&str]) -> Result<PathBuf, String> {
+/// The cargo invocation for one board image. Separate so a test can see that
+/// `--target-dir` reaches cargo: without it cargo builds wherever its environment says
+/// while build() looks for the ELF under `target_dir`.
+fn cargo_build(gust: &Path, b: &Board, bin: &str, feats: &str, target_dir: &Path) -> Command {
+    let mut c = Command::new("cargo");
+    c.current_dir(gust)
+        .args([
+            "build",
+            "--release",
+            "--bin",
+            bin,
+            "--no-default-features",
+            "--target",
+            b.triple,
+        ])
+        .arg("--target-dir")
+        .arg(target_dir)
+        .args(["--features", feats]);
+    c
+}
+
+/// Build `bin` for `b` into `target_dir` (see [`gust_target_dir`]) and stage its flash
+/// image. The caller supplies the target dir; nothing here reads the environment.
+fn build(
+    root: &Path,
+    b: &Board,
+    bin: &str,
+    extra: &[&str],
+    target_dir: &Path,
+) -> Result<PathBuf, String> {
     let gust = root.join("os/gust");
     let mem = gust.join("memory.x");
     // The generated maps live at the repo root (targets/*.aadl -> targets/generated/),
@@ -511,18 +540,12 @@ fn build(root: &Path, b: &Board, bin: &str, extra: &[&str]) -> Result<PathBuf, S
 
     // Force a relink: memory.x is not a cargo input, so a stale ELF linked against the
     // PREVIOUS board's map would otherwise be reused silently.
-    let target_dir = gust_target_dir(&gust, std::env::var_os("CARGO_TARGET_DIR"));
     let elf = target_dir.join(format!("{}/release/{bin}", b.triple));
     let _ = fs::remove_file(&elf);
 
     let mut feats: Vec<&str> = b.features.to_vec();
     feats.extend_from_slice(extra);
-    let out = Command::new("cargo")
-        .current_dir(&gust)
-        .args(["build", "--release", "--bin", bin, "--no-default-features", "--target", b.triple])
-        .arg("--target-dir")
-        .arg(&target_dir)
-        .args(["--features", &feats.join(",")])
+    let out = cargo_build(&gust, b, bin, &feats.join(","), target_dir)
         .output()
         .map_err(|e| format!("cargo: {e}"))?;
     if !out.status.success() {
@@ -631,6 +654,21 @@ fn ssh(host: &str, remote: &str) -> Command {
 }
 
 pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: u64) -> Verdict {
+    run_with_env(root, board_name, bin, extra, timeout_s, |k| {
+        std::env::var(k).ok()
+    })
+}
+
+/// run() with the environment supplied by `env` (GALE_SILICON_*, CARGO_TARGET_DIR), so
+/// tests can drive it without touching the process environment.
+fn run_with_env(
+    root: &Path,
+    board_name: &str,
+    bin: &str,
+    extra: &[&str],
+    timeout_s: u64,
+    env: impl Fn(&str) -> Option<String>,
+) -> Verdict {
     let Some(b) = board(board_name) else {
         return Verdict::Refused(format!("no board '{board_name}' (see `xtask silicon list`)"));
     };
@@ -638,7 +676,7 @@ pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: 
         return Verdict::Refused(format!("{}: not yet — {why}", b.name));
     }
     // Before any build: a board with no configured site is REFUSED, not built for nothing.
-    let site = match resolve(b, |k| std::env::var(k).ok()) {
+    let site = match resolve(b, &env) {
         Ok(s) => s,
         Err(e) => return Verdict::Refused(e),
     };
@@ -650,9 +688,15 @@ pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: 
         return Verdict::Refused(format!("RCC_CSR/RMVF missing from gust_target_{}.rs", b.stem));
     };
 
-    let elf = match build(root, b, bin, extra) {
+    let target_dir = gust_target_dir(
+        &root.join("os/gust"),
+        env("CARGO_TARGET_DIR").map(Into::into),
+    );
+    // A build that does not produce an image is "could not run", not a firmware FAIL:
+    // exit 1 is reserved for the firmware's own `<bin> FAIL` line.
+    let elf = match build(root, b, bin, extra, &target_dir) {
         Ok(p) => p,
-        Err(e) => return Verdict::Fail(vec![e]),
+        Err(e) => return Verdict::Refused(format!("{}: no image to flash — {e}", b.name)),
     };
     // Refuse an image that would write outside the part's flash (from the measured model).
     let (Some(fbase), Some(flen)) = (generated_u32(&consts, "FLASH_BASE"), generated_u32(&consts, "FLASH_LEN")) else {
@@ -785,12 +829,7 @@ pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: 
 /// chain, and until it does, a 0 is "could not tell", which is what REFUSED means.
 fn firmware_verdict(b: &Board, bin: &str, code: Option<i32>, text: &str, log: &Path) -> Verdict {
     let prefix = bin.replace('_', "-");
-    let find = |tag: &str| {
-        text.lines().find_map(|l| {
-            l.find(&format!("{prefix} {tag}"))
-                .map(|i| l[i..].to_string())
-        })
-    };
+    let find = |tag: &str| verdict_line(text, &prefix, tag).map(str::to_string);
     let mut detail = vec![format!(
         "{} ({}): exit {:?}, log {}",
         b.name,
@@ -819,6 +858,42 @@ fn firmware_verdict(b: &Board, bin: &str, code: Option<i32>, text: &str, log: &P
         Some(97) => Verdict::Refused(format!("{}: no pinned with-device on the probe host", b.name)),
         None => Verdict::Refused(format!("{}: no verdict line before the deadline — see {}", b.name, log.display())),
         _ => Verdict::Refused(format!("{}: firmware printed no verdict (exit {:?}) — see {}", b.name, code, log.display())),
+    }
+}
+
+/// The first `<prefix> <tag>` in `text`, from the prefix to the end of its line, matched
+/// as a whole token: the prefix starts a line or follows a character that cannot be part
+/// of a bin name (`[A-Za-z0-9_-]`), and the tag is followed by the end of the line, `:`,
+/// `(` or whitespace. Case-sensitive. So `gust-x OK(private)` and `gust-x OK: ...` match;
+/// `gust-x OKAY`, `gust-x OK-ish`, `xgust-x OK`, `'gust-x OK'` and, for bin `x`,
+/// `silicon-x OK` do not.
+fn verdict_line<'a>(text: &'a str, prefix: &str, tag: &str) -> Option<&'a str> {
+    let name_char = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
+    let needle = format!("{prefix} {tag}");
+    for line in text.lines() {
+        for (i, _) in line.match_indices(&needle) {
+            let before_ok = line[..i].chars().next_back().is_none_or(|c| !name_char(c));
+            let after_ok = line[i + needle.len()..]
+                .chars()
+                .next()
+                .is_none_or(|c| c == ':' || c == '(' || c.is_whitespace());
+            if before_ok && after_ok {
+                return Some(&line[i..]);
+            }
+        }
+    }
+    None
+}
+
+/// A matrix row whose input cargo does not build (an object from a pinned toolchain run)
+/// is REFUSED when the variable carrying that input is unset; `None` means it may run.
+fn needs_env_refusal(e: &Entry, bd: &str, env: impl Fn(&str) -> Option<String>) -> Option<Verdict> {
+    let (var, how) = e.needs_env?;
+    match env(var) {
+        Some(_) => None,
+        None => Some(Verdict::Refused(format!(
+            "{bd}: {var} is not set — produce it with {how}"
+        ))),
     }
 }
 
@@ -1091,12 +1166,9 @@ pub fn main(root: &Path, args: &[String]) -> i32 {
             bins_filter.as_deref(),
             json,
             |e, bd| {
-                let v = match e.needs_env {
-                    Some((var, how)) if std::env::var_os(var).is_none() => {
-                        Verdict::Refused(format!("{bd}: {var} is not set — produce it with {how}"))
-                    }
-                    _ => run(root, bd, e.bin, e.extra, timeout_s),
-                };
+                let env = |k: &str| std::env::var_os(k).map(|v| v.to_string_lossy().into_owned());
+                let v = needs_env_refusal(e, bd, env)
+                    .unwrap_or_else(|| run(root, bd, e.bin, e.extra, timeout_s));
                 eprintln!("{:<8} {bd:<8} {}", verdict_tag(&v), entry_label(e));
                 v
             },
@@ -1191,28 +1263,38 @@ mod tests {
         assert_eq!(sq("a'b"), "'a'\\''b'");
     }
 
-    /// A fresh scratch root shaped like the repo, unique per test.
-    fn scratch_root(tag: &str) -> PathBuf {
+    /// A fresh scratch root shaped like the repo, unique per test, removed on drop —
+    /// including when the test panics.
+    struct Scratch(PathBuf);
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    fn scratch_root(tag: &str) -> Scratch {
         let r = std::env::temp_dir().join(format!("xtask-silicon-{tag}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&r);
         fs::create_dir_all(r.join("os/gust")).unwrap();
-        r
+        // A manifest cargo refuses to parse: any build stops here, deterministically and fast.
+        fs::write(r.join("os/gust/Cargo.toml"), b"this is not toml [").unwrap();
+        fs::write(r.join("os/gust/memory.x"), b"ORIGINAL").unwrap();
+        Scratch(r)
     }
 
     /// Goes through build()'s OWN path join. With the generated map absent the error must
     /// name the repo-root path; with it present, build() must get past the read (to cargo,
     /// which this fixture's broken manifest stops) and restore memory.x afterwards. On the
-    /// old join (os/gust/targets/generated/...) both halves fail.
+    /// old join (os/gust/targets/generated/...) both halves fail. The target dir is inside
+    /// the scratch root, so build()'s stale-ELF removal cannot touch a real build.
     #[test]
     fn build_reads_the_generated_map_from_the_repo_root() {
-        let root = scratch_root("build-path");
+        let s = scratch_root("build-path");
+        let root = &s.0;
+        let td = root.join("target");
         let b = board("g031k8").unwrap();
-        fs::write(root.join("os/gust/memory.x"), b"ORIGINAL").unwrap();
-        // A manifest cargo refuses to parse: cargo stops here, deterministically and fast.
-        fs::write(root.join("os/gust/Cargo.toml"), b"this is not toml [").unwrap();
         let want = root.join("targets/generated/memory-stm32g031.x");
 
-        let e = build(&root, b, "gust_hm_probe", &[]).unwrap_err();
+        let e = build(root, b, "gust_hm_probe", &[], &td).unwrap_err();
         assert!(
             e.starts_with(&format!("read {}:", want.display())),
             "missing map must name {}: {e}",
@@ -1221,7 +1303,7 @@ mod tests {
 
         fs::create_dir_all(want.parent().unwrap()).unwrap();
         fs::write(&want, b"MEMORY {}").unwrap();
-        let e = build(&root, b, "gust_hm_probe", &[]).unwrap_err();
+        let e = build(root, b, "gust_hm_probe", &[], &td).unwrap_err();
         assert!(
             e.starts_with("build failed for gust_hm_probe on g031k8"),
             "build() did not get past the map read: {e}"
@@ -1231,7 +1313,72 @@ mod tests {
             b"ORIGINAL",
             "memory.x not restored"
         );
-        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn target_dir_reaches_cargo() {
+        let b = board("g031k8").unwrap();
+        let c = cargo_build(
+            Path::new("/r/os/gust"),
+            b,
+            "gust_hm_probe",
+            "target-g031k8",
+            Path::new("/t/gust"),
+        );
+        let args: Vec<String> = c
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        let i = args
+            .iter()
+            .position(|a| a == "--target-dir")
+            .expect("no --target-dir in the cargo args");
+        assert_eq!(
+            args.get(i + 1).map(String::as_str),
+            Some("/t/gust"),
+            "{args:?}"
+        );
+        assert!(
+            args.windows(2)
+                .any(|w| w == ["--target", "thumbv6m-none-eabi"]),
+            "{args:?}"
+        );
+        assert_eq!(c.get_current_dir(), Some(Path::new("/r/os/gust")));
+    }
+
+    /// A build that produces no image is REFUSED (could not run), not FAIL: exit 1 means
+    /// the firmware's own FAIL line. Through run() itself, with a configured local site
+    /// and a manifest cargo cannot parse.
+    #[test]
+    fn build_error_is_refused_not_fail() {
+        let s = scratch_root("build-refused");
+        let root = &s.0;
+        let gen = root.join("targets/generated");
+        fs::create_dir_all(&gen).unwrap();
+        fs::write(gen.join("memory-stm32g031.x"), b"MEMORY {}").unwrap();
+        fs::write(
+            gen.join("gust_target_stm32g031.rs"),
+            b"pub const RCC_CSR: u32 = 0x4002_1060;\npub const RMVF: u32 = 1 << 23;\n",
+        )
+        .unwrap();
+        let td = root.join("target").to_string_lossy().into_owned();
+        let v = run_with_env(
+            root,
+            "g031k8",
+            "gust_hm_probe",
+            &[],
+            1,
+            fixture(&[
+                ("GALE_SILICON_G031K8_HOST", "local"),
+                ("GALE_SILICON_G031K8_USB_LOCATION", "0-0.0"),
+                ("CARGO_TARGET_DIR", td.as_str()),
+            ]),
+        );
+        assert!(
+            matches!(&v, Verdict::Refused(r) if r.contains("build failed for gust_hm_probe")),
+            "{v:?}"
+        );
+        assert_eq!(v.code(), EXIT_REFUSED);
     }
 
     #[test]
@@ -1403,5 +1550,98 @@ mod tests {
             |_, _| pass(),
         );
         assert_eq!(rows.len(), 1);
+    }
+
+    /// No verdict line: whatever the exit status, the run is REFUSED. 142 is the local
+    /// deadline (SIGALRM), 124 the remote one, 97 no pinned with-device, 3 a busy claim.
+    #[test]
+    fn no_verdict_line_is_refused_for_every_exit_code() {
+        let log = "Info : clock speed 2000 kHz\nhm: ran, said nothing conclusive\n";
+        for code in [
+            Some(0),
+            Some(1),
+            Some(2),
+            Some(3),
+            Some(97),
+            Some(124),
+            Some(142),
+            Some(255),
+            None,
+        ] {
+            let v = verdict_of(code, log);
+            assert!(
+                matches!(v, Verdict::Refused(_)),
+                "exit {code:?} with no verdict line gave {v:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn needs_env_unset_is_refused_and_set_may_run() {
+        let tt = MATRIX
+            .iter()
+            .find(|e| e.needs_env.is_some())
+            .expect("a needs_env row");
+        let (var, _) = tt.needs_env.unwrap();
+        let v = needs_env_refusal(tt, "wb55rg", fixture(&[]));
+        assert!(
+            matches!(&v, Some(Verdict::Refused(r)) if r.contains(var)),
+            "{v:?}"
+        );
+        assert!(needs_env_refusal(tt, "wb55rg", fixture(&[(var, "/x/two_tenant.o")])).is_none());
+        let plain = MATRIX.iter().find(|e| e.needs_env.is_none()).unwrap();
+        assert!(needs_env_refusal(plain, "f100", fixture(&[])).is_none());
+    }
+
+    #[test]
+    fn verdict_line_is_a_whole_token() {
+        let pass = |t: &str| matches!(verdict_of(Some(0), t), Verdict::Pass(_));
+        // Legal forms the firmware prints, including on a later line of the log.
+        assert!(pass("gust-hm-probe OK"));
+        assert!(pass("gust-hm-probe OK: 6/6"));
+        assert!(pass("gust-hm-probe OK(private): faulted"));
+        assert!(pass("gust-hm-probe OK\tdone"));
+        assert!(pass(
+            "Info : target halted\nsemihosting: [hm] gust-hm-probe OK: 6/6\n"
+        ));
+        assert!(pass(
+            "Info : a\nInfo : b\nhm: step 3\ngust-hm-probe OK: 6/6\nInfo : c\n"
+        ));
+        // Not this bin's verdict.
+        for t in [
+            "gust-hm-probe OK-ish",
+            "gust-hm-probe OKAY",
+            "xgust-hm-probe OK",
+            "expected 'gust-hm-probe OK' but the firmware hung",
+            "gust-hm-probe ok",
+            "GUST-HM-PROBE OK",
+            "gust-hm-probe  OK",
+        ] {
+            assert!(
+                matches!(verdict_of(Some(0), t), Verdict::Refused(_)),
+                "{t:?} was taken as a verdict"
+            );
+        }
+        assert!(matches!(
+            verdict_of(Some(1), "gust-hm-probe FAILED_TO_INIT"),
+            Verdict::Refused(_)
+        ));
+        assert!(matches!(
+            verdict_of(Some(1), "gust-hm-probe fail: x"),
+            Verdict::Refused(_)
+        ));
+        // A bin whose name is the tail of another's: `silicon-bench OK` is not `bench OK`.
+        let bench = |t: &str| {
+            firmware_verdict(
+                board("f100").unwrap(),
+                "bench",
+                Some(0),
+                t,
+                Path::new("/dev/null"),
+            )
+        };
+        assert!(matches!(bench("silicon-bench OK"), Verdict::Refused(_)));
+        assert!(matches!(bench("silicon_bench OK"), Verdict::Refused(_)));
+        assert!(matches!(bench("bench OK"), Verdict::Pass(_)));
     }
 }
