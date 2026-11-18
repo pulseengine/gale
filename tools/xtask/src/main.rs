@@ -58,7 +58,9 @@ fn main() {
         println!("xtask {VERSION}");
         exit(EXIT_PASS);
     }
-    if args.is_empty() || args.iter().any(|a| a == "--help" || a == "-h") {
+    // `silicon --help` is the silicon usage (its verdict rules and exit codes), not this one.
+    let wants_help = args.iter().any(|a| a == "--help" || a == "-h");
+    if args.is_empty() || (args[0] != "silicon" && wants_help) {
         print!("{}", usage());
         exit(EXIT_PASS);
     }

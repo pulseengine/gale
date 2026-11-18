@@ -1035,6 +1035,10 @@ pub fn main(root: &Path, args: &[String]) -> i32 {
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
+            "--help" | "-h" => {
+                print!("{}", usage());
+                return EXIT_PASS;
+            }
             "--format" => match it.next().map(String::as_str) {
                 Some("json") => json = true,
                 _ => { eprintln!("xtask silicon: --format takes 'json'"); return EXIT_USAGE; }
