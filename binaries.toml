@@ -9,14 +9,20 @@
 # FRESHNESS (gale#506). `cargo xtask check object-freshness` judges every committed object
 # it gates (the driver objects with a crate or a build-*.sh behind them) by CONTENT:
 #   sha256         the committed object's bytes (binary-ledger checks this for EVERY entry)
-#   inputs_sha256  digest of the object's input files (sources, builder script, WIT seams)
-#                  as of this record -- `cargo xtask freshness-record` prints it
-#   toolchain      the toolchain pin as of this record, derived from varve.toml and
-#                  rust-toolchain.toml. Layer covalent 2026.11.1 resolves to synth 0.89.0
-#                  and loom 1.4.1 (`varve which`, 2026-11-18). rustc is a CHANNEL, not a
-#                  version pin: a rustc release changes nothing this records.
-# The gate fails if the bytes, the inputs or the pin differ from the record. A ledger entry
-# cannot excuse any of the three.
+#   inputs_sha256  digest of the object's inputs as of this record: its builder script, or
+#                  for a crate-adjacent object the synth/loom/meld command lines of its
+#                  RESULTS.md; the WIT seams; its crate's build files (incl. a local wit/);
+#                  every crate reached through `path =` dependencies, transitively (mpu-thin
+#                  reaches the root gale crate, so iso-core and mpu-thin cover src/ and
+#                  plain/src/); and every file a `#[path]`/`include!` pulls in from outside
+#                  its crate, which must be listed in the gate's PATH_INCLUDES.
+#                  `cargo xtask freshness-record` prints it.
+#   toolchain      every [toolchain] setting of varve.toml and rust-toolchain.toml as of this
+#                  record. Layer covalent 2026.11.1 resolves to synth 0.89.0 and loom 1.4.1
+#                  (`varve which`, 2026-11-18). rustc is a CHANNEL, not a version pin: a rustc
+#                  release changes nothing this records.
+# The gate fails if the bytes, the inputs or the pin differ from the record, or if the bytes
+# are not a relocatable ARM ELF. A ledger entry cannot excuse any of these.
 #
 # KNOWN-STALE: `stale_issue` + `stale_expires` mark an object that is NOT a build of the
 # recorded inputs. It is accepted only at exactly the recorded inputs and pin, only until
@@ -28,13 +34,19 @@
 # the other 18, "stale" is date evidence, not a measured byte difference. They are recorded,
 # not regenerated: a regenerated object needs silicon re-validation and re-baselined Renode
 # fixtures. Clearing one = rebuild it, re-validate, replace its four freshness lines with the
-# freshness-record output, and drop its two stale_ lines.
+# freshness-record output, and drop its two stale_ lines. Such an object then reads
+# `recorded-fresh (not rebuilt)`: the gate trusts the record and cross-checks it against git
+# dates, it does not rebuild.
+#
+# DEADLINE: all 19 expire 2027-01-31. From 2027-02-01 UTC this required check FAILS EVERY PR
+# until the 19 objects are rebuilt and re-validated on silicon, or the date is re-decided here.
+# The gate prints a ::warning:: from 21 days before the earliest expiry.
 
 [[binary]]
 path = "drivers/adc-thin/adc-thin-cm3.o"
 sha256 = "611b0ef263a691860d429baaeeef11a7cab17696be9d93495029ccb98a48200e"
-inputs_sha256 = "3377bd292b39f6ca6d99a7b787bc66fae97938bc50b6e4cd7d71374eab50545e"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "48673444309f2458854e5815275ee716da32c91b416fcda6c9b6aedb67cd9929"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -46,7 +58,7 @@ regenerate = "drivers/adc-thin/RESULTS.md"
 path = "drivers/breadth/breadth-cm3.o"
 sha256 = "84aefbca244f8a91464798b2176b013d3a02e297e7fc6de12983832f9bd6c726"
 inputs_sha256 = "5c2ce054701b45c476388a80a546324edecca59abe73482104f89899db030cb2"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -57,8 +69,8 @@ regenerate = "drivers/build-breadth.sh"
 [[binary]]
 path = "drivers/can-thin/can-thin-cm3.o"
 sha256 = "65b9c1255428769a11763b9f48c99acb9db358c59d5db69e780809ba9f9daac3"
-inputs_sha256 = "c07162d80a91bf3fc7be93277e0843f8ef446c237fb962d3119b2ce9e4e78ce1"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "ecf873aa7611bcd8e794c071031f634c450752dee876a96bfa91b4de88c486b2"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -69,8 +81,8 @@ regenerate = "drivers/can-thin/RESULTS.md"
 [[binary]]
 path = "drivers/dac-thin/dac-thin-cm3.o"
 sha256 = "f2bc43aa0e73e81322a1a81b0334bd678834e0601a0501c977845ece3ea6e48c"
-inputs_sha256 = "3afd6efaef0fd5f09cfd73a9b9868a02771af71b9d498da34fc8ae1d82856e35"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "84304664b58ee5d36a00f34df88259b34246cb42e48128271bb908f84acf49a8"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -81,8 +93,8 @@ regenerate = "drivers/dac-thin/RESULTS.md"
 [[binary]]
 path = "drivers/dma-own/dma-own-cm3.o"
 sha256 = "8d23bdbca5c6c7abd41bd6d56ec7ad0f36707c4c970a045d59836ee69ff38286"
-inputs_sha256 = "0f02f11a83f9367527198276e43e71fd352b92669018ea6a5e4b159f4b817423"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "2768ab274b3e17e815540156bf57e63124dc3f957eb5016a277b921912382d61"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -93,8 +105,8 @@ regenerate = "drivers/dma-own/RESULTS.md"
 [[binary]]
 path = "drivers/gpio-thin/gpio-thin-cm3.o"
 sha256 = "1e01316712c0f80e3c5306d59831e14e765c79bcee883902c6d82d9c66ed24fb"
-inputs_sha256 = "9e2421ec9fda498421ff2156f0398436ce375bc460a941a998dd1cf1cd474c09"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "245106a0b95931ff4c7ab67b4d4b972e96a954ada4bf3071de785a9f59459e97"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -105,8 +117,8 @@ regenerate = "drivers/gpio-thin/RESULTS.md"
 [[binary]]
 path = "drivers/hm-thin/hm-thin-cm3.o"
 sha256 = "22161907765b5c8182404a4f93b1438fe7f4fa1cfd8565bf0106c3e5ed712cd1"
-inputs_sha256 = "a3c70fa9de0ca05ab29f20b97786dcbd60ec46c6462432af3954f1d52696a6ac"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "d94660d95e47b067ca152cdaf611713c61322a958c4c79327802bc802752bd7d"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -118,8 +130,8 @@ regenerate = "drivers/hm-thin/RESULTS.md"
 [[binary]]
 path = "drivers/i2c-thin/i2c-thin-cm3.o"
 sha256 = "8dd0165ec787726fea560c9fc6c7c447b696672aecdfb5c988661be6e9b153e2"
-inputs_sha256 = "b4c74398d3d61f97caf54f30f47ec9e95efe5498deeaef23c28e0676d2f03145"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "13445cc714ecc415ef77924d4c996b4f1ee573571e55cb25f5a3e59d0aead9f1"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -130,8 +142,8 @@ regenerate = "drivers/i2c-thin/RESULTS.md"
 [[binary]]
 path = "drivers/iso-core-fused-cm3.o"
 sha256 = "91e6e87786cd0bf88f4c34762489cc44545dbd63e5e62c6199bd7e2ebfedb696"
-inputs_sha256 = "e4e363936a031f1813dc0d6f9bffed7cdf28e24086b9f37023eb82451963fc3d"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "10fbf2f4fc5b664d23d8a8462dd23e50874bd48c25317fdb2192056fdf0764d1"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -159,8 +171,8 @@ regenerate = "drivers/build-dissolve-gustos.sh"
 [[binary]]
 path = "drivers/mpu-thin/mpu-thin-cm3.o"
 sha256 = "0f300471569f49955cc6177c63889e279053545b425297ec4544885a48cd81eb"
-inputs_sha256 = "18fe8c1e0078e32841427ac9c44a2922ea59217c4bc4c66632bf64d707c25912"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "9b87cc84d6fce1e44cbe4d0897048ffe8077257ecd75bc0f0d957d6d9277b8d6"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -188,8 +200,8 @@ regenerate = "drivers/build-dissolve-gustos.sh"
 [[binary]]
 path = "drivers/os-node/os-time-cm3.o"
 sha256 = "7d4e7a39e87a6d6c75c7d0cb85dad8f6b3f3b9af9fb77af90e15202bdf893b6a"
-inputs_sha256 = "cdae0e5c2224ad94674a7e331740b4832d697b399c081849b128895c4ceb0d26"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "df2f07636321312b135533d3d70780603131f7ae8362fe3c9a06ba3083228287"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -200,8 +212,8 @@ regenerate = "drivers/build-os-time.sh"
 [[binary]]
 path = "drivers/os-node/os-tl-cm3.o"
 sha256 = "297272ceb5685a5584853a21de6caf4f7254fc8ead0accfa5fd4cc1b5f729d47"
-inputs_sha256 = "5c0e13ad5175b975344636f3a38ad82e5850131b08769fe5133ba73adf2fb132"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "178c820d623bd399bcb3424cf9df2b14e731ca9c017cf2ec42509f750418ac87"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -212,8 +224,8 @@ regenerate = "drivers/build-os-tl.sh"
 [[binary]]
 path = "drivers/os-node/os-ts-cm3.o"
 sha256 = "e99caa02fd14163ce8eeb78f32f34081c6739df21346b6cd2f65a7a62694f648"
-inputs_sha256 = "f4ed41f6432aa797fb5901944f2334a1e346bfee15972a21c5b97455cb33c23c"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "37e3f47b18975951fc836bceb6af2c1866d28f1e08dfc7647e7608f19f2764e0"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -249,8 +261,8 @@ regenerate = "drivers/os-node/repro-757/REPRO.md"
 [[binary]]
 path = "drivers/pwm-thin/pwm-thin-cm3.o"
 sha256 = "ba4b05736d84a22c77a4e11a63f392039a8857e17d9d5c3696e4a9f7e50a0fa1"
-inputs_sha256 = "7f3df91ec04e1ae973b603abd17b76b92977861710aafb4ad1b6ce3caeb8952f"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "dbe5369d8a18319884488bd43bea5bb9108a073e6f27480dd090f62850383132"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -261,8 +273,8 @@ regenerate = "drivers/pwm-thin/RESULTS.md"
 [[binary]]
 path = "drivers/spi-thin/spi-thin-cm3.o"
 sha256 = "cc4e1b777c19a7f7414ad5f3f3496f6b1d65c6d701311892af24330c15ba2f71"
-inputs_sha256 = "71db5e8b434abc65aae7a08d4713d41d5cc0304159976c1418f3a427beec1718"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "5763e7482267bba7fd19de12449e540babf5d60c957a460ff48827cc13825d2c"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -273,8 +285,8 @@ regenerate = "drivers/spi-thin/RESULTS.md"
 [[binary]]
 path = "drivers/switch-thin/switch-thin-cm3.o"
 sha256 = "1c28e560dd9b9a7e6f78c073b8baff06c66941334d4e3e6f156c2572bae8a3f5"
-inputs_sha256 = "478358d1529a9a0cf415a033834948bb2f47e21a8f3acb26f950e470194b1787"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "e3521c1a87ed1cdf612a89671a2f41c651292db9355c56b3267ed342a2e3c26f"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -286,8 +298,8 @@ regenerate = "drivers/switch-thin/RESULTS.md"
 [[binary]]
 path = "drivers/timer-thin/timer-thin-cm3.o"
 sha256 = "6797e12289ab411f288913a1fbe8d3ccdb1171c900eb300a67a88bccda63b811"
-inputs_sha256 = "7f1c5a2baf64b0ed0caf5581fc4562b7dc53032f39de36c22958d81fa5d8ba40"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "9126b4e936a94f2db18d96335f1ec7e0a5308afd44d3f4687ec743e4b4ef89d2"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -298,8 +310,8 @@ regenerate = "drivers/timer-thin/RESULTS.md"
 [[binary]]
 path = "drivers/uart-thin/uart-thin-cm3.o"
 sha256 = "44544829032c37f6d986b74160d9f131eca69fa39b2a47af3b9bf5c7d92cd7a8"
-inputs_sha256 = "d3022583721916a48b394095e3b87e032c74de1e04bc677bf8373a6be2a15bb1"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "3ab4b60fca4b67803e0c1f44e52e502888d7e49dd929d3fbc01f859b89672321"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"
@@ -310,8 +322,8 @@ regenerate = "drivers/uart-thin/RESULTS.md"
 [[binary]]
 path = "drivers/wdg-thin/wdg-thin-cm3.o"
 sha256 = "af538cb7f76789b5c83f832d360938d4c057c15cbae2f3e57e9a8dca5e1554a0"
-inputs_sha256 = "300d98a9b5482f7831efc420bf5b4ccf99a785346de9aed3f5039fa22ebe4ded"
-toolchain = "varve covalent 2026.11.1 sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315; rustc channel stable"
+inputs_sha256 = "c247d7bb87853bc693bc73d748b0685dc9868487dbd76a9df7b864ffc9ea8e73"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
 stale_issue = "#506"
 stale_expires = "2027-01-31"
 kind = "synth-object"

@@ -521,7 +521,7 @@ jobs:
       - name: Negative control — every judge rule fires on its planted input
         run: cargo xtask check object-freshness --self-test
 
-      - name: Planted inputs against the real tree (garbage object, source edit, expired ledger, control)
+      - name: Planted inputs against the real tree (one per input class and ledger rule, plus controls)
         run: cargo test --manifest-path tools/xtask/Cargo.toml --test object_freshness_oracle
 
       - name: Every committed object matches its recorded hash, inputs and toolchain
