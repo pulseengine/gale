@@ -13,7 +13,7 @@ unsafe impl GlobalAlloc for NoAlloc {
 #[global_allocator]
 static ALLOC: NoAlloc = NoAlloc;
 
-wit_bindgen::generate!({ world: "switch-thin", path: "wit", generate_all });
+wit_bindgen::generate!({ world: "switch-thin", path: "wit", generate_all, disable_run_ctors_once_workaround: true });
 
 mod sw {
     // the three seams: what were `unsafe extern "C"` are now typed imports

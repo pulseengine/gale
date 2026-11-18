@@ -24,7 +24,7 @@ unsafe impl GlobalAlloc for NoAlloc {
 #[global_allocator]
 static ALLOC: NoAlloc = NoAlloc;
 
-wit_bindgen::generate!({ world: "mpu-thin", path: "wit", generate_all });
+wit_bindgen::generate!({ world: "mpu-thin", path: "wit", generate_all, disable_run_ctors_once_workaround: true });
 
 use gale::mpu_switch as iso;
 

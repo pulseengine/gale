@@ -48,7 +48,7 @@ static ALLOC: NoAlloc = NoAlloc;
 // three primitives the ~10-line TCB bridge supplies: mmio.{read32,write32},
 // irq.poll).
 #[cfg(not(kani))]
-wit_bindgen::generate!({ world: "uart-driver", path: "../../wit/hal", generate_all });
+wit_bindgen::generate!({ world: "uart-driver", path: "../../wit/hal", generate_all, disable_run_ctors_once_workaround: true });
 #[cfg(not(kani))]
 use crate::gust::hal::irq::poll as irq_poll;
 #[cfg(not(kani))]

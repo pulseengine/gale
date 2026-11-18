@@ -26,7 +26,11 @@ pub extern "C" fn irq_poll(_line: u32) -> u32 {
 
 extern "C" {
     // dissolved thin-seam UART driver primitives (drivers/uart-thin → synth).
-    // No linmem data in the driver → no r11 trampoline needed; call directly.
+    // Called directly, with no r11 trampoline. NOTE (gale#516): the committed
+    // uart-thin-cm3.o still reads and, on first call, writes [r11 + 0x100010] (wit-bindgen's
+    // run_ctors_once flag), so this direct call relies on whatever r11 holds here. The
+    // source now disables that guard; the object is not regenerated yet (it renames the
+    // symbols this binary calls, so it moves together with this file).
     fn uart_init(brr: u32);
     fn uart_tx_byte(b: u32);
 }
