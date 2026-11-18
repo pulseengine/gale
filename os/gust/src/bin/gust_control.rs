@@ -52,7 +52,8 @@ fn main() -> ! {
 
     // correctness gate: one known operating point (3000 rpm, 50% load, 80C, no knock)
     let known = unsafe { control_step_packed(3000, 50, 80, 0) };
-    let ok = known == ((33u32 << 16) | 2300); // spark 33deg, fuel 2300us — == wasmtime/C
+    const WANT: u32 = (33u32 << 16) | 2300; // spark 33deg, fuel 2300us — == wasmtime/C
+    let ok = known == WANT;
     let _ = hprintln!(
         "# control_step(3000,50,80,0) = spark {}deg fuel {}us — {}",
         (known >> 16) as i16, known & 0xFFFF,
@@ -88,12 +89,13 @@ fn main() -> ! {
     // scheduled ticks' actuator values are not compared against anything.
     if ok {
         let _ = hprintln!(
-            "gust-control OK: control_step(3000,50,80,0) == spark 33deg fuel 2300us, the C/wasmtime value"
+            "gust-control OK: control_step(3000,50,80,0) == spark {}deg fuel {}us, the C/wasmtime value",
+            (WANT >> 16) as i16, WANT & 0xFFFF
         );
     } else {
         let _ = hprintln!(
-            "gust-control FAIL: control_step(3000,50,80,0) = spark {}deg fuel {}us, want 33deg 2300us",
-            (known >> 16) as i16, known & 0xFFFF
+            "gust-control FAIL: control_step(3000,50,80,0) = spark {}deg fuel {}us, want {}deg {}us",
+            (known >> 16) as i16, known & 0xFFFF, (WANT >> 16) as i16, WANT & 0xFFFF
         );
     }
     debug::exit(if ok { debug::EXIT_SUCCESS } else { debug::EXIT_FAILURE });
