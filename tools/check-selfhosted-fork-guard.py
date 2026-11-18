@@ -12,8 +12,8 @@ or one of two fail-closed forms. The self-hosted labels are chosen only for a no
 whose head repository is this one; a fork, or a deleted fork whose head.repo is null,
 falls to the hosted runner:
 
-  literal  ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('[... "self-hosted" ...]') || 'ubuntu-latest' }}
-  matrix   ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || !contains(matrix.runner, 'self-hosted')) && fromJSON(matrix.runner) || 'ubuntu-latest' }}
+  literal  ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('[... "self-hosted" ...]') || '<hosted image>' }}
+  matrix   ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository || !contains(matrix.runner, 'self-hosted')) && fromJSON(matrix.runner) || '<hosted image>' }}
 
 Rejected:
   - any other runs-on: a pool label, a label list, a runner group, a matrix value
@@ -42,8 +42,8 @@ import yaml
 
 GUARD = (r"\(github\.event_name != 'pull_request' \|\| "
          r"github\.event\.pull_request\.head\.repo\.full_name == github\.repository")
-LITERAL = re.compile(r"^\$\{\{ " + GUARD + r"\) && fromJSON\('\[[^\]]*\"self-hosted\"[^\]]*\]'\) \|\| 'ubuntu-latest' \}\}$")
-MATRIX = re.compile(r"^\$\{\{ " + GUARD + r" \|\| !contains\(matrix\.runner, 'self-hosted'\)\) && fromJSON\(matrix\.runner\) \|\| 'ubuntu-latest' \}\}$")
+LITERAL = re.compile(r"^\$\{\{ " + GUARD + r"\) && fromJSON\('\[[^\]]*\"self-hosted\"[^\]]*\]'\) \|\| '(?:ubuntu|macos|windows)-[A-Za-z0-9._-]+' \}\}$")
+MATRIX = re.compile(r"^\$\{\{ " + GUARD + r" \|\| !contains\(matrix\.runner, 'self-hosted'\)\) && fromJSON\(matrix\.runner\) \|\| '(?:ubuntu|macos|windows)-[A-Za-z0-9._-]+' \}\}$")
 TRUSTED = {"push", "pull_request", "schedule", "workflow_dispatch", "merge_group"}
 
 
@@ -147,11 +147,11 @@ def report(seen, bad):
 
 
 GOOD = ("${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name"
-        " == github.repository) && fromJSON('[\"self-hosted\",\"light\"]') || 'ubuntu-latest' }}")
+        " == github.repository) && fromJSON('[\"self-hosted\",\"light\"]') || 'ubuntu-24.04' }}")
 G = f"  good:\n    runs-on: {GOOD}\n"  # a guarded self-hosted job, so a case is never "compared nothing"
 MATRIX_GOOD = ("${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name"
                " == github.repository || !contains(matrix.runner, 'self-hosted')) && fromJSON(matrix.runner)"
-               " || 'ubuntu-latest' }}")
+               " || 'ubuntu-24.04' }}")
 CASES = [  # (name, workflow text, expect_pass)
     # must pass
     ("fail-closed literal", f"on: [pull_request, push]\njobs:\n{G}", True),
@@ -163,6 +163,8 @@ CASES = [  # (name, workflow text, expect_pass)
     ("hosted image next to a guarded job", f"on: pull_request\njobs:\n  a:\n    runs-on: ubuntu-24.04\n{G}", True),
     ("matrix.os of hosted images", f"on: pull_request\njobs:\n  a:\n    runs-on: ${{{{ matrix.os }}}}\n"
      f"    strategy:\n      matrix:\n        os: [ubuntu-22.04, macos-15]\n{G}", True),
+    ("fail-closed literal, floating ubuntu-latest fallback", "on: pull_request\njobs:\n  a:\n    runs-on: "
+     + GOOD.replace("'ubuntu-24.04'", "'ubuntu-latest'") + "\n", True),
     ("reusable-workflow call (no runs-on)", f"on: pull_request\njobs:\n  a:\n    uses: ./.github/workflows/x.yml\n{G}", True),
     # must fail
     ("plain self-hosted list", f"on: pull_request\njobs:\n  a:\n    runs-on: [self-hosted, light]\n{G}", False),
@@ -176,6 +178,13 @@ CASES = [  # (name, workflow text, expect_pass)
      "    strategy:\n      matrix:\n        include:\n          - runner: '[\"linux\", \"light\"]'\n" + G, False),
     ("fail-closed matrix with a bare pool label", f"on: pull_request\njobs:\n  a:\n    runs-on: {MATRIX_GOOD}\n"
      "    strategy:\n      matrix:\n        include:\n          - runner: '\"light\"'\n" + G, False),
+    ("guarded form whose fallback is a pool label", "on: pull_request\njobs:\n  a:\n    runs-on: "
+     + GOOD.replace("'ubuntu-24.04'", "'light'") + "\n" + G, False),
+    ("guarded form whose fallback is self-hosted", "on: pull_request\njobs:\n  a:\n    runs-on: "
+     + GOOD.replace("'ubuntu-24.04'", "'self-hosted'") + "\n" + G, False),
+    ("guarded matrix form whose fallback is a pool label", "on: pull_request\njobs:\n  a:\n    runs-on: "
+     + MATRIX_GOOD.replace("'ubuntu-24.04'", "'light'") + "\n    strategy:\n      matrix:\n        include:\n"
+     "          - runner: '[\"self-hosted\", \"rust-cpu\"]'\n" + G, False),
     ("runner from a needs output", f"on: pull_request\njobs:\n  a:\n    runs-on: ${{{{ needs.x.outputs.r }}}}\n{G}", False),
     ("runner from vars", f"on: pull_request\njobs:\n  a:\n    runs-on: ${{{{ vars.RUNNER }}}}\n{G}", False),
     ("fail-open fork form", "on: pull_request\njobs:\n  a:\n    runs-on: ${{ github.event.pull_request.head.repo.fork && "

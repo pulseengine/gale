@@ -5707,6 +5707,26 @@ artifacts:
       model: claude-opus-5-5
       timestamp: 2026-11-18T06:00:00Z
 
+  - id: REQ-CI-RUNNER-IMAGE-001
+    type: sw-req
+    title: No CI job runs on the deprecated ubuntu-22.04 hosted image after 2027-02-15
+    status: proposed
+    release: v0.12.0
+    description: "GitHub deprecated the ubuntu-22.04 hosted image on 2026-09-17; it is unsupported from 2027-04-17, with brownouts likely before then. On 2026-11-18 (main c2ccc27) 28 jobs in 18 workflows pin it. WHY THEY PIN IT: no workflow states a reason. The pins date from the CI bootstrap (ac6a56a, 2026-03-15 onward), when 22.04 was the default. Grouped by family: (a) 15 Zephyr, Renode, LLVM-LTO, coverage and bench jobs run inside ghcr.io/zephyrproject-rtos/ci-base:v0.29.0, so the Zephyr SDK, west, QEMU, Renode and their apt packages come from the container, and the host image supplies only the container engine; (b) 13 jobs run on the host: bazel-tests (3), gust-renode (rules_renode fetches a hermetic Renode portable; it relies on the image's bazelisk), drv-components (apt binutils-arm-none-eabi), gust-syscall-seam, gustos-publish (2), publish-gust-target-gen, and nightly kani-extended and fuzz-long. The glibc floor points away from 22.04: synth needs GLIBC 2.39 and loom 2.38, which is why drv-cross-arch and gustos-dissolve already moved to ubuntu-24.04. REPLACEMENT: ubuntu-24.04 (GLIBC 2.39), pinned by name, not ubuntu-latest. PLAN, advisory first: (1) container family: one branch run with only the host label changed; pass/fail per job SHALL equal the 22.04 run, and every Renode cycle figure SHALL be byte-identical; (2) host family: an advisory 24.04 leg (continue-on-error) beside each 22.04 job on main for 14 days. Each job flips once its advisory leg has matched the 22.04 verdict on every run of that window. Differences to look for: a different binutils-arm-none-eabi version in drv-components, and whether 24.04 still ships bazelisk as bazel for gust-renode. (3) Flip the label, delete the advisory legs, and add a gate that fails on any ubuntu-22.04 runs-on, with a planted 22.04 job as its negative control. Target: every job off 22.04 by 2027-02-15. Kill criterion: an ubuntu-22.04 runs-on on main after 2027-02-15, or a Renode cycle figure that changes with the host image and no explanation."
+    tags: [ci, runner-image, maintenance]
+    fields:
+      priority: must
+      req-type: constraint
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-DIFF-ZEPHYR-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-18T07:00:00Z
+
   - id: REQ-DIFF-ZEPHYR-001
     type: sw-req
     title: gale's primitives agree with the real Zephyr C implementation on generated operation sequences, and the Zephyr matrices gate merges

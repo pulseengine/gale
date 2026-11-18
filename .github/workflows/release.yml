@@ -201,7 +201,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     needs: [build-wasm-dist]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write       # release-asset upload
