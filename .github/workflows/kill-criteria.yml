@@ -286,10 +286,11 @@ jobs:
       - name: Negative control -- each planted v7 encoding and v7-tagged input must be rejected
         run: cargo xtask check armv6m-isa --self-test
 
-      # Builds every os/gust bin for thumbv6m-none-eabi (target-g031k8) with a
-      # linker map and checks each image. Known ARMv7-M linkers are ledgered
-      # (synth#1301) and still rejected; any other rejection fails, and so does
-      # a ledgered bin that stops being rejected.
+      # Builds every os/gust bin, plus every feature set xtask silicon's matrix
+      # names, for thumbv6m-none-eabi (target-g031k8) with a linker map, and
+      # checks each image. Known ARMv7-M inputs (synth#1301) and known
+      # non-building variants are ledgered, compared for equality: a new
+      # offending input, a clean bin that stops building, or a stale line fails.
       - name: Every G031K8 image is ARMv6-M, or ledgered
         run: cargo xtask check armv6m-isa
 

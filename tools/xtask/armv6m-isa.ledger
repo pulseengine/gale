@@ -1,34 +1,64 @@
-# gust bins whose thumbv6m-none-eabi (target-g031k8) image links an ARMv7-M
-# object (synth has no ARMv6-M target: synth#1301, REQ-ARCH-ARMV6M-001).
-# `cargo xtask check armv6m-isa` still REJECTS each of these; it fails if any
-# OTHER image is rejected, or if a bin here stops being rejected (delete its
-# line). The list only shrinks.
-gale_decider_diff
-gust_adc
-gust_adc_probe
-gust_breadth
-gust_breadth_probe
-gust_can
-gust_can_probe
-gust_codegen_bench
-gust_dac
-gust_dac_probe
-gust_dma
-gust_dma_probe
-gust_exec_probe
-gust_floor_bench
-gust_fused
-gust_gpio
-gust_i2c
-gust_i2c_probe
-gust_iso
-gust_iso_probe
-gust_osfused_probe
-gust_pwm
-gust_pwm_probe
-gust_spi
-gust_spi_probe
-gust_timer
-gust_uart
-gust_wdg
-gust_wdg_probe
+# armv6m-isa ledger (cargo xtask check armv6m-isa). Every os/gust bin, and
+# every feature set xtask silicon's matrix names, built for thumbv6m-none-eabi
+# (target-g031k8). Compared for EQUALITY in both directions; the lists only
+# shrink.
+#
+# reject <variant>: <input>
+#   An image KNOWN to contain code ARMv6-M cannot execute, one line per
+#   offending linker input (an ARMv7-M object: synth has no ARMv6-M target,
+#   synth#1301, REQ-ARCH-ARMV6M-001). The gate still REJECTS these. A new
+#   offending input, or a line that stops applying, fails.
+#
+# nobuild <variant>: <substring of its first compiler error>
+#   A variant that produces no image for the board. A clean image that stops
+#   building fails here instead of quietly leaving the clean list.
+
+reject  gale_decider_diff: dec_diff.o
+reject  gust_adc: adc-thin-cm3.o
+reject  gust_adc_probe: adc-thin-cm3.o
+reject  gust_breadth: breadth-cm3.o
+reject  gust_breadth_probe: breadth-cm3.o
+reject  gust_can: can-thin-cm3.o
+reject  gust_can_probe: can-thin-cm3.o
+reject  gust_codegen_bench: gust_mix-cm3.o
+reject  gust_dac: dac-thin-cm3.o
+reject  gust_dac_probe: dac-thin-cm3.o
+reject  gust_dma: dma-own-cm3.o
+reject  gust_dma_probe: dma-own-cm3.o
+reject  gust_exec_probe: exec-cm3.o
+reject  gust_floor_bench: gust_mix-cm3.o
+reject  gust_fused: fused.o
+reject  gust_gpio: gpio-thin-cm3.o
+reject  gust_i2c: i2c-thin-cm3.o
+reject  gust_i2c_probe: i2c-thin-cm3.o
+reject  gust_iso: iso-core-fused-cm3.o
+reject  gust_iso_probe: iso-core-fused-cm3.o
+reject  gust_osfused_probe: gustos-dissolved-cm3.o
+reject  gust_pwm: pwm-thin-cm3.o
+reject  gust_pwm_probe: pwm-thin-cm3.o
+reject  gust_spi: spi-thin-cm3.o
+reject  gust_spi_probe: spi-thin-cm3.o
+reject  gust_timer: timer-thin-cm3.o
+reject  gust_uart: uart-thin-cm3.o
+reject  gust_wdg: wdg-thin-cm3.o
+reject  gust_wdg_probe: wdg-thin-cm3.o
+
+nobuild gust: no method named `fetch_add`
+nobuild gust_adc_silicon: requires the features: `target-f100`
+nobuild gust_control: no method named `fetch_add`
+nobuild gust_estimator_part: named `MemoryManagement`
+nobuild gust_iso_contain_ctl: registers must be in range r0-r7 or lr
+nobuild gust_iso_contain_probe: registers must be in range r0-r7 or lr
+nobuild gust_os_probe: registers must be in range r0-r7 or lr
+nobuild gust_os_tl_probe: registers must be in range r0-r7 or lr
+nobuild gust_os_ts_probe: registers must be in range r0-r7 or lr
+nobuild gust_priv_region_probe: pick an arm
+nobuild gust_stack: no method named `fetch_add`
+nobuild gust_switch_renode: named `MemoryManagement`
+nobuild gust_two_tenant: named `MemoryManagement`
+nobuild gust_two_tenant+no-regions: named `MemoryManagement`
+nobuild gust_wcet_evt: requires the features: `target-f100`
+nobuild gust_wdg_silicon: wdg-thin-cm3.o is ARMv7-M (synth#1301)
+nobuild mpu_spike: named `MemoryManagement`
+nobuild mpu_spike_renode: named `MemoryManagement`
+nobuild silicon_bench: no method named `enable_cycle_counter`
