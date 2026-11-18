@@ -48,14 +48,18 @@ missing, its undefined set is empty, and so is its import set. A planted synth t
 handed hm-thin an empty object scored "ok ok" before the exports and code rules existed.
 It now fails with exit 4.
 
-**Export aliases are reported, not gated.** wit-bindgen exports one function body under
-several names when the bodies are identical, and synth 0.89.0 emits one symbol per
-function. So 11 of 15 drivers define only one name per aliased function, on both legs.
-For example, wdg-thin defines `wdg_refresh` but not `gust:hal/wdg@0.1.0#refresh`. Under a
-strict "every export name is a defined symbol" rule, 11 of 15 would fail ARM today. The
-gate requires one defined name per exported function, and every run prints the missing
-alias names. Whether that missing-name gap should be an upstream issue or a gate failure
-is open.
+**Export aliases: interim contract, then a planned tightening.** wit-bindgen exports
+one function body under several names when the bodies are identical, and synth 0.89.0
+emits one symbol per function. So 11 of 15 drivers define only one name per aliased
+function, on both legs. For example, wdg-thin defines `wdg_refresh` but not
+`gust:hal/wdg@0.1.0#refresh`. synth has confirmed this is a bug and is tracking it as
+synth#1746. Its fix will emit every export name as a GLOBAL symbol at the same address,
+and will refuse loudly when a name cannot be emitted.
+
+- **Interim contract (now):** every exported function must be defined under **at least
+  one** of its export names. Every run prints the missing alias names, citing synth#1746.
+- **Planned tightening:** once the varve pin carries the #1746 fix, the rule becomes
+  **every export name defined**, so an alias with no symbol of its own fails the leg.
 
 ### What the gate checks, and how each check is shown to fail
 

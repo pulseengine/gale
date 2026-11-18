@@ -293,9 +293,11 @@ def seam_ok(imp, und):
 def exports_ok(fexp, dfn):
     """Every exported function is defined under at least one of its export names.
 
-    Alias-tolerant on purpose: synth 0.89.0 emits ONE symbol per function, so an
-    export that aliases another's body (same function index) has no symbol of
-    its own. That gap is reported per driver (missing_aliases) but not gated."""
+    INTERIM contract (synth#1746): synth 0.89.0 emits ONE symbol per function, so
+    an export that aliases another's body (same function index) has no symbol of
+    its own. That gap is reported per driver (missing_aliases) but not gated.
+    Once the varve pin carries the #1746 fix (every export name a GLOBAL at the
+    same address, loud refusal otherwise), tighten this to every export name."""
     return dfn is not None and all(names & dfn for names in fexp.values())
 
 
@@ -884,8 +886,8 @@ def main():
           f"object(s). The wasm inputs hold {atomics} atomic op(s), so on this corpus the scan can only "
           "fire if the backend invents one; its potency is the self-test's planted objects.")
     if alias_gaps:
-        print("Export aliases with no symbol of their own (reported, not gated; the function is "
-              "defined under another of its names):")
+        print("Export aliases with no symbol of their own (synth#1746; reported, not gated until a "
+              "pin carries its fix -- the function is defined under another of its names):")
         for d, legs in alias_gaps.items():
             for name, gap in legs.items():
                 print(f"  {d} [{name}]: {' '.join(sorted(gap))}")
