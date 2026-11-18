@@ -170,9 +170,11 @@ fn main() -> ! {
         let failed = core::ptr::read_volatile(&raw const FAILED);
         if failed == 0 {
             hprintln!("osfused-probe: ALL CHECKS PASSED");
+            hprintln!("gust-osfused-probe OK: every check passed (FAILED == 0)");
             debug::exit(debug::EXIT_SUCCESS);
         } else {
             hprintln!("osfused-probe: {} CHECK(S) FAILED", failed);
+            hprintln!("gust-osfused-probe FAIL: {} check(s) failed", failed);
             debug::exit(debug::EXIT_FAILURE);
         }
     }

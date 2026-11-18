@@ -84,6 +84,18 @@ fn main() -> ! {
     let _ = hprintln!(
         "gust-control: dissolved engine_control ran as scheduled work on gust (native, no runtime)"
     );
+    // The verdict is the known-operating-point check above and nothing more: the
+    // scheduled ticks' actuator values are not compared against anything.
+    if ok {
+        let _ = hprintln!(
+            "gust-control OK: control_step(3000,50,80,0) == spark 33deg fuel 2300us, the C/wasmtime value"
+        );
+    } else {
+        let _ = hprintln!(
+            "gust-control FAIL: control_step(3000,50,80,0) = spark {}deg fuel {}us, want 33deg 2300us",
+            (known >> 16) as i16, known & 0xFFFF
+        );
+    }
     debug::exit(if ok { debug::EXIT_SUCCESS } else { debug::EXIT_FAILURE });
     loop {}
 }
