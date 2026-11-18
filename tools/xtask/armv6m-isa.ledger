@@ -1,0 +1,34 @@
+# gust bins whose thumbv6m-none-eabi (target-g031k8) image links an ARMv7-M
+# object (synth has no ARMv6-M target: synth#1301, REQ-ARCH-ARMV6M-001).
+# `cargo xtask check armv6m-isa` still REJECTS each of these; it fails if any
+# OTHER image is rejected, or if a bin here stops being rejected (delete its
+# line). The list only shrinks.
+gale_decider_diff
+gust_adc
+gust_adc_probe
+gust_breadth
+gust_breadth_probe
+gust_can
+gust_can_probe
+gust_codegen_bench
+gust_dac
+gust_dac_probe
+gust_dma
+gust_dma_probe
+gust_exec_probe
+gust_floor_bench
+gust_fused
+gust_gpio
+gust_i2c
+gust_i2c_probe
+gust_iso
+gust_iso_probe
+gust_osfused_probe
+gust_pwm
+gust_pwm_probe
+gust_spi
+gust_spi_probe
+gust_timer
+gust_uart
+gust_wdg
+gust_wdg_probe
