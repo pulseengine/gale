@@ -351,6 +351,16 @@ jobs:
       - name: No live reference to a moved path
         run: cargo xtask check moved-paths
 
+      # xtask's own unit tests were run by no workflow. They include the silicon
+      # runner's (gale#397): build() reads the generated map through its own path
+      # join (moved-paths cannot see a path assembled at run time, which is how
+      # that join went stale), exit 0 without the firmware's OK line is not a
+      # PASS, and every matrix decline exits non-zero. Tests only: `cargo fmt
+      # --check` and `cargo clippy -D warnings` already fail on main for this
+      # crate, so wiring them here would be red for reasons unrelated to a PR.
+      - name: xtask unit tests (silicon verdicts, matrix exit codes)
+        run: cargo test --manifest-path tools/xtask/Cargo.toml
+
   data-overlap:
     name: "fused data segments are disjoint (gale#266)"
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","rust-cpu"]') || 'ubuntu-24.04' }}
