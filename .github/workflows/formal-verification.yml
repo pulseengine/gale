@@ -71,11 +71,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      # tomllib needs python >= 3.11. If this step fails, the classifier still
-      # runs on whatever python3 the runner has and, without tomllib, selects
-      # everything -- so this can only cost time, never skip a proof.
+      # tomllib needs python >= 3.11. If this step fails, this required job is
+      # red (loud), and every proof job runs (`needs.guard.result != 'success'`).
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        continue-on-error: true
         with:
           python-version: "3.12"
       - id: classify
@@ -87,7 +85,7 @@ jobs:
   verus:
     name: Verus SMT (39 modules)
     needs: guard
-    if: ${{ !cancelled() && needs.guard.outputs.proofs != 'false' }}
+    if: ${{ !cancelled() && (needs.guard.result != 'success' || needs.guard.outputs.proofs != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -106,7 +104,7 @@ jobs:
   kani:
     name: Kani BMC (185 harnesses)
     needs: guard
-    if: ${{ !cancelled() && needs.guard.outputs.proofs != 'false' }}
+    if: ${{ !cancelled() && (needs.guard.result != 'success' || needs.guard.outputs.proofs != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -131,7 +129,7 @@ jobs:
   rocq:
     name: Rocq Proofs (14 files)
     needs: guard
-    if: ${{ !cancelled() && needs.guard.outputs.proofs != 'false' }}
+    if: ${{ !cancelled() && (needs.guard.result != 'success' || needs.guard.outputs.proofs != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -164,7 +162,7 @@ jobs:
   lean:
     name: Lean Proofs
     needs: guard
-    if: ${{ !cancelled() && needs.guard.outputs.proofs != 'false' }}
+    if: ${{ !cancelled() && (needs.guard.result != 'success' || needs.guard.outputs.proofs != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:

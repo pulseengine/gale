@@ -99,11 +99,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      # tomllib needs python >= 3.11. If this step fails, the classifier still
-      # runs on whatever python3 the runner has and, without tomllib, selects
-      # everything -- so this can only cost time, never skip the gate.
+      # tomllib needs python >= 3.11. If this step fails, the classifier job
+      # fails, and the gate runs (`needs.changes.result != 'success'`).
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        continue-on-error: true
         with:
           python-version: "3.12"
       - id: classify
@@ -122,7 +120,7 @@ jobs:
     # does not use synth.
     name: "seam survives lowering on ARM and RISC-V (all thin drivers)"
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.cross_arch != 'false' }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.cross_arch != 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:

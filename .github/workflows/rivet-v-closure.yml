@@ -70,6 +70,12 @@ jobs:
           fi
 
   v-closure:
+    # Runs on every PR. It used to skip its steps on `needs.guard.outputs.run`,
+    # which reported this required check green having checked nothing whenever
+    # the inline guard missed an input. tools/check-required-contexts.py now
+    # rejects a step-level skip on a required job. The check is a few seconds
+    # of python; the `V-closure needed?` job stays because it is a required
+    # context (its answer is printed, no longer used).
     name: "no requirement lags its closed V"
     needs: guard
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","rust-cpu"]') || 'ubuntu-latest' }}
@@ -77,9 +83,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        if: needs.guard.outputs.run == 'true'
         with:
           python-version: "3.12"
       - name: Traceability-completeness gate
-        if: needs.guard.outputs.run == 'true'
         run: python3 tools/check-v-closure.py

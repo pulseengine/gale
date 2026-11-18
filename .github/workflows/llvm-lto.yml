@@ -65,11 +65,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      # tomllib needs python >= 3.11. If this step fails, the classifier still
-      # runs on whatever python3 the runner has and, without tomllib, selects
-      # everything -- so this can only cost time, never skip a job.
+      # tomllib needs python >= 3.11. If this step fails, the classifier job
+      # fails, and every gated job runs (`needs.changes.result != 'success'`).
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        continue-on-error: true
         with:
           python-version: "3.12"
       - id: classify
@@ -80,7 +78,7 @@ jobs:
 
   llvm-lto-build:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.zephyr != 'false' }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.zephyr != 'false') }}
     name: "LLVM LTO build + size comparison"
     runs-on: ubuntu-22.04
     # MEASURED BOUND (gale#382). Job durations over 12 runs:
@@ -433,7 +431,7 @@ jobs:
 
   llvm-lto-test:
     needs: changes
-    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.zephyr != 'false' }}
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.zephyr != 'false') }}
     name: "llvm-lto-test"
     runs-on: ubuntu-22.04
     # MEASURED BOUND (gale#382). Job durations over 12 runs:

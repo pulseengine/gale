@@ -52,11 +52,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      # tomllib needs python >= 3.11. If this step fails, the classifier still
-      # runs on whatever python3 the runner has and, without tomllib, selects
-      # everything -- so this can only cost time, never skip a job.
+      # tomllib needs python >= 3.11. If this step fails, the classifier job
+      # fails, and every gated job runs (`needs.changes.result != 'success'`).
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        continue-on-error: true
         with:
           python-version: "3.12"
       - id: classify
@@ -67,7 +65,7 @@ jobs:
 
   gust-renode:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.gust_renode != 'false' }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.gust_renode != 'false') }}
     name: "gust dissolved on Renode (M3: kernel 8K / control 64K / F100)"
     runs-on: ubuntu-22.04
     timeout-minutes: 30

@@ -45,11 +45,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      # tomllib needs python >= 3.11. If this step fails, the classifier still
-      # runs on whatever python3 the runner has and, without tomllib, selects
-      # everything -- so this can only cost time, never skip a job.
+      # tomllib needs python >= 3.11. If this step fails, the classifier job
+      # fails, and every gated job runs (`needs.changes.result != 'success'`).
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        continue-on-error: true
         with:
           python-version: "3.12"
       - id: classify
@@ -61,7 +59,7 @@ jobs:
   # ── Rust source coverage (cargo-llvm-cov) ─────────────────────────
   rust-coverage:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.rust_cov != 'false' }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.rust_cov != 'false') }}
     name: Rust Coverage
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -100,7 +98,7 @@ jobs:
   # ── Zephyr C coverage (twister + gcov on QEMU) ───────────────────
   zephyr-coverage:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.zephyr != 'false' }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.zephyr != 'false') }}
     name: Zephyr C Coverage
     runs-on: ubuntu-22.04
     timeout-minutes: 90
@@ -282,7 +280,7 @@ jobs:
           retention-days: 14
   zephyr-coverage-gale:
     needs: changes
-    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.zephyr != 'false' }}
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.zephyr != 'false') }}
     name: Zephyr C Coverage (gale-enabled)
     # MEASUREMENT LEG (gale#395). Identical to zephyr-coverage except gale's
     # module + overlay are injected. Not a required context: its purpose
@@ -457,7 +455,7 @@ jobs:
     # always(): the delta is most valuable exactly when one leg went red.
     # Advisory: skipped in the merge queue, and when no Zephyr input changed, where
     # both legs were skipped and there are no results to compare.
-    if: always() && github.event_name != 'merge_group' && needs.changes.outputs.zephyr != 'false'
+    if: always() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.zephyr != 'false')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:

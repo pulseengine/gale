@@ -53,7 +53,6 @@ jobs:
         with:
           fetch-depth: 0
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        continue-on-error: true
         with:
           python-version: "3.12"
       - id: classify
@@ -64,7 +63,7 @@ jobs:
 
   renode-test:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.zephyr_renode != 'false' }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.zephyr_renode != 'false') }}
     name: "${{ matrix.arch }} (${{ matrix.board }})"
     runs-on: ubuntu-22.04
     timeout-minutes: 30
