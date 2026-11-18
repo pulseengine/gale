@@ -527,6 +527,24 @@ jobs:
       - name: Negative control -- the gate catches each way a check stops arriving
         run: python3 tools/check-required-contexts.py --self-test
 
+      # The heavy jobs behind required contexts skip on a classifier output
+      # (tools/ci/classify-changes.py). Skipped counts as passing, so a
+      # classifier that wrongly says "not affected" turns a required check green
+      # without running it. These two steps are that risk's controls, on every PR:
+      #   --self-test   planted paths per class, empty diff, rename, delete, a new
+      #                 crate added as a path dependency, #[path] out of a crate,
+      #                 every event and failure that must run everything;
+      #   --check-graph on the real tree: every graph-derived input of every heavy
+      #                 job selects it, cargo metadata agrees with the live walk,
+      #                 named true inputs per job select it (false-skip controls),
+      #                 docs/rivet-only paths select nothing, the Bazel snapshot is
+      #                 current, and no graph input sits on the inert list.
+      - name: Change classifier -- planted paths classify as required
+        run: python3 tools/ci/classify-changes.py --self-test
+
+      - name: Change classifier -- every heavy job's true inputs select it
+        run: python3 tools/ci/classify-changes.py --check-graph
+
       # Whether the default GITHUB_TOKEN can read branch protection decides how
       # much this gate covers, so ASK rather than assume. If it can, the check
       # also confirms the committed list still matches what main actually

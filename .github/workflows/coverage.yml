@@ -14,7 +14,7 @@ on:
   # GitHub merge queue: this workflow emits required contexts, so it must
   # run on merge_group or a queued PR waits on checks nothing reports
   # (tools/check-required-contexts.py fails a PR that drops this).
-  # Required: Rust Coverage, Zephyr C Coverage (skip on docs-only). The
+  # Required: Rust Coverage, Zephyr C Coverage (skip when the classifier finds none of their inputs changed). The
   # gale-enabled run and the delta are advisory: skipped in the queue.
   merge_group:
 
@@ -24,30 +24,44 @@ concurrency:
 
 jobs:
   changes:
-    # Docs-only detector (tools/ci/detect-changes.sh, fails closed). The heavy
-    # jobs below skip on docs-only changes by job-level `if:`, which still
-    # REPORTS their required context; a workflow `paths:` would not (gale#294).
-    # pull_request diffs against the PR base, merge_group against
-    # merge_group.base_sha.
+    # Change classifier (tools/ci/classify-changes.py; FAILS OPEN). It derives
+    # each heavy job's inputs from the build graph at the PR head (cargo path
+    # deps, #[path]/include!, build-script paths, the west module, the Bazel
+    # snapshot) and writes one boolean per job. The heavy jobs below skip by a
+    # job-level `if:` reading `!= 'false'`, which still REPORTS their required
+    # context (skipped counts as success); a workflow `paths:` would not
+    # (gale#294). Push to main, merge_group, any other event, an empty or failed
+    # diff, a path no job claims, or a crash: every output is true.
+    # tools/check-required-contexts.py gates the `if:` shapes and runs this
+    # classifier on those events to prove it fails open.
+    # (Display name kept from the docs-only detector it replaces.)
     name: "docs-only change?"
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      zephyr: ${{ steps.classify.outputs.zephyr }}
+      rust_cov: ${{ steps.classify.outputs.rust_cov }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - id: filter
+      # tomllib needs python >= 3.11. If this step fails, the classifier still
+      # runs on whatever python3 the runner has and, without tomllib, selects
+      # everything -- so this can only cost time, never skip a job.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        continue-on-error: true
+        with:
+          python-version: "3.12"
+      - id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-        run: bash tools/ci/detect-changes.sh
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 tools/ci/classify-changes.py
 
   # ── Rust source coverage (cargo-llvm-cov) ─────────────────────────
   rust-coverage:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && needs.changes.outputs.rust_cov != 'false' }}
     name: Rust Coverage
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -86,7 +100,7 @@ jobs:
   # ── Zephyr C coverage (twister + gcov on QEMU) ───────────────────
   zephyr-coverage:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && needs.changes.outputs.zephyr != 'false' }}
     name: Zephyr C Coverage
     runs-on: ubuntu-22.04
     timeout-minutes: 90
@@ -268,7 +282,7 @@ jobs:
           retention-days: 14
   zephyr-coverage-gale:
     needs: changes
-    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.zephyr != 'false' }}
     name: Zephyr C Coverage (gale-enabled)
     # MEASUREMENT LEG (gale#395). Identical to zephyr-coverage except gale's
     # module + overlay are injected. Not a required context: its purpose
@@ -441,9 +455,9 @@ jobs:
     name: "Upstream vs gale — kernel test delta (gale#395)"
     needs: [changes, zephyr-coverage, zephyr-coverage-gale]
     # always(): the delta is most valuable exactly when one leg went red.
-    # Advisory: skipped in the merge queue, and on a docs-only change, where
+    # Advisory: skipped in the merge queue, and when no Zephyr input changed, where
     # both legs were skipped and there are no results to compare.
-    if: always() && github.event_name != 'merge_group' && needs.changes.outputs.code != 'false'
+    if: always() && github.event_name != 'merge_group' && needs.changes.outputs.zephyr != 'false'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:

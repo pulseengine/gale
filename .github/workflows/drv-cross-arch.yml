@@ -28,15 +28,22 @@ name: driver cross-arch seam
 # they are the safety-relevant ones (formal-verification, rivet-v-closure, both
 # driver gates), which is why #294 has not been a one-line fix.
 #
-# The path filter is therefore moved OFF the trigger and INTO the job, as an
-# early exit. The job always runs and always reports; when no relevant path
-# changed it exits 0 in seconds without installing a toolchain. Cost is one cheap
-# runner slot per PR; the expensive matrix still only runs when it must.
+# The path filter is therefore moved OFF the trigger and INTO a `changes`
+# classifier job (tools/ci/classify-changes.py, FAILS OPEN), whose `cross_arch`
+# output gates the job by a job-level `if:`. The inputs are derived from the
+# build graph: every drivers/*-thin crate (the set build-cross-arch.sh itself
+# globs), its path deps, its wit_bindgen `path:` (wit/hal) and every include!
+# that leaves it (targets/generated), plus the two gate scripts (hand-listed).
 #
-# Note the shape: the skip is a STEP-level early exit inside the reporting job,
-# not a job-level `if:` that would render the job "skipped". That avoids relying
-# on how branch protection treats a skipped check — the context reports a real
-# success either way.
+# A job skipped by `if:` still reports its check, as "skipped", which branch
+# protection counts as success (GitHub docs: "A job that is skipped will report
+# its status as Success. It will not prevent a pull request from merging, even
+# if it is a required check."). An earlier version kept a STEP-level early exit
+# to avoid relying on that; coverage.yml, zephyr-tests.yml, llvm-lto.yml and
+# gust-renode.yml already relied on it for required contexts, and the step-level
+# form cost a hosted runner on every PR just to report. The skip can only come
+# from the classifier: tools/check-required-contexts.py rejects any other `if:`
+# on a required job and runs the classifier to prove it fails open.
 on:
   push:
     branches: [main]
@@ -45,7 +52,7 @@ on:
   # GitHub merge queue: this workflow emits required contexts, so it must
   # run on merge_group or a queued PR waits on checks nothing reports
   # (tools/check-required-contexts.py fails a PR that drops this).
-  # Its step-level guard diffs against merge_group.base_sha in the queue.
+  # In the queue the classifier selects everything (not a pull_request event).
   merge_group:
 
 permissions:
@@ -79,6 +86,32 @@ env:
   LOOM_VERSION: "1.4.1"
 
 jobs:
+  changes:
+    # Change classifier (tools/ci/classify-changes.py; FAILS OPEN): push,
+    # merge_group, an empty or failed diff, a path no job claims, or a crash
+    # all give cross_arch=true.
+    name: "driver seam inputs changed?"
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    outputs:
+      cross_arch: ${{ steps.classify.outputs.cross_arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      # tomllib needs python >= 3.11. If this step fails, the classifier still
+      # runs on whatever python3 the runner has and, without tomllib, selects
+      # everything -- so this can only cost time, never skip the gate.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        continue-on-error: true
+        with:
+          python-version: "3.12"
+      - id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 tools/ci/classify-changes.py
+
   cross-arch:
     # ubuntu-24.04, NOT 22.04. synth's published Linux binaries need GLIBC 2.39;
     # 22.04 ships 2.35, and the binary dies with
@@ -88,41 +121,18 @@ jobs:
     # workflow — is already on 24.04; this one copied 22.04 from a workflow that
     # does not use synth.
     name: "seam survives lowering on ARM and RISC-V (all thin drivers)"
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.cross_arch != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0        # the guard diffs against the merge base
-
-      - name: Does this change touch the driver seam?
-        id: guard
-        # The path filter that used to live on the trigger. Same globs, evaluated
-        # here so the job still REPORTS when they do not match (gale#294).
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ github.event_name }}" != "merge_group" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "push to main — always run"; exit 0
-          fi
-          base="${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
-          changed="$(git diff --name-only "$base"...HEAD)"
-          if printf '%s\n' "$changed" | grep -qE \
-              '^drivers/[^/]+-thin/|^wit/hal/|^drivers/build-cross-arch\.sh$|^drivers/check-cross-arch\.py$|^\.github/workflows/drv-cross-arch\.yml$'; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "driver seam touched — running the gate"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "no driver-seam path changed — gate vacuously satisfied, exiting 0"
-          fi
 
       - uses: dtolnay/rust-toolchain@stable
-        if: steps.guard.outputs.run == 'true'
         with:
           targets: wasm32-unknown-unknown
 
       - name: Install pinned synth + loom
-        if: steps.guard.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -143,7 +153,6 @@ jobs:
           echo "$HOME/pe-toolchain/bin" >> "$GITHUB_PATH"
 
       - name: Install wasm-tools
-        if: steps.guard.outputs.run == 'true'
         # check-cross-arch.py derives each driver's EXPECTED undefined set from
         # the wasm's import section, so it needs wasm-tools -- the old shell gate
         # only ran nm and did not. Pinned to the same version drv-components.yml
@@ -151,14 +160,12 @@ jobs:
         run: cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
 
       - name: Install binutils (nm)
-        if: steps.guard.outputs.run == 'true'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq binutils-arm-none-eabi
 
       # Negative control FIRST: an unpinned toolchain must be REFUSED, not
       # silently answered. That refusal is the whole reason this gate is
       # trustworthy — the property it checks is toolchain-sensitive.
       - name: Negative control — an unpinned/old synth must be refused
-        if: steps.guard.outputs.run == 'true'
         run: |
           set -euo pipefail
           cd drivers
@@ -174,7 +181,6 @@ jobs:
       # gate that dies silently in setup is the same problem as a check that
       # passes silently: there is nothing to read.
       - name: Toolchain diagnostics
-        if: steps.guard.outputs.run == 'true'
         run: |
           echo "HOME=$HOME"
           ls -la "$HOME/pe-toolchain/bin" || echo "  (bin dir missing)"
@@ -188,13 +194,11 @@ jobs:
           done
 
       - name: Negative control — the gate's own rule must reject a leaked symbol
-        if: steps.guard.outputs.run == 'true'
         run: |
           cd drivers
           python3 check-cross-arch.py --self-test
 
       - name: Cross-arch seam gate
-        if: steps.guard.outputs.run == 'true'
         run: |
           cd drivers
           SYNTH="$HOME/pe-toolchain/bin/synth" \

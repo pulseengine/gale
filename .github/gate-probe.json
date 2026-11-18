@@ -3,10 +3,15 @@
   "detectors": [
     {
       "command": [
-        "tools/ci/detect-changes.sh"
+        "tools/ci/classify-changes.py"
       ],
       "outputs": [
-        "code"
+        "zephyr",
+        "zephyr_renode",
+        "rust_cov",
+        "proofs",
+        "gust_renode",
+        "cross_arch"
       ],
       "controls": [
         "docs/safety/verification-honesty.md"

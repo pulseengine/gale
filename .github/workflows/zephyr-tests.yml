@@ -15,8 +15,8 @@ on:
   # GitHub merge queue: this workflow emits required contexts, so it must
   # run on merge_group or a queued PR waits on checks nothing reports
   # (tools/check-required-contexts.py fails a PR that drops this).
-  # Required: Binary size comparison (skips on docs-only). The primitive
-  # matrices are not required: skipped in the queue and on docs-only.
+  # Required: Binary size comparison (skips when no Zephyr input changed). The primitive
+  # matrices are not required: skipped in the queue and when no Zephyr input changed.
   merge_group:
 
 permissions:
@@ -50,11 +50,17 @@ env:
 
 jobs:
   changes:
-    # Docs-only detector (tools/ci/detect-changes.sh, fails closed). The heavy
-    # jobs below skip on docs-only changes by job-level `if:`, which still
-    # REPORTS their required context; a workflow `paths:` would not (gale#294).
-    # pull_request diffs against the PR base, merge_group against
-    # merge_group.base_sha.
+    # Change classifier (tools/ci/classify-changes.py; FAILS OPEN). It derives
+    # each heavy job's inputs from the build graph at the PR head (cargo path
+    # deps, #[path]/include!, build-script paths, the west module, the Bazel
+    # snapshot) and writes one boolean per job. The heavy jobs below skip by a
+    # job-level `if:` reading `!= 'false'`, which still REPORTS their required
+    # context (skipped counts as success); a workflow `paths:` would not
+    # (gale#294). Push to main, merge_group, any other event, an empty or failed
+    # diff, a path no job claims, or a crash: every output is true.
+    # tools/check-required-contexts.py gates the `if:` shapes and runs this
+    # classifier on those events to prove it fails open.
+    # (Display name kept from the docs-only detector it replaces.)
     name: "docs-only change?"
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
@@ -63,20 +69,27 @@ jobs:
     env:
       HOME: /home/runner
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      zephyr: ${{ steps.classify.outputs.zephyr }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - id: filter
+      # tomllib needs python >= 3.11. If this step fails, the classifier still
+      # runs on whatever python3 the runner has and, without tomllib, selects
+      # everything -- so this can only cost time, never skip a job.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        continue-on-error: true
+        with:
+          python-version: "3.12"
+      - id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-        run: bash tools/ci/detect-changes.sh
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 tools/ci/classify-changes.py
 
   zephyr-test:
     needs: changes
-    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.zephyr != 'false' }}
     name: "${{ matrix.primitive }} (qemu_cortex_m3)"
     runs-on: ubuntu-22.04
     timeout-minutes: 90
@@ -298,7 +311,7 @@ jobs:
   # =========================================================================
   zephyr-mpu-test:
     needs: changes
-    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.zephyr != 'false' }}
     name: "${{ matrix.primitive }} (mps2/an385)"
     runs-on: ubuntu-22.04
     timeout-minutes: 90
@@ -449,7 +462,7 @@ jobs:
   # =========================================================================
   zephyr-smp-test:
     needs: changes
-    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && needs.changes.outputs.zephyr != 'false' }}
     # Known issue: x86_64 SMP tests hang at boot (Gale shim interaction
     # with x86_64 SMP init). ARM Cortex-M tests pass. Tracked for investigation.
     continue-on-error: true
@@ -589,7 +602,7 @@ jobs:
   # =========================================================================
   size-comparison:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && needs.changes.outputs.zephyr != 'false' }}
     name: "Binary size comparison"
     runs-on: ubuntu-22.04
     timeout-minutes: 15

@@ -20,7 +20,7 @@ on:
   # GitHub merge queue: this workflow emits required contexts, so it must
   # run on merge_group or a queued PR waits on checks nothing reports
   # (tools/check-required-contexts.py fails a PR that drops this).
-  # Skips on docs-only changes via `changes`.
+  # Skips when the `changes` classifier finds none of its inputs changed.
   merge_group:
 
 permissions:
@@ -32,29 +32,42 @@ concurrency:
 
 jobs:
   changes:
-    # Docs-only detector (tools/ci/detect-changes.sh, fails closed). The heavy
-    # jobs below skip on docs-only changes by job-level `if:`, which still
-    # REPORTS their required context; a workflow `paths:` would not (gale#294).
-    # pull_request diffs against the PR base, merge_group against
-    # merge_group.base_sha.
+    # Change classifier (tools/ci/classify-changes.py; FAILS OPEN). It derives
+    # each heavy job's inputs from the build graph at the PR head (cargo path
+    # deps, #[path]/include!, build-script paths, the west module, the Bazel
+    # snapshot) and writes one boolean per job. The heavy jobs below skip by a
+    # job-level `if:` reading `!= 'false'`, which still REPORTS their required
+    # context (skipped counts as success); a workflow `paths:` would not
+    # (gale#294). Push to main, merge_group, any other event, an empty or failed
+    # diff, a path no job claims, or a crash: every output is true.
+    # tools/check-required-contexts.py gates the `if:` shapes and runs this
+    # classifier on those events to prove it fails open.
+    # (Display name kept from the docs-only detector it replaces.)
     name: "docs-only change?"
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      gust_renode: ${{ steps.classify.outputs.gust_renode }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - id: filter
+      # tomllib needs python >= 3.11. If this step fails, the classifier still
+      # runs on whatever python3 the runner has and, without tomllib, selects
+      # everything -- so this can only cost time, never skip a job.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        continue-on-error: true
+        with:
+          python-version: "3.12"
+      - id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-        run: bash tools/ci/detect-changes.sh
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 tools/ci/classify-changes.py
 
   gust-renode:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && needs.changes.outputs.gust_renode != 'false' }}
     name: "gust dissolved on Renode (M3: kernel 8K / control 64K / F100)"
     runs-on: ubuntu-22.04
     timeout-minutes: 30
