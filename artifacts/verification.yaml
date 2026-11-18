@@ -4588,7 +4588,11 @@ artifacts:
       safety-critical modules (sem, mutex, condvar, msgq, stack, pipe,
       timer, event, mem_slab, fifo, lifo, queue, mbox, futex, poll,
       timeout, timeslice, work, kheap, mempool, fatal, dynamic, smp,
-      thread, sched) have corresponding Verus-verified Rust implementations.
+      thread, sched) have corresponding Rust implementations with Verus
+      proofs. Not every item in them is proven: the trusted residue
+      (#[verifier::external_body], assume_specification) is counted per
+      file in https://pulseengine.github.io/gale/trusted-base.json and
+      includes items in poll and sched.
     tags: [system-verification, coverage, sys-5]
     fields:
       method: review

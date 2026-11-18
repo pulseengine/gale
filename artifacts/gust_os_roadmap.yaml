@@ -905,16 +905,35 @@ artifacts:
 
   - id: REQ-TARGET-MODEL-001
     type: sw-req
-    title: "Board/SoC/device facts are defined once in the spar/AADL target model and generated, never hand-written"
-    status: verified
+    title: "Board/SoC/device facts are defined once in the spar/AADL target model, generated, and every peripheral address in firmware agrees with it"
+    status: implemented
     release: v0.10.0
-    description: "The per-target hardware facts a driver needs — peripheral base addresses, the memory map (flash/SRAM origin+length), the RCC reset-flag register offset and bit positions, and peripheral presence — SHALL be defined once in a spar/AADL target model (targets/*.aadl), analyzed by spar (parse + EMV2 fault propagation), and turned into the firmware constants, linker memory map, and gust:hal WIT world by a build-time generator (gust-target-gen). Firmware SHALL NOT hand-write these constants. Retargeting a verified driver across an SoC family (e.g. STM32F1 <-> STM32G4, whose IWDG driver differs ONLY in the RCC_CSR offset 0x24/0x94 and the RMVF bit 24/23) SHALL be achieved by selecting a target model, not by editing code. The generated artifacts SHALL be committed and a CI drift gate SHALL fail if they fall out of sync with the model. Zero runtime cost: the constants bake into the dissolved object; nothing here adds a TCB atom or SRAM. This is the scaling mechanism behind driver breadth and multi-board silicon validation (G474RE + F100)."
+    description: "The per-target hardware facts a driver needs — peripheral base addresses, the memory map (flash/SRAM origin+length), the RCC reset-flag register offset and bit positions, and peripheral presence — SHALL be defined once in a spar/AADL target model (targets/*.aadl), analyzed by spar (parse + EMV2 fault propagation), and turned into the firmware constants, linker memory map, and gust:hal WIT world by a build-time generator (gust-target-gen). Every 8-digit peripheral address literal in firmware (os/gust/src, drivers, ports) SHALL fall inside a 1 KiB peripheral block the generated target constants define, or sit on a reviewed ledger; `cargo xtask check peripheral-addresses` gates this, with a self-test. That is agreement with the model, not generation from it: on 2026-11-18 (main c2ccc27) 73 such literals in 25 files are still hand-written inside modelled blocks (67 under os/gust), and 7 ledgered literals sit outside the model. Removing the hand-written literals is REQ-TARGET-MODEL-002. Retargeting a verified driver across an SoC family (e.g. STM32F1 <-> STM32G4, whose IWDG driver differs ONLY in the RCC_CSR offset 0x24/0x94 and the RMVF bit 24/23) SHALL be achieved by selecting a target model, not by editing code. The generated artifacts SHALL be committed and a CI drift gate SHALL fail if they fall out of sync with the model. Zero runtime cost: the constants bake into the dissolved object; nothing here adds a TCB atom or SRAM. This is the scaling mechanism behind driver breadth and multi-board silicon validation (G474RE + F100)."
     tags: [gust, target-model, aadl, spar, codegen, generator, build-time, driver-breadth]
     links:
+      - type: related-to
+        target: REQ-TARGET-MODEL-002
       - type: derives-from
         target: SYSREQ-BYOOS-001
       - type: related-to
         target: REQ-DRV-WDG-001
+
+  - id: REQ-TARGET-MODEL-002
+    type: sw-req
+    title: "No peripheral address is hand-written inside a modelled block: firmware takes it from the generated target constants"
+    status: proposed
+    release: v0.12.0
+    description: "Follow-up to REQ-TARGET-MODEL-001, whose gate checks only that a literal falls in a modelled block (requirements review 2026-11-17, row CC3; owner decision on notice 20261117T211732-3e3c34). Firmware in os/gust/src, drivers and ports SHALL take every peripheral address inside a modelled block from the generated target constants, not from a hand-written literal. The peripheral-addresses gate SHALL fail on an in-model literal that is not on a ratchet ledger, and the ledger SHALL only shrink, from 73 occurrences in 25 files measured on 2026-11-18 (main c2ccc27) to 0. Kill criterion: a new hand-written in-model literal merges, or a ledger entry outlives its literal. The gate ships a planted in-model literal as its negative control."
+    tags: [gust, target-model, aadl, codegen, gate, req-review]
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-TARGET-MODEL-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-18T06:00:00Z
 
   - id: VER-TARGET-IWDG-001
     type: sw-verification
@@ -1144,7 +1163,7 @@ artifacts:
     type: sw-req
     title: The I2C v2 block (WB55, G0, G4) is a thin-seam bus driver exporting gust:bus/i2c-master
     status: approved
-    description: "The STM32 I2C v2 master path (TIMINGR setup; CR2 address, direction, NBYTES, AUTOEND, START; ISR-polled TXDR/RXDR) SHALL be a Component-Model driver that imports only gust:hal/mmio (read32, write32) and exports gust:bus/i2c-master@0.1.0 in the normative encoding of wit/bus/gust-bus.wit, plus a driver-local setup interface (gust:i2c-v2/setup, configure(timingr)) because TIMINGR is specific to this IP and to the board clock. Every accepted begin SHALL program CR2 with the 7-bit address in SADD[7:1], NBYTES equal to the byte count, RELOAD clear and AUTOEND set, which is the configuration in which the hardware NACKs the last read byte and issues STOP. xfer SHALL move exactly count bytes and then refuse; an error flag (BERR, ARLO, NACKF) SHALL stop the transfer before any further byte moves; end SHALL report a NACK of the final written byte; every hardware wait SHALL be bounded. Register facts SHALL come from the pinned stm32-data snapshot. Consumer: the wohl air node (seam gale-wohl/air-sensor-read, gale#511)."
+    description: "The STM32 I2C v2 master path (TIMINGR setup; CR2 address, direction, NBYTES, AUTOEND, START; ISR-polled TXDR/RXDR) SHALL be a Component-Model driver that imports only gust:hal/mmio (read32, write32) and exports gust:bus/i2c-master@0.1.0 in the normative encoding of wit/bus/gust-bus.wit, plus a driver-local setup interface (gust:i2c-v2/setup, configure(timingr)) because TIMINGR is specific to this IP and to the board clock. Every accepted begin SHALL program CR2 with the 7-bit address in SADD[7:1], NBYTES equal to the byte count, RELOAD clear and AUTOEND set, which is the configuration in which the hardware NACKs the last read byte and issues STOP. begin SHALL refuse a byte count outside 1..=255, an address above 0x7F or a direction other than 0 or 1 with err(INVALID_ARG). xfer SHALL move exactly count bytes; on any state that is not Active (including Complete) it SHALL refuse with err(NOT_ACTIVE). An error flag (BERR, ARLO, NACKF) SHALL stop the transfer before any further byte moves: a NACK of any byte during xfer makes that xfer return err(NACK), and a later end on the same Active state resets the peripheral and returns 0. end SHALL report err(NACK) when the hardware's STOP follows a NACK of the final written byte (NACKF and STOPF both set); if no STOP arrives within the wait bound, end returns err(TIMEOUT). Every hardware wait SHALL be bounded by an iteration count: each polling loop runs at most SPIN_MAX = 100000 iterations, and one xfer or end call, recovery included, runs at most three such loops. The bound is a poll count, not a time, and no harness covers the polling loops: the register shell is outside the Kani scope. Register facts SHALL come from the pinned stm32-data snapshot. Consumer: the wohl air node (seam gale-wohl/air-sensor-read, gale#511)."
     tags: [gust, driver, i2c, thin-seam, gust-bus, wohl]
     links:
       - type: derives-from
@@ -1176,7 +1195,7 @@ artifacts:
     type: sw-req
     title: The SEN66 air-quality sensor is a thin-seam device driver exporting gust:sen66/air
     status: approved
-    description: "The Sensirion SEN66 driver SHALL be a Component-Model component that imports only gust:bus/i2c-master@0.1.0 and exports gust:sen66/air@0.1.0 (start, read, stop) in the normative encoding of wit/sensor/gust-sen66.wit. read SHALL return one packed u64 per sample from a single Read Measured Values (0x0300): CO2 ppm in bits 0..15, PM2.5 x10 in bits 16..31, VOC index x10 in bits 32..47, a valid bit per field in bits 48..50, and bit 63 for an error with its code in bits 0..7. A sample SHALL be returned only when Get Data Ready (0x0202) was CRC-valid and true and every word of the frame passed its CRC-8 (polynomial 0x31, init 0xFF). A field the sensor reports as unknown (0xFFFF for uint16, 0x7FFF for int16) SHALL have its valid bit clear and its value 0. Not-ready and CRC failure SHALL be errors, never values. The driver SHALL keep no memory and SHALL bound every retry. Facts SHALL come from the SEN6x datasheet D1 v1.0 (October 2026). Representation decided by the owner on gale#511 on 2026-11-14. Consumer: the wohl air node (seam gale-wohl/air-sensor-read)."
+    description: "The Sensirion SEN66 driver SHALL be a Component-Model component that imports only gust:bus/i2c-master@0.1.0 and exports gust:sen66/air@0.1.0 (start, read, stop) in the normative encoding of wit/sensor/gust-sen66.wit. read SHALL return one packed u64 per sample from a single Read Measured Values (0x0300): CO2 ppm in bits 0..15, PM2.5 x10 in bits 16..31, VOC index x10 in bits 32..47, a valid bit per field in bits 48..50, and bit 63 for an error with its code in bits 0..7. A sample SHALL be returned only when Get Data Ready (0x0202) was CRC-valid and true and every word of the frame passed its CRC-8 (polynomial 0x31, init 0xFF). A field the sensor reports as unknown (0xFFFF for uint16, 0x7FFF for int16) SHALL have its valid bit clear and its value 0. Not-ready and CRC failure SHALL be errors, never values. The driver SHALL keep no memory: its wasm has no load, store or global access. Every retry SHALL be bounded: each transaction (write_cmd, read_ready, read_values) makes at most RETRY_MAX = 20000 attempts, an attempt count and not a time. Kani checks the retry logic with RETRY_MAX = 2 (cfg(kani)), so the production bound of 20000 is not itself proven. Facts SHALL come from the SEN6x datasheet D1 v1.0 (October 2026). Representation decided by the owner on gale#511 on 2026-11-14. Consumer: the wohl air node (seam gale-wohl/air-sensor-read)."
     tags: [gust, driver, sensor, thin-seam, gust-bus, wohl]
     links:
       - type: derives-from

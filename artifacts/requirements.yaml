@@ -5666,7 +5666,9 @@ artifacts:
       verification-criteria: >
         Module-by-module coverage matrix showing replaced vs. excluded
         modules with rationale.  All safety-critical modules have
-        corresponding Gale implementations with Verus proofs.
+        corresponding Gale implementations with Verus proofs, except the
+        trusted items (external_body, assume_specification) that
+        trusted-base.json counts per file.
     links:
       - type: derives-from
         target: STKH-001
@@ -5680,10 +5682,30 @@ artifacts:
     fields:
       priority: must
       req-type: constraint
-      verification-criteria: "`cargo xtask check trusted-base --self-test` passes (a hand-edited total, a hand-edited row, a new source trust unit, a missing block and a duplicated block are each caught); `cargo xtask check trusted-base` passes on main; injecting one #[verifier::external_body] into src/ turns it red; the Pages deploy publishes trusted-base.json whose commit equals the deployed SHA."
+      verification-criteria: "`cargo xtask check trusted-base --self-test` passes (a hand-edited total, a hand-edited row, a new source trust unit, a missing block and a duplicated block are each caught); `cargo xtask check trusted-base` passes on main; injecting one #[verifier::external_body] into src/ turns it red; the Pages deploy publishes trusted-base.json whose commit equals the deployed SHA, observed after each deploy by the pages.yml verify job (`tools/check-published-trusted-base.py`, whose `--self-test` catches a wrong SHA, a stale copy and an unreachable URL on every PR)."
     links:
       - type: derives-from
         target: SYSREQ-COV-001
+
+  - id: REQ-COV-002
+    type: sw-req
+    title: Every trusted item inside a safety-critical module is discharged or ledgered with a rationale
+    status: proposed
+    release: v0.13.0
+    description: "Follow-up to SYSREQ-COV-001, whose coverage verification called the safety-critical modules Verus-verified while 6 #[verifier::external_body] items sat in two of them (src/poll.rs 2, src/sched.rs 4, trusted-base.json at fb222ea; requirements review 2026-11-17, row R36b; owner decision on notice 20261117T211732-3e3c34). Each external_body and assume_specification item in a safety-critical module of the SYSREQ-COV-001 coverage matrix SHALL either be discharged by a Verus proof or appear on a committed ledger with the reason it is trusted. A gate SHALL fail on an unledgered item in a listed module, and on a ledger entry whose item is gone. Kill criterion: an unledgered trusted item in a listed module merges. The gate ships a planted external_body as its negative control."
+    tags: [coverage, honesty, tcb, verus, gate, req-review]
+    fields:
+      priority: should
+      req-type: constraint
+    links:
+      - type: derives-from
+        target: SYSREQ-COV-001
+      - type: related-to
+        target: REQ-HONESTY-TCB-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-18T06:00:00Z
 
   - id: REQ-DIFF-ZEPHYR-001
     type: sw-req
