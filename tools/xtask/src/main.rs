@@ -6,6 +6,7 @@
 
 mod gates;
 mod renode_elfs;
+mod sha256;
 mod silicon;
 mod verdict;
 
@@ -24,7 +25,8 @@ fn usage() -> String {
            cargo xtask silicon ...      gust firmware on physical boards (see `xtask silicon`)\n  \
            cargo xtask renode-elfs              build the Renode test images from source (os/gust/renode-test)\n  \
            cargo xtask trusted-base [--out PATH | --write-doc]\n  \
-                                        the trusted-base inventory as JSON (gale#467)\n\n\
+                                        the trusted-base inventory as JSON (gale#467)\n  \
+           cargo xtask freshness-record         the measured sha256/inputs/toolchain of each gated object (gale#506)\n\n\
          EXIT CODES:\n  \
            0  the property holds\n  \
            1  the property does NOT hold\n  \
@@ -85,6 +87,28 @@ fn main() {
             exit(EXIT_USAGE);
         };
         exit(trusted_base_cmd(&root, &args[1..]));
+    }
+    if args[0] == "freshness-record" {
+        let Some(root) = repo_root() else {
+            eprintln!("xtask: not a git repository");
+            exit(EXIT_USAGE);
+        };
+        if args.len() > 1 {
+            eprintln!("xtask: freshness-record takes no arguments\n\n{}", usage());
+            exit(EXIT_USAGE);
+        }
+        match gates::object_freshness::record(&root) {
+            Ok(lines) => {
+                for l in lines {
+                    println!("{l}");
+                }
+                exit(EXIT_PASS);
+            }
+            Err(m) => {
+                eprintln!("xtask: {m}");
+                exit(verdict::EXIT_REFUSED);
+            }
+        }
     }
     if args[0] != "check" {
         eprintln!("xtask: unknown command '{}'\n\n{}", args[0], usage());

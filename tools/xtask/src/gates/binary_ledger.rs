@@ -10,7 +10,14 @@
 //! FAIL when:
 //! - a tracked binary file has no ledger entry;
 //! - an entry names a file that is not tracked (stale entry);
-//! - an entry's consumer file is missing, or no longer contains its needle.
+//! - an entry's consumer file is missing, or no longer contains its needle;
+//! - an entry has no `sha256`, or the file's bytes no longer hash to it (gale#506).
+//!
+//! The hash is what makes an entry about THIS file rather than about a name.
+//! Before it, 13 bytes of garbage committed as `wdg-thin-cm3.o` passed: the path
+//! was tracked and the consumer still named it. The entry's freshness fields
+//! (`inputs_sha256`, `toolchain`, `stale_issue`, `stale_expires`) are judged by
+//! the object-freshness gate, not here.
 //!
 //! "Binary" means a non-empty tracked file that holds a NUL byte in its first
 //! 8 KiB or is not valid UTF-8. The object-freshness gate is not a consumer:
@@ -35,6 +42,20 @@ pub struct Entry {
     pub consumer: String,
     pub needle: Option<String>,
     pub why: String,
+    /// SHA-256 of the committed file's bytes. Required on every entry.
+    pub sha256: String,
+    /// object-freshness only: the digest of the input set this record was made against.
+    pub inputs_sha256: Option<String>,
+    /// object-freshness only: the toolchain pin this record was made against.
+    pub toolchain: Option<String>,
+    /// object-freshness only: the issue that owns a KNOWN-STALE object.
+    pub stale_issue: Option<String>,
+    /// object-freshness only: the last day (YYYY-MM-DD, UTC) the staleness is accepted.
+    pub stale_expires: Option<String>,
+}
+
+pub fn is_sha256_hex(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// Parse the restricted TOML subset `binaries.toml` uses: `[[binary]]` headers,
@@ -69,14 +90,32 @@ pub fn parse(text: &str) -> Result<Vec<Entry>, String> {
             "consumer" => e.consumer = v,
             "needle" => e.needle = Some(v),
             "why" => e.why = v,
+            "sha256" => e.sha256 = v,
+            "inputs_sha256" => e.inputs_sha256 = Some(v),
+            "toolchain" => e.toolchain = Some(v),
+            "stale_issue" => e.stale_issue = Some(v),
+            "stale_expires" => e.stale_expires = Some(v),
             "regenerate" => {}
             other => return Err(format!("line {n}: unknown key `{other}`")),
         }
     }
     for (i, e) in out.iter().enumerate() {
-        for (field, val) in [("path", &e.path), ("kind", &e.kind), ("consumer", &e.consumer), ("why", &e.why)] {
+        for (field, val) in [
+            ("path", &e.path),
+            ("kind", &e.kind),
+            ("consumer", &e.consumer),
+            ("why", &e.why),
+            ("sha256", &e.sha256),
+        ] {
             if val.is_empty() {
                 return Err(format!("entry {} ({}): missing `{field}`", i + 1, e.path));
+            }
+        }
+        for (field, val) in [("sha256", Some(&e.sha256)), ("inputs_sha256", e.inputs_sha256.as_ref())] {
+            if let Some(v) = val {
+                if !is_sha256_hex(v) {
+                    return Err(format!("entry {} ({}): `{field}` is not 64 lower-case hex digits", i + 1, e.path));
+                }
             }
         }
     }
@@ -111,6 +150,7 @@ pub fn judge(
     tracked_binaries: &[String],
     tracked_all: &[String],
     read: &dyn Fn(&str) -> Option<String>,
+    hash: &dyn Fn(&str) -> Option<String>,
 ) -> Vec<String> {
     let mut bad = Vec::new();
     for b in tracked_binaries {
@@ -127,6 +167,14 @@ pub fn judge(
         if !tracked_all.iter().any(|t| t == &e.path) {
             bad.push(format!("{}: in {LEDGER} but not tracked (remove the entry)", e.path));
             continue;
+        }
+        match hash(&e.path) {
+            None => bad.push(format!("{}: cannot be read to hash", e.path)),
+            Some(h) if h != e.sha256 => bad.push(format!(
+                "{}: sha256 {h} does not match the recorded {} -- the committed bytes are not the ones this entry describes",
+                e.path, e.sha256
+            )),
+            Some(_) => {}
         }
         let needle = e
             .needle
@@ -164,7 +212,8 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
         .cloned()
         .collect();
     let read = |p: &str| std::fs::read_to_string(repo.join(p)).ok();
-    let bad = judge(&entries, &bins, &all, &read);
+    let hash = |p: &str| std::fs::read(repo.join(p)).ok().map(|b| crate::sha256::hex(&b));
+    let bad = judge(&entries, &bins, &all, &read, &hash);
     let mut lines = vec![format!(
         "{} tracked binary file(s), {} ledger entr(ies)",
         bins.len(),
@@ -204,6 +253,8 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
         consumer: c.into(),
         needle: n.map(String::from),
         why: "w".into(),
+        sha256: crate::sha256::hex(p.as_bytes()),
+        ..Entry::default()
     };
     let files = |p: &str| -> Option<String> {
         match p {
@@ -213,9 +264,17 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
         }
     };
     let all = vec!["d/a.o".to_string(), "d/b.o".to_string()];
+    // The fixture's file CONTENT is its own path, so the recorded hash above is
+    // right for every file except the one planted below.
+    let hash_of = |p: &str| -> Option<String> {
+        match p {
+            "d/a.o" | "d/b.o" => Some(crate::sha256::hex(p.as_bytes())),
+            _ => None,
+        }
+    };
     let j = |es: &[Entry], bins: &[&str]| {
         let b: Vec<String> = bins.iter().map(|s| s.to_string()).collect();
-        judge(es, &b, &all, &files)
+        judge(es, &b, &all, &files, &hash_of)
     };
     ck("listed + consumer names it: pass", j(&[e("d/a.o", "build.rs", None)], &["d/a.o"]).is_empty());
     ck("unlisted binary: fail", j(&[e("d/a.o", "build.rs", None)], &["d/a.o", "d/b.o"]).len() == 1);
@@ -225,11 +284,32 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
     ck("entry for an untracked file: fail", j(&[e("d/z.o", "build.rs", None)], &[]).len() == 1);
     ck("needle overrides the file name", j(&[e("d/b.o", "build.rs", Some("glob(\"*-thin\")"))], &["d/b.o"]).is_empty());
     ck("duplicate entry: fail", j(&[e("d/a.o", "build.rs", None), e("d/a.o", "build.rs", None)], &["d/a.o"]).len() == 1);
+    // gale#506: garbage committed under a ledgered name passed, because nothing
+    // looked at the bytes. A wrong recorded hash is the same thing seen from the
+    // ledger's side.
+    let mut planted = e("d/a.o", "build.rs", None);
+    planted.sha256 = crate::sha256::hex(b"13 bytes junk");
+    ck("bytes that do not hash to the record: fail", j(&[planted], &["d/a.o"]).len() == 1);
+    ck("sha256 implementation matches FIPS 180-4 vectors", crate::sha256::self_check());
     ck("NUL byte is binary", is_binary(b"ELF\0\x01"));
     ck("invalid UTF-8 is binary", is_binary(&[0x7f, 0xff, 0xfe]));
     ck("plain text is not binary", !is_binary(b"fn main() {}\n"));
     ck("empty file is not binary", !is_binary(b""));
-    ck("parser: well-formed", parse("[[binary]]\npath = \"a\"\nkind = \"k\"\nconsumer = \"c\"\nwhy = \"w\"\n").map(|v| v.len()) == Ok(1));
+    let h = crate::sha256::hex(b"");
+    ck(
+        "parser: well-formed",
+        parse(&format!("[[binary]]\npath = \"a\"\nkind = \"k\"\nconsumer = \"c\"\nwhy = \"w\"\nsha256 = \"{h}\"\n"))
+            .map(|v| v.len())
+            == Ok(1),
+    );
+    ck(
+        "parser: entry without sha256 refused",
+        parse("[[binary]]\npath = \"a\"\nkind = \"k\"\nconsumer = \"c\"\nwhy = \"w\"\n").is_err(),
+    );
+    ck(
+        "parser: malformed sha256 refused",
+        parse("[[binary]]\npath = \"a\"\nkind = \"k\"\nconsumer = \"c\"\nwhy = \"w\"\nsha256 = \"abc\"\n").is_err(),
+    );
     ck("parser: unknown key refused", parse("[[binary]]\npath = \"a\"\nbogus = \"x\"\n").is_err());
     ck("parser: missing field refused", parse("[[binary]]\npath = \"a\"\n").is_err());
     ck("parser: unquoted value refused", parse("[[binary]]\npath = a\n").is_err());

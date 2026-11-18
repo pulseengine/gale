@@ -78,7 +78,7 @@ pub const GATES: &[Gate] = &[
     },
     Gate {
         name: object_freshness::NAME,
-        about: "no committed object is older than the sources that produce it",
+        about: "each committed object matches its recorded hash, inputs and toolchain (gale#506)",
         run: object_freshness::run,
         self_test: object_freshness::self_test,
     },
