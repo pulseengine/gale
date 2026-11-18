@@ -16,6 +16,7 @@ pub mod proof_completeness;
 pub mod providers;
 pub mod renode_targets;
 pub mod retry_loops;
+pub mod target_reference;
 pub mod trusted_base;
 pub mod vacuous_lemmas;
 pub mod wit_resolve;
@@ -109,6 +110,12 @@ pub const GATES: &[Gate] = &[
         about: "no CI retry loop can swallow its own failure",
         run: retry_loops::run,
         self_test: retry_loops::self_test,
+    },
+    Gate {
+        name: target_reference::NAME,
+        about: "every modelled peripheral base equals the pinned reference table (targets/reference)",
+        run: target_reference::run,
+        self_test: target_reference::self_test,
     },
     Gate {
         name: trusted_base::NAME,
