@@ -1,0 +1,21 @@
+{
+ "description": "#[path] (os/gust) and include! (i2c-thin) into targets/",
+ "expect": {
+  "selected": [
+   "cross_arch",
+   "gust_renode"
+  ]
+ },
+ "id": "020-path-attr-and-include",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "targets/generated/t.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

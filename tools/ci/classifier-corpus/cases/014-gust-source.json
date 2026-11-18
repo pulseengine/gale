@@ -1,0 +1,20 @@
+{
+ "description": "os/gust crate",
+ "expect": {
+  "selected": [
+   "gust_renode"
+  ]
+ },
+ "id": "014-gust-source",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "os/gust/src/main.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

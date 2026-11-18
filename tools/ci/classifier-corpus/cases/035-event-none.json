@@ -1,0 +1,17 @@
+{
+ "description": "no base sha",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "035-event-none",
+ "input": {
+  "base": "none",
+  "change": [],
+  "event": "pull_request",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

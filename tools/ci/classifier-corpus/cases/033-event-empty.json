@@ -1,0 +1,17 @@
+{
+ "description": "empty diff (base == head)",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "033-event-empty",
+ "input": {
+  "base": "empty",
+  "change": [],
+  "event": "pull_request",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

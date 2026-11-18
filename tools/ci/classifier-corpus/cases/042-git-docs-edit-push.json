@@ -1,0 +1,23 @@
+{
+ "description": "the same docs-only diff on push runs everything",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "042-git-docs-edit-push",
+ "input": {
+  "base": "parent",
+  "change": [
+   {
+    "op": "append",
+    "path": "docs/guide.md",
+    "text": "more\n"
+   }
+  ],
+  "event": "push",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

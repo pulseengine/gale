@@ -1,0 +1,25 @@
+{
+ "description": "docs do not dilute a kernel change",
+ "expect": {
+  "selected": [
+   "gust_renode",
+   "proofs",
+   "rust_cov",
+   "zephyr",
+   "zephyr_renode"
+  ]
+ },
+ "id": "031-docs-plus-kernel",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "docs/guide.md",
+   "plain/src/sem.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

@@ -1,0 +1,17 @@
+{
+ "description": "event merge_group with an empty diff",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "037-event-merge_group",
+ "input": {
+  "base": "empty",
+  "change": [],
+  "event": "merge_group",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

@@ -1,0 +1,23 @@
+{
+ "description": "the same docs-only diff on workflow_dispatch runs everything",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "045-git-docs-edit-workflow_dispatch",
+ "input": {
+  "base": "parent",
+  "change": [
+   {
+    "op": "append",
+    "path": "docs/guide.md",
+    "text": "more\n"
+   }
+  ],
+  "event": "workflow_dispatch",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

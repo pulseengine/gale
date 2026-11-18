@@ -1,0 +1,17 @@
+{
+ "description": "event schedule with an empty diff",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "038-event-schedule",
+ "input": {
+  "base": "empty",
+  "change": [],
+  "event": "schedule",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

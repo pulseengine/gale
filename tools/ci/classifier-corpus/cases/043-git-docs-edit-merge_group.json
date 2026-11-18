@@ -1,0 +1,23 @@
+{
+ "description": "the same docs-only diff on merge_group runs everything",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "043-git-docs-edit-merge_group",
+ "input": {
+  "base": "parent",
+  "change": [
+   {
+    "op": "append",
+    "path": "docs/guide.md",
+    "text": "more\n"
+   }
+  ],
+  "event": "merge_group",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

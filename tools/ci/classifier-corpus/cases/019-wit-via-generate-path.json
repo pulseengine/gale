@@ -1,0 +1,20 @@
+{
+ "description": "wit_bindgen::generate!(path:) leaving the crate",
+ "expect": {
+  "selected": [
+   "cross_arch"
+  ]
+ },
+ "id": "019-wit-via-generate-path",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "wit/hal/mmio.wit"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

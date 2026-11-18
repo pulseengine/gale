@@ -1,0 +1,140 @@
+{
+ "class_outputs": [
+  "ci",
+  "docs",
+  "artifacts",
+  "kernel",
+  "zephyr_src",
+  "proofs_src",
+  "drivers",
+  "gust",
+  "wit",
+  "targets",
+  "unknown",
+  "docs_only",
+  "artifacts_only"
+ ],
+ "comment": "Classifier contract the cases are written against. `gates` is the fixture's job->input configuration (the real repo's lives with the tool). `proofs.hand` stands in for the Bazel graph in the fixture (src/, proofs/, plain/).",
+ "docs_rule": "a path ending .md, or basename LICENSE / LICENSE-*, is docs only if no tracked non-markdown file names its basename (the classifier itself and the gate-probe contract excluded)",
+ "fail_open": [
+  "any event other than pull_request",
+  "no base sha",
+  "git diff fails",
+  "empty diff",
+  "a manifest or build file that cannot be read or parsed",
+  "any internal error (crash)"
+ ],
+ "gate_outputs": [
+  "zephyr",
+  "zephyr_renode",
+  "rust_cov",
+  "proofs",
+  "gust_renode",
+  "cross_arch"
+ ],
+ "gates": {
+  "cross_arch": {
+   "cargo_glob": [
+    "drivers/*-thin/Cargo.toml"
+   ],
+   "hand": [
+    "drivers/build-cross-arch.sh",
+    "drivers/check-cross-arch.py"
+   ]
+  },
+  "gust_renode": {
+   "cargo": [
+    "os/gust/Cargo.toml"
+   ],
+   "hand": [
+    "os/gust/renode-test/"
+   ]
+  },
+  "proofs": {
+   "cargo": [
+    "Cargo.toml",
+    "ffi/Cargo.toml"
+   ],
+   "hand": [
+    "src/",
+    "proofs/",
+    "plain/"
+   ]
+  },
+  "rust_cov": {
+   "cargo": [
+    "Cargo.toml"
+   ],
+   "hand": []
+  },
+  "zephyr": {
+   "cargo": [
+    "ffi/Cargo.toml"
+   ],
+   "hand": [],
+   "zephyr": [
+    "zephyr/module.yml"
+   ]
+  },
+  "zephyr_renode": {
+   "cargo": [
+    "ffi/Cargo.toml"
+   ],
+   "hand": [
+    "renode/"
+   ],
+   "zephyr": [
+    "zephyr/module.yml"
+   ]
+  }
+ },
+ "inert": {
+  "files": [
+   "rivet.yaml"
+  ],
+  "note": "HAND-MAINTAINED; rests on review (see README)",
+  "prefixes": [
+   "artifacts/",
+   "schemas/",
+   ".rivet/",
+   "upstream-reqif/"
+  ]
+ },
+ "run_all": {
+  "basenames": [
+   ".bazelversion",
+   "BUILD",
+   "BUILD.bazel",
+   "Cargo.lock",
+   "MODULE.bazel",
+   "MODULE.bazel.lock",
+   "WORKSPACE",
+   "WORKSPACE.bazel",
+   "rust-toolchain",
+   "rust-toolchain.toml"
+  ],
+  "files": [
+   ".bazelignore",
+   ".bazelrc",
+   ".bazelversion",
+   ".gitmodules",
+   "Cargo.lock",
+   "MODULE.bazel",
+   "MODULE.bazel.lock",
+   "rust-toolchain",
+   "rust-toolchain.toml",
+   "varve-realms.toml",
+   "varve.toml"
+  ],
+  "prefixes": [
+   ".github/",
+   "tools/",
+   ".cargo/",
+   "bzl/"
+  ],
+  "suffixes": [
+   ".bzl"
+  ]
+ },
+ "unknown_rule": "a path that is not run-all, not docs, not inert and claimed by no gate selects ALL gates"
+}

@@ -1,0 +1,18 @@
+{
+ "description": "x/defs.bzl is CI/toolchain/build-system",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "030-run-all-x-defs-bzl",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "x/defs.bzl"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

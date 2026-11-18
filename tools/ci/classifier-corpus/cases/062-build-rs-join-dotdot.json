@@ -1,0 +1,27 @@
+{
+ "description": "build.rs builds the path with .join(\"..\").join(\"drivers/...\")",
+ "expect": {
+  "selected": [
+   "cross_arch",
+   "gust_renode",
+   "proofs",
+   "zephyr",
+   "zephyr_renode"
+  ]
+ },
+ "id": "062-build-rs-join-dotdot",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "drivers/wdg-thin/wdg-thin-cm3.o"
+  ]
+ },
+ "source": "review of ac9b592",
+ "tree": {
+  "base": "default",
+  "set": {
+   "ffi/build.rs": "fn main() { let p = Path::new(env!(\"CARGO_MANIFEST_DIR\")).join(\"..\").join(\"drivers/wdg-thin/wdg-thin-cm3.o\"); println!(\"cargo:rerun-if-changed={}\", p.display()); }\n"
+  }
+ }
+}

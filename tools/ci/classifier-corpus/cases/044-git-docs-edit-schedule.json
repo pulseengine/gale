@@ -1,0 +1,23 @@
+{
+ "description": "the same docs-only diff on schedule runs everything",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "044-git-docs-edit-schedule",
+ "input": {
+  "base": "parent",
+  "change": [
+   {
+    "op": "append",
+    "path": "docs/guide.md",
+    "text": "more\n"
+   }
+  ],
+  "event": "schedule",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

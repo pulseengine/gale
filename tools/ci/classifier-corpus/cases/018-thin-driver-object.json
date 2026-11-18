@@ -1,0 +1,21 @@
+{
+ "description": "committed object read by os/gust/build.rs",
+ "expect": {
+  "selected": [
+   "cross_arch",
+   "gust_renode"
+  ]
+ },
+ "id": "018-thin-driver-object",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "drivers/wdg-thin/wdg-thin-cm3.o"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

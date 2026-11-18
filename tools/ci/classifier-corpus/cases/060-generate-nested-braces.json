@@ -1,0 +1,24 @@
+{
+ "description": "wit_bindgen::generate!({ with: { .. }, path: .. }) with a nested brace before path:",
+ "expect": {
+  "selected": [
+   "cross_arch"
+  ]
+ },
+ "id": "060-generate-nested-braces",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "wit/hal/mmio.wit"
+  ]
+ },
+ "source": "review of ac9b592",
+ "tree": {
+  "base": "default",
+  "set": {
+   "drivers/i2c-thin/src/lib.rs": "pub fn i() {}\n",
+   "drivers/wdg-thin/src/lib.rs": "wit_bindgen::generate!({ world: \"w\", with: { \"a:b/c\": generate }, path: \"../../wit/hal\" });\n"
+  }
+ }
+}

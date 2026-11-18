@@ -1,0 +1,20 @@
+{
+ "description": "src/ is read only by the proof graph",
+ "expect": {
+  "selected": [
+   "proofs"
+  ]
+ },
+ "id": "006-verus-source",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "src/sem.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

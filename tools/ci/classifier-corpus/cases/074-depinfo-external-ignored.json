@@ -1,0 +1,26 @@
+{
+ "check": {
+  "files": {
+   "target/release/deps/gale_ffi.d": "target/release/deps/libgale_ffi.a: ffi/src/lib.rs /rustup/toolchains/x/lib/rustlib/src/rust/library/core/src/lib.rs /cargo/registry/src/x/foo-1.0/src/lib.rs\n"
+  },
+  "gate": "zephyr",
+  "kind": "depinfo"
+ },
+ "description": "absolute paths outside the repository (toolchain, registry) are not inputs to classify",
+ "expect": {
+  "check": "pass",
+  "selected": []
+ },
+ "id": "074-depinfo-external-ignored",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "docs/guide.md"
+  ]
+ },
+ "source": "loom",
+ "tree": {
+  "base": "default"
+ }
+}

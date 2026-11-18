@@ -1,0 +1,16 @@
+{
+ "description": "no changed paths",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "032-empty-path-list",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": []
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

@@ -1,0 +1,20 @@
+{
+ "description": "hand-listed renode/",
+ "expect": {
+  "selected": [
+   "zephyr_renode"
+  ]
+ },
+ "id": "012-renode-robot",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "renode/sem.robot"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

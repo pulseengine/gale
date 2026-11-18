@@ -1,0 +1,22 @@
+{
+ "description": "ffi crate",
+ "expect": {
+  "selected": [
+   "proofs",
+   "zephyr",
+   "zephyr_renode"
+  ]
+ },
+ "id": "007-ffi",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "ffi/src/lib.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

@@ -1,0 +1,21 @@
+{
+ "description": "a root-package test target",
+ "expect": {
+  "selected": [
+   "proofs",
+   "rust_cov"
+  ]
+ },
+ "id": "008-integration-test",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "tests/sem_integration.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

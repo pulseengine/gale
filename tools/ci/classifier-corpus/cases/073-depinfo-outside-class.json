@@ -1,0 +1,26 @@
+{
+ "check": {
+  "files": {
+   "target/release/deps/gale_ffi.d": "target/release/deps/libgale_ffi.a: ffi/src/lib.rs drivers/check-graph-env.py\n\nffi/src/lib.rs:\ndrivers/check-graph-env.py:\n"
+  },
+  "gate": "zephyr",
+  "kind": "depinfo"
+ },
+ "description": "a planted .d names a file the zephyr gate does not claim: the cross-check must FAIL",
+ "expect": {
+  "check": "fail",
+  "selected": []
+ },
+ "id": "073-depinfo-outside-class",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "docs/guide.md"
+  ]
+ },
+ "source": "loom",
+ "tree": {
+  "base": "default"
+ }
+}

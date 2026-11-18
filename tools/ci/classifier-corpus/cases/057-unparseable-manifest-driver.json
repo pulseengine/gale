@@ -1,0 +1,21 @@
+{
+ "description": "unparseable Cargo.toml, driver change -> all",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "057-unparseable-manifest-driver",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "drivers/wdg-thin/src/lib.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default",
+  "set": {
+   "ffi/Cargo.toml": "[package\n"
+  }
+ }
+}

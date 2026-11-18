@@ -1,0 +1,28 @@
+{
+ "description": "a new crate added as a path dependency of ffi is selected with no hand edit",
+ "expect": {
+  "selected": [
+   "cross_arch",
+   "proofs",
+   "zephyr",
+   "zephyr_renode"
+  ]
+ },
+ "id": "053-new-crate-path-dep",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "drivers/new-thin/src/lib.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default",
+  "set": {
+   "drivers/new-thin/Cargo.toml": "[package]\nname = \"n\"\nversion = \"0.1.0\"\n",
+   "drivers/new-thin/src/lib.rs": "pub fn n() {}\n",
+   "ffi/Cargo.toml": "[package]\nname = \"gale-ffi\"\nversion = \"0.1.0\"\n[dependencies]\ngale = { path = \"..\" }\nn = { path = \"../drivers/new-thin\" }\n"
+  }
+ }
+}

@@ -1,0 +1,18 @@
+{
+ "description": "a drivers/ script no job claims",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "022-driver-script-unclaimed",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "drivers/check-graph-env.py"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

@@ -1,0 +1,18 @@
+{
+ "description": "rust-toolchain.toml is CI/toolchain/build-system",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "028-run-all-rust-toolchain-toml",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "rust-toolchain.toml"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

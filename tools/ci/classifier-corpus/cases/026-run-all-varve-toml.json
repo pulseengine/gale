@@ -1,0 +1,18 @@
+{
+ "description": "varve.toml is CI/toolchain/build-system",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "026-run-all-varve-toml",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "varve.toml"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

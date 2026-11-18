@@ -1,0 +1,23 @@
+{
+ "description": "the same docs-only diff on pull_request_target runs everything",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "046-git-docs-edit-pull_request_target",
+ "input": {
+  "base": "parent",
+  "change": [
+   {
+    "op": "append",
+    "path": "docs/guide.md",
+    "text": "more\n"
+   }
+  ],
+  "event": "pull_request_target",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

@@ -1,0 +1,24 @@
+{
+ "description": "a new crate nothing depends on is claimed only by the glob that finds it",
+ "expect": {
+  "selected": [
+   "cross_arch"
+  ]
+ },
+ "id": "052-new-crate-not-a-dep",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "drivers/new-thin/src/lib.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default",
+  "set": {
+   "drivers/new-thin/Cargo.toml": "[package]\nname = \"n\"\nversion = \"0.1.0\"\n",
+   "drivers/new-thin/src/lib.rs": "pub fn n() {}\n"
+  }
+ }
+}

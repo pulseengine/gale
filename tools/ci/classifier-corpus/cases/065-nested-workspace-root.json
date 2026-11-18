@@ -1,0 +1,28 @@
+{
+ "description": "ffi path-depends on a crate that declares its own [workspace] inside os/gust's workspace",
+ "expect": {
+  "selected": [
+   "gust_renode",
+   "proofs",
+   "zephyr",
+   "zephyr_renode"
+  ]
+ },
+ "id": "065-nested-workspace-root",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "os/gust/nested/src/lib.rs"
+  ]
+ },
+ "source": "relay",
+ "tree": {
+  "base": "default",
+  "set": {
+   "ffi/Cargo.toml": "[package]\nname = \"gale-ffi\"\nversion = \"0.1.0\"\n[dependencies]\ngale = { path = \"..\" }\nnested = { path = \"../os/gust/nested\" }\n",
+   "os/gust/nested/Cargo.toml": "[package]\nname = \"nested\"\nversion = \"0.1.0\"\n[workspace]\n",
+   "os/gust/nested/src/lib.rs": "pub fn n() {}\n"
+  }
+ }
+}

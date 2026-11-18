@@ -1,0 +1,19 @@
+{
+ "description": "unnamed .md files only",
+ "expect": {
+  "selected": []
+ },
+ "id": "001-docs-only",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "docs/guide.md",
+   "README.md"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

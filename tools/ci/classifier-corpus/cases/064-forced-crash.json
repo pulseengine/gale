@@ -1,0 +1,22 @@
+{
+ "description": "a manifest the walker cannot handle (path dependency whose path is not a string) crashes the reference; the tool must select all AND emit a ::warning::",
+ "expect": {
+  "selected": "all",
+  "warning": true
+ },
+ "id": "064-forced-crash",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "drivers/wdg-thin/src/lib.rs"
+  ]
+ },
+ "source": "lane L7",
+ "tree": {
+  "base": "default",
+  "set": {
+   "ffi/Cargo.toml": "[package]\nname = \"gale-ffi\"\nversion = \"0.1.0\"\n[dependencies]\ngale = { path = \"..\" }\nbad = { path = 5 }\n"
+  }
+ }
+}

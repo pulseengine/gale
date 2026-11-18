@@ -1,0 +1,25 @@
+{
+ "description": "rename out of a claimed dir: the OLD path must be classified (--no-renames)",
+ "expect": {
+  "selected": [
+   "zephyr_renode"
+  ]
+ },
+ "id": "048-git-rename-into-docs",
+ "input": {
+  "base": "parent",
+  "change": [
+   {
+    "from": "renode/sem.robot",
+    "op": "rename",
+    "to": "docs/sem.md"
+   }
+  ],
+  "event": "pull_request",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

@@ -1,0 +1,25 @@
+{
+ "description": "rename from inert into a claimed dir: the NEW path selects",
+ "expect": {
+  "selected": [
+   "cross_arch"
+  ]
+ },
+ "id": "049-git-rename-into-driver",
+ "input": {
+  "base": "parent",
+  "change": [
+   {
+    "from": "artifacts/requirements.yaml",
+    "op": "rename",
+    "to": "drivers/wdg-thin/req.yaml"
+   }
+  ],
+  "event": "pull_request",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

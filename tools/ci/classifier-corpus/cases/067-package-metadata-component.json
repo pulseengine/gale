@@ -1,0 +1,25 @@
+{
+ "description": "[package.metadata.component] target path relative to the manifest",
+ "expect": {
+  "selected": [
+   "cross_arch",
+   "gust_renode"
+  ]
+ },
+ "id": "067-package-metadata-component",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "os/gust/wit/world.wit"
+  ]
+ },
+ "source": "relay",
+ "tree": {
+  "base": "default",
+  "set": {
+   "drivers/wdg-thin/Cargo.toml": "[package]\nname = \"wdg\"\nversion = \"0.1.0\"\n[workspace]\n[package.metadata.component.target]\npath = \"../../os/gust/wit\"\n",
+   "os/gust/wit/world.wit": "package x;\n"
+  }
+ }
+}

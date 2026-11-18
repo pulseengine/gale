@@ -1,0 +1,25 @@
+{
+ "description": "an include! nobody can resolve: that job always runs, even on docs-only",
+ "expect": {
+  "selected": [
+   "proofs",
+   "zephyr",
+   "zephyr_renode"
+  ]
+ },
+ "id": "055-unresolvable-include",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "docs/guide.md"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default",
+  "set": {
+   "ffi/src/lib.rs": "include!(concat!(env!(\"SOMEWHERE\"), \"/x.rs\"));\n"
+  }
+ }
+}

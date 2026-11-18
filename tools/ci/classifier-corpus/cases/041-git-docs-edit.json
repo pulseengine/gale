@@ -1,0 +1,23 @@
+{
+ "description": "a real docs-only commit",
+ "expect": {
+  "selected": []
+ },
+ "id": "041-git-docs-edit",
+ "input": {
+  "base": "parent",
+  "change": [
+   {
+    "op": "append",
+    "path": "docs/guide.md",
+    "text": "more\n"
+   }
+  ],
+  "event": "pull_request",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

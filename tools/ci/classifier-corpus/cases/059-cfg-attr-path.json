@@ -1,0 +1,27 @@
+{
+ "description": "#[cfg_attr(..., path = ...)] leaving ffi into os/gust (claimed by gust_renode only)",
+ "expect": {
+  "selected": [
+   "gust_renode",
+   "proofs",
+   "zephyr",
+   "zephyr_renode"
+  ]
+ },
+ "id": "059-cfg-attr-path",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "os/gust/src/shared.rs"
+  ]
+ },
+ "source": "review of ac9b592",
+ "tree": {
+  "base": "default",
+  "set": {
+   "ffi/src/lib.rs": "#[cfg_attr(feature = \"x\", path = \"../../os/gust/src/shared.rs\")]\nmod shared;\n",
+   "os/gust/src/shared.rs": "pub fn s() {}\n"
+  }
+ }
+}

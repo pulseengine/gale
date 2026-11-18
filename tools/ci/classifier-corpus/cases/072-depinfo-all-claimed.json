@@ -1,0 +1,26 @@
+{
+ "check": {
+  "files": {
+   "target/release/deps/gale_ffi.d": "target/release/deps/libgale_ffi.a: ffi/src/lib.rs plain/src/lib.rs plain/src/sem.rs\n\nffi/src/lib.rs:\nplain/src/lib.rs:\nplain/src/sem.rs:\n"
+  },
+  "gate": "zephyr",
+  "kind": "depinfo"
+ },
+ "description": "every file rustc read is claimed by the zephyr gate",
+ "expect": {
+  "check": "pass",
+  "selected": []
+ },
+ "id": "072-depinfo-all-claimed",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "docs/guide.md"
+  ]
+ },
+ "source": "loom",
+ "tree": {
+  "base": "default"
+ }
+}

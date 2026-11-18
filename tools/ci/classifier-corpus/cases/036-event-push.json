@@ -1,0 +1,17 @@
+{
+ "description": "event push with an empty diff",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "036-event-push",
+ "input": {
+  "base": "empty",
+  "change": [],
+  "event": "push",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

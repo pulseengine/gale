@@ -1,0 +1,27 @@
+{
+ "description": "include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/../drivers/wdg-thin/x.txt\"))",
+ "expect": {
+  "selected": [
+   "cross_arch",
+   "proofs",
+   "zephyr",
+   "zephyr_renode"
+  ]
+ },
+ "id": "066-manifest-dir-dotdot",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "drivers/wdg-thin/x.txt"
+  ]
+ },
+ "source": "relay",
+ "tree": {
+  "base": "default",
+  "set": {
+   "drivers/wdg-thin/x.txt": "x\n",
+   "ffi/src/lib.rs": "const X: &str = include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/../drivers/wdg-thin/x.txt\"));\n"
+  }
+ }
+}

@@ -1,0 +1,21 @@
+{
+ "description": "C file in the west module's cmake dir",
+ "expect": {
+  "selected": [
+   "zephyr",
+   "zephyr_renode"
+  ]
+ },
+ "id": "010-zephyr-module-c",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "zephyr/gale_sem.c"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

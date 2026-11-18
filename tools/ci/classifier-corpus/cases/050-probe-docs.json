@@ -1,0 +1,17 @@
+{
+ "description": "GATE_PROBE_FILES with a docs path (no event)",
+ "expect": {
+  "selected": []
+ },
+ "id": "050-probe-docs",
+ "input": {
+  "mode": "probe",
+  "paths": [
+   "docs/guide.md"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

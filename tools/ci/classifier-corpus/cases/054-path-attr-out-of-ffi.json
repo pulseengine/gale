@@ -1,0 +1,27 @@
+{
+ "description": "#[path] leaving ffi",
+ "expect": {
+  "selected": [
+   "cross_arch",
+   "gust_renode",
+   "proofs",
+   "zephyr",
+   "zephyr_renode"
+  ]
+ },
+ "id": "054-path-attr-out-of-ffi",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "targets/generated/t.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default",
+  "set": {
+   "ffi/src/lib.rs": "#[path = \"../../targets/generated/t.rs\"]\nmod t;\n"
+  }
+ }
+}

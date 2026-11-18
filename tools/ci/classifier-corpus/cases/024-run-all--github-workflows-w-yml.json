@@ -1,0 +1,18 @@
+{
+ "description": ".github/workflows/w.yml is CI/toolchain/build-system",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "024-run-all--github-workflows-w-yml",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   ".github/workflows/w.yml"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

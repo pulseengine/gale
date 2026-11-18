@@ -1,0 +1,20 @@
+{
+ "description": "hand-listed separate Bazel module",
+ "expect": {
+  "selected": [
+   "gust_renode"
+  ]
+ },
+ "id": "015-gust-renode-test",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "os/gust/renode-test/gust_wdg.robot"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

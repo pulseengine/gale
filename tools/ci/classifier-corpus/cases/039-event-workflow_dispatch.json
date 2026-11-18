@@ -1,0 +1,17 @@
+{
+ "description": "event workflow_dispatch with an empty diff",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "039-event-workflow_dispatch",
+ "input": {
+  "base": "empty",
+  "change": [],
+  "event": "workflow_dispatch",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

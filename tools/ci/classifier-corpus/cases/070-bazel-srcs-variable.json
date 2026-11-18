@@ -1,0 +1,81 @@
+{
+ "check": {
+  "kind": "bazel-srcs"
+ },
+ "description": "srcs via variable is an ERROR: selection cannot be proven, so all, and the check fails",
+ "expect": {
+  "check": "fail",
+  "error": "bazel-srcs-not-literal",
+  "selected": "all"
+ },
+ "gates": {
+  "cross_arch": {
+   "cargo_glob": [
+    "drivers/*-thin/Cargo.toml"
+   ],
+   "hand": [
+    "drivers/build-cross-arch.sh",
+    "drivers/check-cross-arch.py"
+   ]
+  },
+  "gust_renode": {
+   "cargo": [
+    "os/gust/Cargo.toml"
+   ],
+   "hand": [
+    "os/gust/renode-test/"
+   ]
+  },
+  "proofs": {
+   "bazel_build": [
+    "proofs/BUILD.bazel"
+   ],
+   "cargo": [
+    "Cargo.toml",
+    "ffi/Cargo.toml"
+   ],
+   "hand": []
+  },
+  "rust_cov": {
+   "cargo": [
+    "Cargo.toml"
+   ],
+   "hand": []
+  },
+  "zephyr": {
+   "cargo": [
+    "ffi/Cargo.toml"
+   ],
+   "hand": [],
+   "zephyr": [
+    "zephyr/module.yml"
+   ]
+  },
+  "zephyr_renode": {
+   "cargo": [
+    "ffi/Cargo.toml"
+   ],
+   "hand": [
+    "renode/"
+   ],
+   "zephyr": [
+    "zephyr/module.yml"
+   ]
+  }
+ },
+ "id": "070-bazel-srcs-variable",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "docs/guide.md"
+  ]
+ },
+ "source": "rivet",
+ "tree": {
+  "base": "default",
+  "set": {
+   "proofs/BUILD.bazel": "rocq_library(\n    name = \"sem\",\n    srcs = PROOF_SRCS,\n)\n"
+  }
+ }
+}

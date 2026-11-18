@@ -1,0 +1,18 @@
+{
+ "description": "a non-.md file under docs/ is unclaimed",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "003-non-md-under-docs",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "docs/x.txt"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

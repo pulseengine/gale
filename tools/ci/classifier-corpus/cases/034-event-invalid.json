@@ -1,0 +1,17 @@
+{
+ "description": "git diff fails (unknown base)",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "034-event-invalid",
+ "input": {
+  "base": "invalid",
+  "change": [],
+  "event": "pull_request",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

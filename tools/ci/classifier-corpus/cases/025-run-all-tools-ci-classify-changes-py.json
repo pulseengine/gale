@@ -1,0 +1,18 @@
+{
+ "description": "tools/ci/classify-changes.py is CI/toolchain/build-system",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "025-run-all-tools-ci-classify-changes-py",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "tools/ci/classify-changes.py"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

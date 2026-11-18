@@ -1,0 +1,25 @@
+{
+ "description": "a deleted file is classified by its path",
+ "expect": {
+  "selected": [
+   "zephyr",
+   "zephyr_renode"
+  ]
+ },
+ "id": "047-git-delete",
+ "input": {
+  "base": "parent",
+  "change": [
+   {
+    "op": "delete",
+    "path": "zephyr/gale_sem.c"
+   }
+  ],
+  "event": "pull_request",
+  "mode": "git"
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

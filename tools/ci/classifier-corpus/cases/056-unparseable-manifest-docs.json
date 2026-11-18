@@ -1,0 +1,21 @@
+{
+ "description": "unparseable Cargo.toml: graph unreadable -> all",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "056-unparseable-manifest-docs",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "docs/x.txt"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default",
+  "set": {
+   "ffi/Cargo.toml": "[package\n"
+  }
+ }
+}

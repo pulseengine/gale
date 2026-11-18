@@ -1,0 +1,20 @@
+{
+ "description": "drivers/*-thin crate source",
+ "expect": {
+  "selected": [
+   "cross_arch"
+  ]
+ },
+ "id": "017-thin-driver-source",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "drivers/wdg-thin/src/lib.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

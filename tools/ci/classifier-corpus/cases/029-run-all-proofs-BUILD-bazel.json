@@ -1,0 +1,18 @@
+{
+ "description": "proofs/BUILD.bazel is CI/toolchain/build-system",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "029-run-all-proofs-BUILD-bazel",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "proofs/BUILD.bazel"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

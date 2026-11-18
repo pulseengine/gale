@@ -1,0 +1,19 @@
+{
+ "description": "rivet YAML only",
+ "expect": {
+  "selected": []
+ },
+ "id": "004-artifacts-only",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "artifacts/requirements.yaml",
+   "rivet.yaml"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

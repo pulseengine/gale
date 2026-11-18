@@ -1,0 +1,18 @@
+{
+ "description": "Cargo.lock is CI/toolchain/build-system",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "027-run-all-Cargo-lock",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "Cargo.lock"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

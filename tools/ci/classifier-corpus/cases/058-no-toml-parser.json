@@ -1,0 +1,21 @@
+{
+ "description": "the classifier cannot parse TOML at all -> all (python<3.11 in the reference; moot in Rust)",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "058-no-toml-parser",
+ "input": {
+  "event": "pull_request",
+  "inject": {
+   "no_toml_parser": true
+  },
+  "mode": "paths",
+  "paths": [
+   "plain/src/sem.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

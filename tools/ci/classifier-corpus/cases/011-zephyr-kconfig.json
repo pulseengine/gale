@@ -1,0 +1,21 @@
+{
+ "description": "module.yml kconfig entry",
+ "expect": {
+  "selected": [
+   "zephyr",
+   "zephyr_renode"
+  ]
+ },
+ "id": "011-zephyr-kconfig",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "zephyr/Kconfig"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

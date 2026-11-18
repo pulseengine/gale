@@ -1,0 +1,20 @@
+{
+ "description": "path dependency of os/gust (ports/)",
+ "expect": {
+  "selected": [
+   "gust_renode"
+  ]
+ },
+ "id": "016-gust-path-dep",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "ports/arch/armv7m/src/lib.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

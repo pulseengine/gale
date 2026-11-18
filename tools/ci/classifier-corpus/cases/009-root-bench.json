@@ -1,0 +1,21 @@
+{
+ "description": "a root-package bench target",
+ "expect": {
+  "selected": [
+   "proofs",
+   "rust_cov"
+  ]
+ },
+ "id": "009-root-bench",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "benches/sem_bench.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

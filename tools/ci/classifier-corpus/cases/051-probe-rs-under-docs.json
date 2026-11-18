@@ -1,0 +1,17 @@
+{
+ "description": "GATE_PROBE_FILES with a .rs under docs/",
+ "expect": {
+  "selected": "all"
+ },
+ "id": "051-probe-rs-under-docs",
+ "input": {
+  "mode": "probe",
+  "paths": [
+   "docs/gate-probe-control.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}

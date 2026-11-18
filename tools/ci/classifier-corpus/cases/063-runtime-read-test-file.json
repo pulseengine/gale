@@ -1,0 +1,27 @@
+{
+ "description": "a test reads a data file at run time from another job's directory",
+ "expect": {
+  "selected": [
+   "cross_arch",
+   "proofs",
+   "rust_cov"
+  ]
+ },
+ "id": "063-runtime-read-test-file",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "drivers/wdg-thin/vectors.txt"
+  ]
+ },
+ "notes": "cargo test runs with cwd = the package root (here the repo root)",
+ "source": "review of ac9b592",
+ "tree": {
+  "base": "default",
+  "set": {
+   "drivers/wdg-thin/vectors.txt": "1 2 3\n",
+   "tests/sem_integration.rs": "#[test] fn t() { let v = std::fs::read_to_string(\"drivers/wdg-thin/vectors.txt\").unwrap(); assert!(!v.is_empty()); }\n"
+  }
+ }
+}

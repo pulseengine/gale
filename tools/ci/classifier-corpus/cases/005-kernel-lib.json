@@ -1,0 +1,24 @@
+{
+ "description": "the root crate's lib (dependency of ffi, os/gust, and a root for rust_cov/proofs)",
+ "expect": {
+  "selected": [
+   "gust_renode",
+   "proofs",
+   "rust_cov",
+   "zephyr",
+   "zephyr_renode"
+  ]
+ },
+ "id": "005-kernel-lib",
+ "input": {
+  "event": "pull_request",
+  "mode": "paths",
+  "paths": [
+   "plain/src/sem.rs"
+  ]
+ },
+ "source": "reference self-test",
+ "tree": {
+  "base": "default"
+ }
+}
