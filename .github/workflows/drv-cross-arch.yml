@@ -6,12 +6,14 @@
 # driver that imports nothing (hm-thin). Not "== 0" either, which is the
 # synth#871 truncation shape. Equality.
 #
-# On that rule: ARM holds for all 13 drivers. RISC-V holds for NONE of them --
-# synth's RV32 selector declines a function it cannot select, emits the call
-# site anyway, and ships the unlinkable object with exit 0 (synth#1102). The
-# RISC-V leg is therefore carried as an explicit known-defect ledger inside
-# check-cross-arch.py, which FAILS if a driver's status changes in either
-# direction, so the ledger shrinks to empty rather than outliving the bug.
+# On that rule (synth 0.89.0, 15 drivers): ARM holds for 15 of 15; RISC-V for
+# 12 of 15. The other 3 sit on a capped, expiring known-defect ledger inside
+# check-cross-arch.py (rules R1-R6, CROSS-ARCH.md): it FAILS if a driver's status
+# changes in either direction, if an entry expires or names no upstream tracker,
+# if the ledger size and its cap disagree, or if it covers half the subjects or
+# more. Every emitted RV32 object is also scanned from its bytes for A-extension
+# instructions (esp32c3 is RV32IMC). A driver that fails to build fails the gate.
+# ARMv6-M is reported as an advisory step (no synth target yet).
 #
 # An earlier version of this file claimed "on the pinned toolchain every driver
 # crosses and the gate exits 0". That was the `> 0` rule reading a dangling
@@ -150,9 +152,12 @@ jobs:
         # uses, so the two gates read imports through identical tooling.
         run: cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
 
-      - name: Install binutils (nm)
+      - name: Install binutils (nm) + clang (assembles the self-test's planted RV32 objects)
         if: steps.guard.outputs.run == 'true'
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq binutils-arm-none-eabi
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq binutils-arm-none-eabi clang
+          clang --version | head -1
 
       # Negative control FIRST: an unpinned toolchain must be REFUSED, not
       # silently answered. That refusal is the whole reason this gate is
@@ -187,11 +192,16 @@ jobs:
             command -v "$t" >/dev/null && echo "  $t: $(command -v $t)" || echo "  $t: MISSING"
           done
 
-      - name: Negative control — the gate's own rule must reject a leaked symbol
+      # The self-test runs the gate's REAL functions (imports, undefined, assess,
+      # a_ext_scan, build_wasm, ledger_findings) on planted inputs: a leaked
+      # synth_func_18 on ARM and RV32, a truncated object, A-extension instructions
+      # in RV32 objects (mnemonic and `.word`), a crate with a syntax error, and
+      # ledgers that break each of R1-R6. Every control must fire (exit 1 if not).
+      - name: Negative control — planted bad inputs must fail the gate's own code
         if: steps.guard.outputs.run == 'true'
         run: |
           cd drivers
-          python3 check-cross-arch.py --self-test
+          RV_CC=clang python3 check-cross-arch.py --self-test
 
       - name: Cross-arch seam gate
         if: steps.guard.outputs.run == 'true'
@@ -199,3 +209,17 @@ jobs:
           cd drivers
           SYNTH="$HOME/pe-toolchain/bin/synth" \
             NM=arm-none-eabi-nm python3 check-cross-arch.py
+
+      # ARMv6-M (Cortex-M0/M0+) policy: ADVISORY. synth has no ARMv6-M target, so
+      # there is nothing to lower. This step reports that on every run as a
+      # ::warning:: annotation and never fails the job (continue-on-error, and it
+      # exits 0), so it neither blocks every PR nor disappears. It is a STEP in the
+      # required job, not a job of its own, so it adds no context to
+      # .github/required-contexts.txt. When synth gains the target, the warning
+      # says so and the leg should be promoted to a gated one (CROSS-ARCH.md).
+      - name: ARMv6-M leg (advisory — not a required verdict)
+        if: always() && steps.guard.outputs.run == 'true'
+        continue-on-error: true
+        run: |
+          cd drivers
+          SYNTH="$HOME/pe-toolchain/bin/synth" python3 check-cross-arch.py --armv6m-advisory
