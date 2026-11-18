@@ -7,7 +7,10 @@ residual under it does.
 
 ## Current verdict (2026-11-18, synth 0.89.0, 15 drivers)
 
-Reproduce: `python3 drivers/check-cross-arch.py` (and `--self-test`).
+Reproduce: `python3 drivers/check-cross-arch.py`, and
+`RV_CC=<a clang with the RISC-V backend> python3 drivers/check-cross-arch.py --self-test`.
+`RV_CC` defaults to `clang`. CI uses ubuntu-24.04's apt `clang`. Apple's `/usr/bin/clang`
+cannot assemble RV32, so on macOS point `RV_CC` at a Homebrew LLVM clang.
 
 | driver | imports | ARM cortex-m3 | RV32 esp32c3 | A-ext in RV32 object |
 |---|---|---|---|---|
@@ -18,7 +21,7 @@ Reproduce: `python3 drivers/check-cross-arch.py` (and `--self-test`).
 | hm-thin | `(none)` | ok | ok | 0 |
 | i2c-thin | `read32 write32` | ok | ok | 0 |
 | i2c-v2-thin | `read32 write32` | ok | declined, ledger (synth#1724) | no object |
-| mpu-thin | `mpu-write` | ok | declined, ledger (synth#1254) | no object |
+| mpu-thin | `mpu-write` | ok | declined, ledger (synth#1254 + untracked ops) | no object |
 | pwm-thin | `write32` | ok | ok | 0 |
 | sen66-thin | `begin end xfer` | ok | ok | 0 |
 | spi-thin | `read32 write32` | ok | ok | 0 |
@@ -27,77 +30,143 @@ Reproduce: `python3 drivers/check-cross-arch.py` (and `--self-test`).
 | uart-thin | `poll read32 write32` | ok | ok | 0 |
 | wdg-thin | `read32 write32` | ok | ok | 0 |
 
-"ok" means the object's undefined set equals the wasm's import names. ARM: 15 of 15.
-RV32: 12 of 15, the other 3 on the ledger. A-extension scan: 0 instructions in the 12
-RV32 objects emitted. The 15 wasm inputs hold 0 atomic instructions between them, so on
-this corpus the scan can only fire if the backend invents an atomic; what shows it can
-fire at all is the self-test's planted objects, not this column.
+"ok" means all of the following hold for that object:
+
+- **seam:** the undefined set equals the wasm's import names;
+- **exports:** every exported wasm function is defined under at least one of its export
+  names;
+- **code:** the object has a non-empty executable section;
+- **RV32 only:** the object contains no A-extension instruction.
+
+ARM: 15 of 15. RV32: 12 of 15, and the other 3 are on the ledger. A-extension scan: 0 hits
+in the 12 RV32 objects emitted. The 15 wasm inputs contain 0 atomic instructions, so on
+this corpus the scan can only fire if the backend invents an atomic. The evidence that it
+can fire at all is the self-test's planted objects, not this column.
+
+**The seam rule alone cannot fail an import-free driver.** If hm-thin's object is empty or
+missing, its undefined set is empty, and so is its import set. A planted synth that
+handed hm-thin an empty object scored "ok ok" before the exports and code rules existed.
+It now fails with exit 4.
+
+**Export aliases are reported, not gated.** wit-bindgen exports one function body under
+several names when the bodies are identical, and synth 0.89.0 emits one symbol per
+function. So 11 of 15 drivers define only one name per aliased function, on both legs.
+For example, wdg-thin defines `wdg_refresh` but not `gust:hal/wdg@0.1.0#refresh`. Under a
+strict "every export name is a defined symbol" rule, 11 of 15 would fail ARM today. The
+gate requires one defined name per exported function, and every run prints the missing
+alias names. Whether that missing-name gap should be an upstream issue or a gate failure
+is open.
 
 ### What the gate checks, and how each check is shown to fail
 
-`--self-test` runs the gate's own functions (`imports`, `undefined`, `assess`,
-`a_ext_scan`, `build_wasm`, `ledger_findings`) on planted inputs. It does not compare
-set literals, which is what the earlier self-test did (gale#389 item 3): that version
-still passed with the comparator replaced by `good = True`.
+`--self-test` runs the gate's own functions on planted inputs:
+`imports`, `func_exports`, `undefined`, `defined`, `assess`, `a_ext_scan`, `build_wasm`,
+`verdict` and `ledger_findings`. It does not compare set literals, which is what the
+earlier self-test did (gale#389 item 3). That version still passed with the comparator
+replaced by `good = True`. The self-test's date is pinned, so it does not change verdict
+as the calendar moves.
 
-- **Seam rule.** A planted wasm importing `read32 write32`, and planted ARM and RV32
-  objects whose undefined set is exactly that, an extra leaked `synth_func_18`, or empty.
-  The leaked and empty objects must fail, and the exact one must pass.
-- **Build.** A driver whose `cargo build` fails is a gate failure (exit 3). The wasm is
-  the file cargo's own `compiler-artifact` message names for this invocation, not a glob
-  of `target/`. It must be no older than the crate's newest source, and it is copied into
-  a per-run temp dir. The self-test builds a fixture crate, plants a syntax error and
-  requires the second build to fail with no wasm returned. The old gate ignored cargo's
-  exit status and re-lowered the previous wasm, so a syntax error in `wdg-thin` printed
-  `ok`.
+- **Seam, exports and code.** The planted wasms import either `read32 write32` or
+  nothing. The planted ARM and RV32 objects cover these cases:
+  - the seam exact;
+  - an extra leaked `synth_func_18`;
+  - 0 undefined;
+  - no object;
+  - a corrupt object;
+  - an empty object;
+  - the export defined in `.data` with no code;
+  - code present but the export missing.
+
+  Only the seam-exact case passes. Missing objects and nm failures read as "no
+  information" (`None`), never as the empty set.
+- **Exit code.** `verdict()` is the only place `main()` gets its exit code. Planted rows
+  must produce each code: 3 (build), 4 (ARM, or a native-pointer violation), 6 (A-ext),
+  5 (RV32) and 0 (clean).
+- **Build.** A driver whose `cargo build` fails is a gate failure (exit 3). The gate uses
+  the wasm that cargo's own `compiler-artifact` message names for this invocation, not a
+  glob of `target/`, and copies it into a per-run temp dir. Freshness is cargo's call.
+  There is no mtime check of our own: it accepted a backdated wasm, and it stayed red
+  after a `touch Cargo.toml` or a stray `src/.DS_Store`. The self-test covers three cases:
+  - a fixture crate builds;
+  - the same crate, with a touched `Cargo.toml` and a stray `.DS_Store`, still builds;
+  - a syntax error, or a broken second target in the same crate, fails with no wasm
+    returned.
+
+  The old gate ignored cargo's exit status and re-lowered the previous wasm, so a syntax
+  error in `wdg-thin` printed `ok`.
 - **No fixed paths.** Objects, the wasm copy and the fixtures all live in a
-  `tempfile.TemporaryDirectory` per run. Before this change they were `/tmp/xa-*.o` and
-  `/tmp/xr-*.o`, and parallel runs overwrote each other's objects.
+  `tempfile.TemporaryDirectory` per run. `build-cross-arch.sh` uses a `mktemp -d`. Before
+  this change both wrote `/tmp/xa-*.o` and `/tmp/xr-*.o`.
 - **A-extension scan (RV32).** esp32c3 is RV32IMC. Every RV32 object synth emits is
-  decoded from the bytes of its executable sections. The decoder does a linear sweep over
-  16-bit C parcels and 32-bit words, and flags major opcode `0101111` (AMO: LR, SC and
-  AMO*). It does not grep disassembly. A disassembler prints bytes under a `$d` mapping
-  symbol, or an AMO when the A extension is not enabled, as `.word`, and a mnemonic grep
-  cannot see that. The self-test plants `amoadd.w` as a mnemonic and both `amoadd.w` and
-  `lr.w` as `.word`, and all three must fail the RV32 leg (exit 6 in a real run). Blind
-  spot: a 16-bit data parcel inside `.text` could desynchronise the sweep. synth emits no
-  data in RV32 `.text`.
+  decoded from the bytes of its executable sections. The scan tests every 2-byte-aligned
+  offset for an RV32A encoding: major opcode `0101111`, funct3 `010`, one of the eleven
+  RV32A funct5 values, and `rs2 = 0` for LR.W.
+  - It does not grep disassembly, because a disassembler prints an AMO as `.word` under a
+    `$d` mapping symbol, or when the A extension is not enabled.
+  - It is not a linear sweep, because a stray `.half 0x0013` reads as the low half of a
+    32-bit instruction and hides the AMO after it.
 
-### The RISC-V ledger rule
+  The self-test plants four objects, and each must fail the RV32 leg:
+  - `amoadd.w` as a mnemonic;
+  - `amoadd.w` as `.word`;
+  - `lr.w` as `.word`;
+  - `amoadd.w` behind `.half 0x0013`.
 
-gale#506 asked for a rule that stops a ledger from absorbing a leg. The rule it suggested,
-"fail when the ledger covers all subjects", is too weak: a ledger covering 14 of 15
-satisfies it, and so does any ledger short of 100%. The gate enforces six rules, and the
-self-test plants a violation of each:
+  Over-approximation: a 32-bit window that straddles two real instructions could match.
+  There are 0 such hits on today's 12 RV32 objects.
+
+### The RISC-V ledger rules
+
+gale#506 asked for a rule that stops a ledger from absorbing a leg. Its suggested rule,
+"fail when the ledger covers all subjects", is too weak, because a ledger covering 14 of
+15 satisfies it.
+
+**What these rules do:** they make every exception visible, attributed and dated, so a
+reviewer sees it in the diff and the gate sees it expire.
+
+**What they do not do:** prevent a bad ledger edit. Swapping one entry for another at the
+same cap, with a made-up tracker such as `synth#0`, passes every rule. Review of
+`RISCV_LEDGER` is the control for that, not this script.
+
+The self-test plants a violation of every clause, plus both sides of each boundary.
 
 | rule | fails when |
 |---|---|
 | R1 stale | a ledgered driver now crosses (it must leave the ledger) |
 | R2 regression | a driver not on the ledger does not cross |
-| R3 entry | an entry names no upstream tracker (`synth#N`) or has no ISO expiry |
-| R4 expiry | an entry is past its expiry date, or its expiry is more than 120 days ahead |
-| R5 ratchet | `len(RISCV_LEDGER) != RISCV_LEDGER_CAP`. Growth needs an explicit cap bump in the same diff, and shrinking must lower the cap, so freed slack cannot be reused quietly |
-| R6 majority | the ledger covers half the subjects or more (`2 * ledgered >= subjects`). A cap bump cannot get past this. Past half, the leg is a list of exceptions rather than a gate, and the honest response is to demote it to advisory in review rather than grow the list |
+| R3 entry | an entry has no upstream tracker (`synth#N`), no owner issue (`gale#N`) or no ISO expiry, or it names a driver that does not exist. Each clause is checked separately |
+| R4 expiry | an entry is past its expiry date (the expiry day itself passes), or its expiry is more than 120 days ahead (exactly 120 passes) |
+| R5 cap | `len(RISCV_LEDGER) != RISCV_LEDGER_CAP`, so adding or removing an entry also needs a second, visible edit to the cap |
+| R6 majority | the ledger covers half the subjects or more (`2 * ledgered >= subjects`, so 4 of 8 fails and 3 of 7 passes). Past half, the leg is a list of exceptions rather than a gate. The right response is to demote it to advisory in review, not to grow the list |
 
-Today the ledger holds 3 of 15 (cap 3), every entry expires 2027-02-28, and each names
-its blocker as measured on synth 0.89.0. mpu-thin and switch-thin are blocked on
-synth#1254 (a constant address of 0x100000+k folded into the 12-bit offset). mpu-thin also
-hits unsupported `I32Popcnt` and `MemoryFill`, and switch-thin hits `I64Load32U`.
-i2c-v2-thin is blocked on synth#1724 (`Call(0)`).
+Within 30 days of an entry's expiry, the gate emits a `::warning::` naming the entry and
+its owner issue. Past expiry, R4 fails the gate. So the gate goes red on 2027-03-01 even if
+no file changes. That is intended: the ledger has to be re-measured.
 
-The expiry rule means this gate goes red on 2027-03-01 even if no file changes. That is
-intended: the ledger has to be re-measured and re-dated, and nobody can simply forget it.
+Today the ledger holds 3 of 15 (cap 3). Every entry expires 2027-02-28, has owner gale#506,
+and names its blocker as measured on synth 0.89.0:
+
+- **switch-thin:** 9 functions hit synth#1254 (a constant address of 0x100000+k folded
+  into the 12-bit load/store offset). One more declines on `I64Load32U`.
+- **mpu-thin:** 3 functions hit synth#1254. It also declines 3 functions on `I32Popcnt`
+  and 1 on `MemoryFill`, and **no upstream tracker covers those yet**. Fixing #1254 alone
+  will not clear this entry.
+- **i2c-v2-thin:** 1 function declines on synth#1724 (`Call(0)`).
 
 ### ARMv6-M policy: advisory
 
-synth's `--target` list (0.89.0) has no ARMv6-M profile (Cortex-M0/M0+), so no driver is
-lowered for ARMv6-M and nothing about ARMv6-M is gated. The leg is still reported, in two
-places: a line in every gate run, and its own CI step (`--armv6m-advisory`,
-`continue-on-error: true`, exit 0). That step emits a `::warning::` annotation. It is a
-step inside the required job "seam survives lowering on ARM and RISC-V (all thin
-drivers)", not a job of its own, so it adds no required context, and no verdict hangs on
-it. When synth lists an ARMv6-M target, the warning says so, and the leg should then
-become a gated column with the same seam rule.
+synth's `--target` list (0.89.0) has no ARMv6-M profile (Cortex-M0/M0+, `thumbv6m`). No
+driver is lowered for ARMv6-M, and nothing about ARMv6-M is gated. The leg is still
+reported in two places:
+
+- a line in every gate run;
+- its own CI step (`--armv6m-advisory`, `continue-on-error: true`, exit 0), which emits a
+  `::warning::` annotation.
+
+That step sits inside the required job "seam survives lowering on ARM and RISC-V (all thin
+drivers)", not in a job of its own. So it adds no required context, and no verdict
+depends on it. When synth lists an ARMv6-M target, the warning says so, and the leg should
+then become a gated column under the same rules.
 
 ## History: measured 2026-08-28, synth 0.58.0
 
@@ -239,9 +308,10 @@ removed from the ledger, so the list shrinks to empty instead of outliving the b
 - **Import-free logic already has real RISC-V silicon numbers.** `gust_mix` is measured
   on a physical ESP32-C3 at 1.839x native — see `esp32c3/RESULTS.md`. That lane is
   execution evidence; this table is lowering evidence. They are different claims.
-- **Two functions still decline**, reported upstream as synth#882: `wdg_unlock` hits an
+- **History (synth 0.58.0, superseded by the current verdict above).** Two functions
+  declined then, reported upstream as synth#882: `wdg_unlock` hit an
   unsupported `BrTable` in the RV32 selector (a declared gap, declining loudly), and
-  `i2c_step` fails with `undefined label 'Lend0'`, which looks like a genuine emit
+  `i2c_step` failed with `undefined label 'Lend0'`, which looked like a genuine emit
   defect rather than a missing feature.
 
 ## What changed to make this possible

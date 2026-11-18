@@ -9,10 +9,11 @@
 # On that rule (synth 0.89.0, 15 drivers): ARM holds for 15 of 15; RISC-V for
 # 12 of 15. The other 3 sit on a capped, expiring known-defect ledger inside
 # check-cross-arch.py (rules R1-R6, CROSS-ARCH.md): it FAILS if a driver's status
-# changes in either direction, if an entry expires or names no upstream tracker,
+# changes in either direction, if an entry expires or lacks a tracker/owner,
 # if the ledger size and its cap disagree, or if it covers half the subjects or
 # more. Every emitted RV32 object is also scanned from its bytes for A-extension
-# instructions (esp32c3 is RV32IMC). A driver that fails to build fails the gate.
+# instructions (esp32c3 is RV32IMC). A driver that fails to build fails the gate,
+# and an object must define every exported function and carry code.
 # ARMv6-M is reported as an advisory step (no synth target yet).
 #
 # An earlier version of this file claimed "on the pinned toolchain every driver
@@ -192,11 +193,16 @@ jobs:
             command -v "$t" >/dev/null && echo "  $t: $(command -v $t)" || echo "  $t: MISSING"
           done
 
-      # The self-test runs the gate's REAL functions (imports, undefined, assess,
-      # a_ext_scan, build_wasm, ledger_findings) on planted inputs: a leaked
-      # synth_func_18 on ARM and RV32, a truncated object, A-extension instructions
-      # in RV32 objects (mnemonic and `.word`), a crate with a syntax error, and
-      # ledgers that break each of R1-R6. Every control must fire (exit 1 if not).
+      # The self-test runs the gate's REAL functions (imports, func_exports,
+      # undefined, defined, assess, a_ext_scan, build_wasm, verdict,
+      # ledger_findings) on planted inputs. Those inputs are:
+      #   - leaked, truncated, missing, corrupt and empty objects on ARM and RV32
+      #   - A-extension instructions in RV32 objects (as a mnemonic, as .word,
+      #     and behind a stray .half)
+      #   - a crate with a syntax error
+      #   - planted rows for every exit code
+      #   - ledgers that break every R1-R6 clause and boundary
+      # Every control must fire, or the step exits 1. Its date is pinned.
       - name: Negative control — planted bad inputs must fail the gate's own code
         if: steps.guard.outputs.run == 'true'
         run: |
