@@ -1,11 +1,16 @@
 # gust target-model gate — the AADL board/SoC/device model + its generated
-# artifacts must stay in sync. The generated tree (targets/generated/)
-# is committed; this gate re-runs the generator from the committed spar-items
-# fixture and fails if the committed tree drifts, plus runs the generator's unit
+# artifacts must stay in sync. The generated tree (targets/generated/) is
+# committed; this gate lays down the PINNED spar (varve), regenerates the
+# spar-items JSON from targets/*.aadl and the generated tree from that JSON
+# (targets/regen.sh), and fails if either committed copy drifts. It also
+# cross-checks every modelled peripheral base against the pinned reference
+# tables (cargo xtask check target-reference) and runs the generator's unit
 # tests (golden emit + the keystone parity against the hand-written firmware
-# constants). Cargo-only, no spar needed in CI — `spar` refreshes the fixture
-# locally (see targets/regen.sh); the fixture is the committed
-# spar-output contract.
+# constants).
+#
+# It used to be cargo-only and regenerated from the COMMITTED spar-items JSON
+# without spar, so a model edit that never reached that JSON (the G031 IWDG
+# base moved 0x40003000 -> 0x40004000) passed regen, drift and all 21 tests.
 
 name: gust target model
 
@@ -44,18 +49,46 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Same install as kill-criteria.yml's aadl-parse job: varve itself, then the
+      # layer varve.toml pins. regen.sh and the target-reference gate resolve spar
+      # ONLY through `varve which spar` (no PATH fallback), so a missing pin is a
+      # red step here, never a silent regeneration from the committed JSON.
+      - name: Install the pinned toolchain
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 --retry-connrefused --retry-delay 2 \
+               -o /tmp/varve-install.sh \
+               https://raw.githubusercontent.com/pulseengine/varve/main/install.sh
+          sh /tmp/varve-install.sh
+          echo "$HOME/.varve/bin" >> "$GITHUB_PATH"
+
+      - name: Lay down the pinned layer and resolve spar
+        run: |
+          set -euo pipefail
+          varve install
+          SPAR="$(varve which spar)"
+          test -x "$SPAR" || { echo "::error::varve which spar gave '$SPAR', not an executable"; exit 1; }
+          "$SPAR" --version
+
+      - name: Regenerate the spar-items JSON and generated/ from targets/*.aadl (pinned spar)
+        run: bash targets/regen.sh
+
+      - name: Drift gate — committed spar-items JSON and generated/ must match the models
+        run: |
+          if ! git diff --exit-code -- targets/generated/ tools/gust-target-gen/tests/golden/f100.items.json; then
+            echo "::error::targets/generated/ or the committed spar-items JSON is stale against targets/*.aadl — run targets/regen.sh and commit the result."
+            exit 1
+          fi
+
+      # After regen, so the golden/parity tests read the JSON the models produce.
       - name: Generator unit tests (golden emit + keystone parity)
         run: cargo test --manifest-path tools/gust-target-gen/Cargo.toml
 
-      - name: Regenerate generated/ from the committed fixture
-        run: bash targets/regen.sh
+      - name: Negative control — target-reference rejects a shifted base, a missing peripheral, a missing table
+        run: cargo xtask check target-reference --self-test
 
-      - name: Drift gate — committed generated/ must match the generator output
-        run: |
-          if ! git diff --exit-code -- targets/generated/; then
-            echo "::error::targets/generated/ is stale — run targets/regen.sh and commit the result."
-            exit 1
-          fi
+      - name: Every modelled peripheral base equals the pinned reference table
+        run: cargo xtask check target-reference
 
       - name: Install wasm-tools
         run: cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
