@@ -8,7 +8,24 @@
 //! `stlink-hla.cfg` matches every ST-LINK on a four-probe host. The verdict here is
 //! three-valued, as for every xtask gate: PASS only on the firmware's `<bin> OK` line,
 //! FAIL on its `<bin> FAIL` line, and REFUSED (exit 3) when neither appears — a run
-//! that says nothing is not a run that passed.
+//! that says nothing is not a run that passed. That includes a run that exits 0 with no
+//! OK line: the status passes through with-device, a deadline wrapper and openocd, and
+//! this runner cannot tell the firmware's semihosting SYS_EXIT 0 from their 0
+//! (see [`firmware_verdict`]).
+//!
+//! Exit codes (also in `xtask silicon --help`):
+//!
+//! | code | `run`                                   | `matrix`                                        |
+//! |------|-----------------------------------------|-------------------------------------------------|
+//! | 0    | the firmware's OK line                  | ≥1 row, and every row PASS                      |
+//! | 1    | the firmware's FAIL line                | any row FAIL                                    |
+//! | 2    | usage                                   | usage, or an unknown `--boards`/`--bins` name   |
+//! | 3    | could not run / no verdict (REFUSED)    | any row REFUSED (and none FAIL)                 |
+//! | 4    | —                                       | any row NOT-YET (and none FAIL or REFUSED)      |
+//! | 5    | —                                       | the filters selected zero rows                  |
+//!
+//! Only 0 is a pass. A NOT-YET row is a known gap, listed with its reason; it was a
+//! silent 0 before, so `matrix --boards esp32c3` read as green.
 //!
 //! The board table holds only PUBLIC board metadata: the part, its target triple, the
 //! openocd interface/target scripts, the claim name, and HOW its probe is pinned. Where a
@@ -312,7 +329,7 @@ const MATRIX: &[Entry] = &[
         boards: &["f100", "wl55jc", "wb55rg", "g474re"],
         not_on: &[("g031k8", "links an ARMv7-M gust:os object (synth#1301)")],
     },
-    // --- module COMBINATIONS: composed/fused images, verdict by semihosting exit ---
+    // --- module COMBINATIONS: composed/fused images, verdict by the firmware's OK/FAIL line ---
     // gust_two_tenant never exits (Renode-gated); it needs a self-check before it can be
     // a silicon row. gust_breadth used to exit SUCCESS unconditionally (Renode reads its
     // UART lines); under target-f100 it now clocks its peripherals and reports a
@@ -469,10 +486,53 @@ impl Drop for MemoryGuard {
     }
 }
 
-fn build(root: &Path, b: &Board, bin: &str, extra: &[&str]) -> Result<PathBuf, String> {
+/// The cargo target directory the gust build writes to. Passed to cargo explicitly as
+/// `--target-dir`, so the ELF path below and the directory cargo builds into cannot name
+/// two different places: an inherited `CARGO_TARGET_DIR` used to send the build
+/// elsewhere while this side looked for the ELF under os/gust/target. A relative value
+/// is relative to `gust`, which is where cargo runs and resolves it.
+fn gust_target_dir(gust: &Path, cargo_target_dir: Option<std::ffi::OsString>) -> PathBuf {
+    match cargo_target_dir.filter(|v| !v.is_empty()) {
+        Some(d) => gust.join(d),
+        None => gust.join("target"),
+    }
+}
+
+/// The cargo invocation for one board image. Separate so a test can see that
+/// `--target-dir` reaches cargo: without it cargo builds wherever its environment says
+/// while build() looks for the ELF under `target_dir`.
+fn cargo_build(gust: &Path, b: &Board, bin: &str, feats: &str, target_dir: &Path) -> Command {
+    let mut c = Command::new("cargo");
+    c.current_dir(gust)
+        .args([
+            "build",
+            "--release",
+            "--bin",
+            bin,
+            "--no-default-features",
+            "--target",
+            b.triple,
+        ])
+        .arg("--target-dir")
+        .arg(target_dir)
+        .args(["--features", feats]);
+    c
+}
+
+/// Build `bin` for `b` into `target_dir` (see [`gust_target_dir`]) and stage its flash
+/// image. The caller supplies the target dir; nothing here reads the environment.
+fn build(
+    root: &Path,
+    b: &Board,
+    bin: &str,
+    extra: &[&str],
+    target_dir: &Path,
+) -> Result<PathBuf, String> {
     let gust = root.join("os/gust");
     let mem = gust.join("memory.x");
-    let gen = gust.join(format!("targets/generated/memory-{}.x", b.stem));
+    // The generated maps live at the repo root (targets/*.aadl -> targets/generated/),
+    // NOT under os/gust: joining them onto `gust` made every run FAIL on this read.
+    let gen = root.join(format!("targets/generated/memory-{}.x", b.stem));
     let original = fs::read(&mem).map_err(|e| format!("read {}: {e}", mem.display()))?;
     let generated = fs::read(&gen).map_err(|e| format!("read {}: {e}", gen.display()))?;
     let _guard = MemoryGuard { path: mem.clone(), original };
@@ -480,15 +540,12 @@ fn build(root: &Path, b: &Board, bin: &str, extra: &[&str]) -> Result<PathBuf, S
 
     // Force a relink: memory.x is not a cargo input, so a stale ELF linked against the
     // PREVIOUS board's map would otherwise be reused silently.
-    let elf = gust.join(format!("target/{}/release/{bin}", b.triple));
+    let elf = target_dir.join(format!("{}/release/{bin}", b.triple));
     let _ = fs::remove_file(&elf);
 
     let mut feats: Vec<&str> = b.features.to_vec();
     feats.extend_from_slice(extra);
-    let out = Command::new("cargo")
-        .current_dir(&gust)
-        .args(["build", "--release", "--bin", bin, "--no-default-features", "--target", b.triple])
-        .args(["--features", &feats.join(",")])
+    let out = cargo_build(&gust, b, bin, &feats.join(","), target_dir)
         .output()
         .map_err(|e| format!("cargo: {e}"))?;
     if !out.status.success() {
@@ -597,6 +654,21 @@ fn ssh(host: &str, remote: &str) -> Command {
 }
 
 pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: u64) -> Verdict {
+    run_with_env(root, board_name, bin, extra, timeout_s, |k| {
+        std::env::var(k).ok()
+    })
+}
+
+/// run() with the environment supplied by `env` (GALE_SILICON_*, CARGO_TARGET_DIR), so
+/// tests can drive it without touching the process environment.
+fn run_with_env(
+    root: &Path,
+    board_name: &str,
+    bin: &str,
+    extra: &[&str],
+    timeout_s: u64,
+    env: impl Fn(&str) -> Option<String>,
+) -> Verdict {
     let Some(b) = board(board_name) else {
         return Verdict::Refused(format!("no board '{board_name}' (see `xtask silicon list`)"));
     };
@@ -604,7 +676,7 @@ pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: 
         return Verdict::Refused(format!("{}: not yet — {why}", b.name));
     }
     // Before any build: a board with no configured site is REFUSED, not built for nothing.
-    let site = match resolve(b, |k| std::env::var(k).ok()) {
+    let site = match resolve(b, &env) {
         Ok(s) => s,
         Err(e) => return Verdict::Refused(e),
     };
@@ -616,9 +688,15 @@ pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: 
         return Verdict::Refused(format!("RCC_CSR/RMVF missing from gust_target_{}.rs", b.stem));
     };
 
-    let elf = match build(root, b, bin, extra) {
+    let target_dir = gust_target_dir(
+        &root.join("os/gust"),
+        env("CARGO_TARGET_DIR").map(Into::into),
+    );
+    // A build that does not produce an image is "could not run", not a firmware FAIL:
+    // exit 1 is reserved for the firmware's own `<bin> FAIL` line.
+    let elf = match build(root, b, bin, extra, &target_dir) {
         Ok(p) => p,
-        Err(e) => return Verdict::Fail(vec![e]),
+        Err(e) => return Verdict::Refused(format!("{}: no image to flash — {e}", b.name)),
     };
     // Refuse an image that would write outside the part's flash (from the measured model).
     let (Some(fbase), Some(flen)) = (generated_u32(&consts, "FLASH_BASE"), generated_u32(&consts, "FLASH_LEN")) else {
@@ -733,9 +811,32 @@ pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: 
     let _ = fs::create_dir_all(log.parent().unwrap());
     let _ = fs::write(&log, &text);
 
+    firmware_verdict(b, bin, code, &text, &log)
+}
+
+/// The verdict from what came back through the probe: the firmware's own lines first,
+/// then the exit status — which on its own is never a PASS.
+///
+/// PASS needs the firmware's `<bin> OK` line (`<bin>` with `_` as `-`, the form every
+/// matrix firmware prints), FAIL its `<bin> FAIL` line; anything else is REFUSED.
+///
+/// Exit 0 WITHOUT the OK line is REFUSED, not PASS. The status arrives through
+/// with-device, the deadline wrapper (perl locally, `timeout` remotely), ssh, and
+/// openocd, and every one of them can produce a 0 of its own. openocd's "application
+/// exited normally" line is, by its source, printed only while a gdb client is attached
+/// (gdb is disabled here); otherwise SYS_EXIT becomes a bare process exit. So this runner
+/// has no observation that tells the firmware's SYS_EXIT 0 apart from any other 0 in that
+/// chain, and until it does, a 0 is "could not tell", which is what REFUSED means.
+fn firmware_verdict(b: &Board, bin: &str, code: Option<i32>, text: &str, log: &Path) -> Verdict {
     let prefix = bin.replace('_', "-");
-    let find = |tag: &str| text.lines().find_map(|l| l.find(&format!("{prefix} {tag}")).map(|i| l[i..].to_string()));
-    let mut detail = vec![format!("{} ({}): exit {:?}, log {}", b.name, b.what, code, log.display())];
+    let find = |tag: &str| verdict_line(text, &prefix, tag).map(str::to_string);
+    let mut detail = vec![format!(
+        "{} ({}): exit {:?}, log {}",
+        b.name,
+        b.what,
+        code,
+        log.display()
+    )];
     if let Some(l) = find("FAIL") {
         detail.push(l);
         return Verdict::Fail(detail);
@@ -744,34 +845,236 @@ pub fn run(root: &Path, board_name: &str, bin: &str, extra: &[&str], timeout_s: 
         detail.push(l);
         return Verdict::Pass(detail);
     }
-    // No marker line: fall back to the firmware's own semihosting EXIT status. openocd
-    // is given no `shutdown`, so it exits only through the firmware's SYS_EXIT (with that
-    // status), a failed command (1), or the deadline (124 remote / 142 local). So 0 can
-    // only be EXIT_SUCCESS. 1 is ambiguous — firmware EXIT_FAILURE or an openocd error —
-    // and is a FAIL only when the firmware demonstrably ran, i.e. printed something.
-    let firmware_spoke = text.lines().any(|l| {
-        let l = l.trim();
-        !l.is_empty()
-            && !["Info", "Warn", "Error", "Debug", "Open On-Chip", "Licensed", "For bug", "http",
-                 "**", "[", "xPSR", "semihosting is", "adapter", "none separate", "srst_only",
-                 "hla_vid_pid", "DEPRECATED", "with-device", "gdb_port", "Consider", "shutdown"]
-                .iter().any(|p| l.starts_with(p))
-    });
-    if code == Some(0) {
-        detail.push("firmware exited EXIT_SUCCESS (semihosting SYS_EXIT 0)".into());
-        return Verdict::Pass(detail);
-    }
     // Exit 1 is NOT treated as a firmware FAIL, even when the firmware printed: the first
     // matrix run labelled gust_stack on the G474 "FAIL" when it had HUNG — with-device
     // reports a deadline-killed child as 1. A firmware failure must say so in a line.
-    let _ = firmware_spoke;
     match code {
+        Some(0) => Verdict::Refused(format!(
+            "{}: exit 0 but no '{prefix} OK' line — the exit status alone does not show the firmware's \
+             semihosting SYS_EXIT 0 (with-device, the deadline wrapper and openocd can each exit 0); not a pass — see {}",
+            b.name, log.display())),
         Some(3) => Verdict::Refused(format!("{}: probe '{}' is claimed by someone else", b.name, b.claim)),
         Some(124) => Verdict::Refused(format!("{}: deadline passed with no verdict — see {}", b.name, log.display())),
         Some(97) => Verdict::Refused(format!("{}: no pinned with-device on the probe host", b.name)),
         None => Verdict::Refused(format!("{}: no verdict line before the deadline — see {}", b.name, log.display())),
         _ => Verdict::Refused(format!("{}: firmware printed no verdict (exit {:?}) — see {}", b.name, code, log.display())),
     }
+}
+
+/// The first `<prefix> <tag>` in `text`, from the prefix to the end of its line, matched
+/// as a whole token: the prefix starts a line or follows a character that cannot be part
+/// of a bin name (`[A-Za-z0-9_-]`), and the tag is followed by the end of the line, `:`,
+/// `(` or whitespace. Case-sensitive. So `gust-x OK(private)` and `gust-x OK: ...` match;
+/// `gust-x OKAY`, `gust-x OK-ish`, `xgust-x OK`, `'gust-x OK'` and, for bin `x`,
+/// `silicon-x OK` do not.
+fn verdict_line<'a>(text: &'a str, prefix: &str, tag: &str) -> Option<&'a str> {
+    let name_char = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
+    let needle = format!("{prefix} {tag}");
+    for line in text.lines() {
+        for (i, _) in line.match_indices(&needle) {
+            let before_ok = line[..i].chars().next_back().is_none_or(|c| !name_char(c));
+            let after_ok = line[i + needle.len()..]
+                .chars()
+                .next()
+                .is_none_or(|c| c == ':' || c == '(' || c.is_whitespace());
+            if before_ok && after_ok {
+                return Some(&line[i..]);
+            }
+        }
+    }
+    None
+}
+
+/// A matrix row whose input cargo does not build (an object from a pinned toolchain run)
+/// is REFUSED when the variable carrying that input is unset; `None` means it may run.
+fn needs_env_refusal(e: &Entry, bd: &str, env: impl Fn(&str) -> Option<String>) -> Option<Verdict> {
+    let (var, how) = e.needs_env?;
+    match env(var) {
+        Some(_) => None,
+        None => Some(Verdict::Refused(format!(
+            "{bd}: {var} is not set — produce it with {how}"
+        ))),
+    }
+}
+
+/// `matrix`: at least one requested row is NOT-YET (and none FAIL or REFUSED).
+pub const EXIT_NOT_YET: i32 = 4;
+/// `matrix`: the filters selected no row at all.
+pub const EXIT_EMPTY: i32 = 5;
+
+/// One matrix row as reported.
+struct Row {
+    board: String,
+    bin: String,
+    tag: &'static str,
+    why: String,
+}
+
+fn entry_label(e: &Entry) -> String {
+    if e.extra.is_empty() {
+        e.bin.to_string()
+    } else {
+        format!("{} +{}", e.bin, e.extra.join("+"))
+    }
+}
+
+fn verdict_tag(v: &Verdict) -> &'static str {
+    match v {
+        Verdict::Pass(_) => "PASS",
+        Verdict::Fail(_) => "FAIL",
+        Verdict::Refused(_) => "REFUSED",
+    }
+}
+
+/// Filter names that match no board / no matrix bin, as messages.
+fn unknown_names(boards: Option<&[String]>, bins: Option<&[String]>) -> Vec<String> {
+    let mut out = Vec::new();
+    for bd in boards.unwrap_or_default() {
+        if board(bd).is_none() {
+            out.push(format!("unknown board '{bd}'"));
+        }
+    }
+    for bin in bins.unwrap_or_default() {
+        if !MATRIX.iter().any(|e| e.bin == bin) {
+            out.push(format!("unknown bin '{bin}' (not in the silicon matrix)"));
+        }
+    }
+    out
+}
+
+/// The requested rows: runnable pairs through `runner`, plus every NOT-YET pair the
+/// filters select (listed with its reason rather than left out).
+fn matrix_rows(
+    boards_filter: Option<&[String]>,
+    bins_filter: Option<&[String]>,
+    mut runner: impl FnMut(&Entry, &str) -> Verdict,
+) -> Vec<Row> {
+    let board_ok = |bd: &str| boards_filter.is_none_or(|f| f.iter().any(|x| x == bd));
+    let mut rows = Vec::new();
+    for e in MATRIX {
+        if bins_filter.is_some_and(|f| !f.iter().any(|x| x == e.bin)) {
+            continue;
+        }
+        let label = entry_label(e);
+        for bd in e.boards.iter().filter(|bd| board_ok(bd)) {
+            let v = runner(e, bd);
+            let why = match &v {
+                Verdict::Pass(d) | Verdict::Fail(d) => d.last().cloned().unwrap_or_default(),
+                Verdict::Refused(r) => r.clone(),
+            };
+            rows.push(Row {
+                board: bd.to_string(),
+                bin: label.clone(),
+                tag: verdict_tag(&v),
+                why,
+            });
+        }
+        for (bd, why) in e.not_on.iter().filter(|(bd, _)| board_ok(bd)) {
+            rows.push(Row {
+                board: bd.to_string(),
+                bin: label.clone(),
+                tag: "NOT-YET",
+                why: why.to_string(),
+            });
+        }
+    }
+    for b in BOARDS.iter().filter(|b| board_ok(b.name)) {
+        if let Some(why) = b.not_yet {
+            rows.push(Row {
+                board: b.name.to_string(),
+                bin: "(all)".into(),
+                tag: "NOT-YET",
+                why: why.to_string(),
+            });
+        }
+    }
+    rows
+}
+
+/// The matrix exit code: 0 only when there is at least one row and every row PASSED.
+/// Precedence FAIL (1) > REFUSED (3) > NOT-YET (4); no rows at all is EMPTY (5).
+fn matrix_exit<'a>(tags: impl IntoIterator<Item = &'a str>) -> i32 {
+    let tags: Vec<&str> = tags.into_iter().collect();
+    if tags.is_empty() {
+        EXIT_EMPTY
+    } else if tags.contains(&"FAIL") {
+        EXIT_FAIL
+    } else if tags.contains(&"REFUSED") {
+        EXIT_REFUSED
+    } else if tags.contains(&"NOT-YET") {
+        EXIT_NOT_YET
+    } else if tags.iter().all(|t| *t == "PASS") {
+        EXIT_PASS
+    } else {
+        EXIT_REFUSED
+    }
+}
+
+/// `xtask silicon matrix`: every requested row, printed, and the exit code that
+/// summarises them. `runner` answers each runnable (bin, board) pair; main passes the
+/// real flash-and-run, the tests a stub.
+fn matrix(
+    boards_filter: Option<&[String]>,
+    bins_filter: Option<&[String]>,
+    json: bool,
+    runner: impl FnMut(&Entry, &str) -> Verdict,
+) -> i32 {
+    // Unknown names first, before anything is built: a misspelt board or bin used to
+    // select zero rows and exit 0, which reads exactly like "all green".
+    let unknown = unknown_names(boards_filter, bins_filter);
+    if !unknown.is_empty() {
+        for u in &unknown {
+            eprintln!("xtask silicon matrix: {u}");
+        }
+        eprintln!(
+            "(see `xtask silicon list` for boards; bins are the firmware names in the matrix)"
+        );
+        return EXIT_USAGE;
+    }
+    let rows = matrix_rows(boards_filter, bins_filter, runner);
+    if json {
+        let items: Vec<String> = rows
+            .iter()
+            .map(|r| {
+                format!(
+                    "{{\"board\":\"{}\",\"bin\":\"{}\",\"result\":\"{}\",\"detail\":\"{}\"}}",
+                    r.board,
+                    r.bin,
+                    r.tag,
+                    r.why.replace('\\', "\\\\").replace('"', "\\\"")
+                )
+            })
+            .collect();
+        println!("[{}]", items.join(","));
+    } else {
+        println!("{:<8} {:<34} {:<8} detail", "board", "firmware", "result");
+        for r in &rows {
+            println!(
+                "{:<8} {:<34} {:<8} {}",
+                r.board,
+                r.bin,
+                r.tag,
+                r.why.chars().take(140).collect::<String>()
+            );
+        }
+    }
+    let count = |t: &str| rows.iter().filter(|r| r.tag == t).count();
+    let code = matrix_exit(rows.iter().map(|r| r.tag));
+    eprintln!(
+        "matrix: {} PASS, {} FAIL, {} REFUSED, {} NOT-YET of {} row(s) — exit {code}{}",
+        count("PASS"),
+        count("FAIL"),
+        count("REFUSED"),
+        count("NOT-YET"),
+        rows.len(),
+        match code {
+            EXIT_PASS => "",
+            EXIT_NOT_YET => " (a NOT-YET row is a gap, not a pass)",
+            EXIT_EMPTY => " (the filters selected nothing; that is not a pass)",
+            _ => " (not a pass)",
+        }
+    );
+    code
 }
 
 pub fn usage() -> &'static str {
@@ -785,7 +1088,16 @@ pub fn usage() -> &'static str {
        GALE_SILICON_<BOARD>_USB_LOCATION  openocd `adapter usb location` (wl55jc, wb55rg, g031k8)\n  \
        BENCH_REGISTRY                     local probe's serial registry (default ~/.config/pulseengine/bench-devices.yaml)\n  \
        An unset variable REFUSES the board and names the variable. See os/gust/silicon/README.md.\n\n\
-     EXIT CODES: 0 pass, 1 fail, 2 usage, 3 could not run (busy probe, no verdict, unconfigured board) — NOT a pass\n"
+     VERDICT (run): PASS only on the firmware's `<bin> OK` line (`_` printed as `-`); FAIL on its\n  \
+       `<bin> FAIL` line; anything else, INCLUDING exit 0 with no OK line, is REFUSED.\n\n\
+     EXIT CODES:\n  \
+       0  pass — run: the OK line; matrix: at least one row, and every row PASS\n  \
+       1  fail — a `<bin> FAIL` line (matrix: any row FAIL)\n  \
+       2  usage — bad flags, or (matrix) an unknown --boards / --bins name\n  \
+       3  could not run — busy probe, no verdict, unconfigured board (matrix: any row REFUSED)\n  \
+       4  matrix: a requested row is NOT-YET (a known gap: unsupported pair or not-yet board)\n  \
+       5  matrix: the filters selected no row at all\n  \
+       Only 0 is a pass. Precedence when rows disagree: 1 > 3 > 4.\n"
 }
 
 pub fn main(root: &Path, args: &[String]) -> i32 {
@@ -798,6 +1110,10 @@ pub fn main(root: &Path, args: &[String]) -> i32 {
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
+            "--help" | "-h" => {
+                print!("{}", usage());
+                return EXIT_PASS;
+            }
             "--format" => match it.next().map(String::as_str) {
                 Some("json") => json = true,
                 _ => { eprintln!("xtask silicon: --format takes 'json'"); return EXIT_USAGE; }
@@ -845,49 +1161,18 @@ pub fn main(root: &Path, args: &[String]) -> i32 {
             if json { println!("{}", v.to_json(&format!("silicon:{bd}:{bin}"))); } else { println!("{v}"); }
             v.code()
         }
-        Some("matrix") => {
-            let mut rows: Vec<(String, String, &'static str, String)> = Vec::new();
-            let (mut fails, mut refused) = (0, 0);
-            for e in MATRIX {
-                if bins_filter.as_ref().is_some_and(|f| !f.iter().any(|x| x == e.bin)) { continue; }
-                let label = if e.extra.is_empty() { e.bin.to_string() } else { format!("{} +{}", e.bin, e.extra.join("+")) };
-                for bd in e.boards {
-                    if boards_filter.as_ref().is_some_and(|f| !f.iter().any(|x| x == bd)) { continue; }
-                    let v = match e.needs_env {
-                        Some((var, how)) if std::env::var_os(var).is_none() =>
-                            Verdict::Refused(format!("{bd}: {var} is not set — produce it with {how}")),
-                        _ => run(root, bd, e.bin, e.extra, timeout_s),
-                    };
-                    let (tag, why) = match &v {
-                        Verdict::Pass(d) => ("PASS", d.last().cloned().unwrap_or_default()),
-                        Verdict::Fail(d) => { fails += 1; ("FAIL", d.last().cloned().unwrap_or_default()) }
-                        Verdict::Refused(r) => { refused += 1; ("REFUSED", r.clone()) }
-                    };
-                    eprintln!("{tag:<8} {bd:<8} {label}");
-                    rows.push((bd.to_string(), label.clone(), tag, why));
-                }
-                for (bd, why) in e.not_on {
-                    if boards_filter.as_ref().is_some_and(|f| !f.iter().any(|x| x == bd)) { continue; }
-                    rows.push((bd.to_string(), label.clone(), "NOT-YET", why.to_string()));
-                }
-            }
-            for b in BOARDS.iter().filter(|b| b.not_yet.is_some()) {
-                if boards_filter.as_ref().is_some_and(|f| !f.iter().any(|x| x == b.name)) { continue; }
-                rows.push((b.name.to_string(), "(all)".into(), "NOT-YET", b.not_yet.unwrap().to_string()));
-            }
-            if json {
-                let items: Vec<String> = rows.iter().map(|(b, bin, t, w)| format!(
-                    "{{\"board\":\"{}\",\"bin\":\"{}\",\"result\":\"{}\",\"detail\":\"{}\"}}",
-                    b, bin, t, w.replace('\\', "\\\\").replace('"', "\\\""))).collect();
-                println!("[{}]", items.join(","));
-            } else {
-                println!("{:<8} {:<34} {:<8} detail", "board", "firmware", "result");
-                for (b, bin, t, w) in &rows {
-                    println!("{b:<8} {bin:<34} {t:<8} {}", w.chars().take(140).collect::<String>());
-                }
-            }
-            if fails > 0 { EXIT_FAIL } else if refused > 0 { EXIT_REFUSED } else { EXIT_PASS }
-        }
+        Some("matrix") => matrix(
+            boards_filter.as_deref(),
+            bins_filter.as_deref(),
+            json,
+            |e, bd| {
+                let env = |k: &str| std::env::var_os(k).map(|v| v.to_string_lossy().into_owned());
+                let v = needs_env_refusal(e, bd, env)
+                    .unwrap_or_else(|| run(root, bd, e.bin, e.extra, timeout_s));
+                eprintln!("{:<8} {bd:<8} {}", verdict_tag(&v), entry_label(e));
+                v
+            },
+        ),
         _ => { eprintln!("{}", usage()); EXIT_USAGE }
     }
 }
@@ -976,5 +1261,387 @@ mod tests {
     #[test]
     fn shell_quoting_survives_single_quotes() {
         assert_eq!(sq("a'b"), "'a'\\''b'");
+    }
+
+    /// A fresh scratch root shaped like the repo, unique per test, removed on drop —
+    /// including when the test panics.
+    struct Scratch(PathBuf);
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    fn scratch_root(tag: &str) -> Scratch {
+        let r = std::env::temp_dir().join(format!("xtask-silicon-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&r);
+        fs::create_dir_all(r.join("os/gust")).unwrap();
+        // A manifest cargo refuses to parse: any build stops here, deterministically and fast.
+        fs::write(r.join("os/gust/Cargo.toml"), b"this is not toml [").unwrap();
+        fs::write(r.join("os/gust/memory.x"), b"ORIGINAL").unwrap();
+        Scratch(r)
+    }
+
+    /// Goes through build()'s OWN path join. With the generated map absent the error must
+    /// name the repo-root path; with it present, build() must get past the read (to cargo,
+    /// which this fixture's broken manifest stops) and restore memory.x afterwards. On the
+    /// old join (os/gust/targets/generated/...) both halves fail. The target dir is inside
+    /// the scratch root, so build()'s stale-ELF removal cannot touch a real build.
+    #[test]
+    fn build_reads_the_generated_map_from_the_repo_root() {
+        let s = scratch_root("build-path");
+        let root = &s.0;
+        let td = root.join("target");
+        let b = board("g031k8").unwrap();
+        let want = root.join("targets/generated/memory-stm32g031.x");
+
+        let e = build(root, b, "gust_hm_probe", &[], &td).unwrap_err();
+        assert!(
+            e.starts_with(&format!("read {}:", want.display())),
+            "missing map must name {}: {e}",
+            want.display()
+        );
+
+        fs::create_dir_all(want.parent().unwrap()).unwrap();
+        fs::write(&want, b"MEMORY {}").unwrap();
+        let e = build(root, b, "gust_hm_probe", &[], &td).unwrap_err();
+        assert!(
+            e.starts_with("build failed for gust_hm_probe on g031k8"),
+            "build() did not get past the map read: {e}"
+        );
+        assert_eq!(
+            fs::read(root.join("os/gust/memory.x")).unwrap(),
+            b"ORIGINAL",
+            "memory.x not restored"
+        );
+    }
+
+    #[test]
+    fn target_dir_reaches_cargo() {
+        let b = board("g031k8").unwrap();
+        let c = cargo_build(
+            Path::new("/r/os/gust"),
+            b,
+            "gust_hm_probe",
+            "target-g031k8",
+            Path::new("/t/gust"),
+        );
+        let args: Vec<String> = c
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        let i = args
+            .iter()
+            .position(|a| a == "--target-dir")
+            .expect("no --target-dir in the cargo args");
+        assert_eq!(
+            args.get(i + 1).map(String::as_str),
+            Some("/t/gust"),
+            "{args:?}"
+        );
+        assert!(
+            args.windows(2)
+                .any(|w| w == ["--target", "thumbv6m-none-eabi"]),
+            "{args:?}"
+        );
+        assert_eq!(c.get_current_dir(), Some(Path::new("/r/os/gust")));
+    }
+
+    /// A build that produces no image is REFUSED (could not run), not FAIL: exit 1 means
+    /// the firmware's own FAIL line. Through run() itself, with a configured local site
+    /// and a manifest cargo cannot parse.
+    #[test]
+    fn build_error_is_refused_not_fail() {
+        let s = scratch_root("build-refused");
+        let root = &s.0;
+        let gen = root.join("targets/generated");
+        fs::create_dir_all(&gen).unwrap();
+        fs::write(gen.join("memory-stm32g031.x"), b"MEMORY {}").unwrap();
+        fs::write(
+            gen.join("gust_target_stm32g031.rs"),
+            b"pub const RCC_CSR: u32 = 0x4002_1060;\npub const RMVF: u32 = 1 << 23;\n",
+        )
+        .unwrap();
+        let td = root.join("target").to_string_lossy().into_owned();
+        let v = run_with_env(
+            root,
+            "g031k8",
+            "gust_hm_probe",
+            &[],
+            1,
+            fixture(&[
+                ("GALE_SILICON_G031K8_HOST", "local"),
+                ("GALE_SILICON_G031K8_USB_LOCATION", "0-0.0"),
+                ("CARGO_TARGET_DIR", td.as_str()),
+            ]),
+        );
+        assert!(
+            matches!(&v, Verdict::Refused(r) if r.contains("build failed for gust_hm_probe")),
+            "{v:?}"
+        );
+        assert_eq!(v.code(), EXIT_REFUSED);
+    }
+
+    #[test]
+    fn gust_target_dir_follows_cargo_target_dir() {
+        let g = Path::new("/r/os/gust");
+        assert_eq!(gust_target_dir(g, None), PathBuf::from("/r/os/gust/target"));
+        assert_eq!(
+            gust_target_dir(g, Some("".into())),
+            PathBuf::from("/r/os/gust/target")
+        );
+        assert_eq!(
+            gust_target_dir(g, Some("/t/x".into())),
+            PathBuf::from("/t/x")
+        );
+        assert_eq!(
+            gust_target_dir(g, Some("rel".into())),
+            PathBuf::from("/r/os/gust/rel")
+        );
+    }
+
+    fn verdict_of(code: Option<i32>, text: &str) -> Verdict {
+        firmware_verdict(
+            board("g474re").unwrap(),
+            "gust_hm_probe",
+            code,
+            text,
+            Path::new("/dev/null"),
+        )
+    }
+
+    #[test]
+    fn exit_zero_without_the_ok_line_is_refused_not_pass() {
+        // The firmware (or anything else in the chain) exited 0 and printed no OK line.
+        let v = verdict_of(Some(0), "Info : clock speed 2000 kHz\nhm: ran\n");
+        assert!(
+            matches!(&v, Verdict::Refused(r) if r.contains("gust-hm-probe OK")),
+            "{v:?}"
+        );
+        assert_eq!(v.code(), EXIT_REFUSED);
+        // ...and nothing at all.
+        assert!(matches!(verdict_of(Some(0), ""), Verdict::Refused(_)));
+    }
+
+    #[test]
+    fn verdict_comes_from_the_firmware_lines() {
+        assert!(matches!(
+            verdict_of(Some(0), "gust-hm-probe OK: 6/6"),
+            Verdict::Pass(_)
+        ));
+        // The line, not the status, decides: an OK line under a non-zero status still passes,
+        // and a FAIL line wins over everything.
+        assert!(matches!(
+            verdict_of(Some(1), "gust-hm-probe OK: 6/6"),
+            Verdict::Pass(_)
+        ));
+        assert!(matches!(
+            verdict_of(Some(0), "gust-hm-probe FAIL: x\ngust-hm-probe OK"),
+            Verdict::Fail(_)
+        ));
+        // Another bin's OK line is not this bin's.
+        assert!(matches!(
+            verdict_of(Some(0), "gust-timer-probe OK"),
+            Verdict::Refused(_)
+        ));
+        assert!(matches!(verdict_of(None, ""), Verdict::Refused(_)));
+        assert!(matches!(
+            verdict_of(Some(1), "hm: ran"),
+            Verdict::Refused(_)
+        ));
+    }
+
+    fn filt(xs: &[&str]) -> Option<Vec<String>> {
+        Some(xs.iter().map(|s| s.to_string()).collect())
+    }
+
+    /// The exit of the matrix COMMAND for a filter, every runnable pair answered by `v`.
+    fn matrix_code(
+        boards: Option<Vec<String>>,
+        bins: Option<Vec<String>>,
+        v: fn() -> Verdict,
+    ) -> i32 {
+        matrix(boards.as_deref(), bins.as_deref(), false, |_, _| v())
+    }
+
+    fn pass() -> Verdict {
+        Verdict::Pass(vec![])
+    }
+    fn refused() -> Verdict {
+        Verdict::Refused("x".into())
+    }
+    fn fail() -> Verdict {
+        Verdict::Fail(vec![])
+    }
+
+    #[test]
+    fn matrix_not_yet_board_is_not_a_pass() {
+        assert_eq!(matrix_code(filt(&["esp32c3"]), None, pass), EXIT_NOT_YET);
+    }
+
+    #[test]
+    fn matrix_not_yet_pair_is_not_a_pass() {
+        assert_eq!(
+            matrix_code(filt(&["g031k8"]), filt(&["gust_wdg_silicon"]), pass),
+            EXIT_NOT_YET
+        );
+    }
+
+    #[test]
+    fn matrix_unknown_board_is_refused_as_usage() {
+        assert_eq!(
+            unknown_names(filt(&["rt1176"]).as_deref(), None),
+            vec!["unknown board 'rt1176'".to_string()]
+        );
+        assert_eq!(matrix_code(filt(&["rt1176"]), None, pass), EXIT_USAGE);
+    }
+
+    #[test]
+    fn matrix_unknown_bin_is_refused_as_usage() {
+        assert_eq!(matrix_code(None, filt(&["no_such_bin"]), pass), EXIT_USAGE);
+        assert_eq!(
+            matrix_code(
+                filt(&["f100"]),
+                filt(&["gust_hm_probe", "no_such_bin"]),
+                pass
+            ),
+            EXIT_USAGE
+        );
+    }
+
+    #[test]
+    fn matrix_with_zero_rows_is_empty_not_pass() {
+        // Both names exist; the pair selects nothing (gust_adc_silicon runs only on f100).
+        assert_eq!(
+            matrix_code(filt(&["wl55jc"]), filt(&["gust_adc_silicon"]), pass),
+            EXIT_EMPTY
+        );
+        assert_eq!(matrix_exit([]), EXIT_EMPTY);
+    }
+
+    #[test]
+    fn matrix_refused_and_fail_rows_are_not_a_pass() {
+        assert_eq!(
+            matrix_code(filt(&["f100"]), filt(&["gust_hm_probe"]), refused),
+            EXIT_REFUSED
+        );
+        assert_eq!(
+            matrix_code(filt(&["f100"]), filt(&["gust_hm_probe"]), fail),
+            EXIT_FAIL
+        );
+        // FAIL outranks REFUSED outranks NOT-YET.
+        assert_eq!(
+            matrix_exit(["NOT-YET", "REFUSED", "FAIL", "PASS"]),
+            EXIT_FAIL
+        );
+        assert_eq!(matrix_exit(["NOT-YET", "REFUSED", "PASS"]), EXIT_REFUSED);
+        assert_eq!(matrix_exit(["NOT-YET", "PASS"]), EXIT_NOT_YET);
+    }
+
+    #[test]
+    fn matrix_all_pass_is_the_only_zero() {
+        // Positive control: a filter whose every row is runnable, every row PASS -> 0.
+        assert_eq!(
+            matrix_code(filt(&["f100"]), filt(&["gust_hm_probe"]), pass),
+            EXIT_PASS
+        );
+        let rows = matrix_rows(
+            filt(&["f100"]).as_deref(),
+            filt(&["gust_hm_probe"]).as_deref(),
+            |_, _| pass(),
+        );
+        assert_eq!(rows.len(), 1);
+    }
+
+    /// No verdict line: whatever the exit status, the run is REFUSED. 142 is the local
+    /// deadline (SIGALRM), 124 the remote one, 97 no pinned with-device, 3 a busy claim.
+    #[test]
+    fn no_verdict_line_is_refused_for_every_exit_code() {
+        let log = "Info : clock speed 2000 kHz\nhm: ran, said nothing conclusive\n";
+        for code in [
+            Some(0),
+            Some(1),
+            Some(2),
+            Some(3),
+            Some(97),
+            Some(124),
+            Some(142),
+            Some(255),
+            None,
+        ] {
+            let v = verdict_of(code, log);
+            assert!(
+                matches!(v, Verdict::Refused(_)),
+                "exit {code:?} with no verdict line gave {v:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn needs_env_unset_is_refused_and_set_may_run() {
+        let tt = MATRIX
+            .iter()
+            .find(|e| e.needs_env.is_some())
+            .expect("a needs_env row");
+        let (var, _) = tt.needs_env.unwrap();
+        let v = needs_env_refusal(tt, "wb55rg", fixture(&[]));
+        assert!(
+            matches!(&v, Some(Verdict::Refused(r)) if r.contains(var)),
+            "{v:?}"
+        );
+        assert!(needs_env_refusal(tt, "wb55rg", fixture(&[(var, "/x/two_tenant.o")])).is_none());
+        let plain = MATRIX.iter().find(|e| e.needs_env.is_none()).unwrap();
+        assert!(needs_env_refusal(plain, "f100", fixture(&[])).is_none());
+    }
+
+    #[test]
+    fn verdict_line_is_a_whole_token() {
+        let pass = |t: &str| matches!(verdict_of(Some(0), t), Verdict::Pass(_));
+        // Legal forms the firmware prints, including on a later line of the log.
+        assert!(pass("gust-hm-probe OK"));
+        assert!(pass("gust-hm-probe OK: 6/6"));
+        assert!(pass("gust-hm-probe OK(private): faulted"));
+        assert!(pass("gust-hm-probe OK\tdone"));
+        assert!(pass(
+            "Info : target halted\nsemihosting: [hm] gust-hm-probe OK: 6/6\n"
+        ));
+        assert!(pass(
+            "Info : a\nInfo : b\nhm: step 3\ngust-hm-probe OK: 6/6\nInfo : c\n"
+        ));
+        // Not this bin's verdict.
+        for t in [
+            "gust-hm-probe OK-ish",
+            "gust-hm-probe OKAY",
+            "xgust-hm-probe OK",
+            "expected 'gust-hm-probe OK' but the firmware hung",
+            "gust-hm-probe ok",
+            "GUST-HM-PROBE OK",
+            "gust-hm-probe  OK",
+        ] {
+            assert!(
+                matches!(verdict_of(Some(0), t), Verdict::Refused(_)),
+                "{t:?} was taken as a verdict"
+            );
+        }
+        assert!(matches!(
+            verdict_of(Some(1), "gust-hm-probe FAILED_TO_INIT"),
+            Verdict::Refused(_)
+        ));
+        assert!(matches!(
+            verdict_of(Some(1), "gust-hm-probe fail: x"),
+            Verdict::Refused(_)
+        ));
+        // A bin whose name is the tail of another's: `silicon-bench OK` is not `bench OK`.
+        let bench = |t: &str| {
+            firmware_verdict(
+                board("f100").unwrap(),
+                "bench",
+                Some(0),
+                t,
+                Path::new("/dev/null"),
+            )
+        };
+        assert!(matches!(bench("silicon-bench OK"), Verdict::Refused(_)));
+        assert!(matches!(bench("silicon_bench OK"), Verdict::Refused(_)));
+        assert!(matches!(bench("bench OK"), Verdict::Pass(_)));
     }
 }

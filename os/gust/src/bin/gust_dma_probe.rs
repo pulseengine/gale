@@ -210,8 +210,10 @@ fn main() -> ! {
 
     if ok {
         hprintln!("dma-probe ALL OK");
+        hprintln!("gust-dma-probe OK: start, exclusive, yield, complete, unpaired and abort all held");
         debug::exit(debug::EXIT_SUCCESS);
     } else {
+        hprintln!("gust-dma-probe FAIL: at least one dma-* check above failed");
         debug::exit(debug::EXIT_FAILURE);
     }
     loop {}
