@@ -3,6 +3,7 @@
 //! invoked by nothing -- the failure mode gale#368 was opened to fix.
 
 pub mod aadl_parse;
+pub mod armv6m_isa;
 pub mod binary_ledger;
 pub mod criticality_axis;
 pub mod data_overlap;
@@ -38,6 +39,12 @@ pub const GATES: &[Gate] = &[
         about: "every committed AADL model parses with the pinned spar (gale#441)",
         run: aadl_parse::run,
         self_test: aadl_parse::self_test,
+    },
+    Gate {
+        name: armv6m_isa::NAME,
+        about: "no image built for an ARMv6-M board carries code ARMv6-M cannot execute",
+        run: armv6m_isa::run,
+        self_test: armv6m_isa::self_test,
     },
     Gate {
         name: binary_ledger::NAME,

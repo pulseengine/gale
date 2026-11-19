@@ -423,6 +423,13 @@ const MATRIX: &[Entry] = &[
     },
 ];
 
+/// Every (bin, extra features) pair the matrix names, on any board. The
+/// armv6m-isa gate builds each for the G031K8 from this table rather than a
+/// copy of it, so a feature set added here is checked there.
+pub(crate) fn variants() -> Vec<(&'static str, &'static [&'static str])> {
+    MATRIX.iter().map(|e| (e.bin, e.extra)).collect()
+}
+
 const FUSED_SPAN: &str = "fused.o addresses data 1.1 MiB apart (0x10_000C, 0x21_0014) through one r11 base: no board's RAM spans it; needs a packed-memory rebuild";
 
 const DEFAULT_TIMEOUT_S: u64 = 150;

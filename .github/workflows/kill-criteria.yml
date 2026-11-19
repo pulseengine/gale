@@ -263,6 +263,37 @@ jobs:
       - name: Every job in every workflow is bounded
         run: cargo xtask check job-timeouts
 
+  armv6m-isa:
+    name: "no ARMv6-M (G031K8) image carries code an M0+ cannot execute"
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Self-hosted `light` runners do not promise a preinstalled toolchain.
+      # llvm-tools carries the llvm-readobj the attribute leg reads with.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          targets: thumbv6m-none-eabi
+          components: llvm-tools
+
+      # The G031K8 is ARMv6-M. Committed *-cm3.o objects are ARMv7-M, and the
+      # linker tags an image that links one v6S-M without complaint. The gate
+      # decides on build attributes of every linker input and a whitelist
+      # decode of every executable byte. The self-test plants each of 28
+      # ARMv7-M-only encodings in a v6S-M-tagged object, v6-M code under a v7
+      # tag, and a literal pool whose words decode as v7 instructions.
+      - name: Negative control -- each planted v7 encoding and v7-tagged input must be rejected
+        run: cargo xtask check armv6m-isa --self-test
+
+      # Builds every os/gust bin, plus every feature set xtask silicon's matrix
+      # names, for thumbv6m-none-eabi (target-g031k8) with a linker map, and
+      # checks each image. Known ARMv7-M inputs (synth#1301) and known
+      # non-building variants are ledgered, compared for equality: a new
+      # offending input, a clean bin that stops building, or a stale line fails.
+      - name: Every G031K8 image is ARMv6-M, or ledgered
+        run: cargo xtask check armv6m-isa
+
   zephyr-module-archive:
     name: "the Zephyr module archive is reproducible, self-contained, and named"
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-24.04' }}
