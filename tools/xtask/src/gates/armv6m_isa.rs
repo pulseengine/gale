@@ -765,14 +765,39 @@ fn compare(reject: &BTreeSet<(String, String)>, nobuild: &BTreeMap<String, Strin
     f
 }
 
+/// Remove ANSI escape sequences (CSI `ESC [ ... final`, and two-byte `ESC x`).
+/// The gate runs cargo with `--color never`, but CI exports
+/// CARGO_TERM_COLOR=always, and a coloured `error` line does not start with
+/// "error" -- every nobuild reason then mismatched its ledgered substring.
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut it = s.chars().peekable();
+    while let Some(c) = it.next() {
+        if c != '\x1b' {
+            out.push(c);
+            continue;
+        }
+        if it.next() == Some('[') {
+            for d in it.by_ref() {
+                if ('\x40'..='\x7e').contains(&d) {
+                    break;
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The first compiler error line, colour-stripped. If there is none, the last
+/// stderr lines, so a mismatch against the ledger is diagnosable.
 fn first_error(stderr: &str) -> String {
-    stderr
-        .lines()
-        .find(|l| l.starts_with("error"))
-        .unwrap_or("build failed")
-        .chars()
-        .take(160)
-        .collect()
+    let plain = strip_ansi(stderr);
+    if let Some(l) = plain.lines().find(|l| l.trim_start().starts_with("error")) {
+        return l.trim_start().chars().take(160).collect();
+    }
+    let tail: Vec<&str> = plain.lines().filter(|l| !l.trim().is_empty()).collect();
+    let tail = tail[tail.len().saturating_sub(4)..].join(" | ");
+    format!("build failed, no error line; stderr ends: {}", tail.chars().take(400).collect::<String>())
 }
 
 pub fn run(repo: &Path, module: Option<&str>) -> Verdict {
@@ -835,7 +860,8 @@ pub fn run(repo: &Path, module: Option<&str>) -> Verdict {
         let o = match Command::new("cargo")
             .current_dir(&crate_dir)
             .env("CARGO_TARGET_DIR", &vdir)
-            .args(["rustc", "--release", "--target", TARGET, "--no-default-features", "--features"])
+            .env_remove("CARGO_TERM_COLOR")
+            .args(["rustc", "--color", "never", "--release", "--target", TARGET, "--no-default-features", "--features"])
             .arg(feats.join(","))
             .args(["--bin", bin, "--"])
             .arg(format!("-Clink-arg=-Map={}", map.display()))
@@ -1338,6 +1364,18 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
         matches!(judge(&ro, true, "", &img, &dir.join("absent.map"), &dir), Outcome::Refused(_)));
     let junk = write("junk", b"not an elf");
     ck("judge: an unreadable image is refused".into(), matches!(judge(&ro, true, "", &junk, &map, &dir), Outcome::Refused(_)));
+    // CI exports CARGO_TERM_COLOR=always: a coloured error line must still be
+    // found and still match its ledgered substring.
+    let coloured = "\x1b[0m\x1b[1m\x1b[32m   Compiling\x1b[0m gust v0.1.0\n\x1b[0m\x1b[1m\x1b[38;5;9merror[E0599]\x1b[0m\x1b[0m\x1b[1m: no method named `fetch_add` found for struct `Atomic<T>` in the current scope\x1b[0m\n";
+    let got = first_error(coloured);
+    ck(format!("ANSI-coloured stderr yields the plain error line [{got}]"),
+        got.starts_with("error[E0599]: no method named `fetch_add`") && !got.contains('\x1b'));
+    let cled = parse_ledger("nobuild gust: no method named `fetch_add`\n").unwrap_or_default();
+    ck("ANSI-coloured nobuild reason still matches its ledgered substring".into(),
+        compare(&BTreeSet::new(), &[("gust".to_string(), got.clone())].into_iter().collect(), &cled).is_empty());
+    let none = first_error("warning: a\n\nnote: b\nlinker exited 1\n");
+    ck(format!("no error line: the message carries the stderr tail [{none}]"),
+        none.contains("linker exited 1") && none.contains("note: b"));
     ck("judge: a failed build is no image, with its first error".into(),
         matches!(judge(&ro, false, "warning: x\nerror: boom\n", &img, &map, &dir), Outcome::NoImage(w) if w == "error: boom"));
 
