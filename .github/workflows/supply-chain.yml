@@ -1,5 +1,6 @@
 # Supply-chain gate: cargo-deny over advisories, bans, licenses and sources,
-# and a RustSec audit of every committed Cargo.lock.
+# a RustSec audit of every committed Cargo.lock, and a census proving every
+# manifest has a committed, current lock (gale#534).
 # Org standard (2026-11): every Rust repo runs this and it fails the PR.
 # deny.toml at the repo root carries the agreed license allowlist and any
 # reasoned advisory ignores. cargo-deny's scope: the root package's Cargo.lock.
@@ -48,3 +49,27 @@ jobs:
         run: cargo xtask check lockfile-audit --self-test
       - name: Audit every committed Cargo.lock
         run: cargo xtask check lockfile-audit
+
+  # gale#534, the other half: an audited lock is worth nothing if the build
+  # ignores it. Every Cargo.toml / MODULE.bazel must have a committed lock (or a
+  # listed reason in tools/xtask/lockfile-census.toml), and every committed lock
+  # must still satisfy its manifest: `cargo metadata --locked` per Cargo.lock,
+  # `bazel mod deps --lockfile_mode=error` for the root MODULE.bazel.lock. CI
+  # builds pass --locked / --lockfile_mode=error; this job is what makes an
+  # out-of-date lock red even where a tool (cargo kani, cargo fuzz) has no such
+  # flag. Network: cargo metadata downloads each lock's sources, bazel fetches
+  # registry files; both are the same fetches the builds do.
+  lockfile-census:
+    name: every lock committed and current (Cargo + Bazel)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      # The runner image ships bazelisk as `bazel`; it reads .bazelversion.
+      - name: Negative control — an out-of-date Cargo.lock or MODULE.bazel.lock, an unlisted lock-free manifest and a stale listing must be caught
+        run: cargo xtask check lockfile-census --self-test
+      - name: Every manifest has a committed lock, and every lock is current
+        run: cargo xtask check lockfile-census
