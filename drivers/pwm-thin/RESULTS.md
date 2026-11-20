@@ -33,7 +33,7 @@ overrun, so its two safety properties are load-bearing.
 ## Build
 
     cargo build --release --target wasm32-unknown-unknown   # needs .cargo/config --allow-undefined
-    loom optimize <wasm> --passes inline | synth compile --target cortex-m3 --all-exports --relocatable
+    loom optimize <wasm> --passes inline | synth compile --target cortex-m3 --all-exports --relocatable --embedder-data-init
 
 ## Follow-on (not in this PR)
 

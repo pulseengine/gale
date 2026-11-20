@@ -52,15 +52,18 @@ dissolved object); the `Guest` impl forwards to those same three bodies rather
 than duplicating the marshalling, so the component and the native object cannot
 diverge in behaviour.
 
-**Regenerating `exec-cm3.o` requires a one-line probe change.** The dissolved
-object's single undefined symbol moves from `poll_task` to `poll-task` (the WIT
+**Regenerating `exec-cm3.o` required a one-line probe change.** The dissolved
+object's single undefined symbol moved from `poll_task` to `poll-task` (the WIT
 field name, dash included — `poll_task` becomes a *defined* forwarder), so
-`gust_exec_probe`'s stub must switch to `#[export_name = "poll-task"]`, as
+`gust_exec_probe`'s stub had to switch to `#[export_name = "poll-task"]`, as
 gust_os_ts_probe already has. Confirmed on a scratch re-dissolve (loom 1.2.0 +
-synth 0.49.0): with the current stub the link fails on `duplicate symbol:
+synth 0.49.0): with the old stub the link fails on `duplicate symbol:
 poll_task`; with the renamed stub the probe passes unchanged
 ("gust-exec-probe OK: both tasks Done, hi-prio first"). The object checked in
-here is still the pre-WIT one, so today's build is green either way.
+here was regenerated on the covalent 2026.11.7 pin (2026-11-20): it is the WIT one
+(`U poll-task`, `poll_task` defined), and gust_exec_probe answers `poll-task`. Under
+qemu the probe prints "gust-exec-probe OK: both tasks Done, hi-prio first
+(dispatch order observed)".
 
 ## Build
 

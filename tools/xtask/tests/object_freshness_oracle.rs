@@ -14,6 +14,11 @@ use std::process::Command;
 
 const WDG_OBJ: &str = "drivers/wdg-thin/wdg-thin-cm3.o";
 const WDG_SRC: &str = "drivers/wdg-thin/src/lib.rs";
+/// A KNOWN-STALE subject, for the plants that need one. wdg-thin was rebuilt and
+/// recorded fresh with the covalent 2026.11.7 pin (gale#438); gpio-thin stays
+/// known-stale (synth#1746), and its object predates its source.
+const STALE_OBJ: &str = "drivers/gpio-thin/gpio-thin-cm3.o";
+const STALE_SRC: &str = "drivers/gpio-thin/src/lib.rs";
 
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().expect("repo root")
@@ -126,7 +131,11 @@ fn append(dir: &Path, rel: &str, line: &str) {
 }
 
 fn strip_wdg_stale(dir: &Path) {
-    edit_entry(dir, WDG_OBJ, |l| (!l.starts_with("stale_")).then(|| l.to_string()));
+    strip_stale(dir, WDG_OBJ);
+}
+
+fn strip_stale(dir: &Path, obj: &str) {
+    edit_entry(dir, obj, |l| (!l.starts_with("stale_")).then(|| l.to_string()));
 }
 
 /// (d) The control: the unchanged tree passes both gates. Without it, every
@@ -164,25 +173,25 @@ fn garbage_object_fails_with_emptied_ledger() {
 #[test]
 fn source_edit_without_rebuild_fails() {
     let dir = clone("source-edit");
-    let p = dir.join(WDG_SRC);
-    let mut src = std::fs::read_to_string(&p).expect("wdg-thin source");
+    let p = dir.join(STALE_SRC);
+    let mut src = std::fs::read_to_string(&p).expect("gpio-thin source");
     src.push_str("// one-line edit, no rebuild\n");
     std::fs::write(&p, src).expect("edit source");
-    assert_fails(&dir, "object-freshness", "inputs changed");
+    assert_fails_on(&dir, "object-freshness", "gpio-thin-cm3.o", "inputs changed");
 }
 
 /// (c) A known-stale entry whose expiry has passed.
 #[test]
 fn expired_ledger_entry_fails() {
     let dir = clone("expired");
-    edit_entry(&dir, WDG_OBJ, |l| {
+    edit_entry(&dir, STALE_OBJ, |l| {
         Some(if l.starts_with("stale_expires") { "stale_expires = \"2020-01-01\"".to_string() } else { l.to_string() })
     });
-    assert_fails(&dir, "object-freshness", "EXPIRED");
+    assert_fails_on(&dir, "object-freshness", "gpio-thin-cm3.o", "EXPIRED");
 }
 
-/// An input with no commit date must REFUSE, not be skipped. wdg-thin is made a
-/// FRESH claim (its stale lines removed), so the date cross-check runs, and an
+/// An input with no commit date must REFUSE, not be skipped. wdg-thin is a FRESH
+/// claim (recorded fresh at covalent 2026.11.7), so the date cross-check runs, and an
 /// untracked source file is added to its input dir. Skipping undated inputs
 /// (a `filter_map`) let the newest date come from the rest.
 #[test]
@@ -285,21 +294,21 @@ fn unlisted_path_include_refuses() {
     assert_refuses(&dir, "object-freshness", "drivers/uart-thin/src/lib.rs");
 }
 
-/// A fresh claim with no rebuild behind it (wdg's stale lines removed, nothing
+/// A fresh claim with no rebuild behind it (gpio-thin's stale lines removed, nothing
 /// committed): the object predates its inputs, so the claim is contradicted.
 /// Fails if the date comparison is reversed.
 #[test]
 fn unrebuilt_fresh_claim_fails() {
     let dir = clone("fresh-claim");
-    strip_wdg_stale(&dir);
-    assert_fails(&dir, "object-freshness", "claims the object is fresh");
+    strip_stale(&dir, STALE_OBJ);
+    assert_fails_on(&dir, "object-freshness", "gpio-thin-cm3.o", "claims the object is fresh");
 }
 
 /// The same fresh claim in a `--depth 1` clone, where git dates mean nothing.
 #[test]
 fn fresh_claim_in_shallow_clone_refuses() {
     let dir = clone_with("shallow", true);
-    strip_wdg_stale(&dir);
+    strip_stale(&dir, STALE_OBJ);
     assert_refuses(&dir, "object-freshness", "shallow");
 }
 

@@ -31,6 +31,18 @@ OUT="${OUT:-$(mktemp -d)}"
 mkdir -p "$OUT"
 [ "$#" -ge 1 ] || { echo "usage: build-reloc-cores.sh <crate-dir> [<crate-dir> ...]" >&2; exit 2; }
 
+# Reproducible across checkout paths: the gale path dependency (`gale = { path =
+# "../.." }`) bakes absolute source paths into panic locations, so an object built
+# in one worktree differed from the same build in another (and committed that
+# worktree's path). Remap the repository root to "." for EVERY crate in the graph:
+# flags after `cargo rustc --` reach only the final crate, not the dependency whose
+# locations leak. Passed as `--config target.<triple>.rustflags`, because cargo
+# MERGES config arrays, so a crate's own .cargo/config.toml rustflags survive;
+# RUSTFLAGS / CARGO_ENCODED_RUSTFLAGS would REPLACE them (dma-own's
+# --allow-undefined is one such flag, and its link fails without it).
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REMAP_CFG="target.wasm32-unknown-unknown.rustflags=[\"--remap-path-prefix=$REPO_ROOT=.\"]"
+
 echo "# reloc cores -> $OUT"
 fail=0
 for crate in "$@"; do
@@ -53,7 +65,7 @@ for crate in "$@"; do
   #                        refuses "component 0 module 0 has no __stack_pointer
   #                        marker" (gale#434). Exporting it makes the marker a
   #                        property of this build rather than of the runner's rustc.
-  ( cd "$crate" && cargo rustc --release --target wasm32-unknown-unknown --lib \
+  ( cd "$crate" && cargo rustc --config "$REMAP_CFG" --release --target wasm32-unknown-unknown --lib \
       -- -C link-arg=--emit-relocs \
          -C link-arg=--export=__heap_base \
          -C link-arg=--export=__stack_pointer \

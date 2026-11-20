@@ -29,10 +29,17 @@ Reproduce:
 cd drivers/uart-thin
 cargo build --release --target wasm32-unknown-unknown
 loom optimize target/wasm32-unknown-unknown/release/gust_uart_thin.wasm --passes inline | \
-  synth compile - --target cortex-m3 --native-pointer-abi --shadow-stack-size 1024 \
+  synth compile - --target cortex-m3 --native-pointer-abi --embedder-data-init \
   --all-exports --relocatable -o uart-thin-cm3.o
 llvm-size uart-thin-cm3.o
 ```
+
+Recipe as of the covalent 2026.11.7 pin (2026-11-20), the one that produced the
+committed bytes. `--embedder-data-init` is needed because the recipe without it is
+refused (#1041). `--shadow-stack-size 1024` is gone: synth 0.89.0 and 0.90.0 both
+refuse it here, because the object has no stack reservation to shrink (`.data` and
+`.bss` are 0 B; VCR-MEM-001). `--native-pointer-abi` is kept as written, but it is a
+no-op for this driver: the object is byte-identical without it.
 
 ## synth 0.15.0 perf test (the new version) — levers help compute, not I/O
 

@@ -111,7 +111,7 @@ NUCLEO-G474RE / STM32VLDISCOVERY). Both target builds link; flashing is a human 
 ## Build
 
     cargo build --release --target wasm32-unknown-unknown
-    loom optimize <wasm> --passes inline | synth compile --target cortex-m3 --all-exports --relocatable
+    loom optimize <wasm> --passes inline | synth compile --target cortex-m3 --all-exports --relocatable --embedder-data-init
 
 ## Follow-on (not in this PR)
 

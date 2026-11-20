@@ -45,15 +45,14 @@ static mut ORDER_LEN: usize = 0;
 
 // task bodies (trusted seam): all complete on first poll for this liveness check.
 //
-// The seam's SYMBOL NAME is pinned to the checked-in exec-cm3.o, which predates
-// exec-provider's WIT-typed `gust:os/taskdisp` import: that object has `U
-// poll_task`, so the probe defines `poll_task`. Regenerating exec-cm3.o from
-// today's exec-provider inverts this — the object then DEFINES `poll_task` (the
-// forwarder into the WIT import) and leaves `U poll-task` instead, so this
-// function must become `#[export_name = "poll-task"]` (exactly what
-// gust_os_ts_probe already does) or the link fails on `duplicate symbol:
-// poll_task`. Verified both ways; the contract is identical either side.
-#[no_mangle]
+// The seam's SYMBOL NAME is pinned to the checked-in exec-cm3.o. Since that
+// object was regenerated from today's exec-provider (covalent 2026.11.7), it
+// carries the WIT-typed `gust:os/taskdisp` import: it DEFINES `poll_task` (the
+// forwarder into the WIT import) and leaves `U poll-task`, so this probe
+// answers `poll-task`, exactly as gust_os_ts_probe does. With the old
+// `#[no_mangle] poll_task` the link fails on `duplicate symbol: poll_task`.
+// The contract is identical either side.
+#[export_name = "poll-task"]
 pub extern "C" fn poll_task(id: u32) -> u32 {
     unsafe {
         if ORDER_LEN < ORDER_CAP {

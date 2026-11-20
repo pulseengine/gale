@@ -5,14 +5,14 @@ manifest-version = 1
 [toolchain]
 realm   = "covalent"
 channel = "rolling"
-# covalent 2026.11.1 composes pulseengine 2026.10.35 (the previous pin, unchanged:
-# meld 0.66.0, synth 0.89.0, loom 1.4.1, rivet 0.41.1, ...) with pulseengine-wasm
-# 2026.10.6, which adds wasm-tools 1.263.0. Before this, wasm-tools came from
-# `cargo install --version 1.245.1` in 9 CI steps and from whatever was on PATH
-# locally, and no gate compared the two. CI's WASM_TOOLS_VERSION now moves with
-# this pin, and pin-agreement checks it. 2026.10.35 was the last layer of the
-# 2026.10 line; covalent 2026.11.7 (pulseengine 2026.11.14: synth 0.90.0,
-# meld 0.67.0) is the next candidate. Every composed digest is verified against
-# its realm's root by `varve install`.
-layer   = "2026.11.1"
-digest  = "sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315"
+# covalent 2026.11.7 composes pulseengine 2026.11.14 (synth 0.90.0, meld 0.67.0,
+# loom 1.5.1, spar 0.49.0, rivet 0.41.1) with pulseengine-wasm 2026.11.2
+# (wasm-tools 1.263.0). Owner decision 2026-11-20: gale moves to this layer and
+# the pin is then frozen until the v0.11.0 tag. The previous pin was covalent
+# 2026.11.1 (synth 0.89.0, meld 0.66.0, loom 1.4.1). Pre-flight evidence: the
+# v0.11.0 pin pre-flight (branch lane/l10-pin-preflight). The digest is the
+# layer's manifest digest (`varve inspect --layer 2026.11.7`); a layer name
+# alone is not a stable identifier on the rolling channel (varve#115). Every
+# composed digest is verified against its realm's root by `varve install`.
+layer   = "2026.11.7"
+digest  = "sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0"

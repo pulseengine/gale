@@ -43,9 +43,9 @@ on:
 env:
   # Moves with varve.toml: pin-agreement checks it against the wasm-tools the pinned layer ships.
   WASM_TOOLS_VERSION: "1.263.0"
-  MELD_VERSION: "0.66.0"
-  LOOM_VERSION: "1.4.1"
-  SYNTH_VERSION: "0.89.0"
+  MELD_VERSION: "0.67.0"
+  LOOM_VERSION: "1.5.1"
+  SYNTH_VERSION: "0.90.0"
 
 jobs:
   dissolve:
