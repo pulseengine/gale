@@ -165,7 +165,7 @@ fn last_commit_epoch(repo: &Path, relpath: &str) -> Option<i64> {
     super::last_content_epoch(repo, relpath)
 }
 
-fn ymd(epoch: i64) -> String {
+pub(crate) fn ymd(epoch: i64) -> String {
     // Civil-from-days (Howard Hinnant). Dates here are only ever displayed, but
     // shelling out to `date` per object would be 24 extra processes.
     let days = epoch.div_euclid(86_400);
@@ -793,7 +793,7 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
 
 /// `YYYY-MM-DD` -> days since the epoch; None unless it round-trips, so
 /// `2026-02-30` is refused rather than read as March 2nd.
-fn parse_day(s: &str) -> Option<i64> {
+pub(crate) fn parse_day(s: &str) -> Option<i64> {
     let p: Vec<&str> = s.split('-').collect();
     if p.len() != 3 || p[0].len() != 4 || p[1].len() != 2 || p[2].len() != 2 {
         return None;
@@ -803,7 +803,7 @@ fn parse_day(s: &str) -> Option<i64> {
     (ymd(days * 86_400) == s).then_some(days)
 }
 
-fn today() -> i64 {
+pub(crate) fn today() -> i64 {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -812,7 +812,7 @@ fn today() -> i64 {
 }
 
 /// `#N` or `owner/repo#N`.
-fn is_issue_ref(s: &str) -> bool {
+pub(crate) fn is_issue_ref(s: &str) -> bool {
     let Some((repo, n)) = s.rsplit_once('#') else { return false };
     let num_ok = !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit());
     let repo_ok = repo.is_empty()

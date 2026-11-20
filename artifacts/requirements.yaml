@@ -5742,3 +5742,37 @@ artifacts:
         target: FIND-002
       - type: traces-to
         target: G-5
+
+  - id: REQ-SUPPLY-LOCKFILE-001
+    type: sw-req
+    title: Every committed Cargo.lock is audited for RustSec vulnerabilities, with expiring per-advisory exceptions
+    status: implemented
+    description: "Raised by gale#534. supply-chain.yml ran cargo-deny once, over the root package's lock file; the other 44 committed Cargo.lock files were never audited, and drivers/gustos-hostrun/Cargo.lock carried 19 RustSec vulnerabilities (wasmtime 42.0.2 and the zstd chain) under a green check. SHALL: every path `git ls-files` lists as Cargo.lock is audited against the RustSec advisory database on every PR (`cargo xtask check lockfile-audit`, run in supply-chain.yml), and the output states the denominator (audited N of N). A vulnerability fails unless tools/xtask/lockfile-audit.toml carries an exception for exactly that (lock file, advisory id), with an issue reference and an expiry at most 90 days out; wildcards are not accepted. An expired, malformed, duplicated or STALE exception (the advisory no longer appears in that lock, or the lock is no longer committed) fails, so the ledger can only shrink. The gate REFUSES (exit 3, never a pass) when no lock file is enumerated, when the audit tool is missing, when the advisory database cannot be read or is empty, when the tool's exit code and its parsed JSON disagree, or when the tool applied an ignore list or severity threshold of its own. Unmaintained and unsound advisories are reported per lock and in total, and do not fail. Kill criterion: a committed lock file with an unexcepted RustSec vulnerability merges, or an exception outlives the advisory it names."
+    tags: [supply-chain, rustsec, ci, gate, gale#534]
+    fields:
+      priority: must
+      req-type: constraint
+      verification-criteria: "`cargo xtask check lockfile-audit --self-test` passes in supply-chain.yml on every PR; its tool-backed plants fail on a lock file pinning smallvec 1.6.0 (RUSTSEC-2021-0003), on an expired exception and on a stale exception, refuse on a repository with no committed Cargo.lock, a missing tool and an unreadable advisory database, and pass on the same vulnerable lock with a valid exception and on a clean lock. `cargo xtask check lockfile-audit` passes on main, auditing every committed lock file."
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-20T12:00:00Z
+
+  - id: VER-SUPPLY-LOCKFILE-001
+    type: sw-verification
+    title: "Every committed Cargo.lock is audited, and the audit can fail (cargo xtask check lockfile-audit)"
+    status: implemented
+    description: "tools/xtask/src/gates/lockfile_audit.rs, run by supply-chain.yml after the existing cargo-deny step. Enumeration is `git ls-files`, not a glob: 45 lock files at gale#534. Each is audited with cargo-audit (`--json -f <lock>`, pinned 0.22.2 through the same taiki-e/install-action pin as cargo-deny), because cargo-deny needs a manifest and cargo metadata per crate while cargo-audit reads the lock file alone. The JSON is parsed in Rust and must agree with the exit code. Negative controls (`--self-test`, scratch git repositories built at test time, so no fixture is a committed Cargo.lock): (a) smallvec 1.6.0 with no exception fails naming RUSTSEC-2021-0003; (b) an exception that expired yesterday fails; (c) an exception against a clean lock fails as stale; (d) a repository with no committed Cargo.lock refuses; a missing tool and an unreadable database refuse; the same vulnerable lock with a valid exception passes, and so does a clean lock. Hermetic checks (interpreting disagreeing reports, ledger parsing, cap, duplicate, wildcard) also run under `cargo test`. Result at the lane tip: 45 of 45 audited; only drivers/gustos-hostrun has vulnerabilities (19), carried as exceptions naming gale#534 and expiring 2026-12-20. The wasmtime bump makes them stale, and the gate then forces their removal. Blind spot: a lock file is audited as committed; a crate built without its lock resolves versions this gate never sees."
+    tags: [supply-chain, rustsec, ci, gate, verification, gale#534]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-SUPPLY-LOCKFILE-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-20T12:00:00Z
