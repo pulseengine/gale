@@ -459,6 +459,7 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
     let good_a = action_text(URL_A, SHA_A, "1.17.0");
     let pass = |v: &Verdict| matches!(v, Verdict::Pass(_));
     let fail = |v: &Verdict| matches!(v, Verdict::Fail(_));
+    let fails_with = |v: &Verdict, needle: &str| matches!(v, Verdict::Fail(l) if l.iter().any(|x| x.contains(needle)));
     let pj = pinned_job();
     let iv = install_and_verify();
     let after_pin = |run: &str| format!("{iv}      - run: |\n          {run}\n");
@@ -488,8 +489,11 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
     }
     let late_verify = format!("      - uses: ./gale/.github/actions/setup-renode\n      - run: echo between\n{}",
         iv.replacen("      - uses: ./gale/.github/actions/setup-renode\n", "", 1));
-    ck("a verify step that is not IMMEDIATELY after the install fails",
-       fail(&check(&good_m, &good_a, &wf(&format!("{late_verify}      - run: renode-test x.robot\n")))));
+    ck("a verify step that is not IMMEDIATELY after the install fails, for that reason",
+       fails_with(&check(&good_m, &good_a, &wf(&format!("{late_verify}      - run: renode-test x.robot\n"))), "is not immediately followed"));
+    let fake = iv.replacen("./gale/.github/actions/setup-renode", "actions/checkout@v4", 1);
+    ck("a verify step after actions/checkout (no pinned install) fails",
+       fail(&check(&good_m, &good_a, &wf(&format!("{fake}      - run: renode-test x.robot\n")))));
 
     // D2: ways to run a Renode other than the pin.
     ck("a path-qualified /opt/renode/renode-test after the install fails",
