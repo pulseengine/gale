@@ -18,9 +18,13 @@ git_override(
 
 renode = use_extension("@rules_renode//renode:extensions.bzl", "renode")
 use_repo(renode, "renode_toolchains")
+# Renode 1.17.0, the same asset (url AND sha256) that .github/actions/setup-renode
+# installs for the container workflows; `cargo xtask check renode-pin` fails if the
+# two drift. 1.17 dropped the "-dotnet" infix; the tarball still unpacks to one
+# renode_<ver>-portable/ dir, which is what rules_renode's "renode_*/" glob expects.
 renode.download_portable(
     name = "renode_toolchain",
-    sha256 = "73fe07a8fd0849a9f30c02bd7ce7c7dd67d11070365f41ddd6145a477ebdea65",
-    url = "https://builds.renode.io/renode-1.15.3+20250128git85f0aac72.linux-portable-dotnet.tar.gz",
+    sha256 = "4ba7c68b59e2447f188ef4b4b112fcccd2802582c460beedceb63b84e5605a5f",
+    url = "https://github.com/renode/renode/releases/download/v1.17.0/renode-1.17.0.linux-portable.tar.gz",
 )
 register_toolchains("@renode_toolchains//:all")

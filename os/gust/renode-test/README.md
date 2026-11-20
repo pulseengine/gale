@@ -42,7 +42,8 @@ target runs the control loop. This is the honest device-fit constraint.
   (synth 0.15.0 control_step): `gust_control` = **0x1605A4 = 1,442,724 instr** over
   RunFor 2 s, no fault, SP at the 64 KB top (was 1,453,238 on synth 0.12.0 — the
   three applicable levers; local-promotion is gated by synth#474 on this function);
-  the kernel ≈ 200 M instr on the 8 KB class.
+  the kernel ≈ 200 M instr on the 8 KB class (that was the 2 s budget on 1.16;
+  see the 1.17 bullet below).
 - **CI-first:** the hermetic Renode is the **linux** portable, so these run in
   CI / on Linux, not on a macOS host (the macOS targets are `incompatible` and
   skip). First green is in CI.
@@ -50,7 +51,16 @@ target runs the control loop. This is the honest device-fit constraint.
   (== C/wasmtime) is gated by the **qemu** run (exit-code on match) and
   `gale_decider_diff`; Renode's unique contribution here is the **real-M3-model
   deterministic cycle number**. They are complementary gates, not redundant.
-- **Semihosting-line assertion — confirmed NOT capturable on the macOS portable.**
+- **Renode 1.17.0 (2026-11-20) changes the semihosting picture.** 1.17 implements
+  semihosting SYS_WRITE and SYS_EXIT, and a `SemihostingUart` now registers on a
+  `CPU.SemihostingHandler` (the `.repl`s here use that form; the 1.16 form fails to
+  load with E05). `gust-renode` and `gust-f100-renode` therefore assert the kernel's
+  boot banner, its 5000-round completion line and a successful exit, on the macOS
+  portable as well. The 0x0BEBC200 (200,000,000) they used to log was the 2 s
+  budget, because 1.16 ignored the exit; on 1.17 the kernel exits after 0xCAE27
+  (831,015) instructions. `gust_control`'s correctness line is also capturable on
+  1.17 but is not asserted yet. The bullet below records the 1.16 behaviour.
+- **Semihosting-line assertion — confirmed NOT capturable on the macOS portable (Renode 1.16).**
   A `Wait For Line On Uart` on the `SemihostingUart` would let Renode assert the
   heartbeat *content* directly (not just no-fault). The macOS-portable
   `CreateFileBackend` on `cpu.uartSemihosting` captures **nothing** headless

@@ -12,13 +12,20 @@ Dissolved gust boots and runs on Cortex-M3 8K
     Execute Command           machine LoadPlatformDescription @${REPL}
     Execute Command           sysbus LoadELF @${ELF}
     # The shrunk .bss (4256 B) loads into the 8 KB SRAM; SP re-based to the 8 KB top.
-    Execute Command           emulation RunFor "2"
+    # Content, not a budget. Renode 1.17 implements semihosting SYS_WRITE and
+    # SYS_EXIT, so the kernel's heartbeat is capturable and its debug::exit stops
+    # the machine: on 1.17 the kernel exits after 0xCAE27 (831,015) instructions.
+    # Under 1.16 neither worked: Renode ignored the exit and the core kept
+    # executing until the 2 s budget ran out. The 0x0BEBC200 (200,000,000) this
+    # test used to log was that budget (2 s x 100 MIPS), not the kernel, and a
+    # floor under it could not tell a finished scheduler from a busy one. Now the gate asserts the boot banner,
+    # the 5000-round completion line, and a SUCCESS exit (EXIT_FAILURE reports a
+    # different ADP reason and fails the log wait).
+    Create Log Tester         10
+    Create Terminal Tester    sysbus.cpu.semihosting.uartSemihosting    defaultPauseEmulation=true
+    Wait For Line On Uart     gust boot: kiln-async scheduler on Cortex-M3    timeout=5
+    Wait For Line On Uart     gust: 5000 poll rounds, scheduler stable    timeout=5
+    Wait For Log Entry        Program exited with reason ADP_Stopped_ApplicationExit    timeout=5
     ${instr}=                 Execute Command    sysbus.cpu ExecutedInstructions
-    # Booting + executing the scheduler loop without an early fault is the confirmation;
-    # a bad image faults on cycle 1. (Locally: ~200M instr, no fault.) The count is the
-    # deterministic fuel->cycles WCET seed (M3 has no cache -> instr ~= cycles).
+    # The count is the deterministic fuel->cycles WCET seed (M3 has no cache -> instr ~= cycles).
     Log To Console            \n[gust] dissolved on Renode Cortex-M3 + 8 KB SRAM — executed instructions: ${instr}
-    # A floor, so a dead image fails: on 2026-11-12 a mis-linked gust_wasm.elf
-    # faulted after 8 instructions and this test still passed. The scheduler loop runs the whole 2 s budget (0x0BEBC200 = 200,000,000 on main).
-    ${n}=                     Evaluate    int("""${instr}""".strip(), 16)
-    Should Be True            ${n} >= 100000000    executed only ${n} instructions (floor 100000000): the image faulted or halted early
