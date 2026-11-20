@@ -57,6 +57,11 @@ for _d in "$HERE"/*-thin; do [ -d "$_d" ] && DRIVERS+=("$(basename "$_d")"); don
 printf '%-12s | %-22s | %-22s\n' "driver" "ARM cortex-m3" "RISC-V rv32imc"
 printf '%-12s-+-%-22s-+-%-22s\n' "------------" "----------------------" "----------------------"
 
+# Per-run object dir. Fixed /tmp/xa-*.o paths let two runs overwrite each other's
+# objects and let a later run read an earlier run's object.
+OUT="$(mktemp -d "${TMPDIR:-/tmp}/xarch.XXXXXX")"
+trap 'rm -rf "$OUT"' EXIT
+
 fail=""
 for d in "${DRIVERS[@]}"; do
     [ -d "$HERE/$d" ] || continue
@@ -66,15 +71,15 @@ for d in "${DRIVERS[@]}"; do
 
     # same input wasm, two backends
     "$SYNTH" compile "$w" --target cortex-m3 --all-exports --relocatable \
-             -o "/tmp/xa-$d.o" >/dev/null 2>&1 || true
+             -o "$OUT/xa-$d.o" >/dev/null 2>&1 || true
     rv_log="$("$SYNTH" compile "$w" -b riscv --target esp32c3 --all-exports --relocatable \
-             -o "/tmp/xr-$d.o" 2>&1 || true)"
+             -o "$OUT/xr-$d.o" 2>&1 || true)"
 
-    a_t=$("$NM" "/tmp/xa-$d.o" 2>/dev/null | grep -c ' T ' || true)
-    a_u=$("$NM" "/tmp/xa-$d.o" 2>/dev/null | grep -c ' U ' || true)
-    a_b=$("$ARM_SIZE" "/tmp/xa-$d.o" 2>/dev/null | tail -1 | awk '{print $1}')
-    r_t=$("$NM" "/tmp/xr-$d.o" 2>/dev/null | grep -c ' T ' || true)
-    r_u=$("$NM" "/tmp/xr-$d.o" 2>/dev/null | grep -c ' U ' || true)
+    a_t=$("$NM" "$OUT/xa-$d.o" 2>/dev/null | grep -c ' T ' || true)
+    a_u=$("$NM" "$OUT/xa-$d.o" 2>/dev/null | grep -c ' U ' || true)
+    a_b=$("$ARM_SIZE" "$OUT/xa-$d.o" 2>/dev/null | tail -1 | awk '{print $1}')
+    r_t=$("$NM" "$OUT/xr-$d.o" 2>/dev/null | grep -c ' T ' || true)
+    r_u=$("$NM" "$OUT/xr-$d.o" 2>/dev/null | grep -c ' U ' || true)
     # `|| true`: no match means nothing was skipped, which is the good case, but grep
     # exits 1 on no-match and `set -e` would treat the best outcome as a failure.
     skip=$(printf '%s' "$rv_log" | grep -oE "[0-9]+ of [0-9]+ functions were skipped" | head -1 || true)
