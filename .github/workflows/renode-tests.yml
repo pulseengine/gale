@@ -156,11 +156,14 @@ jobs:
             -DZEPHYR_EXTRA_MODULES="${GALE_ROOT}" \
             -DOVERLAY_CONFIG="${GALE_ROOT}/zephyr/gale_overlay.conf"
 
-      - name: Install Robot Framework
-        run: |
-          # The Zephyr CI Docker image (ci:v0.29.0) includes Renode pre-installed
-          # at /opt/renode (already in PATH). Just install Robot Framework.
-          pip3 install robotframework
+      # Renode 1.17.0 pinned by sha256, plus the robot deps it declares
+      # (robotframework==6.1, not whatever pip resolves today). The ci-base image
+      # bundles 1.16.0 at /opt/renode; this goes first on PATH. Unpacked on /mnt:
+      # the image already fills most of the root disk (gale#73).
+      - name: Install pinned Renode
+        uses: ./gale/.github/actions/setup-renode
+        with:
+          prefix: /mnt
 
       - name: Run Renode test
         env:

@@ -17,6 +17,7 @@ pub mod peripheral_addresses;
 pub mod pin_agreement;
 pub mod proof_completeness;
 pub mod providers;
+pub mod renode_pin;
 pub mod renode_targets;
 pub mod retry_loops;
 pub mod target_reference;
@@ -119,6 +120,12 @@ pub const GATES: &[Gate] = &[
         about: "every gust:os provider still compiles against the current WIT",
         run: providers::run,
         self_test: providers::self_test,
+    },
+    Gate {
+        name: renode_pin::NAME,
+        about: "every Renode gale runs is the one pinned Renode (module, action, workflows agree)",
+        run: renode_pin::run,
+        self_test: renode_pin::self_test,
     },
     Gate {
         name: renode_targets::NAME,

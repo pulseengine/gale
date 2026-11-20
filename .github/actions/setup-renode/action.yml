@@ -1,0 +1,45 @@
+name: setup-renode
+description: >
+  Install gale's pinned Renode (linux x86_64 portable) and the robot dependencies it
+  declares, and put it first on PATH. Every workflow that runs renode or renode-test
+  uses this instead of whatever Renode the container image happens to bundle
+  (ci-base:v0.29.0 ships 1.16.0), so CI, the Bazel module and the local install run
+  the same simulator. The url and sha256 below must equal os/gust/renode-test/MODULE.bazel's
+  download_portable pin; `cargo xtask check renode-pin` fails when they drift.
+
+inputs:
+  prefix:
+    description: Directory to unpack into (renode-<version>/ is created under it). Use /mnt where the root disk is short.
+    required: false
+    default: /opt
+
+runs:
+  using: composite
+  steps:
+    - name: Install Renode 1.17.0 (pinned by sha256)
+      shell: bash
+      env:
+        RENODE_VERSION: "1.17.0"
+        RENODE_URL: "https://github.com/renode/renode/releases/download/v1.17.0/renode-1.17.0.linux-portable.tar.gz"
+        RENODE_SHA256: "4ba7c68b59e2447f188ef4b4b112fcccd2802582c460beedceb63b84e5605a5f"
+        PREFIX: ${{ inputs.prefix }}
+      run: |
+        set -euo pipefail
+        dir="$PREFIX/renode-$RENODE_VERSION"
+        tgz="$PREFIX/renode-$RENODE_VERSION.tar.gz"
+        mkdir -p "$dir"
+        curl -sSfL --retry 3 --retry-delay 5 -o "$tgz" "$RENODE_URL"
+        echo "$RENODE_SHA256  $tgz" | sha256sum -c -
+        tar xzf "$tgz" -C "$dir" --strip-components=1
+        rm -f "$tgz"
+        # The version the binary reports, not the one we asked for: a wrong asset
+        # behind the right sha256 is impossible, but a PATH that still resolves the
+        # container's bundled renode is not.
+        got="$("$dir/renode" --version 2>&1 || true)"
+        echo "$got"
+        case "$got" in
+          *"v$RENODE_VERSION"*) ;;
+          *) echo "::error::installed renode does not report v$RENODE_VERSION"; exit 1 ;;
+        esac
+        pip3 install --no-cache-dir -r "$dir/tests/requirements.txt"
+        echo "$dir" >> "$GITHUB_PATH"

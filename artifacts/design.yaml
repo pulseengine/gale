@@ -3651,7 +3651,7 @@ artifacts:
     tags: [test-target, renode, cortex-m4f, stm32f4]
     fields:
       platform: stm32f4_disco
-      emulator: Renode 1.16.0 (renode-test via Robot Framework)
+      emulator: Renode 1.17.0 (renode-test via Robot Framework; pinned by .github/actions/setup-renode)
       renode-platform: platforms/boards/stm32f4_discovery.repl
       architecture: ARMv7E-M (Cortex-M4F, with FPU)
       rust-target: thumbv7em-none-eabihf
@@ -3679,7 +3679,7 @@ artifacts:
     tags: [test-target, renode, cortex-m33, stm32l552]
     fields:
       platform: nucleo_l552ze_q
-      emulator: Renode 1.16.0 (renode-test via Robot Framework)
+      emulator: Renode 1.17.0 (renode-test via Robot Framework; pinned by .github/actions/setup-renode)
       renode-platform: tests/platforms/nucleo_l552ze_q/nucleo_l552ze_q_ns.repl
       architecture: ARMv8-M Mainline (Cortex-M33, with FPU + TrustZone)
       rust-target: thumbv8m.main-none-eabihf
@@ -3705,7 +3705,7 @@ artifacts:
     tags: [test-target, renode, cortex-r5, zynqmp]
     fields:
       platform: qemu_cortex_r5
-      emulator: Renode 1.16.0 (renode-test via Robot Framework)
+      emulator: Renode 1.17.0 (renode-test via Robot Framework; pinned by .github/actions/setup-renode)
       renode-platform: scripts/single-node/zynqmp_zephyr.resc
       architecture: ARMv7-R (Cortex-R5, with FPU)
       rust-target: armv7r-none-eabihf

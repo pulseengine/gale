@@ -141,6 +141,16 @@ jobs:
       - name: Every defined target is gated, and its image has a source bin
         run: cargo xtask check renode-targets
 
+      # gale ran three Renodes at once (module 1.15.3, container 1.16.0, local
+      # 1.16.1) and nothing said so. The module and .github/actions/setup-renode
+      # must pin the same asset and sha256, and every job that runs renode must
+      # install that pin first.
+      - name: Negative control — a drifted Renode pin must be caught
+        run: cargo xtask check renode-pin --self-test
+
+      - name: One Renode everywhere (module, action, workflows agree)
+        run: cargo xtask check renode-pin
+
       # binaries.toml records why each committed binary exists and which file
       # reads it. An unlisted binary, or a consumer that stopped naming its
       # binary, is red: a binary nothing reads is deleted, not kept.

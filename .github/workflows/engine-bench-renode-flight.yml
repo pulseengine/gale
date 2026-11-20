@@ -159,6 +159,11 @@ jobs:
               -DOVERLAY_CONFIG="$GALE_ROOT/benches/flight_control/prj-gale.conf" \
               -DENGINE_BENCH_SWEEP=long
 
+      # Renode 1.17.0 pinned by sha256 (.github/actions/setup-renode), first on
+      # PATH -- not the 1.16.0 the ci-base container bundles at /opt/renode.
+      - name: Install pinned Renode
+        uses: ./gale/.github/actions/setup-renode
+
       - name: Run baseline in Renode
         env:
           ELF:           /tmp/flight-baseline-long/zephyr/zephyr.elf
@@ -240,7 +245,7 @@ jobs:
             echo "sdk_dir:               ${ZEPHYR_SDK_INSTALL_DIR:-unknown}"
             echo "---"
             echo "# Renode"
-            echo "renode_1.16.0:         $(renode --version 2>&1 | head -1)"
+            echo "renode_pinned:         $(renode --version 2>&1 | head -1)"
             echo "---"
             echo "# West manifest (Zephyr fork + modules at landed sha)"
             ( cd "${GITHUB_WORKSPACE}/zephyr-workspace" \
