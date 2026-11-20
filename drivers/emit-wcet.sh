@@ -96,7 +96,7 @@ else
 fi
 
 echo "## 2. i2c-thin driver (rebuilt from source)"
-( cd "$HERE/i2c-thin" && cargo build --release --target wasm32-unknown-unknown --quiet )
+( cd "$HERE/i2c-thin" && cargo build --locked --release --target wasm32-unknown-unknown --quiet )
 "$LOOM" optimize "$HERE/i2c-thin/target/wasm32-unknown-unknown/release/gust_i2c_thin.wasm" \
   --passes inline -o "$TMP/i2c.opt.wasm" >/dev/null
 # --embedder-data-init / --embedder-global-init: from synth 0.60.0 the ARM relocatable path REFUSES a

@@ -26,4 +26,4 @@ rustflags = ["-Zsanitizer=thread"]
 # workspace would force all of them into a members/exclude list. The alias keeps
 # the conventional `cargo xtask ...` spelling without that restructuring.
 [alias]
-xtask = "run --quiet --manifest-path tools/xtask/Cargo.toml --"
+xtask = "run --locked --quiet --manifest-path tools/xtask/Cargo.toml --"
