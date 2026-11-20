@@ -1,7 +1,10 @@
-# Supply-chain gate: cargo-deny over advisories, bans, licenses and sources.
+# Supply-chain gate: cargo-deny over advisories, bans, licenses and sources,
+# and a RustSec audit of every committed Cargo.lock.
 # Org standard (2026-11): every Rust repo runs this and it fails the PR.
 # deny.toml at the repo root carries the agreed license allowlist and any
-# reasoned advisory ignores. Scope: the root workspace's Cargo.lock.
+# reasoned advisory ignores. cargo-deny's scope: the root package's Cargo.lock.
+# lockfile-audit's scope: every Cargo.lock git tracks (45 at gale#534), with
+# per-(lock, advisory) exceptions in tools/xtask/lockfile-audit.toml.
 name: Supply Chain (cargo-deny)
 
 on:
@@ -31,3 +34,17 @@ jobs:
           tool: cargo-deny@0.20.2
       - name: Run cargo-deny
         run: cargo deny check advisories bans licenses sources
+
+      # gale#534: the step above audits ONE lock file. 44 nested ones were never
+      # audited, and drivers/gustos-hostrun carried 19 RustSec vulnerabilities
+      # under a green check. cargo-audit reads a lock file without a workspace,
+      # which cargo-deny cannot. A missing tool or an unreadable advisory
+      # database is exit 3 (refused), never a pass.
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-audit@0.22.2
+      - name: Negative control — a vulnerable lock, an expired or stale exception, and no lock files must be caught
+        run: cargo xtask check lockfile-audit --self-test
+      - name: Audit every committed Cargo.lock
+        run: cargo xtask check lockfile-audit

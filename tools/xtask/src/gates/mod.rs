@@ -9,6 +9,7 @@ pub mod criticality_axis;
 pub mod data_overlap;
 pub mod graph_env;
 pub mod job_timeouts;
+pub mod lockfile_audit;
 pub mod moved_paths;
 pub mod object_freshness;
 pub mod peripheral_addresses;
@@ -75,6 +76,12 @@ pub const GATES: &[Gate] = &[
         about: "every CI job declares a timeout-minutes",
         run: job_timeouts::run,
         self_test: job_timeouts::self_test,
+    },
+    Gate {
+        name: lockfile_audit::NAME,
+        about: "every committed Cargo.lock is audited for RustSec vulnerabilities (gale#534)",
+        run: lockfile_audit::run,
+        self_test: lockfile_audit::self_test,
     },
     Gate {
         name: object_freshness::NAME,

@@ -101,19 +101,19 @@ pub enum Json {
 }
 
 impl Json {
-    fn get(&self, k: &str) -> Option<&Json> {
+    pub(crate) fn get(&self, k: &str) -> Option<&Json> {
         match self {
             Json::Obj(v) => v.iter().find(|(kk, _)| kk == k).map(|(_, x)| x),
             _ => None,
         }
     }
-    fn str(&self) -> Option<&str> {
+    pub(crate) fn str(&self) -> Option<&str> {
         match self {
             Json::Str(s) => Some(s),
             _ => None,
         }
     }
-    fn arr(&self) -> &[Json] {
+    pub(crate) fn arr(&self) -> &[Json] {
         match self {
             Json::Arr(v) => v,
             _ => &[],
