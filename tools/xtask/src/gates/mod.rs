@@ -10,6 +10,7 @@ pub mod data_overlap;
 pub mod graph_env;
 pub mod job_timeouts;
 pub mod lockfile_audit;
+pub mod lockfile_census;
 pub mod moved_paths;
 pub mod object_freshness;
 pub mod peripheral_addresses;
@@ -82,6 +83,12 @@ pub const GATES: &[Gate] = &[
         about: "every committed Cargo.lock is audited for RustSec vulnerabilities (gale#534)",
         run: lockfile_audit::run,
         self_test: lockfile_audit::self_test,
+    },
+    Gate {
+        name: lockfile_census::NAME,
+        about: "every Cargo.toml and MODULE.bazel has a committed, current lock, or a listed reason (gale#534)",
+        run: lockfile_census::run,
+        self_test: lockfile_census::self_test,
     },
     Gate {
         name: object_freshness::NAME,

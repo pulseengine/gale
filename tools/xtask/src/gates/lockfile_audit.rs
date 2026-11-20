@@ -39,7 +39,9 @@
 //!
 //! Blind spot, stated: a lock file is audited as committed. A crate that builds
 //! without its lock (a library, or `cargo install` without `--locked`) resolves
-//! newer versions this gate never sees.
+//! newer versions this gate never sees. lockfile-census (the sibling gate)
+//! closes it for the crates CI builds: every manifest has a committed lock, and
+//! every lock is proven current with `cargo metadata --locked`.
 
 use super::object_freshness::{is_issue_ref, parse_day, today, ymd};
 use super::target_reference::{parse_json, Json};

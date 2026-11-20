@@ -1,0 +1,53 @@
+# lockfile-census: manifests that have no committed lock, on purpose
+# (cargo xtask check lockfile-census, gale#534).
+#
+# Every tracked Cargo.toml must be covered by a committed Cargo.lock (its own,
+# or that of the workspace root that claims it), and every tracked MODULE.bazel
+# needs a committed MODULE.bazel.lock beside it -- or be listed here.
+#
+# One [[lockfree]] per manifest. No wildcards. Every field is required:
+#   manifest  the tracked path, exactly as `git ls-files` prints it
+#   issue     #N or owner/repo#N -- the issue that owns the decision
+#   reason    why it ships without a lock, and why nothing CI runs builds it
+#
+# The gate FAILS on a listing that is malformed, duplicated, or STALE (the
+# manifest gained a lock, or is no longer tracked): the ledger only shrinks.
+#
+# Decided 2026-11-20 on evidence: none of the six crates below is built by any
+# workflow in .github/, nor by any script a workflow runs (checked against every
+# `bash *.sh` a workflow invokes, transitively, and the xtask gates).
+
+[[lockfree]]
+manifest = "ports/arch/armv7m/Cargo.toml"
+issue = "#534"
+reason = "A dependency-free library linked only as a path dependency of os/gust, whose committed os/gust/Cargo.lock resolves it. Never built on its own."
+
+[[lockfree]]
+manifest = "ports/host/baremetal/Cargo.toml"
+issue = "#534"
+reason = "A dependency-free library linked only as a path dependency of os/gust, whose committed os/gust/Cargo.lock resolves it. Never built on its own."
+
+[[lockfree]]
+manifest = "docs/research/sem-full-rust-poc/Cargo.toml"
+issue = "#534"
+reason = "A research proof of concept under docs/. No workflow or CI-run script builds it; dependabot watches its manifest only."
+
+[[lockfree]]
+manifest = "crates/gale-app-demo/Cargo.toml"
+issue = "#534"
+reason = "Built only by the local regeneration scripts os/gust/build-fused.sh, crates/gale-app-demo/dissolve.sh and run.sh, none of which CI runs. Its output ships pre-built as os/gust/wasm-kernel/fused.wasm and fused.o (fused.o is recorded in binaries.toml)."
+
+[[lockfree]]
+manifest = "crates/gale-kiln/Cargo.toml"
+issue = "#534"
+reason = "Built only by the local regeneration scripts os/gust/build-fused.sh, crates/gale-app-demo/dissolve.sh and crates/gale-kiln/run.sh, none of which CI runs. Its output ships pre-built as os/gust/wasm-kernel/fused.wasm and fused.o (fused.o is recorded in binaries.toml)."
+
+[[lockfree]]
+manifest = "benches/engine_control/wasm-component/Cargo.toml"
+issue = "#534"
+reason = "Built only by its local benches/engine_control/wasm-component/run.sh, which CI does not run. os/gust/browser include!s one source file (src/tables.rs) from it; that is a source include, not a build of this crate."
+
+[[lockfree]]
+manifest = "os/gust/renode-test/MODULE.bazel"
+issue = "#534"
+reason = "Deliberately lock-free (.gitignore): Linux CI must not be pinned to a module graph resolved on macOS. Its Bazel invocations in gust-renode.yml therefore do not pass --lockfile_mode=error."
