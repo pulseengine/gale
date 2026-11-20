@@ -82,7 +82,7 @@ jobs:
 
       # After regen, so the golden/parity tests read the JSON the models produce.
       - name: Generator unit tests (golden emit + keystone parity)
-        run: cargo test --manifest-path tools/gust-target-gen/Cargo.toml
+        run: cargo test --locked --manifest-path tools/gust-target-gen/Cargo.toml
 
       - name: Negative control — target-reference rejects a shifted base, a missing peripheral, a missing table
         run: cargo xtask check target-reference --self-test

@@ -65,7 +65,7 @@ trap 'rm -rf "$OUT"' EXIT
 fail=""
 for d in "${DRIVERS[@]}"; do
     [ -d "$HERE/$d" ] || continue
-    ( cd "$HERE/$d" && cargo build --release --target wasm32-unknown-unknown >/dev/null 2>&1 )
+    ( cd "$HERE/$d" && cargo build --locked --release --target wasm32-unknown-unknown >/dev/null 2>&1 )
     w="$(find "$HERE/$d/target/wasm32-unknown-unknown/release" -maxdepth 1 -name '*.wasm' | head -1)"
     [ -n "$w" ] || { echo "$d: no wasm built" >&2; fail="y"; continue; }
 
