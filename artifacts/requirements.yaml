@@ -5702,6 +5702,8 @@ artifacts:
         target: SYSREQ-COV-001
       - type: related-to
         target: REQ-HONESTY-TCB-001
+      - type: related-to
+        target: REQ-HONESTY-LEDGER-001
     provenance:
       created-by: ai-assisted
       model: claude-opus-5-5

@@ -69,7 +69,7 @@ artifacts:
     title: "QM tenant -> ASIL-D supervisor on WB55: all three interference classes OPEN, on the known-open ledger"
     status: proposed
     release: v0.11.0
-    description: "The argument that matters, and today it is not made. Recorded so the gap is checkable rather than absent (gale#437 decision (b)). SPATIAL open: tenant code runs privileged, so the MPU boundary is fault-containment, not authority-containment; closing it is REQ-OS-UNPRIV-001, blocked on synth#1145 (--native-pointer-abi is memory-0-only). TEMPORAL open: no machine-checked bound on the tenant's effect on the supervisor's deadline until REQ-OS-SCHED-001 / REQ-OS-WCET-001. INFORMATION open: the canonical-ABI copy is the intended construction, but meld's shared-memory fusion inlines it away (REQ-OS-FFI-COMM-001), and no per-failure-mode disposition exists yet. Each leg is on criticality_axis.rs KNOWN_OPEN; the gate fails when a leg closes and is not removed from that ledger."
+    description: "The argument that matters, and today it is not made. Recorded so the gap is checkable rather than absent (gale#437 decision (b)). SPATIAL open: tenant code runs privileged, so the MPU boundary is fault-containment, not authority-containment; closing it is REQ-OS-UNPRIV-001, blocked on synth#1145 (--native-pointer-abi is memory-0-only). TEMPORAL open: no machine-checked bound on the tenant's effect on the supervisor's deadline until REQ-OS-SCHED-001 / REQ-OS-WCET-001. INFORMATION open: the canonical-ABI copy is the intended construction, but meld's shared-memory fusion inlines it away (REQ-OS-FFI-COMM-001), and no per-failure-mode disposition exists yet. Each leg is on criticality_axis.rs KNOWN_OPEN; the gate fails when a leg closes and is not removed from that ledger. v0.11.0 PLAN (2026-11-19, docs/releases/v0.11.0-plan.md): the SPATIAL leg may close only for tenant -> supervisor on the STM32WB55, and only once the criticality-axis gate accepts the closure against a linked verification whose named row is PASS in the published silicon matrix at the same commit (VER-OS-CRITICALITY-EVIDENCE-001). TEMPORAL and INFORMATION stay open in v0.11.0."
     tags: [gust, criticality, ffi]
     fields:
       from-element: SAC-GUST-TENANT-001
@@ -92,6 +92,8 @@ artifacts:
         target: SAC-GUST-TENANT-001
       - type: related-to
         target: SAC-GUST-SUP-001
+      - type: related-to
+        target: VER-OS-CRITICALITY-EVIDENCE-001
   - id: FFI-WB55-002
     type: ffi-argument
     title: "ASIL-D supervisor -> QM tenant on WB55: accepted — FFI protects the higher-criticality element, and this direction has none to protect"

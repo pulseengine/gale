@@ -1,0 +1,434 @@
+# v0.11.0 "Behind the Line": release-plan scaffolding.
+# Plan: docs/releases/v0.11.0-plan.md. Every item here is proposed; nothing is implemented.
+# North Star objectives are named in each description until rivet ships a `serves:` field.
+artifacts:
+
+  - id: REQ-REL-THESIS-V0110-001
+    type: sw-req
+    title: One image built from one signed component by digest runs its tenant unprivileged on a board (T1)
+    status: proposed
+    release: v0.11.0
+    description: "Serves O1 (precondition; gale-local proxy, not the O1 indicator). T1, the single item that gates the v0.11.0 thesis (docs/releases/v0.11.0-plan.md): one image, built in the run from one signed component pinned by digest, runs its tenant unprivileged on a physical board; both escapes fault and both control arms show the escape landing. If T1 is not green there is no v0.11.0 tag, whatever else is green. Demonstrator scope: one tenant, tenant-to-supervisor direction only, at most 2 SoCs. No production, multi-tenant or certification claim. Time box: the 2026.12 varve layer. Kill criterion: an escape lands in the protected arm on any board and is not fixed by the 2026.12 layer."
+    tags: [release, v0.11.0, thesis, gust, silicon, provenance, isolation]
+    fields:
+      priority: must
+      req-type: functional
+      verification-criteria: On WB55RG, one image built in the run from a signature-verified component pinned by digest returns PASS on the protected arm (both escapes fault, target values read back unchanged) and both control arms built from the same digest show the escape landing. A run without the component is REFUSED.
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-UNPRIV-001
+      - type: related-to
+        target: REQ-OS-MPUSHIP-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:29Z
+
+  - id: REQ-PIN-V0110-001
+    type: sw-req
+    title: The toolchain pin moves once, passes the four pre-flight checks, and is frozen until the tag
+    status: proposed
+    release: v0.11.0
+    description: "Serves O1 (precondition; gale-local proxy, not the O1 indicator). Item 0 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md), on the critical path and not a bet. gale pins covalent 2026.11.1 (synth 0.89.0, meld 0.66.0, loom 1.4.1). The unprivileged-tenant seam needs synth 0.89.1 or later (synth#1622, closed) and a loom that accepts (pagesize 1) memories (loom#457, open on 2026-11-19; fallback: dissolve the one image without the loom pass and report the size measured both ways). Recorded on synth 0.89.0 and not re-measured: 52 of 56 functions of the two-domain module dissolve (synth#1145 comment, 2026-10-29). SHALL: the pin moves once, the four pre-flight checks pass on the result, and the pin is then frozen until the v0.11.0 tag; a later layer goes to v0.12.0. Deadline: pin PR open by 2026-11-26; if the candidate fails any check on that date, the unprivileged-tenant bet is re-planned that day. Unverified input: the candidate layer was not installed in the planning pass. Which layer to move to is an open owner decision."
+    tags: [release, v0.11.0, pin, varve, toolchain]
+    fields:
+      priority: must
+      req-type: constraint
+      verification-criteria: "In a scratch varve root on the candidate layer: (1) the two-domain module dissolves with 0 declined functions; (2) every committed object is rebuilt and the object-freshness, data-overlap, graph-env and pin-agreement gates are green; (3) the Renode isolation gate is green on rebuilt fixtures; (4) no composite newly refuses under the synth 0.90 constant-address straddle check. After the move, no pin change before the tag."
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-UNPRIV-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: REQ-OS-SYSCALL-SVC-001
+    type: sw-req
+    title: A tenant reaches gust:os only through one supervisor-call path, adding at most one trusted atom
+    status: proposed
+    release: v0.11.0
+    description: "Serves O1 (precondition; gale-local proxy, not the O1 indicator). Bet 1 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). An unprivileged tenant SHALL reach the gust:os capabilities only through one supervisor-call path, and that path SHALL add at most 1 trusted atom beyond mpu-write. A trusted atom is counted mechanically, as stated in verification-criteria, so a third party can recount it. Kill criterion 1(c): more than 1 added atom at design review by 2026-12-03 stops the work and re-plans the seam. Main risk: the path is new privileged code that no existing proof covers; Verus and Kani cover the region table and the switch state machine, not this path."
+    tags: [release, v0.11.0, gust, os, syscall, svc, tcb, isolation]
+    fields:
+      priority: must
+      req-type: safety
+      verification-criteria: "At design review, before code, by 2026-12-03: the count of trusted atoms the seam adds beyond mpu-write is 0 or 1. A trusted atom is an entry in the undefined-symbol set of the fused supervisor object that native privileged code supplies, plus each hand-written privileged function (assembly or unsafe Rust) on the supervisor-call path."
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-UNPRIV-001
+      - type: related-to
+        target: SAC-GUST-SUP-001
+      - type: related-to
+        target: SAC-GUST-TENANT-001
+      - type: related-to
+        target: REQ-OS-MPUSHIP-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: REQ-SILICON-PROVENANCE-001
+    type: sw-req
+    title: A silicon row that declares a component is built from that signed component by digest, or is refused
+    status: proposed
+    release: v0.11.0
+    description: "Serves O1 (precondition; gale-local proxy, not the O1 indicator). Bet 2 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). SHALL: cargo xtask silicon run accepts --component <ref>@sha256:<digest>, pulls the published component, verifies its signature against the repository's workflow identity, dissolves and links it with the frozen pin, and flashes the result. A row that declares its component is REFUSED without one. Red today: tools/xtask/src/silicon.rs has 0 matches for cosign, OCI, digest or signature. Targets: 1 required row (T1, WB55RG) plus 4 targeted rows (the fused gust:os composite probe on F100, WL55JC1, WB55RG and G474RE). Kill criterion 2(b): by 2026-12-03 the published component cannot be dissolved for WB55 without edits that are not in the component; the bet is then re-scoped to one board's image and the notes say the many-targets claim is false as stated. NOT SHOWN: nothing on the target checks a signature; verification is on the build host before flashing. meld, loom and synth are trusted, not verified."
+    tags: [release, v0.11.0, silicon, provenance, signing, supply-chain]
+    fields:
+      priority: must
+      req-type: constraint
+      verification-criteria: "The xtask self-test, run in CI, refuses before flashing: a component with one byte changed; a valid signature from another identity; a declared row with no component. There is no fallback to a committed object."
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-DELIVERY-001
+      - type: related-to
+        target: DD-OS-DELIVERY-001
+      - type: related-to
+        target: REQ-REL-THESIS-V0110-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: REQ-REL-PRESIGN-001
+    type: sw-req
+    title: The tagged release republishes the digest the silicon run used
+    status: proposed
+    release: v0.11.0
+    description: "Serves O1 (precondition; gale-local proxy, not the O1 indicator). Bet 2 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). The tag is gated on a silicon run of a component signed by a workflow identity, so the digest must exist before the tag. SHALL: a release-candidate version is published and signed through the publish workflow's manual run with a version (workflow_dispatch); T1 runs on that digest; and a check at release time fails unless the tagged release republishes the same digest."
+    tags: [release, v0.11.0, signing, provenance, release-gate]
+    fields:
+      priority: must
+      req-type: constraint
+      verification-criteria: A release-time check fails when the digest of the component published with the tag differs from the release-candidate digest that the T1 silicon run used.
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-SILICON-PROVENANCE-001
+      - type: related-to
+        target: REQ-REL-THESIS-V0110-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: REQ-SILICON-PUBLISH-001
+    type: sw-req
+    title: The silicon matrix is published per commit with image hashes; stale rows, missing rows and bench topology fail the check; skips count as failures
+    status: proposed
+    release: v0.11.0
+    description: "Serves O1 (guard: a skipped hardware run counts as a failure; gale-local, not the O1 indicator). Bet 2 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). SHALL: silicon-matrix.json is published per commit, each row binding a commit, a component digest where declared, and the hash of the flashed image, so an O1 indicator script can read execution on the shipped ELF per target. Baseline at e85b7620, shape only: 93 rows over 6 boards and 21 bins; 34 NOT-YET by declaration; 59 runnable. 59 is a ceiling, not a result: in the planning pass all 59 were REFUSED (no probe host configured) and 0 rows were observed to pass. The published file carries no bench topology."
+    tags: [release, v0.11.0, silicon, matrix, publish, guard]
+    fields:
+      priority: must
+      req-type: constraint
+      verification-criteria: "The published silicon-matrix.json check fails on: a missing declared row; a row whose commit is not the commit being tagged; a row without the flashed image's hash; a PASS row without the OK-line evidence; a field carrying a host name, address, probe serial or USB port path (planted bad row in the self-test). NOT-YET and REFUSED rows count as failures in the summary."
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: related-to
+        target: REQ-OS-INTEGRATION-001
+      - type: related-to
+        target: VER-SILICON-MATRIX-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: REQ-HONESTY-LEDGER-001
+    type: sw-req
+    title: The trust ledger counts the assumption spellings it can see, is a required check, and after its baseline may only shrink
+    status: proposed
+    release: v0.11.0
+    description: "Serves O3 (eligibility: makes gale eligible to be counted by an O3 indicator script; O3 stays unmeasured and whether gale counts is the script's decision). Bet 3 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). SHALL: cargo xtask check trust-ledger is a required context counting, per class: external_body (135 today), assume_specification (2), Rocq Admitted (74), Lean sorry (0), kani::assume (grep baseline 422 lines in 22 files) and #[kani::unwind] (74), against 496 kani::proof lines. It counts SPELLINGS: it cannot see assumptions written as narrowed types, requires clauses or bounded generators, and says so in its output. RATCHET: until the baseline is set the gate is an equality ledger (any change in any class fails unless the same change updates the ledger with the justifying artifact ID); the baseline is set once at the v0.11.0 tag commit, after the unprivileged-tenant seam's growth has landed (at most 1 trusted atom), with the admitted growth recorded; from then on the gate is shrink-only and growth needs an owner-approved ledger entry. The ratchet is the planner's proposal and the owner can overrule it. Kill criteria: 3(a) the stability test cannot pass by 2026-12-03, so the gate stays advisory and is not made required; 3(c) not required by the 2026.12 layer, so dropped from v0.11.0 and carried to v0.12.0 by name."
+    tags: [release, v0.11.0, honesty, tcb, ledger, kani, gate]
+    fields:
+      priority: must
+      req-type: constraint
+      verification-criteria: cargo xtask check trust-ledger is a required context; its self-test fails on an added kani::assume, a lowered unwind bound, an added Admitted. and an unrecorded removal; the same tree after reformatting and after a comment-only edit gives the same counts; the output prints the forms it cannot see.
+    links:
+      - type: derives-from
+        target: SYSREQ-COV-001
+      - type: related-to
+        target: REQ-HONESTY-TCB-001
+      - type: related-to
+        target: REQ-COV-002
+      - type: related-to
+        target: REQ-OS-TRITRACK-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: REQ-HONESTY-AXIOMS-001
+    type: sw-req
+    title: Every closed Rocq and Lean theorem's assumptions are compared with an allowlist in a required check
+    status: proposed
+    release: v0.11.0
+    description: "Serves O3 (eligibility: the kernel axiom audit is one of the three parts the O3 indicator names; O3 stays unmeasured). Bet 3 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). Today 1 of 13 Rocq files prints its assumptions, no checker of that output was found (the Bazel rule was not read), and Lean has none. SHALL: a required check prints and compares the assumptions of every closed Rocq and Lean theorem against a committed allowlist and fails on any assumption not on it. Ready work for someone other than the maintainer: needs no bench and no pin move."
+    tags: [release, v0.11.0, honesty, axioms, rocq, lean, gate]
+    fields:
+      priority: must
+      req-type: constraint
+      verification-criteria: The axiom audit prints every closed theorem's assumptions for Rocq and Lean, compares them with a committed allowlist, and is red on any assumption not on the list; a planted added axiom turns it red; it is a required context.
+    links:
+      - type: derives-from
+        target: SYSREQ-COV-001
+      - type: related-to
+        target: REQ-HONESTY-LEDGER-001
+      - type: related-to
+        target: REQ-OS-TRITRACK-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: REQ-HONESTY-CONCURRENCY-001
+    type: sw-req
+    title: TSan, loom and ffi-lock gates run and state their coverage (not a bet)
+    status: proposed
+    release: v0.11.0
+    description: "Serves O3 (supporting; does not move the O3 indicator). Rides along with v0.11.0 and is not a bet (docs/releases/v0.11.0-plan.md). The concurrency lanes l8-concurrency-gates and l9-interleaving-honesty merge under this requirement. Their gates are the checks: a TSan lane, a loom suite and an ffi-lock census. The honesty text those lanes add is not an acceptance item for any bet."
+    tags: [release, v0.11.0, honesty, concurrency, tsan, loom, gate]
+    fields:
+      priority: should
+      req-type: constraint
+      verification-criteria: Each of the TSan lane, the loom suite and the ffi-lock census runs in CI and prints what it covers and what it cannot see.
+    links:
+      - type: derives-from
+        target: SYSREQ-COV-001
+      - type: related-to
+        target: REQ-HONESTY-LEDGER-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: VER-REL-THESIS-V0110-001
+    type: sw-verification
+    title: "T1 on WB55RG: protected arm and both control arms from the same digest, verdict from the firmware"
+    status: proposed
+    release: v0.11.0
+    description: "Serves O1 (precondition; gale-local proxy, not the O1 indicator). Oracle, planned and not built: cargo xtask silicon run wb55rg gust_tenant_unpriv --component <ref>@sha256:<digest>. It pulls the published release-candidate component, verifies its signature against the repository's workflow identity, dissolves and links it with the frozen pin, flashes, and takes PASS only from the firmware's own verdict line: the protected arm with both escapes faulting and controls A (no-drop-priv) and B (no-regions) built from the same digest. A run without --component is REFUSED. Red today: the runner has no component path. NOT SHOWN: a bench run is not CI; the signature is checked on the build host, not on the target."
+    tags: [release, v0.11.0, thesis, silicon, provenance]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-REL-THESIS-V0110-001
+      - type: related-to
+        target: REQ-SILICON-PROVENANCE-001
+      - type: related-to
+        target: REQ-REL-PRESIGN-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: VER-OS-UNPRIV-001
+    type: sw-verification
+    title: "Four-arm unprivileged-tenant result: both escapes fault, control A and control B land as specified"
+    status: proposed
+    release: v0.11.0
+    description: "Serves O1 (precondition; gale-local proxy, not the O1 indicator). Bet 1 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). Oracle, planned and not built: cargo xtask silicon run <board> gust_tenant_unpriv on WB55RG and G474RE (WL55JC1 is a stretch row; if not run it is published as a failure, not omitted). Protected arm: tenant at CONTROL.nPRIV=1, regions programmed; a write to MPU_CTRL and a write to a supervisor-private RAM address must both fault. Control A (no-drop-priv): tenant privileged, regions programmed; both writes land. Control B (no-regions): tenant unprivileged, private region not programmed; the MPU_CTRL write faults and the private-RAM write lands (without this arm an unprogrammed MPU passes the first escape). PASS per escape: the fault handler ran with the expected fault address, CONTROL read back as 1, and privileged code read the target value back unchanged; a fault with a changed value is FAIL. The existing gust_iso_unpriv_probe is kept as the recorded privileged-escape control in the same matrix run. Kill criteria: 1(a) an escape lands in the protected arm and is not fixed by the 2026.12 layer, bet failed and no tag; 1(b) by 2026-11-28 a link-map check shows the two-domain image does not fit the G474's 96 KiB, the claim narrows to WB55 and the G474 row is published as a failure. NOT SHOWN: isolation between two tenants, temporal or information isolation, the absence of other escape paths; F100 has no MPU and G031K8's ARMv6-M PMSA cannot distinguish the modes. That the hardware honours the permission bits is an architectural assumption, discharged per board by these arms only."
+    tags: [release, v0.11.0, gust, isolation, mpu, silicon]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-OS-UNPRIV-001
+      - type: related-to
+        target: REQ-OS-SYSCALL-SVC-001
+      - type: related-to
+        target: REQ-OS-MPU-001
+      - type: related-to
+        target: VER-SILICON-MATRIX-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: VER-OS-CRITICALITY-EVIDENCE-001
+    type: sw-verification
+    title: A freedom-from-interference leg closes only against a PASS row in the published matrix; planted closure fails
+    status: proposed
+    release: v0.11.0
+    description: "Serves O1 (precondition; gale-local proxy, not the O1 indicator). Bet 1 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). Oracle, planned: cargo xtask check criticality-axis changes so that a leg may leave the known-open ledger only if it links a verification artifact whose named matrix row is PASS in the published silicon-matrix.json at the same commit. Planted bad input in its self-test: a leg marked closed with no such row fails. Today the gate prints 3 open legs on the STM32WB55. Only after this gate may the spatial leg of the WB55 tenant-to-supervisor argument close, and only in that direction on that SoC."
+    tags: [release, v0.11.0, gust, criticality, ffi, gate]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-OS-CRITICALITY-001
+      - type: related-to
+        target: FFI-WB55-001
+      - type: related-to
+        target: CA-WB55-001
+      - type: related-to
+        target: CA-WB55-002
+      - type: related-to
+        target: REQ-SILICON-PUBLISH-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: VER-OS-MPUSHIP-001
+    type: sw-verification
+    title: The shipped MPU manifest names the mpu-write obligation; a manifest without it fails
+    status: proposed
+    release: v0.11.0
+    description: "Serves O1 (precondition; gale-local proxy, not the O1 indicator). Bet 1 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). Oracle, planned: a gate fails if the release manifest entry for the MPU module does not name mpu-write as the embedder's obligation. This makes the requirement's own kill criterion mechanical. Planted bad input: a manifest without the field."
+    tags: [release, v0.11.0, gust, mpu, packaging, gate]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-OS-MPUSHIP-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: VER-SILICON-PROVENANCE-001
+    type: sw-verification
+    title: Tampered, wrongly signed and absent components are each refused before flashing
+    status: proposed
+    release: v0.11.0
+    description: "Serves O1 (precondition; gale-local proxy, not the O1 indicator). Bet 2 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). Oracle, planned: three refusal controls in the xtask self-test, run in CI: a component with one byte changed is REFUSED before flashing; a valid signature from another identity is REFUSED; a declared row with no component is REFUSED. A refusal is not a pass for the row; it is the expected verdict of the control."
+    tags: [release, v0.11.0, silicon, provenance, signing, gate]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-SILICON-PROVENANCE-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: VER-OBJ-PROVENANCE-001
+    type: sw-verification
+    title: Each object dissolved from the published component equals its committed counterpart or is ledgered with one named input
+    status: proposed
+    release: v0.11.0
+    description: "Serves O1 (precondition; gale-local proxy, not the O1 indicator). Bet 2 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). Oracle, planned: a gate compares each object dissolved from the published component with its committed counterpart; the pair is byte-equal, or it is on a ledger naming the single differing input (for example rustc, gale#454). The ledger fails in both directions: an unledgered difference and a ledger entry whose pair is now equal. Kill criterion 2(a): by the 2026.12 layer a difference cannot be put on the ledger with one named input; the bet fails for that object, and if the object is in T1's image there is no tag."
+    tags: [release, v0.11.0, provenance, reproducibility, objects, gate]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-SILICON-PROVENANCE-001
+      - type: related-to
+        target: VER-OS-DELIVERY-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: VER-SILICON-MATRIX-002
+    type: sw-verification
+    title: Full matrix re-run under the OK-line rule on the frozen pin, meeting the tag threshold; supersedes the 11 older-rule rows of VER-SILICON-MATRIX-001
+    status: proposed
+    release: v0.11.0
+    description: "Serves O1 (guard: a skipped hardware run counts as a failure; gale-local, not the O1 indicator). Bet 2 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). One full re-run of cargo xtask silicon matrix after the pin is frozen, published as silicon-matrix.json. Tag threshold: T1 PASS; and no row that an earlier record shows as PASS reports FAIL or REFUSED (each such row blocks the tag until fixed, or until the notes name it as a regression the owner accepted); and at least 53 of 93 rows PASS. 53 is the count of passing runs recorded in the integration requirement's text (recorded, not re-measured); if the first full re-run shows it was wrong, the floor is reset once, in writing, before the tag. Kill criterion 2(c): the threshold is not met at the 2026.12 layer, so no tag; the lower number is published either way. It supersedes the 11 PASS rows of the earlier matrix that stand on the bare-exit-0 rule. Stretch, not acceptance: a logic-analyzer second witness for one row (lane l6-la-reference, not on main). NOT SHOWN: a bench run is not CI."
+    tags: [release, v0.11.0, silicon, matrix, bench]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-SILICON-PUBLISH-001
+      - type: related-to
+        target: VER-SILICON-MATRIX-001
+      - type: related-to
+        target: REQ-OS-INTEGRATION-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: VER-HONESTY-LEDGER-001
+    type: sw-verification
+    title: Planted growth, unrecorded shrink and reformatting are each handled as specified
+    status: proposed
+    release: v0.11.0
+    description: "Serves O3 (eligibility; O3 stays unmeasured). Bet 3 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). Oracle, planned: the trust-ledger self-test. An added kani::assume, a lowered unwind bound and an added Admitted. each fail; an unrecorded removal fails; the same tree after reformatting and after a comment-only edit gives the same counts (stability test). Red today: no trust-ledger gate among the 20 that cargo xtask check lists. NOT SHOWN: how much each assumption narrows its harness; forms that are not spelled with the counted tokens."
+    tags: [release, v0.11.0, honesty, ledger, gate]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-HONESTY-LEDGER-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: VER-HONESTY-SHRINK-MMU-001
+    type: sw-verification
+    title: src/mmu.rs goes from 20 trusted bodies to 0 with the functions verified, not moved
+    status: proposed
+    release: v0.11.0
+    description: "Serves O3 (guard: ledger entries may only shrink). Bet 3 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). src/mmu.rs goes from 20 #[verifier::external_body] to 0, counted only if the 20 functions still exist and Verus's verified count rises accordingly; removing the attribute by moving code out of the verified scope does not count. Ledger total 135 to 115. Kill criterion 3(b): proving mmu finds 1 further contract its body violates (gale#509 records the first); stop proving that day and this item fails. The follow-up is then a separate claims gate that fails if any doc calls the 5 wholly-trusted modules (118 of the 135) verified, with a planted bad sentence, and is not scored as a ledger shrink."
+    tags: [release, v0.11.0, honesty, verus, mmu, tcb]
+    fields:
+      method: formal-verification
+    links:
+      - type: verifies
+        target: REQ-HONESTY-LEDGER-001
+      - type: related-to
+        target: REQ-HONESTY-TCB-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
+
+  - id: FIND-RELPLAN-V0110-001
+    type: finding
+    title: v0.11.0 planned against the North Star; baselines recorded with commands; bundle bet held, own-chain bet cut
+    status: proposed
+    description: "Serves O1 and O3; O2 and O5 are named as not served. Planning record for v0.11.0 (docs/releases/v0.11.0-plan.md), made 2026-11-19 against origin/main at e85b7620: one agent planned, a second checked the draft cold against the PulseEngine North Star and returned 12 required changes, and the planner revised. Bets: one unprivileged tenant behind a programmed boundary on silicon (O1 precondition); flashed image from a signed component by digest plus a published matrix (O1 precondition and guard); a required trust ledger and axiom audit (O3 eligibility). HELD: the one-command evidence bundle (O2), until gale's status as an O2 consumer repository is answered, the verify command is named and run once against v0.10.0, and its inputs exist; no artifacts are created for it. CUT to its own lane: gates as signed WASI components under kiln (O5), started once kiln 0.8.0 is in a layer. Every baseline in the plan is listed with its command, denominator and blind spot. OPEN owner decision: which varve layer the pin moves to."
+    tags: [release, v0.11.0, planning, north-star]
+    fields:
+      action-required: true
+      relevance: high
+      source: docs/releases/v0.11.0-plan.md
+    links:
+      - type: generates
+        target: REQ-REL-THESIS-V0110-001
+      - type: generates
+        target: REQ-PIN-V0110-001
+      - type: generates
+        target: REQ-OS-SYSCALL-SVC-001
+      - type: generates
+        target: REQ-SILICON-PROVENANCE-001
+      - type: generates
+        target: REQ-REL-PRESIGN-001
+      - type: generates
+        target: REQ-SILICON-PUBLISH-001
+      - type: generates
+        target: REQ-HONESTY-LEDGER-001
+      - type: generates
+        target: REQ-HONESTY-AXIOMS-001
+      - type: informs
+        target: REQ-HONESTY-CONCURRENCY-001
+      - type: informs
+        target: REQ-OS-UNPRIV-001
+      - type: informs
+        target: REQ-OS-MPUSHIP-001
+      - type: informs
+        target: REQ-OS-CRITICALITY-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-19T22:21:30Z
