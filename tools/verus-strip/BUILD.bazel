@@ -5,9 +5,9 @@ rust_library(
     srcs = ["src/lib.rs"],
     crate_name = "verus_strip",
     deps = [
-        "@crates//:proc-macro2",
-        "@crates//:syn",
-        "@crates//:prettyplease",
+        "@verus_strip_crates//:proc-macro2",
+        "@verus_strip_crates//:syn",
+        "@verus_strip_crates//:prettyplease",
     ],
     edition = "2024",
 )

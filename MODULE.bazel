@@ -48,11 +48,11 @@ register_toolchains("@rust_toolchains//:all")
 # Crate dependencies for verus-strip tool
 crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
 crate.from_cargo(
-    name = "crates",
+    name = "verus_strip_crates",
     cargo_lockfile = "//tools/verus-strip:Cargo.lock",
     manifests = ["//tools/verus-strip:Cargo.toml"],
 )
-use_repo(crate, "crates")
+use_repo(crate, "verus_strip_crates")
 
 # Lean 4 rules — scheduling theory proofs
 bazel_dep(name = "rules_lean", version = "0.1.0")

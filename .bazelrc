@@ -12,3 +12,13 @@ test --test_timeout=300
 # CI configuration
 test:ci --test_output=all
 test:ci --jobs=auto
+
+# gale#534 (owner, 2026-11-20: fleet-wide): the committed MODULE.bazel.lock is
+# authoritative. A build whose MODULE.bazel (or an input a module extension
+# reads, such as tools/verus-strip/Cargo.lock for crate_universe) no longer
+# matches the lock FAILS instead of silently re-resolving. Applies to every
+# root-module invocation, CI and local. Regenerate deliberately with
+#   bazel mod deps --lockfile_mode=update
+# os/gust/renode-test is a separate module with its own .bazelrc and is
+# lock-free by design; this line does not reach it.
+common --lockfile_mode=error
