@@ -166,6 +166,27 @@ jobs:
       # PATH -- not the 1.16.0 the ci-base container bundles at /opt/renode.
       - name: Install pinned Renode
         uses: ./gale/.github/actions/setup-renode
+        with:
+          prefix: /mnt
+
+      # The action's GITHUB_PATH write reaches only later steps, so this is the
+      # first point where what `renode` resolves to can be checked. A later PATH
+      # entry or a container quirk that put the bundled /opt/renode first would
+      # otherwise run every robot on the wrong simulator, green.
+      - name: Pinned Renode is the one on PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          for t in renode renode-test; do
+            got="$(command -v "$t" || true)"
+            [ "$got" = "$RENODE_PINNED_DIR/$t" ] || { echo "::error::$t resolves to '$got', not $RENODE_PINNED_DIR/$t"; exit 1; }
+          done
+          v="$(renode --version 2>&1 || true)"
+          echo "$v"
+          case "$v" in
+            *"v$RENODE_PINNED_VERSION"*) ;;
+            *) echo "::error::renode on PATH does not report v$RENODE_PINNED_VERSION"; exit 1 ;;
+          esac
 
       - name: Run baseline in Renode
         env:

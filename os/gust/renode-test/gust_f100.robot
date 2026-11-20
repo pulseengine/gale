@@ -35,12 +35,17 @@ Dissolved gust kernel boots and runs on STM32F100RB (8K SRAM)
     # executing until the 2 s budget ran out. The 0x0BEBC200 (200,000,000) this
     # test used to log was that budget (2 s x 100 MIPS), not the kernel, and a
     # floor under it could not tell a finished scheduler from a busy one. Now the gate asserts the boot banner,
-    # the 5000-round completion line, and a SUCCESS exit (EXIT_FAILURE reports a
+    # the 5000-round completion line with an in-range pwm, and a SUCCESS exit (EXIT_FAILURE reports a
     # different ADP reason and fails the log wait).
     Create Log Tester         10
     Create Terminal Tester    sysbus.cpu.semihosting.uartSemihosting    defaultPauseEmulation=true
     Wait For Line On Uart     gust boot: kiln-async scheduler on Cortex-M3    timeout=5
-    Wait For Line On Uart     gust: 5000 poll rounds, scheduler stable    timeout=5
+    # pwm is LAST_PWM after the 5000th round: the failsafe body's mix(rc) output.
+    # os/gust/src/main.rs: rc = 1024 + (now & 0x1FF), so rc is in 1024..=1535, and
+    # mix(ch) = clamp(1500 + (ch - 1024), 1000, 2000), so pwm is in 1500..=2000.
+    # LAST_PWM starts at 0, so a dead task body (the mixer never runs) prints pwm=0
+    # and fails here. Anchored so pwm=15000 cannot pass either.
+    Wait For Line On Uart     ^gust: 5000 poll rounds, scheduler stable, pwm=(1[5-9][0-9][0-9]|2000)$    timeout=5    treatAsRegex=true
     Wait For Log Entry        Program exited with reason ADP_Stopped_ApplicationExit    timeout=5
     ${instr}=                 Execute Command    sysbus.cpu ExecutedInstructions
     Log To Console            \n[gust-f100] dissolved gust kernel on Renode STM32F100RB (8 KB SRAM) — executed instructions: ${instr}

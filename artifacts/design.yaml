@@ -3643,10 +3643,10 @@ artifacts:
     description: >
       Hardware-accurate Renode emulation target for Cortex-M4F (ARMv7E-M
       with FPU) validation.  The stm32f4_disco board with stm32f4_discovery.repl
-      platform runs Gale semaphore tests under Renode 1.16.0 (pre-installed
-      in Zephyr CI Docker image).  Confirms Gale functions correctly on
+      platform runs Gale semaphore tests under Renode 1.17.0 (pinned by sha256 in
+      .github/actions/setup-renode, not the 1.16.0 the Zephyr CI image bundles).  Confirms Gale functions correctly on
       hardware with hardware floating-point and higher clock rates than M3.
-      Chosen because stm32f4_discovery.repl is fully emulated in Renode 1.16.0
+      Chosen (on Renode 1.16.0) because stm32f4_discovery.repl is fully emulated
       with working USART2 for Zephyr console output.
     tags: [test-target, renode, cortex-m4f, stm32f4]
     fields:
@@ -3671,9 +3671,9 @@ artifacts:
       Hardware-accurate Renode emulation target for Cortex-M33 (ARMv8-M
       Mainline with TrustZone) validation.  The nucleo_l552ze_q board with
       the Renode nucleo_l552ze_q_ns platform runs Gale semaphore tests
-      under Renode 1.16.0.  Confirms Gale functions on ARMv8-M which
+      under Renode 1.17.0.  Confirms Gale functions on ARMv8-M which
       introduces security extension changes to the exception model.
-      Chosen because Renode 1.16.0 ships a dedicated test platform
+      Chosen (on Renode 1.16.0) because Renode ships a dedicated test platform
       (tests/platforms/nucleo_l552ze_q/nucleo_l552ze_q_ns.repl) with
       complete STM32L552 peripheral support including LPUART1.
     tags: [test-target, renode, cortex-m33, stm32l552]

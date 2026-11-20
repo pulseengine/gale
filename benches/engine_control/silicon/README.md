@@ -11,7 +11,8 @@ the anchor for Renode-headlined published numbers.
 Renode is per-translated-block instruction-cost simulation, not
 microarchitectural simulation: no cache, no memory contention, no
 pipeline modeling. The cross-Renode A/B (1.16.0 vs nightly = 0.0%
-drift) ruled out simulator-version drift but did NOT rule out
+drift, measured before CI moved to the pinned 1.17.0 and not re-measured
+since) ruled out simulator-version drift but did NOT rule out
 Renode being systematically off vs real silicon by a fixed
 multiplier. The silicon anchor settles that.
 

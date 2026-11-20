@@ -9,7 +9,12 @@ description: >
 
 inputs:
   prefix:
-    description: Directory to unpack into (renode-<version>/ is created under it). Use /mnt where the root disk is short.
+    description: >
+      Directory to unpack into (renode-<version>/ is created under it). Every gale job
+      passes /mnt: on GitHub-hosted ubuntu runners /mnt is the separate ephemeral disk
+      and the ci-base image already fills most of the root disk (gale#73). On a
+      self-hosted runner /mnt can be the root disk itself; check its headroom there
+      before relying on this.
     required: false
     default: /opt
 
@@ -32,9 +37,11 @@ runs:
         echo "$RENODE_SHA256  $tgz" | sha256sum -c -
         tar xzf "$tgz" -C "$dir" --strip-components=1
         rm -f "$tgz"
-        # The version the binary reports, not the one we asked for: a wrong asset
-        # behind the right sha256 is impossible, but a PATH that still resolves the
-        # container's bundled renode is not.
+        # The version the binary reports, by absolute path. This proves the asset;
+        # it cannot prove what PATH resolves, because the GITHUB_PATH line below only
+        # takes effect in later steps. Each consuming job therefore runs the
+        # "Pinned Renode is the one on PATH" step right after this action, which
+        # `cargo xtask check renode-pin` requires.
         got="$("$dir/renode" --version 2>&1 || true)"
         echo "$got"
         case "$got" in
@@ -43,3 +50,5 @@ runs:
         esac
         pip3 install --no-cache-dir -r "$dir/tests/requirements.txt"
         echo "$dir" >> "$GITHUB_PATH"
+        echo "RENODE_PINNED_DIR=$dir" >> "$GITHUB_ENV"
+        echo "RENODE_PINNED_VERSION=$RENODE_VERSION" >> "$GITHUB_ENV"
