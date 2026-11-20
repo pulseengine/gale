@@ -2,11 +2,53 @@
 #
 # `cargo xtask check binary-ledger` fails when a tracked binary has no entry here, when an
 # entry names a file that is gone, or when its consumer no longer contains its needle
-# (the string the consumer uses to reach it; default: the file name). A binary nothing
-# reads is not committed. Format: [[binary]] tables of `key = "string"` lines only.
+# (the string the consumer uses to reach it; default: the file name), or when the file's
+# bytes no longer hash to its `sha256`. A binary nothing reads is not committed.
+# Format: [[binary]] tables of `key = "string"` lines only.
+#
+# FRESHNESS (gale#506). `cargo xtask check object-freshness` judges every committed object
+# it gates (the driver objects with a crate or a build-*.sh behind them) by CONTENT:
+#   sha256         the committed object's bytes (binary-ledger checks this for EVERY entry)
+#   inputs_sha256  digest of the object's inputs as of this record: its builder script, or
+#                  for a crate-adjacent object the synth/loom/meld command lines of its
+#                  RESULTS.md; the WIT seams; its crate's build files (incl. a local wit/);
+#                  every crate reached through `path =` dependencies, transitively (mpu-thin
+#                  reaches the root gale crate, so iso-core and mpu-thin cover src/ and
+#                  plain/src/); and every file a `#[path]`/`include!` pulls in from outside
+#                  its crate, which must be listed in the gate's PATH_INCLUDES.
+#                  `cargo xtask freshness-record` prints it.
+#   toolchain      every [toolchain] setting of varve.toml and rust-toolchain.toml as of this
+#                  record. Layer covalent 2026.11.1 resolves to synth 0.89.0 and loom 1.4.1
+#                  (`varve which`, 2026-11-18). rustc is a CHANNEL, not a version pin: a rustc
+#                  release changes nothing this records.
+# The gate fails if the bytes, the inputs or the pin differ from the record, or if the bytes
+# are not a relocatable ARM ELF. A ledger entry cannot excuse any of these.
+#
+# KNOWN-STALE: `stale_issue` + `stale_expires` mark an object that is NOT a build of the
+# recorded inputs. It is accepted only at exactly the recorded inputs and pin, only until
+# `stale_expires` (UTC, inclusive; at most 183 days out), and only with an owning issue.
+# All 19 gated objects carry it as of 2026-11-18: each was last committed before an input
+# or the pin changed (git dates; e.g. #516 edited every thin driver's source on 2026-11-18,
+# and the objects date from 2026-07..09). Bytes were compared against a rebuild for ONE of
+# them only (iso-core-fused-cm3.o: 15094 B committed, 15050 B from the pin, gale#438); for
+# the other 18, "stale" is date evidence, not a measured byte difference. They are recorded,
+# not regenerated: a regenerated object needs silicon re-validation and re-baselined Renode
+# fixtures. Clearing one = rebuild it, re-validate, replace its four freshness lines with the
+# freshness-record output, and drop its two stale_ lines. Such an object then reads
+# `recorded-fresh (not rebuilt)`: the gate trusts the record and cross-checks it against git
+# dates, it does not rebuild.
+#
+# DEADLINE: all 19 expire 2027-01-31. From 2027-02-01 UTC this required check FAILS EVERY PR
+# until the 19 objects are rebuilt and re-validated on silicon, or the date is re-decided here.
+# The gate prints a ::warning:: from 21 days before the earliest expiry.
 
 [[binary]]
 path = "drivers/adc-thin/adc-thin-cm3.o"
+sha256 = "611b0ef263a691860d429baaeeef11a7cab17696be9d93495029ccb98a48200e"
+inputs_sha256 = "48673444309f2458854e5815275ee716da32c91b416fcda6c9b6aedb67cd9929"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The adc-thin driver dissolved to ARMv7-M by synth; linked into the gust adc binaries."
@@ -14,6 +56,11 @@ regenerate = "drivers/adc-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/breadth/breadth-cm3.o"
+sha256 = "84aefbca244f8a91464798b2176b013d3a02e297e7fc6de12983832f9bd6c726"
+inputs_sha256 = "5c2ce054701b45c476388a80a546324edecca59abe73482104f89899db030cb2"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The fused driver-breadth composition, linked into gust_breadth."
@@ -21,6 +68,11 @@ regenerate = "drivers/build-breadth.sh"
 
 [[binary]]
 path = "drivers/can-thin/can-thin-cm3.o"
+sha256 = "65b9c1255428769a11763b9f48c99acb9db358c59d5db69e780809ba9f9daac3"
+inputs_sha256 = "ecf873aa7611bcd8e794c071031f634c450752dee876a96bfa91b4de88c486b2"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The can-thin driver dissolved to ARMv7-M by synth; linked into the gust can binaries."
@@ -28,6 +80,11 @@ regenerate = "drivers/can-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/dac-thin/dac-thin-cm3.o"
+sha256 = "f2bc43aa0e73e81322a1a81b0334bd678834e0601a0501c977845ece3ea6e48c"
+inputs_sha256 = "84304664b58ee5d36a00f34df88259b34246cb42e48128271bb908f84acf49a8"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The dac-thin driver dissolved to ARMv7-M by synth; linked into the gust dac binaries."
@@ -35,6 +92,11 @@ regenerate = "drivers/dac-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/dma-own/dma-own-cm3.o"
+sha256 = "8d23bdbca5c6c7abd41bd6d56ec7ad0f36707c4c970a045d59836ee69ff38286"
+inputs_sha256 = "2768ab274b3e17e815540156bf57e63124dc3f957eb5016a277b921912382d61"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The DMA own<buffer> ownership FSM, dissolved; linked into the dma demonstrator."
@@ -42,6 +104,11 @@ regenerate = "drivers/dma-own/RESULTS.md"
 
 [[binary]]
 path = "drivers/gpio-thin/gpio-thin-cm3.o"
+sha256 = "1e01316712c0f80e3c5306d59831e14e765c79bcee883902c6d82d9c66ed24fb"
+inputs_sha256 = "245106a0b95931ff4c7ab67b4d4b972e96a954ada4bf3071de785a9f59459e97"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The gpio-thin driver dissolved to ARMv7-M by synth; linked into the gust gpio binaries."
@@ -49,6 +116,11 @@ regenerate = "drivers/gpio-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/hm-thin/hm-thin-cm3.o"
+sha256 = "22161907765b5c8182404a4f93b1438fe7f4fa1cfd8565bf0106c3e5ed712cd1"
+inputs_sha256 = "d94660d95e47b067ca152cdaf611713c61322a958c4c79327802bc802752bd7d"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "drivers/check-driver-components.py"
 needle = "root.glob(\"*-thin\")"
@@ -57,6 +129,11 @@ regenerate = "drivers/hm-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/i2c-thin/i2c-thin-cm3.o"
+sha256 = "8dd0165ec787726fea560c9fc6c7c447b696672aecdfb5c988661be6e9b153e2"
+inputs_sha256 = "13445cc714ecc415ef77924d4c996b4f1ee573571e55cb25f5a3e59d0aead9f1"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The i2c-thin driver dissolved to ARMv7-M by synth; linked into the gust i2c binaries."
@@ -64,6 +141,11 @@ regenerate = "drivers/i2c-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/iso-core-fused-cm3.o"
+sha256 = "91e6e87786cd0bf88f4c34762489cc44545dbd63e5e62c6199bd7e2ebfedb696"
+inputs_sha256 = "10fbf2f4fc5b664d23d8a8462dd23e50874bd48c25317fdb2192056fdf0764d1"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "switch+hm+mpu fused into one object; linked into gust_iso, whose Renode gate runs it."
@@ -71,6 +153,7 @@ regenerate = "drivers/build-iso-core.sh"
 
 [[binary]]
 path = "drivers/measurements/wcet-fixture/gustos.loom.named.wasm"
+sha256 = "390bea507731742eea5766e1b98d612100ee8ea5140167360b2f0481ba621f06"
 kind = "wasm-input"
 consumer = "tools/xtask/src/gates/graph_env.rs"
 why = "The same module with its name section kept, so graph-env can attribute an import to the component that made it."
@@ -78,6 +161,7 @@ regenerate = "drivers/build-dissolve-gustos.sh"
 
 [[binary]]
 path = "drivers/measurements/wcet-fixture/gustos.loom.wasm"
+sha256 = "62acd3a96e35c9831329b0b8689818047022e8cdc20d16294bac9475bb55c031"
 kind = "wasm-input"
 consumer = "tools/xtask/src/gates/graph_env.rs"
 needle = "wcet-fixture/gustos.loom.wasm"
@@ -86,6 +170,11 @@ regenerate = "drivers/build-dissolve-gustos.sh"
 
 [[binary]]
 path = "drivers/mpu-thin/mpu-thin-cm3.o"
+sha256 = "0f300471569f49955cc6177c63889e279053545b425297ec4544885a48cd81eb"
+inputs_sha256 = "9b87cc84d6fce1e44cbe4d0897048ffe8077257ecd75bc0f0d957d6d9277b8d6"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "drivers/check-driver-components.py"
 needle = "root.glob(\"*-thin\")"
@@ -94,6 +183,7 @@ regenerate = "drivers/mpu-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/os-node/exec-cm3.o"
+sha256 = "4a033d9e60cb49280e5155b7ee5a778b60f6a64f7afaa44430a3a385f676efc2"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The executor provider, dissolved. Linked into the gust OS probes."
@@ -101,6 +191,7 @@ regenerate = "drivers/exec-provider/RESULTS.md"
 
 [[binary]]
 path = "drivers/os-node/gustos-dissolved-cm3.o"
+sha256 = "d3b0bca88d7de4a6241791d664d9c7f4b41e5810772e9b5d095eecccfb7e868c"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The whole gust:os composition dissolved to one object (gale-nano). Linked into the gust OS probes."
@@ -108,6 +199,11 @@ regenerate = "drivers/build-dissolve-gustos.sh"
 
 [[binary]]
 path = "drivers/os-node/os-time-cm3.o"
+sha256 = "7d4e7a39e87a6d6c75c7d0cb85dad8f6b3f3b9af9fb77af90e15202bdf893b6a"
+inputs_sha256 = "df2f07636321312b135533d3d70780603131f7ae8362fe3c9a06ba3083228287"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The os-time node, dissolved. Linked into the gust OS probes."
@@ -115,6 +211,11 @@ regenerate = "drivers/build-os-time.sh"
 
 [[binary]]
 path = "drivers/os-node/os-tl-cm3.o"
+sha256 = "297272ceb5685a5584853a21de6caf4f7254fc8ead0accfa5fd4cc1b5f729d47"
+inputs_sha256 = "178c820d623bd399bcb3424cf9df2b14e731ca9c017cf2ec42509f750418ac87"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The os-tl (time + log) node, dissolved. Linked into the gust OS probes."
@@ -122,6 +223,11 @@ regenerate = "drivers/build-os-tl.sh"
 
 [[binary]]
 path = "drivers/os-node/os-ts-cm3.o"
+sha256 = "e99caa02fd14163ce8eeb78f32f34081c6739df21346b6cd2f65a7a62694f648"
+inputs_sha256 = "37e3f47b18975951fc836bceb6af2c1866d28f1e08dfc7647e7608f19f2764e0"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The os-ts (time + spawn) node, dissolved. Linked into the gust OS probes."
@@ -129,6 +235,7 @@ regenerate = "drivers/build-os-ts.sh"
 
 [[binary]]
 path = "drivers/os-node/repro-757/loom.wasm"
+sha256 = "ae17ea62a99a41e6d15dcc9d26dd0efd4100f4f6d94168eac92b9508646990bd"
 kind = "repro"
 consumer = "tools/xtask/src/gates/graph_env.rs"
 needle = "repro-757/loom.wasm"
@@ -137,6 +244,7 @@ regenerate = "drivers/os-node/repro-757/REPRO.md"
 
 [[binary]]
 path = "drivers/os-node/repro-757/os-tl-buggy.o"
+sha256 = "3b66085b5d39ef93036c7d11de38a6dded402cd2354b43ceac442150de1b0799"
 kind = "repro"
 consumer = "os/gust/build.rs"
 why = "The archived synth#757 miscompile (one wrong R_ARM_ABS32). The containment demo needs the BUGGY object: the MPU must deny its stale read. Cannot be regenerated by a fixed synth."
@@ -144,6 +252,7 @@ regenerate = "drivers/os-node/repro-757/REPRO.md"
 
 [[binary]]
 path = "drivers/os-node/repro-757/os-tl-fixed.o"
+sha256 = "1977527750a385b6c2321e624a097f8408b09be531ba13fdc3a18ff44ba91f51"
 kind = "repro"
 consumer = "os/gust/build.rs"
 why = "The same module from a fixed synth: the no-fault control for the containment demo, and the WCET fixture input."
@@ -151,6 +260,11 @@ regenerate = "drivers/os-node/repro-757/REPRO.md"
 
 [[binary]]
 path = "drivers/pwm-thin/pwm-thin-cm3.o"
+sha256 = "ba4b05736d84a22c77a4e11a63f392039a8857e17d9d5c3696e4a9f7e50a0fa1"
+inputs_sha256 = "dbe5369d8a18319884488bd43bea5bb9108a073e6f27480dd090f62850383132"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The pwm-thin driver dissolved to ARMv7-M by synth; linked into the gust pwm binaries."
@@ -158,6 +272,11 @@ regenerate = "drivers/pwm-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/spi-thin/spi-thin-cm3.o"
+sha256 = "cc4e1b777c19a7f7414ad5f3f3496f6b1d65c6d701311892af24330c15ba2f71"
+inputs_sha256 = "5763e7482267bba7fd19de12449e540babf5d60c957a460ff48827cc13825d2c"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The spi-thin driver dissolved to ARMv7-M by synth; linked into the gust spi binaries."
@@ -165,6 +284,11 @@ regenerate = "drivers/spi-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/switch-thin/switch-thin-cm3.o"
+sha256 = "1c28e560dd9b9a7e6f78c073b8baff06c66941334d4e3e6f156c2572bae8a3f5"
+inputs_sha256 = "e3521c1a87ed1cdf612a89671a2f41c651292db9355c56b3267ed342a2e3c26f"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "drivers/check-driver-components.py"
 needle = "root.glob(\"*-thin\")"
@@ -173,6 +297,11 @@ regenerate = "drivers/switch-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/timer-thin/timer-thin-cm3.o"
+sha256 = "6797e12289ab411f288913a1fbe8d3ccdb1171c900eb300a67a88bccda63b811"
+inputs_sha256 = "9126b4e936a94f2db18d96335f1ec7e0a5308afd44d3f4687ec743e4b4ef89d2"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The timer-thin driver dissolved to ARMv7-M by synth; linked into the gust timer binaries."
@@ -180,6 +309,11 @@ regenerate = "drivers/timer-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/uart-thin/uart-thin-cm3.o"
+sha256 = "44544829032c37f6d986b74160d9f131eca69fa39b2a47af3b9bf5c7d92cd7a8"
+inputs_sha256 = "3ab4b60fca4b67803e0c1f44e52e502888d7e49dd929d3fbc01f859b89672321"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The uart-thin driver dissolved to ARMv7-M by synth; linked into the gust uart binaries."
@@ -187,6 +321,11 @@ regenerate = "drivers/uart-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/wdg-thin/wdg-thin-cm3.o"
+sha256 = "af538cb7f76789b5c83f832d360938d4c057c15cbae2f3e57e9a8dca5e1554a0"
+inputs_sha256 = "c247d7bb87853bc693bc73d748b0685dc9868487dbd76a9df7b864ffc9ea8e73"
+toolchain = "varve.toml: channel=rolling digest=sha256:3d7db8f10601a680dde55a0309d2e2ee611aedaecef19e5f474ccf07a414d315 layer=2026.11.1 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+stale_issue = "#506"
+stale_expires = "2027-01-31"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The wdg-thin driver dissolved to ARMv7-M by synth; linked into the gust wdg binaries."
@@ -194,6 +333,7 @@ regenerate = "drivers/wdg-thin/RESULTS.md"
 
 [[binary]]
 path = "os/gust/esp32c3/gust_mix-esp32c3.o"
+sha256 = "a5cacdd9c4e1d4aec8002f2b12c96bd0548381b9ebcacd2799567b097868b62c"
 kind = "synth-object"
 consumer = "os/gust/esp32c3/build.rs"
 why = "The mixer dissolved for RISC-V (ESP32-C3), linked by the esp32c3 crate."
@@ -201,6 +341,7 @@ regenerate = "os/gust/esp32c3/RESULTS.md"
 
 [[binary]]
 path = "os/gust/wasm-kernel/control_step-cm3.o"
+sha256 = "63b6cc278159c71a58dbaeebca76f3d7a6ed21bcbb03db3f09519232c8c8bf2e"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The dissolved engine_control step for M3, linked into gust_control."
@@ -208,6 +349,7 @@ regenerate = "os/gust/README.md"
 
 [[binary]]
 path = "os/gust/wasm-kernel/control_step-cm4.o"
+sha256 = "63b6cc278159c71a58dbaeebca76f3d7a6ed21bcbb03db3f09519232c8c8bf2e"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The same step for M4 (silicon G474RE)."
@@ -215,6 +357,7 @@ regenerate = "os/gust/README.md"
 
 [[binary]]
 path = "os/gust/wasm-kernel/dec_diff.o"
+sha256 = "4573fbe9b225540a963c0e7545f072cef09f33d03f63c0d58fa877f8c2556f9b"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The dissolved gale deciders (sem/msgq/mutex/event, all 8 verified primitives) for the gale_decider_diff regression differential."
@@ -222,6 +365,7 @@ regenerate = "os/gust/README.md"
 
 [[binary]]
 path = "os/gust/wasm-kernel/fused.o"
+sha256 = "9500d7b9140d0b0593892063abde3bdcb3ab340a59baf1540b69d7f05f22d699"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The gale-app-demo + gale-kiln Component-Model composition, meld-fused and dissolved; linked into the gust_fused demonstrator and published on the pages site."
@@ -229,6 +373,7 @@ regenerate = "os/gust/README.md"
 
 [[binary]]
 path = "os/gust/wasm-kernel/fused.wasm"
+sha256 = "fb9773af92c5459b145e6caee9a7575ec88bf2d8efb210cf7ae49f2501e20859"
 kind = "wasm-input"
 consumer = ".github/workflows/pages.yml"
 needle = "fused.wasm"
@@ -237,6 +382,7 @@ regenerate = "os/gust/build-fused.sh"
 
 [[binary]]
 path = "os/gust/wasm-kernel/gust_kernel-cortex-m3.o"
+sha256 = "9b845c9b048f32e103e4c318052226a1850d5d12106194472a1c48fca9ee33d0"
 kind = "synth-object"
 consumer = "os/gust/src/bin/gust_codegen_bench.rs"
 why = "The dissolved kernel; gust_codegen_bench compares it against native LLVM."
@@ -244,6 +390,7 @@ regenerate = "os/gust/compare-codegen.sh"
 
 [[binary]]
 path = "os/gust/wasm-kernel/gust_kernel.wasm"
+sha256 = "85e0f5b9f993736a74bb8f387ed92de03419ecfecc4e1fdbf75cc3d4d114f4c0"
 kind = "wasm-input"
 consumer = "os/gust/build.rs"
 why = "The gust kernel wasm module the gust_mix objects are dissolved from (loom optimize, then synth compile)."
@@ -251,6 +398,7 @@ regenerate = "os/gust/README.md"
 
 [[binary]]
 path = "os/gust/wasm-kernel/gust_mix-cm3.o"
+sha256 = "40b58aa0ed813dac039ae49b58607083692765377f40b6907522c91243590adb"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The dissolved fixed-point mixer (gust_mix) for M3/F100; the codegen micro-bench and silicon_bench time it against native LLVM."
@@ -258,6 +406,7 @@ regenerate = "os/gust/README.md"
 
 [[binary]]
 path = "os/gust/wasm-kernel/gust_mix-cm4.o"
+sha256 = "09caefafdacf446ab269950d619aab76e11d18b2cc8202c7475e1e9dc172d9c2"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The same mixer for M4 (G474RE silicon), and the artifact for the M4-vs-LLVM comparison (synth#428)."

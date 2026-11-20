@@ -50,7 +50,7 @@ const BY_CONSTRUCTION: &str = "prevented-by-construction";
 
 /// KNOWN-OPEN LEDGER (gale#437, decision (b)). Each entry is one interference
 /// class of one ffi-argument that is honestly `open` today, with what closes it.
-/// The ledger fails in BOTH directions, like object-freshness's KNOWN_STALE: an
+/// The ledger fails in BOTH directions, like object-freshness's former KNOWN_STALE (gale#506): an
 /// `open` leg not listed here fails, and a listed leg that is no longer `open`
 /// (or whose argument no longer exists) fails until it is removed -- so closing
 /// a gap cannot pass silently, and the list cannot outlive the gaps it records.
