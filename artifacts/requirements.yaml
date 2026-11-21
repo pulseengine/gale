@@ -5813,3 +5813,39 @@ artifacts:
       model: claude-opus-5-5
       timestamp: 2026-11-20T18:00:00Z
 
+  - id: REQ-SUPPLY-TOOLCHAIN-001
+    type: sw-req
+    title: Every Rust toolchain the repo and CI build with is an exact release or a dated nightly, on a SHA-pinned action
+    status: implemented
+    description: "Fleet rule (2026-11): every repo names exact Rust 1.100.0 in rust-toolchain.toml and in every workflow, on a SHA-pinned toolchain action. Before it, rust-toolchain.toml said `channel = \"stable\"`, 24 of the 32 dtolnay/rust-toolchain steps named no `toolchain:` (taking the action branch's default), the other 8 said `toolchain: stable`, 18 rustup-init installs used `--default-toolchain stable`, the fuzz and sanitizer jobs ran `cargo +nightly` (undated), and coverage.yml's step carried `# nightly` on a SHA from the action's stable branch -- it had installed stable all along. A floating stable is an input that moves under a fixed pin set: 1.99.0 changed which gust:os providers keep a __stack_pointer global with no commit in this repo (gale#434). SHALL: (a) rust-toolchain.toml's channel is an exact X.Y.Z; (b) every dtolnay/rust-toolchain step in .github/workflows has a `with: toolchain:`; (c) that value is an exact X.Y.Z or a dated <channel>-YYYY-MM-DD, never bare stable/nightly/beta or X.Y; (d) the action ref is a 40-hex commit SHA; (e) a trailing comment on the `uses:` line names the toolchain the step installs; (f) an exact release there equals the rust-toolchain.toml channel; (g) `cargo +<tc>`, `rustup toolchain install <tc>`, `rustup default <tc>` and `--default-toolchain <tc>` in workflows obey (c). The gate (`cargo xtask check toolchain-pin`, supply-chain.yml cargo-deny job) REFUSES on zero workflows and on a workflow that mentions the action more often than it parsed steps for it. Kill criterion: a workflow step that installs a floating or unnamed Rust toolchain merges."
+    tags: [supply-chain, toolchain, ci, gate]
+    fields:
+      priority: must
+      req-type: constraint
+      verification-criteria: "`cargo xtask check toolchain-pin --self-test` passes in supply-chain.yml on every PR; its plants fail on (a) channel stable / nightly / 1.100 and a missing rust-toolchain.toml, (b) a step with no `with:`, a `with:` holding only other keys, a `toolchain:` belonging to the NEXT step, a `toolchain:` nested below `with:`, (c) toolchain stable / nightly / beta / 1.100 / a malformed date, (d) refs @stable, @v1 and a short SHA, (e) `# nightly` on a step installing 1.100.0, (f) a step installing 1.99.1 under a 1.100.0 channel, (g) `cargo +nightly`, `--default-toolchain stable`, `rustup toolchain install nightly`; it refuses on zero workflows and on an unparseable step layout; the positive control passes. `cargo xtask check toolchain-pin` passes on the tree."
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: traces-to
+        target: REQ-SUPPLY-LOCKFILE-002
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-21T12:00:00Z
+
+  - id: VER-SUPPLY-TOOLCHAIN-001
+    type: sw-verification
+    title: "Every CI Rust toolchain is exact and SHA-pinned, and the check can fail (cargo xtask check toolchain-pin)"
+    status: implemented
+    description: "tools/xtask/src/gates/toolchain_pin.rs, dependency-free and indentation-scanned like job_timeouts.rs, run as two steps (self-test, then real) in supply-chain.yml's cargo-deny job. Result at the lane tip: channel 1.100.0; 32 dtolnay/rust-toolchain steps in 31 workflows, all SHA-pinned with an explicit toolchain (29 exact 1.100.0, 3 dated nightly-2026-09-17: fuzz-smoke, nightly fuzz-long, sanitizers -- the only jobs that need nightly, for cargo-fuzz and -Zsanitizer/-Zbuild-std); 21 cargo +/rustup toolchain names, all pinned. The two Kani steps sat on the action's nightly branch but cargo resolved rust-toolchain.toml (then `stable`) anyway and cargo-kani installs its own pinned nightly, so they now install 1.100.0. No dated nightly existed anywhere in the repo; nightly-2026-09-17 was chosen because it is rustc 1.100.0-nightly, the same release train as the stable pin. Real-tree negative control: the same binary over origin/main's workflows and rust-toolchain.toml exits 1 with 54 findings (1 (a), 24 (b), 8 (c), 21 (g)). Self-test: 21 plants across (a)-(g) and 2 refusals behave as intended, positive control passes. Stated limits: scripts CI runs are not scanned (none passes a toolchain name; bzl/private/cargo.bzl's `cargo +nightly` miri/sanitizer/fuzz rules are not run by any workflow), and jobs that install no toolchain step rely on rustup resolving rust-toolchain.toml."
+    tags: [supply-chain, toolchain, ci, gate, verification]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-SUPPLY-TOOLCHAIN-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-21T12:00:00Z
+

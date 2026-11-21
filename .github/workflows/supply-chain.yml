@@ -27,6 +27,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, installs 1.100.0
         with:
           toolchain: 1.100.0
+      # Fleet rule (2026-11): rust-toolchain.toml names an exact release and
+      # every workflow toolchain is exact (or a dated nightly) on a SHA-pinned
+      # action. A floating `stable` moved codegen under a fixed pin set once
+      # (gale#434). Planted first: a step with no `toolchain:`, a bare
+      # stable/nightly, a branch ref, a lying comment must each be caught.
+      - name: Negative control — an unpinned channel, a step without toolchain, a floating toolchain and a branch ref must be caught
+        run: cargo xtask check toolchain-pin --self-test
+      - name: Every Rust toolchain CI installs is exact and SHA-pinned
+        run: cargo xtask check toolchain-pin
       # A failed install fails the job here, rather than surfacing later as
       # "command not found" (the `cargo install ... || true` it replaces).
       - name: Install cargo-deny
