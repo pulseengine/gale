@@ -13,5 +13,5 @@ path = "src/main.rs"
 # The host engine. Pinned to a component-model-capable wasmtime; the composite is a
 # COMPONENT (5 core modules behind a component shell), so a core-wasm embedder or the
 # `wasmtime run` CLI cannot supply its two custom imports.
-wasmtime = "42"
+wasmtime = "=50.0.3"
 anyhow = "1"
