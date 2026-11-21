@@ -1,7 +1,11 @@
-# Supply-chain gate: cargo-deny over advisories, bans, licenses and sources.
+# Supply-chain gate: cargo-deny over advisories, bans, licenses and sources,
+# a RustSec audit of every committed Cargo.lock, and a census proving every
+# manifest has a committed, current lock (gale#534).
 # Org standard (2026-11): every Rust repo runs this and it fails the PR.
 # deny.toml at the repo root carries the agreed license allowlist and any
-# reasoned advisory ignores. Scope: the root workspace's Cargo.lock.
+# reasoned advisory ignores. cargo-deny's scope: the root package's Cargo.lock.
+# lockfile-audit's scope: every Cargo.lock git tracks (45 at gale#534), with
+# per-(lock, advisory) exceptions in tools/xtask/lockfile-audit.toml.
 name: Supply Chain (cargo-deny)
 
 on:
@@ -31,3 +35,41 @@ jobs:
           tool: cargo-deny@0.20.2
       - name: Run cargo-deny
         run: cargo deny check advisories bans licenses sources
+
+      # gale#534: the step above audits ONE lock file. 44 nested ones were never
+      # audited, and drivers/gustos-hostrun carried 19 RustSec vulnerabilities
+      # under a green check. cargo-audit reads a lock file without a workspace,
+      # which cargo-deny cannot. A missing tool or an unreadable advisory
+      # database is exit 3 (refused), never a pass.
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-audit@0.22.2
+      - name: Negative control — a vulnerable lock, an expired or stale exception, and no lock files must be caught
+        run: cargo xtask check lockfile-audit --self-test
+      - name: Audit every committed Cargo.lock
+        run: cargo xtask check lockfile-audit
+
+  # gale#534, the other half: an audited lock is worth nothing if the build
+  # ignores it. Every Cargo.toml / MODULE.bazel must have a committed lock (or a
+  # listed reason in tools/xtask/lockfile-census.toml), and every committed lock
+  # must still satisfy its manifest: `cargo metadata --locked` per Cargo.lock,
+  # `bazel mod deps --lockfile_mode=error` for the root MODULE.bazel.lock. CI
+  # builds pass --locked / --lockfile_mode=error; this job is what makes an
+  # out-of-date lock red even where a tool (cargo kani, cargo fuzz) has no such
+  # flag. Network: cargo metadata downloads each lock's sources, bazel fetches
+  # registry files; both are the same fetches the builds do.
+  lockfile-census:
+    name: every lock committed and current (Cargo + Bazel)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      # The runner image ships bazelisk as `bazel`; it reads .bazelversion.
+      - name: Negative control — an out-of-date Cargo.lock or MODULE.bazel.lock, an unlisted lock-free manifest and a stale listing must be caught
+        run: cargo xtask check lockfile-census --self-test
+      - name: Every manifest has a committed lock, and every lock is current
+        run: cargo xtask check lockfile-census

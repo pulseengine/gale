@@ -39,7 +39,7 @@ for c in "${CRATES[@]}"; do
     continue
   fi
   printf '%-16s ' "$c"
-  if ( cd "$c" && cargo build --release --target wasm32-unknown-unknown ) >/tmp/gust-prov-$c.log 2>&1; then
+  if ( cd "$c" && cargo build --locked --release --target wasm32-unknown-unknown ) >/tmp/gust-prov-$c.log 2>&1; then
     echo "ok"
   else
     echo "FAILED"

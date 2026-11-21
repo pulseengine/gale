@@ -395,7 +395,7 @@ jobs:
       # --check` and `cargo clippy -D warnings` already fail on main for this
       # crate, so wiring them here would be red for reasons unrelated to a PR.
       - name: xtask unit tests (silicon verdicts, matrix exit codes)
-        run: cargo test --manifest-path tools/xtask/Cargo.toml
+        run: cargo test --locked --manifest-path tools/xtask/Cargo.toml
 
   data-overlap:
     name: "fused data segments are disjoint (gale#266)"
@@ -527,7 +527,7 @@ jobs:
         run: cargo xtask check object-freshness --self-test
 
       - name: Planted inputs against the real tree (one per input class and ledger rule, plus controls)
-        run: cargo test --manifest-path tools/xtask/Cargo.toml --test object_freshness_oracle
+        run: cargo test --locked --manifest-path tools/xtask/Cargo.toml --test object_freshness_oracle
 
       - name: Every committed object matches its recorded hash, inputs and toolchain
         run: cargo xtask check object-freshness
@@ -663,11 +663,11 @@ jobs:
       # insisting on a matched pair.
       - name: All probes compile (priv-private arm)
         working-directory: os/gust
-        run: cargo check --bins --keep-going --features priv-private
+        run: cargo check --locked --bins --keep-going --features priv-private
 
       - name: All probes compile (priv-shared arm)
         working-directory: os/gust
-        run: cargo check --bins --keep-going --features priv-shared
+        run: cargo check --locked --bins --keep-going --features priv-shared
 
   # REQ-OS-MPU-001's kill-criterion, executed. VER-OS-ISO-001 recorded this oracle
   # as evidence but noted "local qemu, not yet CI-gated" -- so the only MPU
@@ -697,7 +697,7 @@ jobs:
         working-directory: os/gust
         run: |
           set -uo pipefail
-          if cargo run --release --features grant-hole --bin gust_iso_fault_probe; then
+          if cargo run --locked --release --features grant-hole --bin gust_iso_fault_probe; then
             echo "::error::control PASSED with the hole granted -- the oracle is vacuous"
             exit 1
           fi
@@ -705,7 +705,7 @@ jobs:
 
       - name: A write outside the granted region takes a real MemManage fault
         working-directory: os/gust
-        run: cargo run --release --bin gust_iso_fault_probe
+        run: cargo run --locked --release --bin gust_iso_fault_probe
 
       # REQ-OS-UNPRIV-001, as a LEDGER WITH TEETH rather than a prose note.
       # VER-OS-ISO-001 says in words that gale has fault-containment and not
@@ -720,7 +720,7 @@ jobs:
       # purpose; the probe's header explains why.
       - name: "Ledger: a privileged tenant can still disable its own MPU (gap open)"
         working-directory: os/gust
-        run: cargo run --release --bin gust_iso_unpriv_probe
+        run: cargo run --locked --release --bin gust_iso_unpriv_probe
 
       # The other half: does the FIX work? Establishing that CONTROL.nPRIV=1 blocks
       # the PPB escape de-risks REQ-OS-UNPRIV-001 before gust's architecture adopts
@@ -734,7 +734,7 @@ jobs:
       # like "no fault happened".
       - name: "Mechanism: dropping to unprivileged blocks the same escape"
         working-directory: os/gust
-        run: cargo run --release --features drop-priv --bin gust_iso_unpriv_probe
+        run: cargo run --locked --release --features drop-priv --bin gust_iso_unpriv_probe
 
   # T4 (REQ-OS-WCET-001): synth's own per-function static WCET bounds. emit-wcet.sh has
   # existed since the sidecar landed (synth#778) and was invoked by NOTHING — it was one

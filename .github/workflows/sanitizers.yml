@@ -113,12 +113,12 @@ jobs:
           set -o pipefail
           if [ "${SAN}" = "leak" ]; then
             ASAN_OPTIONS="detect_leaks=1:abort_on_error=0" \
-              cargo +nightly test --workspace \
+              cargo +nightly test --locked --workspace \
                 -Z build-std \
                 --target "${TARGET}" \
                 --tests 2>&1 | tee "sanitizer-logs/${SAN}.log"
           else
-            cargo +nightly test --workspace \
+            cargo +nightly test --locked --workspace \
               -Z build-std \
               --target "${TARGET}" \
               --tests 2>&1 | tee "sanitizer-logs/${SAN}.log"

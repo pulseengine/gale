@@ -1,0 +1,15 @@
+# lockfile-audit exceptions (cargo xtask check lockfile-audit, gale#534).
+#
+# One [[exception]] per (lock file, advisory id). No wildcards. Every field is
+# required:
+#   lockfile  the committed path, exactly as `git ls-files` prints it
+#   advisory  RUSTSEC-YYYY-NNNN, exactly
+#   issue     #N or owner/repo#N -- the issue that owns the fix
+#   expires   YYYY-MM-DD, at most 90 days out; past it the gate fails
+#   reason    why the vulnerability is accepted until then
+#
+# The gate FAILS on an exception that is expired, malformed, duplicated, or
+# STALE (the advisory no longer appears in that lock): the ledger only shrinks.
+#
+# No exceptions: every committed lock audits clean (gustos-hostrun moved to
+# wasmtime 50.0.3 in the same change, gale#534).

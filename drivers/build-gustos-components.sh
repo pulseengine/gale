@@ -90,7 +90,7 @@ for entry in "${PROVIDERS[@]}"; do
   # out at the same text=5496 data=1580 bss=3620 either way, because the dissolve
   # discards the wasm export entries (the composite .wasm grows 270 B; the .o does not).
   ( cd "$HERE/$crate" && RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=--emit-relocs -C link-arg=--export=__heap_base -C link-arg=--export=__stack_pointer -C link-arg=-zstack-size=2048 -C link-arg=--initial-memory=65536 -C link-arg=--max-memory=65536" \
-      cargo build --release --target wasm32-unknown-unknown >/dev/null 2>&1 )
+      cargo build --locked --release --target wasm32-unknown-unknown >/dev/null 2>&1 )
   core="$(find "$HERE/$crate/target/wasm32-unknown-unknown/release" -maxdepth 1 -name "$wasm_name.wasm" | head -1)"
   comp="$OUT/$crate.component.wasm"
   "$WT" component new "$core" -o "$comp"

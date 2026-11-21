@@ -85,7 +85,7 @@ jobs:
         run: |
           set -uo pipefail
           EXPECTED=7
-          cargo test --test loom_atomic --test loom_ring_buf \
+          cargo test --locked --test loom_atomic --test loom_ring_buf \
                      --test loom_priority_queue 2>&1 | tee loom.out
           rc=${PIPESTATUS[0]}
           if [ "$rc" -ne 0 ]; then

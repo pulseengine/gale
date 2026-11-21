@@ -17,7 +17,7 @@ CLANG="${CLANG:-clang}"; WASMLD="${WASMLD:-wasm-ld}"
 mkdir -p "$OUT"; t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 
 # 1. FFI as wasm staticlib (verified decision functions) — shared by all modules.
-( cd "$GALE_ROOT/ffi" && cargo rustc --release --target wasm32-unknown-unknown --crate-type=staticlib )
+( cd "$GALE_ROOT/ffi" && cargo rustc --locked --release --target wasm32-unknown-unknown --crate-type=staticlib )
 LIBFFI="$GALE_ROOT/ffi/target/wasm32-unknown-unknown/release/libgale_ffi.a"
 
 sha() { python3 -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$1"; }

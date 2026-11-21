@@ -5742,3 +5742,74 @@ artifacts:
         target: FIND-002
       - type: traces-to
         target: G-5
+
+  - id: REQ-SUPPLY-LOCKFILE-001
+    type: sw-req
+    title: Every committed Cargo.lock is audited for RustSec vulnerabilities, with expiring per-advisory exceptions
+    status: implemented
+    description: "Raised by gale#534. supply-chain.yml ran cargo-deny once, over the root package's lock file; the other 44 committed Cargo.lock files were never audited, and drivers/gustos-hostrun/Cargo.lock carried 19 RustSec vulnerabilities (wasmtime 42.0.2 and the zstd chain) under a green check. SHALL: every path `git ls-files` lists as Cargo.lock is audited against the RustSec advisory database on every PR (`cargo xtask check lockfile-audit`, run in supply-chain.yml), and the output states the denominator (audited N of N). A vulnerability fails unless tools/xtask/lockfile-audit.toml carries an exception for exactly that (lock file, advisory id), with an issue reference and an expiry at most 90 days out; wildcards are not accepted. An expired, malformed, duplicated or STALE exception (the advisory no longer appears in that lock, or the lock is no longer committed) fails, so the ledger can only shrink. The gate REFUSES (exit 3, never a pass) when no lock file is enumerated, when the audit tool is missing, when the advisory database cannot be read or is empty, when the tool's exit code and its parsed JSON disagree, or when the tool applied an ignore list or severity threshold of its own. Unmaintained and unsound advisories are reported per lock and in total, and do not fail. Kill criterion: a committed lock file with an unexcepted RustSec vulnerability merges, or an exception outlives the advisory it names."
+    tags: [supply-chain, rustsec, ci, gate, gale#534]
+    fields:
+      priority: must
+      req-type: constraint
+      verification-criteria: "`cargo xtask check lockfile-audit --self-test` passes in supply-chain.yml on every PR; its tool-backed plants fail on a lock file pinning smallvec 1.6.0 (RUSTSEC-2021-0003), on an expired exception and on a stale exception, refuse on a repository with no committed Cargo.lock, a missing tool and an unreadable advisory database, and pass on the same vulnerable lock with a valid exception and on a clean lock. `cargo xtask check lockfile-audit` passes on main, auditing every committed lock file."
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-20T12:00:00Z
+
+  - id: VER-SUPPLY-LOCKFILE-001
+    type: sw-verification
+    title: "Every committed Cargo.lock is audited, and the audit can fail (cargo xtask check lockfile-audit)"
+    status: implemented
+    description: "tools/xtask/src/gates/lockfile_audit.rs, run by supply-chain.yml after the existing cargo-deny step. Enumeration is `git ls-files`, not a glob: 45 lock files at gale#534. Each is audited with cargo-audit (`--json -f <lock>`, pinned 0.22.2 through the same taiki-e/install-action pin as cargo-deny), because cargo-deny needs a manifest and cargo metadata per crate while cargo-audit reads the lock file alone. The JSON is parsed in Rust and must agree with the exit code. Negative controls (`--self-test`, scratch git repositories built at test time, so no fixture is a committed Cargo.lock): (a) smallvec 1.6.0 with no exception fails naming RUSTSEC-2021-0003; (b) an exception that expired yesterday fails; (c) an exception against a clean lock fails as stale; (d) a repository with no committed Cargo.lock refuses; a missing tool and an unreadable database refuse; the same vulnerable lock with a valid exception passes, and so does a clean lock. Hermetic checks (interpreting disagreeing reports, ledger parsing, cap, duplicate, wildcard) also run under `cargo test`. Result at the lane tip: 45 of 45 audited; only drivers/gustos-hostrun has vulnerabilities (19), carried as exceptions naming gale#534 and expiring 2026-12-20. The wasmtime bump makes them stale, and the gate then forces their removal. Blind spot: a lock file is audited as committed; a crate built without its lock resolves versions this gate never sees."
+    tags: [supply-chain, rustsec, ci, gate, verification, gale#534]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-SUPPLY-LOCKFILE-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-20T12:00:00Z
+
+  - id: REQ-SUPPLY-LOCKFILE-002
+    type: sw-req
+    title: Every manifest has a committed lock, every lock is current, and CI builds with it locked
+    status: implemented
+    description: "Raised by gale#534 (owner, 2026-11-20). Auditing the committed locks (REQ-SUPPLY-LOCKFILE-001) is worth nothing for a manifest that has no lock, or for a build that ignores the lock: none of the 76 lines in .github/workflows that invoke cargo build/test/clippy/check/run/kani/llvm-cov/fuzz/rustc/xtask, and none of the 41 such lines in tracked shell scripts, passed --locked or --frozen, six tracked Cargo.toml had no lock at all, the root MODULE.bazel.lock was ignored by .gitignore (force-added) and no Bazel invocation set --lockfile_mode. SHALL: (1) every Cargo.toml git tracks is covered by a committed Cargo.lock, its own or that of the workspace root that claims it (members globs minus exclude, or package.workspace), and every tracked MODULE.bazel has a committed MODULE.bazel.lock beside it; otherwise the manifest is listed in tools/xtask/lockfile-census.toml with an issue and a reason. An unlisted lock-free manifest, a STALE listing (the manifest gained a lock or is gone), a duplicated, malformed or wildcard listing, a lock with no manifest beside it, and a workspace member's own (ignored) lock each fail. (2) Every committed lock is current: `cargo metadata --locked` (with dependency resolution; --no-deps does not check the lock) succeeds in each Cargo.lock's directory, and `bazel mod deps --lockfile_mode=error` succeeds beside each committed MODULE.bazel.lock. (3) CI builds locked: cargo build/test/clippy/check/run/llvm-cov/rustc invocations in .github/workflows and in the scripts CI runs pass --locked where the crate has a committed lock (the `cargo xtask` alias carries it), and every root-module Bazel invocation runs with --lockfile_mode=error (`common --lockfile_mode=error` in the root .bazelrc, owner decision 2026-11-20, fleet-wide). Because crate_universe reads tools/verus-strip/Cargo.lock, a change to that lock that does not regenerate MODULE.bazel.lock in the same change fails. Where a tool has no such flag (cargo kani, cargo fuzz), (2) is what keeps the build on the audited lock. The gate (`cargo xtask check lockfile-census`, supply-chain.yml) REFUSES when cargo or bazel is missing or no Cargo.toml is tracked. Kill criterion: a manifest without a committed lock or a listed reason merges, or a lock that no longer satisfies its manifest merges."
+    tags: [supply-chain, lockfile, ci, gate, gale#534]
+    fields:
+      priority: must
+      req-type: constraint
+      verification-criteria: "`cargo xtask check lockfile-census --self-test` passes in supply-chain.yml on every PR; its plants fail on (i) a Cargo.lock whose manifest requires a dependency version the lock lacks, (ii) an unlisted lock-free Cargo.toml, (iii) a listing for a manifest that has a lock and one for a manifest that is gone, (iv) a MODULE.bazel with neither lock nor listing, and (v) a MODULE.bazel.lock missing a declared bazel_dep (real bazel, --lockfile_mode=error); and pass on current locks and on a listed lock-free crate. `cargo xtask check lockfile-census` passes on main."
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: traces-to
+        target: REQ-SUPPLY-LOCKFILE-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-20T18:00:00Z
+
+  - id: VER-SUPPLY-LOCKFILE-002
+    type: sw-verification
+    title: "Every manifest has a committed, current lock, and the census can fail (cargo xtask check lockfile-census)"
+    status: implemented
+    description: "tools/xtask/src/gates/lockfile_census.rs, a sibling of lockfile-audit with the same enumeration (`git ls-files`) and ledger conventions, run by its own supply-chain.yml job. Result at the lane tip: 51 Cargo.toml + 2 MODULE.bazel tracked; 46 covered by their own lock, 7 listed lock-free (ports/arch/armv7m and ports/host/baremetal: dependency-free path dependencies of os/gust; docs/research/sem-full-rust-poc; crates/gale-app-demo, crates/gale-kiln and benches/engine_control/wasm-component: built only by local regeneration scripts CI does not run; os/gust/renode-test/MODULE.bazel: lock-free by design so Linux CI is not pinned to a macOS-resolved graph); 46 of 46 locks current. The committed root MODULE.bazel.lock was NOT current (bazel mod deps --lockfile_mode=error exited 2: four extensions missing or stale) and could not be regenerated, because the root's crate universe `crates` collided with the one rules_verus declares; it was renamed `verus_strip_crates` and the lock regenerated. Negative controls (`--self-test`, scratch git repositories, cargo run offline): plants (i) to (v) of REQ-SUPPLY-LOCKFILE-002 all fail as intended, positive controls pass; hermetic checks (manifest parsing, members/exclude/package.workspace coverage, ledger, exit-code interpretation) also run under `cargo test`. Measured by hand: --no-deps exits 0 on a lock that full `cargo metadata --locked` rejects with 101; a bazel_dep the lock lacks exits 37 under --lockfile_mode=error. Planted by hand on the real tree (needs the network, so not in --self-test): a bazel_dep added to MODULE.bazel without regenerating the lock makes `bazel mod deps` exit 37, `bazel test //:verus_test --nobuild` exit 48 and this gate exit 1; `cargo update -p unicode-ident --precise 1.0.22` in tools/verus-strip (Cargo side still current, cargo metadata --locked exits 0) makes `bazel mod deps` exit 2 and this gate exit 1. Stated limit: a path dependency inside a workspace root's directory (an implicit member) is reported as uncovered, a loud false FAIL; none exists."
+    tags: [supply-chain, lockfile, ci, gate, verification, gale#534]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-SUPPLY-LOCKFILE-002
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-20T18:00:00Z
+

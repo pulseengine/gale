@@ -36,7 +36,7 @@ fi
 # thumbv7m-none-eabi for the firmware bins, and every crate below that directory
 # inherits it — including this harness, which must be built FOR THE HOST.
 HOST_TRIPLE="$(rustc -vV | sed -n 's/^host: //p')"
-( cd "$HERE/gustos-hostrun" && cargo build --release --target "$HOST_TRIPLE" "$@" ) >/dev/null || exit 1
+( cd "$HERE/gustos-hostrun" && cargo build --locked --release --target "$HOST_TRIPLE" "$@" ) >/dev/null || exit 1
 RUN="$HERE/gustos-hostrun/target/$HOST_TRIPLE/release/gustos-hostrun"
 
 "$RUN" "$FUSED"
