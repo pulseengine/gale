@@ -2,9 +2,11 @@ version: 2
 # Groups are per update entry, so each group sits under the ecosystem whose
 # names it matches; patterns are globs, not regexes. One upstream release
 # then arrives as one PR instead of one per package.
+# PAUSED 2026-11-21 under the fleet CI hold; restore the previous limits when it lifts.
 updates:
   - package-ecosystem: github-actions
     directory: /
+    open-pull-requests-limit: 0
     schedule:
       interval: weekly
     labels:
@@ -15,6 +17,7 @@ updates:
           - "*"
   - package-ecosystem: cargo
     directory: /
+    open-pull-requests-limit: 0
     schedule:
       interval: weekly
     labels:
@@ -31,24 +34,28 @@ updates:
           - "wit-parser"
   - package-ecosystem: cargo
     directory: /ffi
+    open-pull-requests-limit: 0
     schedule:
       interval: weekly
     labels:
       - dependencies
   - package-ecosystem: cargo
     directory: /fuzz
+    open-pull-requests-limit: 0
     schedule:
       interval: weekly
     labels:
       - dependencies
   - package-ecosystem: cargo
     directory: /tools/verus-strip
+    open-pull-requests-limit: 0
     schedule:
       interval: weekly
     labels:
       - dependencies
   - package-ecosystem: cargo
     directory: /docs/research/sem-full-rust-poc
+    open-pull-requests-limit: 0
     schedule:
       interval: weekly
     labels:
