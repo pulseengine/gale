@@ -91,7 +91,7 @@ cargo kani                                             # 3/3 verified
 cargo build --release --target wasm32-unknown-unknown
 wasm-tools print target/.../gust_timer_thin.wasm | grep -c 'i32.load offset='   # 0 (table-free)
 loom optimize <wasm> --passes inline --attestation false -o t.wasm
-synth compile t.wasm --target cortex-m3 --all-exports --relocatable -o timer-thin-cm3.o  # 212 B, 0 SRAM
+synth compile t.wasm --target cortex-m3 --all-exports --relocatable --embedder-data-init -o timer-thin-cm3.o  # 212 B, 0 SRAM
 ```
 
 ---

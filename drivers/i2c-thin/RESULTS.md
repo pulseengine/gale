@@ -25,7 +25,7 @@ proves it holds over the whole input space.
 ## Build
 
     cargo build --release --target wasm32-unknown-unknown   # needs .cargo/config --allow-undefined
-    loom optimize <wasm> --passes inline | synth compile --target cortex-m3 --all-exports --relocatable
+    loom optimize <wasm> --passes inline | synth compile --target cortex-m3 --all-exports --relocatable --embedder-data-init
 
 NOTE: rustc ≥1.97's rust-lld errors on undefined wasm cdylib symbols; the mmio
 capability externs are emitted as wasm imports via `.cargo/config.toml`

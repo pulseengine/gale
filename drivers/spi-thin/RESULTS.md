@@ -23,7 +23,7 @@ atoms**. No host SPI driver exists; this *is* the driver, dissolved to native.
 cargo build --release --target wasm32-unknown-unknown
 wasm-tools print target/.../gust_spi_thin.wasm | grep -c 'i32.load offset='   # 0 (table-free)
 loom optimize <wasm> --passes inline --attestation false -o t.wasm
-synth compile t.wasm --target cortex-m3 --all-exports --relocatable -o spi-thin-cm3.o
+synth compile t.wasm --target cortex-m3 --all-exports --relocatable --embedder-data-init -o spi-thin-cm3.o
 ```
 
 | metric | value |

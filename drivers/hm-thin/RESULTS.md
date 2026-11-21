@@ -15,7 +15,7 @@ isolation core could.
       -> wasm-tools component new  3 956 B
       -> meld fuse --memory shared
       -> loom optimize --passes inline
-      -> synth compile --target cortex-m3 --all-exports --relocatable
+      -> synth compile --target cortex-m3 --all-exports --relocatable --embedder-data-init
 
     text 1054   data 0   bss 0        undefined symbols: none
 
@@ -90,5 +90,5 @@ appearing 29 times.
     wasm-tools component new target/wasm32-unknown-unknown/release/gust_hm_thin.wasm -o hm.component.wasm
     meld fuse hm.component.wasm --memory shared -o hm.fused.wasm
     loom optimize hm.fused.wasm --passes inline --attestation false -o hm.loom.wasm
-    synth compile hm.loom.wasm --target cortex-m3 --all-exports --relocatable -o hm-thin-cm3.o
+    synth compile hm.loom.wasm --target cortex-m3 --all-exports --relocatable --embedder-data-init -o hm-thin-cm3.o
     synth verify hm.loom.wasm hm-thin-cm3.o     # needs a --features verify build

@@ -96,7 +96,11 @@ invisible in the tool's output). More than ten times HM's 29 occurrences.
 
 ## Reproduce
 
-    cd drivers/mpu-thin && cargo build --release --target wasm32-unknown-unknown
+    cd drivers/mpu-thin
+    # remap the repo root so the gale path dependency's panic locations do not
+    # carry this checkout's absolute path (same flag as build-reloc-cores.sh)
+    cargo build --release --target wasm32-unknown-unknown \
+      --config "target.wasm32-unknown-unknown.rustflags=[\"--remap-path-prefix=$(git rev-parse --show-toplevel)=.\"]"
     wasm-tools component new target/wasm32-unknown-unknown/release/gust_mpu_thin.wasm -o mpu.component.wasm
     meld fuse mpu.component.wasm --memory shared -o mpu.fused.wasm
     loom optimize mpu.fused.wasm --passes inline --attestation false -o mpu.loom.wasm

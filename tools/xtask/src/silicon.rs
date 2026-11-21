@@ -83,7 +83,10 @@ enum Reset {
 struct Board {
     name: &'static str,
     what: &'static str,
-    /// Registry name on the probe host. Must match it exactly (with-device refuses others).
+    /// Registry name on the probe host: the device's CANONICAL key, never an alias. The
+    /// with-device in the pinned layer (0.2.2) does not resolve `aliases:`, and refused
+    /// every F100, G474RE and WL55 row with UNKNOWN DEVICE while the table used the
+    /// aliases stlink-v1 / stlink-v3.
     claim: &'static str,
     triple: &'static str,
     features: &'static [&'static str],
@@ -106,7 +109,7 @@ const BOARDS: &[Board] = &[
     Board {
         name: "f100",
         what: "STM32VLDISCOVERY — STM32F100, Cortex-M3, no MPU",
-        claim: "stlink-v1",
+        claim: "stm32vldiscovery",
         triple: "thumbv7m-none-eabi",
         features: &["target-f100"],
         stem: "stm32f100",
@@ -119,7 +122,7 @@ const BOARDS: &[Board] = &[
     Board {
         name: "wl55jc",
         what: "NUCLEO-WL55JC1 — STM32WL55, Cortex-M4 (no FPU), MPU 8",
-        claim: "stlink-v3",
+        claim: "nucleo-wl55jc1",
         triple: "thumbv7em-none-eabi",
         features: &["target-wl55jc"],
         stem: "stm32wl55",
@@ -163,7 +166,7 @@ const BOARDS: &[Board] = &[
         // (the same serial enumerating on the new host and gone from the old one) rather
         // than inferred, and confirmed end to end through the new host — CPUID 0x410fc241
         // (Cortex-M4 r0p1), MPU_TYPE 0x00000800 (DREGION=8) read under a with-device claim.
-        claim: "stlink-v3",
+        claim: "nucleo-g474re",
         triple: "thumbv7em-none-eabi",
         // target-g474re selects the generated constants; silicon-g474 is the older
         // per-bin map switch the iso probes still read on this board.
@@ -179,7 +182,7 @@ const BOARDS: &[Board] = &[
     Board {
         name: "esp32c3",
         what: "ESP32-C3 — RV32IMC, built-in USB-JTAG",
-        claim: "esp-jtag",
+        claim: "esp32c3-devkit",
         triple: "riscv32imc-unknown-none-elf",
         features: &[],
         stem: "",
