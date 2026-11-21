@@ -59,8 +59,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, installs 1.100.0
         with:
+          toolchain: 1.100.0
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-tools + wac
@@ -98,10 +99,11 @@ jobs:
         run: |
           meld --version; loom --version; synth --version
           arm-none-eabi-nm --version | head -1
-          # rustc is the ONE unpinned input to this build (rust-toolchain@stable),
-          # and it is load-bearing: which modules keep a __stack_pointer global is a
-          # codegen decision, and 1.99.0 changed it for four of the five providers
-          # (gale#434). Printed so the next time an output moves without a pin
+          # rustc was the ONE unpinned input to this build (rust-toolchain@stable)
+          # until it was pinned to an exact release (rust-toolchain.toml + the
+          # step above). It is load-bearing: which modules keep a __stack_pointer
+          # global is a codegen decision, and 1.99.0 changed it for four of the
+          # five providers (gale#434). Printed so the next time an output moves without a pin
           # moving, the log already says what changed.
           rustc --version
 

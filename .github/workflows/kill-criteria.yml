@@ -281,9 +281,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Self-hosted `light` runners do not promise a preinstalled toolchain.
       # llvm-tools carries the llvm-readobj the attribute leg reads with.
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, installs 1.100.0
         with:
-          toolchain: stable
+          toolchain: 1.100.0
           targets: thumbv6m-none-eabi
           components: llvm-tools
 
@@ -311,9 +311,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Self-hosted `light` runners do not promise a preinstalled toolchain.
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, installs 1.100.0
         with:
-          toolchain: stable
+          toolchain: 1.100.0
 
       # gale#463: releases ship gale-zephyr-module-<v>.tar.gz under the cosign
       # signature, for varve to carry gale as a verified Zephyr module. The
@@ -333,9 +333,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Self-hosted `light` runners do not promise a preinstalled toolchain.
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, installs 1.100.0
         with:
-          toolchain: stable
+          toolchain: 1.100.0
 
       # gale#462: 117 proof fns had `ensures true` (or none) and an empty body --
       # the property written as COMMENTS -- and 98 functions were
@@ -356,9 +356,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Self-hosted `light` runners do not promise a preinstalled toolchain.
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, installs 1.100.0
         with:
-          toolchain: stable
+          toolchain: 1.100.0
 
       # gale#467: the doc said 133 external_body while the source had 135 (and
       # #388's grep said 142, counting comments). The doc's figures are now a
@@ -382,9 +382,9 @@ jobs:
           # gate REFUSES (exit 3) where the oracle expects its FAIL (exit 1).
           fetch-depth: 0
       # Self-hosted `light` runners do not promise a preinstalled toolchain.
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, installs 1.100.0
         with:
-          toolchain: stable
+          toolchain: 1.100.0
 
       # docs/architecture/three-modes-two-axes.md step 2 moves directories out
       # of os/gust/ one at a time. Each completed move is a row in the
@@ -825,8 +825,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, installs 1.100.0
         with:
+          toolchain: 1.100.0
           targets: wasm32-unknown-unknown
 
       - name: Install the pinned toolchain

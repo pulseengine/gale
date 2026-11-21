@@ -111,7 +111,7 @@ jobs:
             sleep $((_a * 20))
           done
           [ "$_ok" = 1 ] || { echo "::error::rustup download failed after 5 attempts" >&2; exit 1; }
-          sh /tmp/rustup-init.sh -y --default-toolchain stable
+          sh /tmp/rustup-init.sh -y --default-toolchain 1.100.0
           . /root/.cargo/env
           rustup target add wasm32-unknown-unknown
 
@@ -212,7 +212,9 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
 
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, installs 1.100.0
+        with:
+          toolchain: 1.100.0
 
       - name: Download wasm dist
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

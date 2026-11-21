@@ -68,8 +68,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install nightly Rust + rust-src
-        uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # nightly
+        uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # nightly branch, installs nightly-2026-09-17
         with:
+          toolchain: nightly-2026-09-17
           components: rust-src
 
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -113,12 +114,12 @@ jobs:
           set -o pipefail
           if [ "${SAN}" = "leak" ]; then
             ASAN_OPTIONS="detect_leaks=1:abort_on_error=0" \
-              cargo +nightly test --locked --workspace \
+              cargo +nightly-2026-09-17 test --locked --workspace \
                 -Z build-std \
                 --target "${TARGET}" \
                 --tests 2>&1 | tee "sanitizer-logs/${SAN}.log"
           else
-            cargo +nightly test --locked --workspace \
+            cargo +nightly-2026-09-17 test --locked --workspace \
               -Z build-std \
               --target "${TARGET}" \
               --tests 2>&1 | tee "sanitizer-logs/${SAN}.log"

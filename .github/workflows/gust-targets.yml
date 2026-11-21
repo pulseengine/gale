@@ -47,7 +47,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, installs 1.100.0
+        with:
+          toolchain: 1.100.0
 
       # Same install as kill-criteria.yml's aadl-parse job: varve itself, then the
       # layer varve.toml pins. regen.sh and the target-reference gate resolve spar

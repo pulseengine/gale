@@ -119,9 +119,10 @@ jobs:
             echo "no driver-seam path changed — gate vacuously satisfied, exiting 0"
           fi
 
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, installs 1.100.0
         if: steps.guard.outputs.run == 'true'
         with:
+          toolchain: 1.100.0
           targets: wasm32-unknown-unknown
 
       - name: Install pinned synth + loom

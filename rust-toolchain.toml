@@ -1,4 +1,9 @@
-# Stable for default builds. Miri/sanitizers/fuzz Bazel rules use +nightly explicitly.
+# Exact release, so every build -- local, CI, Zephyr module -- compiles with the
+# same rustc (gale#434: a floating `stable` moved codegen under a fixed pin set).
+# Jobs that genuinely need nightly (sanitizers, fuzz) name a DATED nightly with
+# `cargo +nightly-YYYY-MM-DD`; `cargo xtask check toolchain-pin` enforces both.
+# Targets (wasm32-*, thumbv*) are installed per job by the workflow, not here:
+# listing them would make every job download every target.
 [toolchain]
-channel = "stable"
+channel = "1.100.0"
 components = ["rustfmt", "clippy"]
