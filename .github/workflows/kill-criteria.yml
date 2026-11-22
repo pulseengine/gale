@@ -550,12 +550,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          fetch-depth: 0        # the fresh-claim cross-check compares git commit dates
       # Install the pinned toolchain rather than rely on rustup auto-installing it
       # on first use (rustup 1.29 warns that is deprecated for most commands).
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
         with:
           toolchain: 1.100.0
-          fetch-depth: 0        # the fresh-claim cross-check compares git commit dates
 
       # Four objects went stale for 5-7 weeks unnoticed (gale#334): nothing
       # rebuilds a committed object when its sources change. The first version
