@@ -1,0 +1,53 @@
+name: setup-sieve
+description: >
+  Install gale's pinned sieve (pulseengine's shared CI path classifier, see
+  sieve.toml) from its GitHub release, check the archive's sha256 and the
+  binary's own version, and put it first on PATH. sieve is not in the varve
+  layer gale pins (covalent 2026.11.7 is frozen for v0.11.0), so the pin lives
+  here. `cargo xtask check sieve-pin` fails when the version, the two sha256
+  values or the install lines below drift, and when a job runs sieve without
+  this action or the "Pinned sieve is the one on PATH" step after it.
+  The sha256 values are the release's SHA256SUMS.txt entries, which were
+  verified with cosign against the sieve release workflow's identity before
+  they were copied here (docs/ci/sieve.md says how to redo that for a bump).
+
+runs:
+  using: composite
+  steps:
+    - name: Install sieve 0.3.0 (pinned by sha256)
+      shell: bash
+      env:
+        SIEVE_VERSION: "0.3.0"
+        SIEVE_SHA256_X86_64: "aae674edf2c454ae5047409f571160f4615ef67f901b2e55628e8b756fb69b40"
+        SIEVE_SHA256_AARCH64: "b8e8cd3167ae3adcbecdcb7081fedf66430ff671d97537597890c31a01fc3e0d"
+        PREFIX: ${{ runner.temp }}
+      run: |
+        set -euo pipefail
+        os="$(uname -s)"
+        arch="$(uname -m)"
+        case "$os/$arch" in
+          Linux/x86_64) target=x86_64-unknown-linux-musl; sha="$SIEVE_SHA256_X86_64" ;;
+          Linux/aarch64|Linux/arm64) target=aarch64-unknown-linux-musl; sha="$SIEVE_SHA256_AARCH64" ;;
+          *) echo "::error::no pinned sieve $SIEVE_VERSION for $os/$arch"; exit 1 ;;
+        esac
+        dir="$PREFIX/sieve-$SIEVE_VERSION"
+        tgz="$PREFIX/sieve-$SIEVE_VERSION-$target.tar.gz"
+        url="https://github.com/pulseengine/sieve/releases/download/v$SIEVE_VERSION/sieve-v$SIEVE_VERSION-$target.tar.gz"
+        mkdir -p "$dir"
+        curl -sSfL --retry 3 --retry-delay 5 -o "$tgz" "$url"
+        echo "$sha  $tgz" | sha256sum -c -
+        tar xzf "$tgz" -C "$dir"
+        rm -f "$tgz"
+        # The version the binary reports, by absolute path. This proves the
+        # asset; what PATH resolves is proved by the step each job runs next
+        # (the GITHUB_PATH line below only reaches later steps).
+        got="$("$dir/sieve" --version)"
+        first="${got%%$'\n'*}"
+        echo "$first"
+        if [ "$first" != "sieve $SIEVE_VERSION" ]; then
+          echo "::error::installed sieve reports '$first', not 'sieve $SIEVE_VERSION'"
+          exit 1
+        fi
+        echo "$dir" >> "$GITHUB_PATH"
+        echo "SIEVE_PINNED_DIR=$dir" >> "$GITHUB_ENV"
+        echo "SIEVE_PINNED_VERSION=$SIEVE_VERSION" >> "$GITHUB_ENV"
