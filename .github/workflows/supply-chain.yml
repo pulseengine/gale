@@ -12,6 +12,12 @@ on:
   pull_request:
   push:
     branches: [main]
+  # This workflow hosts two required contexts, so it must also run in the merge
+  # queue, or a queued PR waits on checks nothing reports. Its absence went
+  # unseen: tools/check-required-contexts.py returns OK for a bare
+  # `pull_request:` before it looks for merge_group; `sieve check-workflows`
+  # (gate a) caught it.
+  merge_group:
   workflow_dispatch:
 
 permissions:

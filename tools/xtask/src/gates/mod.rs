@@ -22,6 +22,7 @@ pub mod providers;
 pub mod renode_pin;
 pub mod renode_targets;
 pub mod retry_loops;
+pub mod sieve_pin;
 pub mod target_reference;
 pub mod toolchain_pin;
 pub mod trust_ledger;
@@ -149,6 +150,12 @@ pub const GATES: &[Gate] = &[
         about: "no CI retry loop can swallow its own failure",
         run: retry_loops::run,
         self_test: retry_loops::self_test,
+    },
+    Gate {
+        name: sieve_pin::NAME,
+        about: "every sieve CI runs is the one pinned sieve, and the pin agrees with itself",
+        run: sieve_pin::run,
+        self_test: sieve_pin::self_test,
     },
     Gate {
         name: target_reference::NAME,

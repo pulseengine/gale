@@ -28,36 +28,18 @@ name: Formal Verification
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'plain/**'
-      - 'ffi/**'
-      - 'tests/**'
-      - 'proofs/**'
-      # kani-drivers (below) runs on push too: a drivers-only push to main must
-      # trigger it, or 'runs on push' (kani-coverage's path-guard note) is false.
-      - 'drivers/**'
-      - 'BUILD.bazel'
-      - 'MODULE.bazel'
-      # this workflow must test its own changes, or a PR that edits the gate
-      # merges without ever running it (gale#288 nearly did exactly that)
-      - '.github/workflows/formal-verification.yml'
   pull_request:
     branches: [main]
-    # NO `paths:` FILTER — this gate must be REQUIRABLE (gale#294).
-    #
-    # A filtered workflow does not run when a PR touches nothing it cares about,
-    # so GitHub never creates its check, and a required context that never
-    # reports blocks the PR forever. This workflow carries verification claims,
-    # which makes it one of the ones most worth requiring — so the filter moves
-    # off the trigger and into the job as a step-level early exit (pattern from
-    # gale#319). The job always runs and always reports; when nothing relevant
-    # changed it exits in seconds without building anything.
+  # NO `paths:` FILTER on any trigger — this workflow hosts required contexts
+  # (gale#294; sieve's rule for every workflow that does).
+  #
+  # PROOFS NEVER SKIP (owner, 2026-11-20). Every proof job below runs in full on
+  # every PR, in the merge queue and on push to main. sieve.toml lists them in
+  # `[workflows] never_skip_jobs`, so `sieve check-workflows` fails the moment
+  # one gains a classifier `if:`, a step-level skip or a skippable `needs:`.
   # GitHub merge queue: this workflow emits required contexts, so it must
   # run on merge_group or a queued PR waits on checks nothing reports
-  # (tools/check-required-contexts.py fails a PR that drops this).
-  # `proofs needed?` diffs against merge_group.base_sha in the queue;
-  # the proof jobs report either way (step-level skip).
+  # (sieve check-workflows fails a PR that drops this).
   merge_group:
   schedule:
     - cron: '0 2 * * 0'
@@ -68,92 +50,57 @@ concurrency:
 
 jobs:
   guard:
-    # Cheap always-run job that decides whether the proofs need to run at all.
-    # The path filter that used to live on the trigger lives here instead, so
-    # every verification job below still REPORTS its check (gale#294) while the
-    # expensive Nix / Rust / Kani installs are skipped when nothing relevant
-    # changed. Same globs as the old filter, plus BUILD/MODULE which were on the
-    # push filter but not the pull_request one.
+    # Kept for its required context only. It used to decide, by a path regex,
+    # whether the proof jobs built anything; proofs now never skip (owner,
+    # 2026-11-20), so nothing reads a decision and this job only says so.
+    # Its name stays because "proofs needed?" is a required context on main
+    # (.github/required-contexts.txt); renaming it is an org-admin change.
     name: "proofs needed?"
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-24.04' }}
-    timeout-minutes: 45
-    outputs:
-      run: ${{ steps.q.outputs.run }}
-      drivers: ${{ steps.q.outputs.drivers }}
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-      - id: q
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ github.event_name }}" != "merge_group" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"; echo "drivers=true" >> "$GITHUB_OUTPUT"; echo "not a PR — run"; exit 0
-          fi
-          changed="$(git diff --name-only "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"...HEAD)"
-          # The driver crates' Kani harnesses (kani-drivers below) have their own
-          # filter: a driver change does not rebuild the kernel proofs, and a
-          # kernel change does not re-run the 14 driver crates.
-          if printf '%s\n' "$changed" | grep -qE '^drivers/|^\.github/workflows/formal-verification\.yml$'; then
-            echo "drivers=true" >> "$GITHUB_OUTPUT"; echo "driver paths changed"
-          else
-            echo "drivers=false" >> "$GITHUB_OUTPUT"
-          fi
-          if printf '%s\n' "$changed" | grep -qE '^src/|^plain/|^ffi/|^tests/|^proofs/|^BUILD\.bazel$|^MODULE\.bazel$|^\.github/workflows/formal-verification\.yml$'; then
-            echo "run=true" >> "$GITHUB_OUTPUT"; echo "proof-relevant paths changed"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"; echo "no proof-relevant path changed — reporting without building"
-          fi
-
+      - name: Proofs never skip
+        run: echo "Proofs never skip. Every proof job runs in full on every change (owner, 2026-11-20; sieve.toml never_skip_jobs)."
   verus:
     name: Verus SMT (39 modules)
-    needs: guard
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
-        if: needs.guard.outputs.run == 'true'
 
       - name: Install Rust toolchain
-        if: needs.guard.outputs.run == 'true'
         uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
         with:
           toolchain: 1.100.0
 
       - name: Run Verus verification
-        if: needs.guard.outputs.run == 'true'
         run: |
           bazel test //:verus_test --test_output=errors
         timeout-minutes: 30
 
   kani:
     name: Kani BMC (185 harnesses)
-    needs: guard
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # installs 1.100.0 (nightly-branch SHA; cargo-kani installs its own toolchain)
-        if: needs.guard.outputs.run == 'true'
         with:
           toolchain: 1.100.0
 
       - name: Install Kani
-        if: needs.guard.outputs.run == 'true'
         run: |
           cargo install --locked kani-verifier --version 0.68.0
           cargo kani setup
 
       - name: Run Kani model harnesses (main crate)
-        if: needs.guard.outputs.run == 'true'
         run: cargo kani --tests
         timeout-minutes: 45
 
       - name: Run Kani FFI harnesses
-        if: needs.guard.outputs.run == 'true'
         run: cargo kani --tests --all-features
         working-directory: ffi
         timeout-minutes: 45
@@ -164,10 +111,11 @@ jobs:
   # its own line, and a step cannot swallow another's failure.
   # `cargo xtask check kani-coverage` (kill-criteria.yml) fails if a crate with
   # a #[kani::proof] harness is not run by an invocation like these. NOT a
-  # required context (that is the owner's call).
+  # required context (that is the owner's call). Proofs never skip (owner,
+  # 2026-11-20): no path guard, no `needs:`, no step `if:` (sieve.toml
+  # never_skip_jobs), so every step counts for kani-coverage unguarded.
   kani-drivers:
     name: Kani BMC (driver crates)
-    needs: guard
     # Routes fork PRs to GitHub-hosted runners by default. This is NOT a security
     # boundary: a fork PR can edit this file. Isolation is enforced by the org's
     # smithy runner-group policy and fork-PR approval (pulseengine/warte#35).
@@ -177,119 +125,99 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # installs 1.100.0 (nightly-branch SHA; cargo-kani installs its own toolchain)
-        if: needs.guard.outputs.drivers == 'true'
         with:
           toolchain: 1.100.0
 
       - name: Install Kani
-        if: needs.guard.outputs.drivers == 'true'
         run: |
           cargo install --locked kani-verifier --version 0.68.0
           cargo kani setup
 
       - name: Kani drivers/adc-thin
-        if: needs.guard.outputs.drivers == 'true'
         run: cargo kani
         working-directory: drivers/adc-thin
         timeout-minutes: 30
 
       - name: Kani drivers/can-thin
-        if: needs.guard.outputs.drivers == 'true'
         run: cargo kani
         working-directory: drivers/can-thin
         timeout-minutes: 30
 
       - name: Kani drivers/dac-thin
-        if: needs.guard.outputs.drivers == 'true'
         run: cargo kani
         working-directory: drivers/dac-thin
         timeout-minutes: 30
 
       - name: Kani drivers/dma-own
-        if: needs.guard.outputs.drivers == 'true'
         run: cargo kani
         working-directory: drivers/dma-own
         timeout-minutes: 30
 
       - name: Kani drivers/gpio-thin
-        if: needs.guard.outputs.drivers == 'true'
         run: cargo kani
         working-directory: drivers/gpio-thin
         timeout-minutes: 30
 
       - name: Kani drivers/i2c-thin
-        if: needs.guard.outputs.drivers == 'true'
         run: cargo kani
         working-directory: drivers/i2c-thin
         timeout-minutes: 30
 
       - name: Kani drivers/i2c-v2-thin
-        if: needs.guard.outputs.drivers == 'true'
         run: cargo kani
         working-directory: drivers/i2c-v2-thin
         timeout-minutes: 30
 
       - name: Kani drivers/os-time-math
-        if: needs.guard.outputs.drivers == 'true'
         run: cargo kani
         working-directory: drivers/os-time-math
         timeout-minutes: 30
 
       - name: Kani drivers/pwm-thin
-        if: needs.guard.outputs.drivers == 'true'
         run: cargo kani
         working-directory: drivers/pwm-thin
         timeout-minutes: 30
 
       - name: Kani drivers/sen66-thin
-        if: needs.guard.outputs.drivers == 'true'
         run: cargo kani
         working-directory: drivers/sen66-thin
         timeout-minutes: 30
 
       - name: Kani drivers/spi-thin
-        if: needs.guard.outputs.drivers == 'true'
         run: cargo kani
         working-directory: drivers/spi-thin
         timeout-minutes: 30
 
       - name: Kani drivers/timer-thin
-        if: needs.guard.outputs.drivers == 'true'
         run: cargo kani
         working-directory: drivers/timer-thin
         timeout-minutes: 30
 
       - name: Kani drivers/uart-thin
-        if: needs.guard.outputs.drivers == 'true'
         run: cargo kani
         working-directory: drivers/uart-thin
         timeout-minutes: 30
 
       - name: Kani drivers/wdg-thin
-        if: needs.guard.outputs.drivers == 'true'
         run: cargo kani
         working-directory: drivers/wdg-thin
         timeout-minutes: 30
 
   rocq:
     name: Rocq Proofs (14 files)
-    needs: guard
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
-        if: needs.guard.outputs.run == 'true'
 
       - name: Install Rust toolchain
-        if: needs.guard.outputs.run == 'true'
         uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
         with:
           toolchain: 1.100.0
 
       - name: Run Rocq proof verification
-        if: needs.guard.outputs.run == 'true'
         run: |
           bazel test \
             //proofs:sem_proofs_test \
@@ -310,17 +238,14 @@ jobs:
 
   lean:
     name: Lean Proofs
-    needs: guard
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
-        if: needs.guard.outputs.run == 'true'
 
       - name: Install Rust toolchain
-        if: needs.guard.outputs.run == 'true'
         uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
         with:
           toolchain: 1.100.0
@@ -332,7 +257,6 @@ jobs:
       # one-time download of 7869 prebuilt mathlib files from the upstream
       # Azure cache, not elaboration (critical path 13.89s).
       - name: Run Lean proof verification
-        if: needs.guard.outputs.run == 'true'
         run: |
           bazel test //proofs/lean:all --test_output=errors
         timeout-minutes: 45

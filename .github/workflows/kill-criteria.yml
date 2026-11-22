@@ -696,6 +696,40 @@ jobs:
             python3 tools/check-required-contexts.py
           fi
 
+      # sieve's own workflow gates over the same required contexts (it ports the
+      # check above and goes further): (a) triggers, (b) a required job skips
+      # only through the exact classifier `if:`, (c) the classifier fails open,
+      # (d) a gated job builds only what its classes claim, and the
+      # never_skip_jobs in sieve.toml (the proof jobs) cannot be skipped at all.
+      # Then the graph controls: every class input selects its class, and
+      # cargo metadata agrees with sieve's own walk.
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
+      - uses: ./.github/actions/setup-sieve
+      - name: Pinned sieve is the one on PATH
+        run: |
+          set -euo pipefail
+          got="$(command -v sieve || true)"
+          if [ "$got" != "$SIEVE_PINNED_DIR/sieve" ]; then
+            echo "::error::sieve on PATH is '${got:-<none>}', not the pinned $SIEVE_PINNED_DIR/sieve"
+            exit 1
+          fi
+      - name: Every required job skips only through sieve, and the proofs never skip
+        run: sieve check-workflows --config sieve.toml
+      - name: Every sieve class input selects its class (graph controls on the real tree)
+        run: sieve check-graph --config sieve.toml
+      # sieve decides which heavy jobs a PR runs, and CI installs it from its
+      # release (.github/actions/setup-sieve), not from the varve layer. The
+      # action must be the canonical install with one version and two sha256
+      # values, every job that runs sieve must install that pin and prove PATH
+      # finds it, the verdict record must be the canonical one, and the four
+      # sieve steps of this job must stay present and unguarded.
+      - name: Negative control — a drifted, neutralised or bypassed sieve pin must be caught
+        run: cargo xtask check sieve-pin --self-test
+      - name: One sieve everywhere, installed and recorded exactly as pinned
+        run: cargo xtask check sieve-pin
+
   # VER-DRV-GRAPH-001 (gale#345): the graph half of the old REQ-DRV-COMPONENT-001.
   # Its per-driver half is gated by drv-components.yml; this asserts the property
   # that one deliberately does not cover -- that no core module of a committed

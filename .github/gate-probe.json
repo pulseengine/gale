@@ -3,16 +3,60 @@
   "detectors": [
     {
       "command": [
-        "tools/ci/detect-changes.sh"
+        "tools/ci/sieve-gate-probe.sh"
       ],
       "outputs": [
-        "code"
+        "code",
+        "cross_arch",
+        "v_closure"
       ],
       "controls": [
         "docs/safety/verification-honesty.md"
       ],
       "negative_controls": [
         "docs/byo-os-architecture.md"
+      ]
+    },
+    {
+      "command": [
+        "tools/ci/sieve-gate-probe.sh"
+      ],
+      "outputs": [
+        "code"
+      ],
+      "controls": [
+        "src/sem.rs"
+      ],
+      "negative_controls": [
+        "docs/byo-os-architecture.md"
+      ]
+    },
+    {
+      "command": [
+        "tools/ci/sieve-gate-probe.sh"
+      ],
+      "outputs": [
+        "cross_arch"
+      ],
+      "controls": [
+        "drivers/uart-thin/src/lib.rs"
+      ],
+      "negative_controls": [
+        "artifacts/requirements.yaml"
+      ]
+    },
+    {
+      "command": [
+        "tools/ci/sieve-gate-probe.sh"
+      ],
+      "outputs": [
+        "v_closure"
+      ],
+      "controls": [
+        "artifacts/requirements.yaml"
+      ],
+      "negative_controls": [
+        "drivers/uart-thin/src/lib.rs"
       ]
     }
   ]

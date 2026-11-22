@@ -1,0 +1,133 @@
+# sieve: which heavy CI jobs does a pull request need? (pulseengine/sieve v0.3.0)
+#
+# This file replaces gale's hand-written change detectors:
+#   - tools/ci/detect-changes.sh ("docs-only change?") -> class `code`
+#   - "V-closure needed?" (rivet-v-closure.yml)         -> class `v_closure`
+#   - the drv-cross-arch step guard                      -> class `cross_arch`
+#   - "proofs needed?" (formal-verification.yml)         -> NO class: proofs
+#     never skip (owner, 2026-11-20). The proof jobs are on never_skip_jobs
+#     below, and no classifier output may gate them.
+#
+# Every class here selects AT LEAST what its old detector selected, on gale's
+# last 400 first-parent commits (`sieve equivalence`, see docs/ci/sieve.md).
+# When sieve is unsure, everything runs: any event but pull_request (push,
+# merge_group, schedule), no base, a failed or empty diff, a path no class
+# claims, and any edit to this file, .github/**, Cargo.lock or a toolchain or
+# build-system file.
+schema = "sieve.config.v1"
+
+[run_all]
+# Added to sieve's built-in list. tools/ holds the gates and xtask every
+# workflow runs; bzl/ holds the Bazel rules (the same two prefixes the
+# reference classifier ran everything on).
+prefixes = ["tools/", "bzl/"]
+# Every Cargo.lock, nested ones too, runs everything, as in the reference and
+# the detectors this replaces. Without this line sieve scopes a nested
+# workspace's lock to the classes that build in it (sieve REQ-027); on gale's
+# last 400 commits that would skip the driver seam gate on 2 commits that
+# changed os/gust/Cargo.lock, which the reference ran it on. Turning the
+# scoping on is an owner decision, not part of the switch.
+basenames = ["Cargo.lock"]
+
+# No [inert] list: the docs-only detector this replaces ran the heavy jobs on
+# artifacts/, schemas/ and rivet.yaml too, so they stay claimed (artifacts/)
+# or unclaimed (everything runs).
+
+[docs]
+# Names the docs-only control paths only to declare them; it reads no .md file.
+namer_exclude = [".github/gate-probe.json"]
+
+[zephyr]
+# zephyr/CMakeLists.txt names gale's own files through ${GALE_DIR}.
+cmake_root_vars = ["GALE_DIR"]
+
+# `code`: the docs-only detector. True for every change that is not docs-only.
+# On a path no class claims sieve already runs everything, so `code` only has
+# to claim what the narrower classes below claim, plus the build graph of the
+# jobs that read it, so a change confined to that graph still selects `code`
+# without running everything. Read by: Rust Coverage, Zephyr C Coverage,
+# gust dissolved on Renode, LLVM LTO build + size comparison, Binary size
+# comparison (and their advisory siblings).
+[class.code]
+# drivers/dma-own is its own workspace: no class root reaches it (it is not a
+# *-thin driver, and os/gust/build.rs links only its committed dma-own-cm3.o),
+# so it is a root here. Its source is not docs, so the docs-only class runs.
+cargo = ["Cargo.toml", "ffi/Cargo.toml", "os/gust/Cargo.toml", "drivers/dma-own/Cargo.toml"]
+cargo_glob = ["drivers/*-thin/Cargo.toml"]
+zephyr = ["zephyr/module.yml"]
+# HAND-MAINTAINED: inputs with no Cargo/Zephyr graph.
+hand = [
+  "src/",                       # Verus sources (Bazel //:verus_test)
+  "plain/",                     # Rocq translation inputs (Bazel)
+  "proofs/",                    # Rocq + Lean proofs (Bazel)
+  "renode/",                    # robot/repl files renode jobs copy
+  "os/gust/renode-test/",       # the gust Renode Bazel module
+  "drivers/build-cross-arch.sh",
+  "drivers/check-cross-arch.py",
+  "artifacts/",                 # read by the V-closure gate
+  # Named by the cross-arch gate's scripts and workflow (its policy record), so
+  # not docs-only under the rule this class reproduces; no build reads it.
+  "drivers/CROSS-ARCH.md",
+]
+true_inputs = [
+  "ffi/src/lib.rs",
+  "plain/src/sem.rs",
+  "zephyr/gale_sem.c",
+  "zephyr/module.yml",
+  "src/sem.rs",
+  "proofs/sem_proofs.v",
+  "os/gust/src/main.rs",
+  "drivers/uart-thin/src/lib.rs",
+  "drivers/dma-own/src/lib.rs",
+  "artifacts/requirements.yaml",
+]
+
+# `cross_arch`: the driver seam gate (drv-cross-arch.yml). Same inputs as its
+# old step guard (^drivers/*-thin/, ^wit/hal/, the two scripts), derived from
+# each thin driver's Cargo graph (sources, build.rs, wit_bindgen::generate!
+# paths) instead of a regex.
+[class.cross_arch]
+cargo_glob = ["drivers/*-thin/Cargo.toml"]
+# HAND-MAINTAINED: the gate's own scripts (shell + python, no build graph).
+hand = ["drivers/build-cross-arch.sh", "drivers/check-cross-arch.py"]
+true_inputs = ["drivers/uart-thin/src/lib.rs", "drivers/build-cross-arch.sh"]
+
+# `v_closure`: "no requirement lags its closed V" (rivet-v-closure.yml). Its
+# checker (tools/check-v-closure.py, under tools/ = run-all) reads only
+# artifacts/*.yaml.
+[class.v_closure]
+# HAND-MAINTAINED: the checker globs artifacts/*.yaml; no build graph.
+hand = ["artifacts/"]
+true_inputs = ["artifacts/requirements.yaml"]
+
+[workflows]
+required_contexts = ".github/required-contexts.txt"
+# Proofs never skip (owner, 2026-11-20): these run on every pull request and
+# in the merge queue, with no classifier `if:` and no skippable `needs:`.
+never_skip_jobs = [
+  "proofs needed?",
+  "Verus SMT (39 modules)",
+  "Kani BMC (185 harnesses)",
+  "Rocq Proofs (14 files)",
+  "Lean Proofs",
+  # Not a required context (owner's call), but a proof job: it never skips either.
+  "Kani BMC (driver crates)",
+]
+# scope_leaf_edits stays off: a .github/ edit runs everything.
+
+[workflows.coe_exempt]
+# HAND-MAINTAINED: `continue-on-error` steps in required jobs that nothing
+# reads, each with why it may not decide the job's verdict.
+"bazel-tests.yml:feature-sizes:Track feature sizes over time" = "publishes the size history to gh-pages on push to main only (fail-on-alert: false); the sizes are measured and checked by the steps before it"
+"zephyr-tests.yml:size-comparison:Track binary size over time" = "publishes the size history to gh-pages (fail-on-alert: false); the size comparison itself is the steps before it"
+"drv-cross-arch.yml:cross-arch:ARMv6-M leg (advisory — not a required verdict)" = "synth has no ARMv6-M target yet; the leg is advisory by policy (drivers/CROSS-ARCH.md) and reports as a ::warning::"
+
+[workflows.job_outputs]
+# HAND-MAINTAINED: required job -> the classifier outputs its `if:` may read.
+"Rust Coverage" = ["code"]
+"Zephyr C Coverage" = ["code"]
+"gust dissolved on Renode (M3: kernel 8K / control 64K / F100)" = ["code"]
+"LLVM LTO build + size comparison" = ["code"]
+"Binary size comparison" = ["code"]
+"seam survives lowering on ARM and RISC-V (all thin drivers)" = ["cross_arch"]
+"no requirement lags its closed V" = ["v_closure"]
