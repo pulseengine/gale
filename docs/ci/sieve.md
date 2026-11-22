@@ -21,11 +21,14 @@ and the drv-cross-arch step guard.
 | `cross_arch` | drv-cross-arch step guard | seam survives lowering on ARM and RISC-V (all thin drivers) |
 | `v_closure` | "V-closure needed?" regex | no requirement lags its closed V |
 
-There is no proofs class. **Proofs never skip** (owner, 2026-11-20): Verus, Kani,
-Rocq and Lean run in full on every pull request, in the merge queue and on push
-to main. `[workflows] never_skip_jobs` lists them, so `sieve check-workflows`
-fails if one gains a classifier `if:`, a step-level skip or a skippable
-`needs:`. "proofs needed?" stays as a job only because it is a required context.
+There is no proofs class. **Proofs never skip** (owner, 2026-11-20): Verus,
+Kani (including the driver crates), Rocq and Lean run in full on every pull
+request, in the merge queue and on push to main. `[workflows] never_skip_jobs`
+lists them, so `sieve check-workflows` fails if one gains a classifier `if:`, a
+step-level skip or a skippable `needs:`. "proofs needed?" stays as a job only
+because it is a required context. The driver-crate Kani job is not a required
+context, but it is on the list too; it has no path guard, and
+`cargo xtask check kani-coverage` counts each of its steps unguarded.
 
 Everything runs when sieve is unsure: any event but `pull_request` (push,
 merge_group, schedule), no base, a failed or empty diff, a path no class

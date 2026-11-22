@@ -110,6 +110,8 @@ never_skip_jobs = [
   "Kani BMC (185 harnesses)",
   "Rocq Proofs (14 files)",
   "Lean Proofs",
+  # Not a required context (owner's call), but a proof job: it never skips either.
+  "Kani BMC (driver crates)",
 ]
 # scope_leaf_edits stays off: a .github/ edit runs everything.
 
