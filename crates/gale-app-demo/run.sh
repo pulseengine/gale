@@ -4,7 +4,7 @@
 # COMPOSE them (wac), and run — proving the app's kernel calls resolve to the
 # verified gale::* decisions with no C FFI. Asserts the packed result.
 #
-# Tools: cargo + wasm32-wasip2, wac, wasmtime (>=42 for -W component-model-async).
+# Tools: cargo + wasm32-wasip2, wac, wasmtime (>=46 fleet floor; >=42 is the -W component-model-async minimum).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 APP="$HERE/target/wasm32-wasip2/release/gale_app_demo.wasm"

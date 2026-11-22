@@ -99,8 +99,8 @@ fn sched_thread_state_strategy() -> impl Strategy<Value = SchedThreadState> {
 /// Return all thread priorities currently in the queue, in index order.
 fn extract_priorities(rq: &RunQueue) -> Vec<u32> {
     let mut prios = Vec::new();
-    for i in 0..rq.len as usize {
-        prios.push(rq.entries[i].unwrap().priority.get());
+    for e in &rq.entries[..rq.len as usize] {
+        prios.push(e.unwrap().priority.get());
     }
     prios
 }

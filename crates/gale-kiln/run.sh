@@ -2,6 +2,8 @@
 # Build the gale-kiln host component and prove the verified gale::* decisions
 # run behind the gale:kernel Component Model interface (no C FFI). Asserts the
 # decision for representative inputs; exits non-zero on any mismatch.
+# Tools: cargo + wasm32-wasip2, wasm-tools, wasmtime (>=46 fleet floor; >=42 is the
+# -W component-model-async minimum).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 W="$HERE/target/wasm32-wasip2/release/gale_kiln.wasm"

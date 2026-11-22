@@ -152,3 +152,12 @@ is unobtainable from the tool. Recorded rather than glossed.
     qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
       -semihosting-config enable=on,target=native \
       -kernel target/thumbv7m-none-eabi/release/gust_iso_probe
+
+    # the standalone object, drivers/switch-thin/switch-thin-cm3.o (948dac28...), with
+    # the tools varve.toml pins; byte-identical on rustc 1.100.0 and 1.99.1:
+    cd drivers/switch-thin && cargo build --release --target wasm32-unknown-unknown
+    wasm-tools component new target/wasm32-unknown-unknown/release/gust_switch_thin.wasm -o switch.component.wasm
+    meld fuse switch.component.wasm --memory shared -o switch.fused.wasm
+    loom optimize switch.fused.wasm --passes inline --attestation false -o switch.loom.wasm
+    synth compile switch.loom.wasm --target cortex-m3 --all-exports --relocatable \
+      --native-pointer-abi --shadow-stack-size 2048 -o switch-thin-cm3.o

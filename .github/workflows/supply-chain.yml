@@ -24,9 +24,18 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # installs 1.100.0 (stable-branch SHA)
         with:
-          toolchain: stable
+          toolchain: 1.100.0
+      # Fleet rule (2026-11): rust-toolchain.toml names an exact release and
+      # every workflow toolchain is exact (or a dated nightly) on a SHA-pinned
+      # action. A floating `stable` moved codegen under a fixed pin set once
+      # (gale#434). Planted first: a step with no `toolchain:`, a bare
+      # stable/nightly, a branch ref, a lying comment must each be caught.
+      - name: Negative control — an unpinned channel, a step without toolchain, a floating toolchain and a branch ref must be caught
+        run: cargo xtask check toolchain-pin --self-test
+      - name: Every Rust toolchain CI installs is exact and SHA-pinned
+        run: cargo xtask check toolchain-pin
       # A failed install fails the job here, rather than surfacing later as
       # "command not found" (the `cargo install ... || true` it replaces).
       - name: Install cargo-deny
@@ -65,9 +74,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # installs 1.100.0 (stable-branch SHA)
         with:
-          toolchain: stable
+          toolchain: 1.100.0
       # The runner image ships bazelisk as `bazel`; it reads .bazelversion.
       - name: Negative control — an out-of-date Cargo.lock or MODULE.bazel.lock, an unlisted lock-free manifest and a stale listing must be caught
         run: cargo xtask check lockfile-census --self-test

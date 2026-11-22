@@ -113,19 +113,29 @@ and re-run `varve which synth`. It must exit 1 with the message above. If it
 succeeds, the duplicate has been pruned from the store and this section's
 premise no longer holds locally — the digest pin stays regardless.
 
-## What this pin does NOT cover: rustc
+## rustc: pinned separately, in rust-toolchain.toml
 
 The varve layer pins synth, loom, meld, witness and rivet. Several build scripts
 pin their own synth on top of that (`build-os-ts.sh` uses synth 0.45.1). Every
 crate's `Cargo.lock` is committed — 13 thin drivers and 5 providers, all tracked.
 
-**rustc is not pinned.** `rust-toolchain.toml` says:
+**rustc is pinned to an exact release** (fleet rule, 2026-11). `rust-toolchain.toml`
+says:
 
     [toolchain]
-    channel = "stable"
+    channel = "1.100.0"
 
-A floating channel. So the compiler that produces the wasm — the input to the
-entire pinned pipeline — is whatever `stable` happens to be on the machine.
+and every workflow installs that release by name (`cargo xtask check toolchain-pin`
+enforces it). Until then the file said `channel = "stable"`, so the compiler that
+produces the wasm — the input to the entire pinned pipeline — was whatever `stable`
+happened to be on the machine. The move from 1.99.1 to 1.100.0 changed the bytes of
+five committed thin-driver objects (local symbol names and, for two, a non-alloc
+section; the loaded code is identical; see `binaries.toml`). Not covered by this pin:
+Bazel builds use rules_rust's own toolchain (`MODULE.bazel`, `versions = ["1.85.0"]`),
+Kani runs the nightly its `kani-verifier` release bundles, and the fuzz and sanitizer
+jobs use a dated nightly (`nightly-2026-09-17`).
+
+The rest of this section is the history from when rustc floated.
 
 ### This is not hypothetical; four committed objects have drifted
 
@@ -143,7 +153,7 @@ Undefined-symbol sets are identical in all four, so the seam contracts hold and
 nothing is functionally wrong. Only code size moved.
 
 Since the synth version is pinned per-script and the dependency versions are
-pinned by committed lockfiles, rustc is the remaining unpinned variable in the
+pinned by committed lockfiles, rustc was then the remaining unpinned variable in the
 path from source to committed object.
 
 ### CORRECTION (2026-09-03): rustc is NOT the cause
@@ -180,14 +190,14 @@ when its sources change, and nothing notices.** That is a simpler defect and a
 more tractable one: it is mechanically checkable — for each committed `*-cm3.o`,
 is any input newer in git history than the object itself?
 
-The rustc observation stands on its own (`channel = "stable"` does float, and
-that is worth deciding about), but it is not what made these four drift, and this
+The rustc observation stood on its own (`channel = "stable"` did float; it is now
+pinned, see above), but it is not what made these four drift, and this
 document previously implied it was.
 
 ### Stated precisely
 
-rustc is the remaining *unpinned* variable. That is not the same as having proved
-it is the cause. A bisect across installed stables (1.90.0, 1.94.0) could not run:
+At the time rustc was the remaining *unpinned* variable. That was not the same as
+having proved it was the cause. A bisect across installed stables (1.90.0, 1.94.0) could not run:
 `rust-std-wasm32-unknown-unknown` is installed only for `stable`, so those
 toolchains cannot build the wasm at all, and the failure is silent — cargo exits
 101 with no output under the scripts' `set -euo pipefail`.

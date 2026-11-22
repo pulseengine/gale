@@ -21,6 +21,7 @@ pub mod renode_pin;
 pub mod renode_targets;
 pub mod retry_loops;
 pub mod target_reference;
+pub mod toolchain_pin;
 pub mod trusted_base;
 pub mod vacuous_lemmas;
 pub mod wit_resolve;
@@ -144,6 +145,12 @@ pub const GATES: &[Gate] = &[
         about: "every modelled peripheral base equals the pinned reference table (targets/reference)",
         run: target_reference::run,
         self_test: target_reference::self_test,
+    },
+    Gate {
+        name: toolchain_pin::NAME,
+        about: "rust-toolchain.toml and every CI toolchain name an exact or dated Rust, on a SHA-pinned action",
+        run: toolchain_pin::run,
+        self_test: toolchain_pin::self_test,
     },
     Gate {
         name: trusted_base::NAME,

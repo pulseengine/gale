@@ -102,7 +102,7 @@ jobs:
             sleep $((_a * 20))
           done
           [ "$_ok" = 1 ] || { echo "::error::rustup download failed after 5 attempts" >&2; exit 1; }
-          sh /tmp/rustup-init.sh -y --default-toolchain stable
+          sh /tmp/rustup-init.sh -y --default-toolchain 1.100.0
           . /root/.cargo/env
           rustup target add thumbv7m-none-eabi
 

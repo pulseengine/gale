@@ -19,8 +19,8 @@
 #                  `cargo xtask freshness-record` prints it.
 #   toolchain      every [toolchain] setting of varve.toml and rust-toolchain.toml as of this
 #                  record. Layer covalent 2026.11.7 resolves to synth 0.90.0, meld 0.67.0 and
-#                  loom 1.5.1 (gale#438 pin move, 2026-11-20). rustc is a CHANNEL, not a
-#                  version pin: a rustc release changes nothing this records.
+#                  loom 1.5.1 (gale#438 pin move, 2026-11-20). rustc is an exact release
+#                  (1.100.0 since the fleet toolchain pin), so moving it moves this record.
 # The gate fails if the bytes, the inputs or the pin differ from the record, or if the bytes
 # are not a relocatable ARM ELF. A ledger entry cannot excuse any of these.
 #
@@ -30,6 +30,16 @@
 # The move to covalent 2026.11.7 (2026-11-20) rebuilt 11 of the 19 gated objects on that pin
 # and committed them (iso-core-fused, mpu/switch/hm-thin, dma-own, and the i2c/pwm/spi/timer/
 # uart/wdg thin drivers), and the 17 Renode targets re-ran on them.
+# The rustc move 1.99.1 -> 1.100.0 rebuilt them again (full rebuild, each recipe checked to give
+# the old bytes on 1.99.1). Six reproduce byte-for-byte on 1.100.0: iso-core-fused, mpu, switch,
+# i2c, timer, dma-own. Five change: hm, pwm, spi, uart, wdg-thin. rustc 1.100.0 orders the wasm
+# functions and types differently, so (1) synth numbers its LOCAL func_N symbols differently
+# (.strtab; for pwm, spi, uart also .symtab name offsets), and (2) for spi and uart the non-alloc
+# .synth.table_type_ids section lists the same type ids in a different order (spi 05,06 -> 06,05;
+# uart 07,06 -> 05,07). Nothing in this repo reads that section by name, and as a non-alloc
+# section it is not part of the loaded image. The file sizes of pwm, spi, uart move by one byte
+# (.strtab). .text, .rel.text, all non-LOCAL and undefined symbols and every other section are
+# identical, so the loaded code is the same.
 # They carry no stale_ lines and read `recorded-fresh (not rebuilt)`: the gate trusts the
 # record and cross-checks it against git dates, it does not rebuild. 8 remain known-stale,
 # each with its reason in a comment: breadth and os-{time,tl,ts} (no builder can produce them
@@ -46,7 +56,7 @@
 path = "drivers/adc-thin/adc-thin-cm3.o"
 sha256 = "611b0ef263a691860d429baaeeef11a7cab17696be9d93495029ccb98a48200e"
 inputs_sha256 = "48673444309f2458854e5815275ee716da32c91b416fcda6c9b6aedb67cd9929"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 # Rebuilt on covalent 2026.11.7 but NOT committed: synth emits one symbol per function
 # (synth#1746), so the aliased C-ABI export name os/gust links against is dropped and the
 # gust link fails ("undefined symbol: gpio_set"). Comes off when the pin carries the fix.
@@ -61,7 +71,7 @@ regenerate = "drivers/adc-thin/RESULTS.md"
 path = "drivers/breadth/breadth-cm3.o"
 sha256 = "84aefbca244f8a91464798b2176b013d3a02e297e7fc6de12983832f9bd6c726"
 inputs_sha256 = "5c2ce054701b45c476388a80a546324edecca59abe73482104f89899db030cb2"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 # No builder can produce this on covalent 2026.11.1 or 2026.11.7: meld refuses the fuse
 # (overlapping data segments, the gale#266 class). Stale until the builder is repaired.
 stale_issue = "#506"
@@ -75,7 +85,7 @@ regenerate = "drivers/build-breadth.sh"
 path = "drivers/can-thin/can-thin-cm3.o"
 sha256 = "65b9c1255428769a11763b9f48c99acb9db358c59d5db69e780809ba9f9daac3"
 inputs_sha256 = "ecf873aa7611bcd8e794c071031f634c450752dee876a96bfa91b4de88c486b2"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 # Rebuilt on covalent 2026.11.7 but NOT committed: synth emits one symbol per function
 # (synth#1746), so the aliased C-ABI export name os/gust links against is dropped and the
 # gust link fails ("undefined symbol: gpio_set"). Comes off when the pin carries the fix.
@@ -90,7 +100,7 @@ regenerate = "drivers/can-thin/RESULTS.md"
 path = "drivers/dac-thin/dac-thin-cm3.o"
 sha256 = "f2bc43aa0e73e81322a1a81b0334bd678834e0601a0501c977845ece3ea6e48c"
 inputs_sha256 = "84304664b58ee5d36a00f34df88259b34246cb42e48128271bb908f84acf49a8"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 # Rebuilt on covalent 2026.11.7 but NOT committed: synth emits one symbol per function
 # (synth#1746), so the aliased C-ABI export name os/gust links against is dropped and the
 # gust link fails ("undefined symbol: gpio_set"). Comes off when the pin carries the fix.
@@ -105,7 +115,7 @@ regenerate = "drivers/dac-thin/RESULTS.md"
 path = "drivers/dma-own/dma-own-cm3.o"
 sha256 = "c13d37cf56b0d3ea96c87b3d35b4b75ec2f63b799b79fc6ca7a434ee9ca4a181"
 inputs_sha256 = "2768ab274b3e17e815540156bf57e63124dc3f957eb5016a277b921912382d61"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The DMA own<buffer> ownership FSM, dissolved; linked into the dma demonstrator."
@@ -115,7 +125,7 @@ regenerate = "drivers/dma-own/RESULTS.md"
 path = "drivers/gpio-thin/gpio-thin-cm3.o"
 sha256 = "1e01316712c0f80e3c5306d59831e14e765c79bcee883902c6d82d9c66ed24fb"
 inputs_sha256 = "245106a0b95931ff4c7ab67b4d4b972e96a954ada4bf3071de785a9f59459e97"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 # Rebuilt on covalent 2026.11.7 but NOT committed: synth emits one symbol per function
 # (synth#1746), so the aliased C-ABI export name os/gust links against is dropped and the
 # gust link fails ("undefined symbol: gpio_set"). Comes off when the pin carries the fix.
@@ -128,9 +138,9 @@ regenerate = "drivers/gpio-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/hm-thin/hm-thin-cm3.o"
-sha256 = "0ae5e4dbd11f0c57abcd6adfc73971b2511ac94e54d985fb27f3dade7a2d6326"
+sha256 = "4350b21df7200ed2f831b10f7a1fe2b6e453d049a1a7ca4f23f42f742a26871d"
 inputs_sha256 = "cb7eb8a327f3a8af04cf48894a96247a153f9384e2d08c940dfd8ec935c5f706"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 kind = "synth-object"
 consumer = "drivers/check-driver-components.py"
 needle = "root.glob(\"*-thin\")"
@@ -141,7 +151,7 @@ regenerate = "drivers/hm-thin/RESULTS.md"
 path = "drivers/i2c-thin/i2c-thin-cm3.o"
 sha256 = "6ada7a79e7fa788d972393a876cd9d112604a9f59631b471f60db1ba94dc6c0b"
 inputs_sha256 = "25ce6f05803b59eab3f5614d3c1747039d612171c101c956074ec61c127c34bf"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The i2c-thin driver dissolved to ARMv7-M by synth; linked into the gust i2c binaries."
@@ -151,7 +161,7 @@ regenerate = "drivers/i2c-thin/RESULTS.md"
 path = "drivers/iso-core-fused-cm3.o"
 sha256 = "b2e5236f4e1c7f8989fbe539526bbf6a5dc2faa7c41cf7008be575644730a075"
 inputs_sha256 = "298683ded631d6287e95342dfd953696402bb01727086e2f51b12a023a9b5d21"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "switch+hm+mpu fused into one object; linked into gust_iso, whose Renode gate runs it."
@@ -178,7 +188,7 @@ regenerate = "drivers/build-dissolve-gustos.sh"
 path = "drivers/mpu-thin/mpu-thin-cm3.o"
 sha256 = "9a61394c3144dc7d7c2d62ba6fa50202969abd4d59734b227b6953f3376cc450"
 inputs_sha256 = "9b87cc84d6fce1e44cbe4d0897048ffe8077257ecd75bc0f0d957d6d9277b8d6"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 kind = "synth-object"
 consumer = "drivers/check-driver-components.py"
 needle = "root.glob(\"*-thin\")"
@@ -205,7 +215,7 @@ regenerate = "drivers/build-dissolve-gustos.sh"
 path = "drivers/os-node/os-time-cm3.o"
 sha256 = "7d4e7a39e87a6d6c75c7d0cb85dad8f6b3f3b9af9fb77af90e15202bdf893b6a"
 inputs_sha256 = "df2f07636321312b135533d3d70780603131f7ae8362fe3c9a06ba3083228287"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 # No builder can produce this on covalent 2026.11.1 or 2026.11.7: meld refuses the fuse
 # (overlapping data segments, the gale#266 class). Stale until the builder is repaired.
 stale_issue = "#506"
@@ -219,7 +229,7 @@ regenerate = "drivers/build-os-time.sh"
 path = "drivers/os-node/os-tl-cm3.o"
 sha256 = "297272ceb5685a5584853a21de6caf4f7254fc8ead0accfa5fd4cc1b5f729d47"
 inputs_sha256 = "178c820d623bd399bcb3424cf9df2b14e731ca9c017cf2ec42509f750418ac87"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 # No builder can produce this on covalent 2026.11.1 or 2026.11.7: meld refuses the fuse
 # (overlapping data segments, the gale#266 class). Stale until the builder is repaired.
 stale_issue = "#506"
@@ -233,7 +243,7 @@ regenerate = "drivers/build-os-tl.sh"
 path = "drivers/os-node/os-ts-cm3.o"
 sha256 = "e99caa02fd14163ce8eeb78f32f34081c6739df21346b6cd2f65a7a62694f648"
 inputs_sha256 = "70ffc80ee5cf9df93acda89af2d870b1e3bcb57cf8293cdedbafa4b5ba09e08c"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 # No builder can produce this on covalent 2026.11.1 or 2026.11.7: meld refuses the fuse
 # (overlapping data segments, the gale#266 class). Stale until the builder is repaired.
 stale_issue = "#506"
@@ -270,9 +280,9 @@ regenerate = "drivers/os-node/repro-757/REPRO.md"
 
 [[binary]]
 path = "drivers/pwm-thin/pwm-thin-cm3.o"
-sha256 = "10cc672dda21ff5b24dfe586a8a5de2ceb79f02cd8509d92e80025957f310e02"
+sha256 = "7d9c1506a51808a5ca315ba72bed0885263a44478ceffe89a8b84f5887c1857a"
 inputs_sha256 = "e04191bde691b6d46814a884442acc6d073dde90900062c912beb2cbeeff80a7"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The pwm-thin driver dissolved to ARMv7-M by synth; linked into the gust pwm binaries."
@@ -280,9 +290,9 @@ regenerate = "drivers/pwm-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/spi-thin/spi-thin-cm3.o"
-sha256 = "d7230d6b33f3967fe3dc327267db8423a01be466e15023f4a096f3bc2c3bcad6"
+sha256 = "bf51abc4ed18cff9304c0df02efc787c05c551a1a39f173b0c5e87439661d0d5"
 inputs_sha256 = "ffcf249b3f418a4dcbf9923171b8561b889b4ae6d832417dd15e57c47ea67242"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The spi-thin driver dissolved to ARMv7-M by synth; linked into the gust spi binaries."
@@ -291,8 +301,8 @@ regenerate = "drivers/spi-thin/RESULTS.md"
 [[binary]]
 path = "drivers/switch-thin/switch-thin-cm3.o"
 sha256 = "948dac28dfd5d9be647a49c27635a1bcc53f2c6d321a19382d34cd9b7d79971b"
-inputs_sha256 = "e3521c1a87ed1cdf612a89671a2f41c651292db9355c56b3267ed342a2e3c26f"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+inputs_sha256 = "ff35fff84a156480ac8aa8bbee897011c5532dc801d50d014104a1322787974e"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 kind = "synth-object"
 consumer = "drivers/check-driver-components.py"
 needle = "root.glob(\"*-thin\")"
@@ -303,7 +313,7 @@ regenerate = "drivers/switch-thin/RESULTS.md"
 path = "drivers/timer-thin/timer-thin-cm3.o"
 sha256 = "8f6b81fde127d1e0fea8ed99094609d2b3270fdca0c2a43873a4b523271e5d3f"
 inputs_sha256 = "0706be7951e7655464912e5492aaa56bba7867a2fc1514fd46e1e4d76c34265b"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The timer-thin driver dissolved to ARMv7-M by synth; linked into the gust timer binaries."
@@ -311,9 +321,9 @@ regenerate = "drivers/timer-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/uart-thin/uart-thin-cm3.o"
-sha256 = "fefa390363aaa4fd9584eb18a801210b7ffdc31af18d9da61bf50c6b8564bd96"
+sha256 = "c0049353fe5a9933eb3f1aa37e13520ed4a0cf33ff6021a5adc66c087b11853f"
 inputs_sha256 = "b88eebcaa149f9af93d8b72c4a771e2cb075f7f679957d63734b42676dc1ccf8"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The uart-thin driver dissolved to ARMv7-M by synth; linked into the gust uart binaries."
@@ -321,9 +331,9 @@ regenerate = "drivers/uart-thin/RESULTS.md"
 
 [[binary]]
 path = "drivers/wdg-thin/wdg-thin-cm3.o"
-sha256 = "67cd1cc421cdfb6b7907671983a054d18be9f7c80c5f917ad1be0a07c03efaec"
+sha256 = "fea1aadfefd62302814631ab341b7c792d4a4294b1ed47826b68dd61c9933be0"
 inputs_sha256 = "e887373e3608389e214f7bd0d31e10f2585eef687225d45f668287f0c198358b"
-toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=stable components=[rustfmt, clippy]"
+toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 kind = "synth-object"
 consumer = "os/gust/build.rs"
 why = "The wdg-thin driver dissolved to ARMv7-M by synth; linked into the gust wdg binaries."

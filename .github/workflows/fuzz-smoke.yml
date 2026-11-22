@@ -63,7 +63,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install nightly Rust
-        uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # nightly
+        uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # installs nightly-2026-09-17 (nightly-branch SHA)
+        with:
+          toolchain: nightly-2026-09-17
 
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
@@ -91,7 +93,7 @@ jobs:
         # default via libfuzzer-sys.
         run: |
           mkdir -p fuzz/artifacts fuzz/corpus
-          cargo +nightly fuzz run "${TARGET}" \
+          cargo +nightly-2026-09-17 fuzz run "${TARGET}" \
             --target x86_64-unknown-linux-gnu \
             -- -max_total_time=60 -print_final_stats=1
 

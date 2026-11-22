@@ -125,7 +125,7 @@ jobs:
             sleep $((_a * 20))
           done
           [ "$_ok" = 1 ] || { echo "::error::rustup download failed after 5 attempts" >&2; exit 1; }
-          sh /tmp/rustup-init.sh -y --default-toolchain stable
+          sh /tmp/rustup-init.sh -y --default-toolchain 1.100.0
           . /root/.cargo/env
           # stm32f4_disco is Cortex-M4F. Engine bench keeps CONFIG_FPU
           # off (no float in the ISR path) so cargo selects the soft-

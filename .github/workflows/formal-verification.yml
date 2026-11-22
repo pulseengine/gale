@@ -94,7 +94,9 @@ jobs:
 
       - name: Install Rust toolchain
         if: needs.guard.outputs.run == 'true'
-        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
 
       - name: Run Verus verification
         if: needs.guard.outputs.run == 'true'
@@ -110,13 +112,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # nightly
+      - uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # installs 1.100.0 (nightly-branch SHA; cargo-kani installs its own toolchain)
         if: needs.guard.outputs.run == 'true'
+        with:
+          toolchain: 1.100.0
 
       - name: Install Kani
         if: needs.guard.outputs.run == 'true'
         run: |
-          cargo install --locked kani-verifier
+          cargo install --locked kani-verifier --version 0.68.0
           cargo kani setup
 
       - name: Run Kani model harnesses (main crate)
@@ -143,7 +147,9 @@ jobs:
 
       - name: Install Rust toolchain
         if: needs.guard.outputs.run == 'true'
-        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
 
       - name: Run Rocq proof verification
         if: needs.guard.outputs.run == 'true'
@@ -178,7 +184,9 @@ jobs:
 
       - name: Install Rust toolchain
         if: needs.guard.outputs.run == 'true'
-        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
 
       # These targets existed in proofs/lean/BUILD.bazel but no workflow ever
       # invoked them (gale#286), so "0 sorry" was a grep result rather than a

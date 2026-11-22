@@ -36,8 +36,8 @@
 //!
 //! Stated blind spots: the gate does not rebuild, so "recorded-fresh" means the
 //! record says the object was built from these inputs and nothing contradicts
-//! it, not that a rebuild reproduces the bytes. rustc is a channel (`stable`),
-//! not a version pin, so a rustc release changes nothing the gate sees. Cargo
+//! it, not that a rebuild reproduces the bytes. rustc is pinned to an exact
+//! release in rust-toolchain.toml, so a rustc move is a toolchain change. Cargo
 //! config in parent directories (the repo root `.cargo/`) and registry
 //! dependencies (pinned by each crate's Cargo.lock) are the only cargo inputs
 //! not followed. Objects on UNCOVERED have no input set; binary-ledger pins

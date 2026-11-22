@@ -62,8 +62,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
         with:
+          toolchain: 1.100.0
           targets: wasm32-unknown-unknown
       - name: Install wasm-tools + wac
         run: |
@@ -126,8 +127,9 @@ jobs:
       id-token: write     # cosign keyless OIDC
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # installs 1.100.0 (stable-branch SHA)
         with:
+          toolchain: 1.100.0
           targets: wasm32-unknown-unknown
       - name: Install wasm-tools + wkg
         run: |

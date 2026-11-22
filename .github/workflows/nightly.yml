@@ -40,11 +40,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # nightly
+      - uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # installs 1.100.0 (nightly-branch SHA; cargo-kani installs its own toolchain)
+        with:
+          toolchain: 1.100.0
 
       - name: Install Kani
         run: |
-          cargo install --locked kani-verifier
+          cargo install --locked kani-verifier --version 0.68.0
           cargo kani setup
 
       - name: Kani with extended bounds (main crate)
@@ -95,7 +97,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # nightly
+      - uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # installs nightly-2026-09-17 (nightly-branch SHA)
+        with:
+          toolchain: nightly-2026-09-17
 
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
@@ -125,7 +129,7 @@ jobs:
         # default via libfuzzer-sys. (Matches fuzz-smoke.yml.)
         run: |
           mkdir -p fuzz/artifacts fuzz/corpus
-          cargo +nightly fuzz run "${TARGET}" \
+          cargo +nightly-2026-09-17 fuzz run "${TARGET}" \
             --target x86_64-unknown-linux-gnu \
             -- -max_total_time=3600 -print_final_stats=1
 
@@ -210,7 +214,7 @@ jobs:
             sleep $((_a * 20))
           done
           [ "$_ok" = 1 ] || { echo "::error::rustup download failed after 5 attempts" >&2; exit 1; }
-          sh /tmp/rustup-init.sh -y --default-toolchain stable
+          sh /tmp/rustup-init.sh -y --default-toolchain 1.100.0
           . /root/.cargo/env
           rustup target add "${RUST_TARGET}"
           NON_HF=$(echo "${RUST_TARGET}" | sed 's/eabihf$/eabi/')
