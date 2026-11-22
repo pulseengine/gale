@@ -119,7 +119,7 @@ jobs:
             echo "no driver-seam path changed — gate vacuously satisfied, exiting 0"
           fi
 
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, installs 1.100.0
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
         if: steps.guard.outputs.run == 'true'
         with:
           toolchain: 1.100.0

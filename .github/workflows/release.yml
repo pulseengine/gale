@@ -212,7 +212,7 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
 
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, installs 1.100.0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # installs 1.100.0 (stable-branch SHA)
         with:
           toolchain: 1.100.0
 

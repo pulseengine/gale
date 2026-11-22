@@ -88,6 +88,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Install the pinned toolchain rather than rely on rustup auto-installing it
+      # on first use (rustup 1.29 warns that is deprecated for most commands).
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
 
       # `coqc` succeeds on a file whose every theorem ends in `Admitted.` — an
       # admit is a deferral, not an error. So the "Rocq Proofs (14 files)" job is
@@ -130,6 +135,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Install the pinned toolchain rather than rely on rustup auto-installing it
+      # on first use (rustup 1.29 warns that is deprecated for most commands).
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
 
       # gust-renode.yml names its bazel targets in an ENUMERATED list, and that
       # list silently narrowed: gust-iso-renode was defined by the commit that
@@ -219,6 +229,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Install the pinned toolchain rather than rely on rustup auto-installing it
+      # on first use (rustup 1.29 warns that is deprecated for most commands).
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
 
       # This gate exists BECAUSE a silent failure got through: `west sdk install`
       # failed three times, its step exited 0, and the NEXT step failed looking
@@ -261,6 +276,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Install the pinned toolchain rather than rely on rustup auto-installing it
+      # on first use (rustup 1.29 warns that is deprecated for most commands).
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
 
       # A job with no timeout runs to GitHub's 6-hour default, and on a repo
       # whose bottleneck is runner starvation one hung guest holds a runner for
@@ -281,7 +301,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Self-hosted `light` runners do not promise a preinstalled toolchain.
       # llvm-tools carries the llvm-readobj the attribute leg reads with.
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, installs 1.100.0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # installs 1.100.0 (stable-branch SHA)
         with:
           toolchain: 1.100.0
           targets: thumbv6m-none-eabi
@@ -311,7 +331,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Self-hosted `light` runners do not promise a preinstalled toolchain.
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, installs 1.100.0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # installs 1.100.0 (stable-branch SHA)
         with:
           toolchain: 1.100.0
 
@@ -333,7 +353,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Self-hosted `light` runners do not promise a preinstalled toolchain.
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, installs 1.100.0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # installs 1.100.0 (stable-branch SHA)
         with:
           toolchain: 1.100.0
 
@@ -356,7 +376,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Self-hosted `light` runners do not promise a preinstalled toolchain.
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, installs 1.100.0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # installs 1.100.0 (stable-branch SHA)
         with:
           toolchain: 1.100.0
 
@@ -382,7 +402,7 @@ jobs:
           # gate REFUSES (exit 3) where the oracle expects its FAIL (exit 1).
           fetch-depth: 0
       # Self-hosted `light` runners do not promise a preinstalled toolchain.
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch, installs 1.100.0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # installs 1.100.0 (stable-branch SHA)
         with:
           toolchain: 1.100.0
 
@@ -413,6 +433,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Install the pinned toolchain rather than rely on rustup auto-installing it
+      # on first use (rustup 1.29 warns that is deprecated for most commands).
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
 
       - name: Install wasm-tools
         run: cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
@@ -475,6 +500,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Install the pinned toolchain rather than rely on rustup auto-installing it
+      # on first use (rustup 1.29 warns that is deprecated for most commands).
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
 
       # Two workflows download their own synth/loom/meld instead of resolving
       # them through varve, so the pin exists in three places. drv-cross-arch.yml
@@ -520,6 +550,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+      # Install the pinned toolchain rather than rely on rustup auto-installing it
+      # on first use (rustup 1.29 warns that is deprecated for most commands).
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
           fetch-depth: 0        # the fresh-claim cross-check compares git commit dates
 
       # Four objects went stale for 5-7 weeks unnoticed (gale#334): nothing
@@ -613,6 +648,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Install the pinned toolchain rather than rely on rustup auto-installing it
+      # on first use (rustup 1.29 warns that is deprecated for most commands).
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
 
       - name: Install wasm-tools
         run: cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
@@ -659,9 +699,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Install thumbv7m target
-        run: rustup target add thumbv7m-none-eabi
+      # Install the pinned toolchain rather than rely on rustup auto-installing it
+      # on first use (rustup 1.29 warns that is deprecated for most commands).
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
+          targets: thumbv7m-none-eabi
 
       # os/gust has 52 [[bin]] probes; CI RAN two of them and compiled no
       # others, while several are cited as verification evidence in rivet
@@ -690,11 +733,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Install the pinned toolchain rather than rely on rustup auto-installing it
+      # on first use (rustup 1.29 warns that is deprecated for most commands).
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
+          targets: thumbv7m-none-eabi
 
-      - name: Install thumbv7m target and qemu
+      - name: Install qemu
         run: |
           set -euo pipefail
-          rustup target add thumbv7m-none-eabi
           sudo apt-get update -qq
           sudo apt-get install -y -qq qemu-system-arm
           qemu-system-arm --version | head -1
@@ -770,6 +818,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Install the pinned toolchain rather than rely on rustup auto-installing it
+      # on first use (rustup 1.29 warns that is deprecated for most commands).
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
       - name: Install the pinned toolchain
         run: |
           set -euo pipefail
@@ -825,7 +878,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch, installs 1.100.0
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
         with:
           toolchain: 1.100.0
           targets: wasm32-unknown-unknown
@@ -884,6 +937,11 @@ jobs:
       RIVET_SHA256: bde0ee2ced78124c35c92681ae312291bf5edbb4826d438302894fdcf72c4553
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Install the pinned toolchain rather than rely on rustup auto-installing it
+      # on first use (rustup 1.29 warns that is deprecated for most commands).
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
 
       - name: Install the pinned rivet
         run: |

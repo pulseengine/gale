@@ -40,13 +40,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # nightly branch, installs 1.100.0 (cargo-kani brings its own nightly)
+      - uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # installs 1.100.0 (nightly-branch SHA; cargo-kani installs its own toolchain)
         with:
           toolchain: 1.100.0
 
       - name: Install Kani
         run: |
-          cargo install --locked kani-verifier
+          cargo install --locked kani-verifier --version 0.68.0
           cargo kani setup
 
       - name: Kani with extended bounds (main crate)
@@ -97,7 +97,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # nightly branch, installs nightly-2026-09-17
+      - uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # installs nightly-2026-09-17 (nightly-branch SHA)
         with:
           toolchain: nightly-2026-09-17
 
