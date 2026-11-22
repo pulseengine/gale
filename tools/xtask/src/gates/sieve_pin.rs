@@ -28,6 +28,11 @@
 //! if-no-files-found: error, retention-days: 90, `if:` only always()), with no
 //! job-level `if:`. TODO(sieve#25): drops out when one classify call records.
 //!
+//! The action, the verdict workflow and its jq filter must also equal the
+//! canonical texts held below (a present-but-neutralised line fails), and the
+//! required job "every required context can actually report" must keep its
+//! four sieve steps, exactly and unguarded.
+//!
 //! What it cannot see: that the sha256 values are the release's real ones (that
 //! was checked with cosign when they were copied; docs/ci/sieve.md), a job that
 //! reaches sieve through a name other than `sieve`, or PATH changes made inside
@@ -448,6 +453,230 @@ fn verdict_problems(wf: Option<&str>, jq: Option<&str>) -> Vec<String> {
     out
 }
 
+// ------------------------------------------------------- canonical texts
+//
+// A required line can be present and still neutralised (`|| true` after the
+// sha256 check, the sha reassigned before it, `set +e`, a dropped `exit 1`),
+// so the install, the verdict workflow and its jq filter are compared with the
+// canonical text below, line for line, after dropping blank lines, comment-only
+// lines and trailing spaces. In the action only the version and the two
+// sha256 values may differ ({VER}, {X86}, {ARM}); the action is compared from
+// `runs:` on, the verdict workflow from `on:` on. Changing any of the three
+// files means changing this gate in the same commit, on purpose.
+
+const ACTION_CANON: &str = r##"runs:
+  using: composite
+  steps:
+    - name: Install sieve {VER} (pinned by sha256)
+      shell: bash
+      env:
+        SIEVE_VERSION: "{VER}"
+        SIEVE_SHA256_X86_64: "{X86}"
+        SIEVE_SHA256_AARCH64: "{ARM}"
+        PREFIX: ${{ runner.temp }}
+      run: |
+        set -euo pipefail
+        os="$(uname -s)"
+        arch="$(uname -m)"
+        case "$os/$arch" in
+          Linux/x86_64) target=x86_64-unknown-linux-musl; sha="$SIEVE_SHA256_X86_64" ;;
+          Linux/aarch64|Linux/arm64) target=aarch64-unknown-linux-musl; sha="$SIEVE_SHA256_AARCH64" ;;
+          *) echo "::error::no pinned sieve $SIEVE_VERSION for $os/$arch"; exit 1 ;;
+        esac
+        dir="$PREFIX/sieve-$SIEVE_VERSION"
+        tgz="$PREFIX/sieve-$SIEVE_VERSION-$target.tar.gz"
+        url="https://github.com/pulseengine/sieve/releases/download/v$SIEVE_VERSION/sieve-v$SIEVE_VERSION-$target.tar.gz"
+        mkdir -p "$dir"
+        curl -sSfL --retry 3 --retry-delay 5 -o "$tgz" "$url"
+        echo "$sha  $tgz" | sha256sum -c -
+        tar xzf "$tgz" -C "$dir"
+        rm -f "$tgz"
+        got="$("$dir/sieve" --version)"
+        first="${got%%$'\n'*}"
+        echo "$first"
+        if [ "$first" != "sieve $SIEVE_VERSION" ]; then
+          echo "::error::installed sieve reports '$first', not 'sieve $SIEVE_VERSION'"
+          exit 1
+        fi
+        echo "$dir" >> "$GITHUB_PATH"
+        echo "SIEVE_PINNED_DIR=$dir" >> "$GITHUB_ENV"
+        echo "SIEVE_PINNED_VERSION=$SIEVE_VERSION" >> "$GITHUB_ENV"
+"##;
+
+const VERDICT_CANON: &str = r##"on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  merge_group:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  verdict:
+    name: "record sieve's verdict"
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sieve
+      - name: Pinned sieve is the one on PATH
+        run: |
+          set -euo pipefail
+          got="$(command -v sieve || true)"
+          if [ "$got" != "$SIEVE_PINNED_DIR/sieve" ]; then
+            echo "::error::sieve on PATH is '${got:-<none>}', not the pinned $SIEVE_PINNED_DIR/sieve"
+            exit 1
+          fi
+      - name: Classify this change (JSON record)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          ev="$EVENT_NAME"
+          base="$BASE_SHA"
+          if [ "$EVENT_NAME" = push ]; then
+            ev=pull_request
+            if [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != 0000000000000000000000000000000000000000 ] && git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
+              base="$PUSH_BEFORE"
+            else
+              base="$(git rev-parse --verify --quiet 'HEAD~1^{commit}')" || {
+                echo "::error::neither github.event.before nor HEAD~1 is in this checkout (shallow?): cannot classify the push's diff"
+                exit 1
+              }
+            fi
+          fi
+          sieve classify --config sieve.toml --base "$base" --head HEAD --event "$ev" --format json --explain > "$RUNNER_TEMP/sieve-verdict.json"
+      - name: The verdict is a complete sieve.classify.v1 record
+        run: |
+          set -euo pipefail
+          command -v jq >/dev/null || { echo "::error::jq is not installed on this runner; the verdict cannot be validated"; exit 1; }
+          sieve graph --config sieve.toml --format json > "$RUNNER_TEMP/sieve-graph.json"
+          jq -e --slurpfile g "$RUNNER_TEMP/sieve-graph.json" -f tools/ci/sieve-verdict.jq "$RUNNER_TEMP/sieve-verdict.json"
+      - name: Upload the verdict
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sieve-verdict-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sieve-verdict.json
+          if-no-files-found: error
+          retention-days: 90
+"##;
+
+const JQ_CANON: &str = r##"(type == "object")
+and (.schema == "sieve.classify.v1")
+and ((.run_all | type) == "boolean")
+and ((.classes | type) == "object")
+and (($g[0].classes | keys) - (.classes | keys) | length == 0)
+and ([.classes[] | type == "boolean"] | all)
+and (($g[0].classes | keys | length) > 0)
+"##;
+
+/// The text without blank lines, comment-only lines and trailing whitespace.
+fn significant(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim_end)
+        .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
+        .map(str::to_string)
+        .collect()
+}
+
+/// The text from the first line equal to `start` on, or None.
+fn from_line<'a>(text: &'a str, start: &str) -> Option<&'a str> {
+    let mut off = 0;
+    for l in text.split_inclusive('\n') {
+        if l.trim_end() == start {
+            return Some(&text[off..]);
+        }
+        off += l.len();
+    }
+    None
+}
+
+/// None when `got` equals `want` (both significant); else the first difference.
+fn diff_canon(what: &str, got: &str, want: &str) -> Option<String> {
+    let (g, w) = (significant(got), significant(want));
+    for i in 0..g.len().max(w.len()) {
+        let (a, b) = (g.get(i), w.get(i));
+        if a != b {
+            return Some(format!(
+                "{what} differs from the canonical text held in sieve-pin at significant line {}: got `{}`, want `{}`",
+                i + 1,
+                a.map(String::as_str).unwrap_or("<end>").trim(),
+                b.map(String::as_str).unwrap_or("<end>").trim()
+            ));
+        }
+    }
+    None
+}
+
+/// Every way the three pinned texts differ from their canonical form.
+fn canonical_problems(action: &str, verdict_wf: Option<&str>, jq: Option<&str>) -> Vec<String> {
+    let mut out = Vec::new();
+    match (
+        quoted_after(action, "SIEVE_VERSION:"),
+        quoted_after(action, "SIEVE_SHA256_X86_64:"),
+        quoted_after(action, "SIEVE_SHA256_AARCH64:"),
+        from_line(action, "runs:"),
+    ) {
+        (Some(v), Some(x), Some(a), Some(runs)) => {
+            let want = ACTION_CANON.replace("{VER}", &v).replace("{X86}", &x).replace("{ARM}", &a);
+            out.extend(diff_canon(ACTION, runs, &want));
+        }
+        _ => out.push(format!("{ACTION}: no `runs:` block or no version/sha256 values to compare")),
+    }
+    match verdict_wf.and_then(|t| from_line(t, "on:")) {
+        Some(t) => out.extend(diff_canon(VERDICT_WF, t, VERDICT_CANON)),
+        None => out.push(format!("{VERDICT_WF}: missing, or no `on:` block")),
+    }
+    match jq {
+        Some(t) => out.extend(diff_canon(VERDICT_JQ, t, JQ_CANON)),
+        None => out.push(format!("{VERDICT_JQ}: missing")),
+    }
+    out
+}
+
+// ------------------------------------------ the sieve steps of the required job
+
+const KILL_CRITERIA: &str = ".github/workflows/kill-criteria.yml";
+const REQUIRED_JOB: &str = "every required context can actually report";
+/// The steps the required job must keep, each exactly this `run:` and unguarded.
+const REQUIRED_RUNS: &[&str] = &[
+    "run: sieve check-workflows --config sieve.toml",
+    "run: sieve check-graph --config sieve.toml",
+    "run: cargo xtask check sieve-pin --self-test",
+    "run: cargo xtask check sieve-pin",
+];
+
+/// Why the required job no longer runs sieve's gates as it must.
+fn required_job_problems(kc: Option<&str>) -> Vec<String> {
+    let Some(kc) = kc else { return vec![format!("{KILL_CRITERIA} is missing")] };
+    let want_name = format!("name: \"{REQUIRED_JOB}\"");
+    let Some((id, body)) = jobs(kc).into_iter().find(|(_, b)| steps(b)[0].lines().filter_map(code_of).any(|c| c == want_name)) else {
+        return vec![format!("{KILL_CRITERIA}: no job named \"{REQUIRED_JOB}\"")];
+    };
+    let st = steps(&body);
+    let mut out = Vec::new();
+    if guarded(&st[0]) {
+        out.push(format!("{KILL_CRITERIA}: job `{id}` carries a job-level `if:` or `continue-on-error:`"));
+    }
+    for r in REQUIRED_RUNS {
+        let hits: Vec<&String> = st[1..].iter().filter(|s| s.lines().filter_map(code_of).any(|c| c == *r)).collect();
+        match hits.as_slice() {
+            [] => out.push(format!("{KILL_CRITERIA}: job `{id}` has no step `{r}` (exactly, nothing appended)")),
+            [s] if guarded(s) => out.push(format!("{KILL_CRITERIA}: job `{id}`: the step `{r}` carries `if:` or `continue-on-error:`")),
+            _ => {}
+        }
+    }
+    out
+}
 pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
     let Ok(action) = std::fs::read_to_string(repo.join(ACTION)) else {
         return Verdict::Refused(format!("cannot read {ACTION} -- no pinned install exists"));
@@ -457,10 +686,14 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
     };
     let wf = std::fs::read_to_string(repo.join(VERDICT_WF)).ok();
     let jq = std::fs::read_to_string(repo.join(VERDICT_JQ)).ok();
-    let vp = verdict_problems(wf.as_deref(), jq.as_deref());
+    let kc = std::fs::read_to_string(repo.join(KILL_CRITERIA)).ok();
+    let mut vp = verdict_problems(wf.as_deref(), jq.as_deref());
+    vp.extend(canonical_problems(&action, wf.as_deref(), jq.as_deref()));
+    vp.extend(required_job_problems(kc.as_deref()));
     match check(&action, &fs) {
         Verdict::Pass(mut l) if vp.is_empty() => {
-            l.push(format!("{VERDICT_WF}: the verdict is recorded, validated and uploaded on every run"));
+            l.push(format!("{ACTION}, {VERDICT_WF} and {VERDICT_JQ} equal their canonical texts; the verdict is recorded, validated and uploaded"));
+            l.push(format!("{KILL_CRITERIA}: \"{REQUIRED_JOB}\" runs sieve check-workflows, check-graph and sieve-pin (self-test + real), unguarded"));
             Verdict::Pass(l)
         }
         Verdict::Pass(mut l) | Verdict::Fail(mut l) => {
@@ -652,5 +885,55 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
         let gutted = jq_good.replacen(l, "", 1);
         ck(&format!("a jq filter without `{l}` fails"), !verdict_problems(Some(&vwf), Some(&gutted)).is_empty());
     }
+
+    // Canonical texts: a required line present but neutralised must fail.
+    let act = format!("name: setup-sieve\ndescription: x\n\n{}", ACTION_CANON.replace("{VER}", "0.3.0").replace("{X86}", SHA_X).replace("{ARM}", SHA_A));
+    let vw = format!("name: sieve verdict\n\n{VERDICT_CANON}");
+    let jqc = JQ_CANON.to_string();
+    let canon_ok = |a: &str, w: &str, j: &str| canonical_problems(a, Some(w), Some(j)).is_empty();
+    ck("the canonical action, verdict workflow and jq filter pass", canon_ok(&act, &vw, &jqc));
+    ck("comments and blank lines may change",
+       canon_ok(&act.replacen("runs:\n", "runs:\n  # a note\n\n", 1), &vw.replacen("jobs:\n", "jobs:\n  # a note\n", 1), &format!("# note\n{jqc}")));
+    ck("another version and other sha256 values pass the canonical comparison",
+       canonical_problems(&act.replace("0.3.0", "0.4.0").replace(SHA_X, &"1".repeat(64)), Some(&vw), Some(&jqc)).is_empty());
+    let act_bad = |w: &str| !canon_ok(w, &vw, &jqc);
+    ck("A1: `|| true` on the sha256 check fails",
+       act_bad(&act.replacen("| sha256sum -c -", "| sha256sum -c - || true", 1)));
+    ck("A3: the sha reassigned before the check fails",
+       act_bad(&act.replacen("        echo \"$sha  $tgz\"", "        sha=\"$(sha256sum \"$tgz\" | cut -d\" \" -f1)\"\n        echo \"$sha  $tgz\"", 1)));
+    ck("A7: `set +e` instead of `set -euo pipefail` fails", act_bad(&act.replacen("set -euo pipefail", "set +e", 1)));
+    ck("A2: the `exit 1` after the version mismatch dropped fails",
+       act_bad(&{ let i = act.find("not 'sieve $SIEVE_VERSION'").unwrap(); let j = i + act[i..].find("exit 1\n").unwrap(); format!("{}{}", &act[..j], &act[j + 7..]) }));
+    ck("A5: curl fetching another url fails", act_bad(&act.replacen("-o \"$tgz\" \"$url\"", "-o \"$tgz\" \"https://example.com/x\"", 1)));
+    ck("A6: a second GITHUB_PATH entry fails", act_bad(&act.replacen("        echo \"$dir\" >> \"$GITHUB_PATH\"\n", "        echo \"$dir\" >> \"$GITHUB_PATH\"\n        echo /tmp >> \"$GITHUB_PATH\"\n", 1)));
+    let vw_bad = |w: &str| !canon_ok(&act, w, &jqc);
+    ck("V1: `|| true` on the jq validation fails",
+       vw_bad(&vw.replacen("\"$RUNNER_TEMP/sieve-verdict.json\"\n      - name: Upload", "\"$RUNNER_TEMP/sieve-verdict.json\" || true\n      - name: Upload", 1)));
+    ck("V2: `|| true` on the classify call fails",
+       vw_bad(&vw.replacen("--explain > \"$RUNNER_TEMP/sieve-verdict.json\"", "--explain > \"$RUNNER_TEMP/sieve-verdict.json\" || true", 1)));
+    ck("V4: the push trigger removed fails", vw_bad(&vw.replacen("  push:\n    branches: [main]\n", "", 1)));
+    ck("V6: the push branch changed fails", vw_bad(&vw.replacen("  push:\n    branches: [main]\n", "  push:\n    branches: [release]\n", 1)));
+    ck("V8: `exit 0` first in the push branch fails",
+       vw_bad(&vw.replacen("            ev=pull_request\n", "            exit 0\n            ev=pull_request\n", 1)));
+    ck("V9: `--event push` hardcoded fails", vw_bad(&vw.replacen("--event \"$ev\"", "--event push", 1)));
+    ck("V13: a step overwriting the record before the upload fails",
+       vw_bad(&vw.replacen("      - name: Upload the verdict\n", "      - run: echo '{}' > \"$RUNNER_TEMP/sieve-verdict.json\"\n      - name: Upload the verdict\n", 1)));
+    ck("V14: `ref: main` on the checkout fails", vw_bad(&vw.replacen("          fetch-depth: 0\n", "          fetch-depth: 0\n          ref: main\n", 1)));
+    ck("V16: BASE_SHA set to github.sha fails",
+       vw_bad(&vw.replacen("BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}", "BASE_SHA: ${{ github.sha }}", 1)));
+    ck("V10: `or true` in the jq filter fails", !canon_ok(&act, &vw, &format!("{jqc}\nor true")));
+    ck("V11: a jq filter line weakened to `or` fails", !canon_ok(&act, &vw, &jqc.replacen("and (.schema", "or (.schema", 1)));
+    ck("a missing verdict workflow fails", !canonical_problems(&act, None, Some(&jqc)).is_empty());
+
+    // The required job's four sieve steps.
+    let kc = "jobs:\n  required-contexts:\n    name: \"every required context can actually report\"\n    runs-on: x\n    steps:\n      - uses: actions/checkout@x\n      - name: a\n        run: sieve check-workflows --config sieve.toml\n      - name: b\n        run: sieve check-graph --config sieve.toml\n      - name: c\n        run: cargo xtask check sieve-pin --self-test\n      - name: d\n        run: cargo xtask check sieve-pin\n";
+    let kc_ok = |t: &str| required_job_problems(Some(t)).is_empty();
+    ck("the required job with its four sieve steps passes", kc_ok(kc));
+    ck("K1: `|| true` on check-workflows fails", !kc_ok(&kc.replacen("--config sieve.toml\n      - name: b", "--config sieve.toml || true\n      - name: b", 1)));
+    ck("K2: `|| true` on sieve-pin fails", !kc_ok(&kc.replacen("check sieve-pin\n", "check sieve-pin || true\n", 1)));
+    ck("K3: the check-graph step removed fails", !kc_ok(&kc.replacen("      - name: b\n        run: sieve check-graph --config sieve.toml\n", "", 1)));
+    ck("K4: the check-workflows step removed fails", !kc_ok(&kc.replacen("      - name: a\n        run: sieve check-workflows --config sieve.toml\n", "", 1)));
+    ck("`continue-on-error:` on a sieve step fails", !kc_ok(&kc.replacen("      - name: c\n", "      - name: c\n        continue-on-error: true\n", 1)));
+    ck("the steps in another job do not count", !kc_ok(&kc.replacen("every required context can actually report", "something else", 1)));
     if broken { Verdict::Fail(lines) } else { Verdict::Pass(lines) }
 }

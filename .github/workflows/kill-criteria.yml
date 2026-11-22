@@ -161,16 +161,6 @@ jobs:
       - name: One Renode everywhere (module, action, workflows agree)
         run: cargo xtask check renode-pin
 
-      # sieve decides which heavy jobs a PR runs, and CI installs it from its
-      # release (.github/actions/setup-sieve), not from the varve layer. The
-      # action's version and two sha256 values must agree with each other, and
-      # every job that runs sieve must install that pin and prove PATH finds it.
-      - name: Negative control — a drifted or bypassed sieve pin must be caught
-        run: cargo xtask check sieve-pin --self-test
-
-      - name: One sieve everywhere (action self-consistent, every job uses it)
-        run: cargo xtask check sieve-pin
-
       # binaries.toml records why each committed binary exists and which file
       # reads it. An unlisted binary, or a consumer that stopped naming its
       # binary, is red: a binary nothing reads is deleted, not kept.
@@ -729,6 +719,16 @@ jobs:
         run: sieve check-workflows --config sieve.toml
       - name: Every sieve class input selects its class (graph controls on the real tree)
         run: sieve check-graph --config sieve.toml
+      # sieve decides which heavy jobs a PR runs, and CI installs it from its
+      # release (.github/actions/setup-sieve), not from the varve layer. The
+      # action must be the canonical install with one version and two sha256
+      # values, every job that runs sieve must install that pin and prove PATH
+      # finds it, the verdict record must be the canonical one, and the four
+      # sieve steps of this job must stay present and unguarded.
+      - name: Negative control — a drifted, neutralised or bypassed sieve pin must be caught
+        run: cargo xtask check sieve-pin --self-test
+      - name: One sieve everywhere, installed and recorded exactly as pinned
+        run: cargo xtask check sieve-pin
 
   # VER-DRV-GRAPH-001 (gale#345): the graph half of the old REQ-DRV-COMPONENT-001.
   # Its per-driver half is gated by drv-components.yml; this asserts the property

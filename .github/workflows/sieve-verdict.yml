@@ -12,9 +12,10 @@
 # delete this workflow.
 #
 # Not a required context. It is on sieve.toml `[workflows] never_skip_jobs`,
-# so check-workflows fails if it gains an `if:` (other than always()/
-# !cancelled()), a skippable `needs:` or a trigger filter; `cargo xtask check
-# sieve-pin` fails if the validation or the upload step goes missing or drifts.
+# so check-workflows fails if it gains an `if:`, a skippable `needs:` or a
+# trigger filter. `cargo xtask check sieve-pin` compares everything from `on:`
+# on, and tools/ci/sieve-verdict.jq, with canonical texts held in the gate:
+# change this file and the gate together.
 name: sieve verdict
 
 on:
@@ -52,26 +53,32 @@ jobs:
           fi
       # pull_request and merge_group: classify the event as it is (the PR base;
       # on merge_group sieve selects every class, fail open, and says so in
-      # `reason`). Push to main: sieve's documented observe form, the pushed
-      # commit's own diff classified as a pull request against HEAD~1 (main
-      # merges by squash, so HEAD~1 is the previous main). A checkout without
-      # HEAD~1 fails this step loudly; nothing is recorded and the upload's
-      # if-no-files-found: error fails too. A crash inside sieve is a run_all
-      # verdict; whatever sieve wrote is validated and uploaded below.
+      # `reason`). Push to main: sieve's documented observe form, the push's
+      # whole diff classified as a pull request, from github.event.before (the
+      # main the push started from) when it is a real commit in this checkout,
+      # else from HEAD~1 (the first parent; a new branch or a missing before).
+      # Without either base the step fails loudly; nothing is recorded and the
+      # upload's if-no-files-found: error fails too. A crash inside sieve is a
+      # run_all verdict; whatever sieve wrote is validated and uploaded below.
       - name: Classify this change (JSON record)
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           ev="$EVENT_NAME"
           base="$BASE_SHA"
           if [ "$EVENT_NAME" = push ]; then
             ev=pull_request
-            base="$(git rev-parse --verify --quiet 'HEAD~1^{commit}')" || {
-              echo "::error::HEAD~1 is not in this checkout (shallow?): cannot classify the pushed commit's own diff"
-              exit 1
-            }
+            if [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != 0000000000000000000000000000000000000000 ] && git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
+              base="$PUSH_BEFORE"
+            else
+              base="$(git rev-parse --verify --quiet 'HEAD~1^{commit}')" || {
+                echo "::error::neither github.event.before nor HEAD~1 is in this checkout (shallow?): cannot classify the push's diff"
+                exit 1
+              }
+            fi
           fi
           sieve classify --config sieve.toml --base "$base" --head HEAD --event "$ev" --format json --explain > "$RUNNER_TEMP/sieve-verdict.json"
       # The record must parse, name the classify schema, and carry a boolean

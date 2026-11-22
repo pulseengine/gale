@@ -4,9 +4,10 @@ description: >
   sieve.toml) from its GitHub release, check the archive's sha256 and the
   binary's own version, and put it first on PATH. sieve is not in the varve
   layer gale pins (covalent 2026.11.7 is frozen for v0.11.0), so the pin lives
-  here. `cargo xtask check sieve-pin` fails when the version, the two sha256
-  values or the install lines below drift, and when a job runs sieve without
-  this action or the "Pinned sieve is the one on PATH" step after it.
+  here. `cargo xtask check sieve-pin` compares everything from `runs:` on with
+  a canonical text held in the gate (only the version and the two sha256
+  values may differ), and fails when a job runs sieve without this action or
+  the "Pinned sieve is the one on PATH" step after it.
   The sha256 values are the release's SHA256SUMS.txt entries, which were
   verified with cosign against the sieve release workflow's identity before
   they were copied here (docs/ci/sieve.md says how to redo that for a bump).
