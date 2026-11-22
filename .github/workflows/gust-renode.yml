@@ -32,29 +32,39 @@ concurrency:
 
 jobs:
   changes:
-    # Docs-only detector (tools/ci/detect-changes.sh, fails closed). The heavy
-    # jobs below skip on docs-only changes by job-level `if:`, which still
-    # REPORTS their required context; a workflow `paths:` would not (gale#294).
-    # pull_request diffs against the PR base, merge_group against
-    # merge_group.base_sha.
-    name: "docs-only change?"
+    # sieve (sieve.toml, pinned by .github/actions/setup-sieve) decides which
+    # heavy jobs this change needs. The jobs below read its `code` output (false
+    # only on a docs-only change) through the classifier `if:` form, so a skipped
+    # job still REPORTS its required context; a workflow `paths:` would not
+    # (gale#294). Any event but pull_request (push, merge_group, schedule) and a
+    # failed, cancelled or silent classifier run them all.
+    name: "classify changes (sieve)"
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-24.04' }}
     timeout-minutes: 10
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      code: ${{ steps.sieve.outputs.code }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - id: filter
+      - uses: ./.github/actions/setup-sieve
+      - name: Pinned sieve is the one on PATH
+        run: |
+          set -euo pipefail
+          got="$(command -v sieve || true)"
+          if [ "$got" != "$SIEVE_PINNED_DIR/sieve" ]; then
+            echo "::error::sieve on PATH is '${got:-<none>}', not the pinned $SIEVE_PINNED_DIR/sieve"
+            exit 1
+          fi
+      - id: sieve
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-        run: bash tools/ci/detect-changes.sh
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: sieve classify --config sieve.toml --base "$BASE_SHA" --event "$EVENT_NAME" --format github-output
 
   gust-renode:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}
     name: "gust dissolved on Renode (M3: kernel 8K / control 64K / F100)"
     runs-on: ubuntu-22.04
     timeout-minutes: 30
