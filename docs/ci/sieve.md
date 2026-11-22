@@ -10,9 +10,8 @@ and the drv-cross-arch step guard.
 |---|---|
 | `sieve.toml` | the classes, what runs everything, the never-skip jobs |
 | `.github/actions/setup-sieve/action.yml` | installs the pinned sieve (version + sha256) |
-| `.github/workflows/sieve-verdict.yml`, `tools/ci/sieve-verdict.jq` | record and validate sieve's verdict on every run |
 | `tools/ci/sieve-gate-probe.sh` | hands temper's gate probe to sieve |
-| `cargo xtask check sieve-pin` | keeps the pin, the verdict record and the sieve gates intact (below) |
+| `cargo xtask check sieve-pin` | keeps the pin, each classifier job's verdict record and the sieve gates intact (below) |
 
 ## The classes
 
@@ -39,7 +38,7 @@ cancelled or wrote nothing.
 Each gated workflow has one job that runs
 
 ```sh
-sieve classify --config sieve.toml --base "$BASE_SHA" --event "$EVENT_NAME" --format github-output
+sieve classify --config sieve.toml --base "$BASE_SHA" --event "$EVENT_NAME" --format github-output --record "$RUNNER_TEMP/sieve-verdict.json"
 ```
 
 and a required job skips only through
@@ -66,11 +65,15 @@ The required job "every required context can actually report"
 - `sieve check-graph`: every class input selects its class.
 - `cargo xtask check sieve-pin --self-test`, then `cargo xtask check sieve-pin`.
   This gate checks:
-  - the action, the verdict workflow (from `on:` on) and the jq filter equal
-    canonical texts held in the gate, line for line, ignoring blank lines and
-    comment-only lines. Only the version and the two sha256 values may differ,
-    so a check that is present but neutralised fails (`|| true`, a reassigned
-    sha, `set +e`, a dropped `exit 1`, `--event push`, `ref: main`, `or true`);
+  - the action equals a canonical text held in the gate from `runs:` on, line
+    for line, ignoring blank lines and comment-only lines. Only the version and
+    the two sha256 values may differ, so a check that is present but
+    neutralised fails (`|| true`, a reassigned sha, `set +e`, a dropped
+    `exit 1`);
+  - every classifier job runs exactly the classify call above, and its very
+    next step uploads the record (SHA-pinned upload-artifact, the
+    workflow-and-job artifact name, the record's path, `if-no-files-found:
+    error`, 90 days, `if:` only `always()`);
   - every job that runs sieve installs the pin and proves PATH finds it;
   - every `sieve classify --base` job checks out with fetch-depth 0 or at
     least 2;
@@ -85,64 +88,54 @@ one positive and one negative control per class: `src/sem.rs` for `code`,
 `artifacts/requirements.yaml` for `v_closure`. Dropping a class's claim turns
 the probe red.
 
-## The verdict record
+## The verdict of record
 
-Every run (pull_request, merge_group, push to main) records sieve's verdict in
-one repo-wide job, "record sieve's verdict" in
-`.github/workflows/sieve-verdict.yml`:
+Each classifier job's one classify call also writes the JSON verdict
+(`--record "$RUNNER_TEMP/sieve-verdict.json"`, sieve v0.4.0, sieve#25). Its very
+next step uploads it as `sieve-verdict-<workflow>-<job>-<run_attempt>`, kept 90
+days, with `if-no-files-found: error`. sieve writes the record before its
+outputs; if it cannot write it, sieve writes no output and exits 2, so every
+gated job runs.
 
-- **pull_request:** the PR classified against its base.
-- **merge_group:** a run_all verdict (the event is not a pull request).
-- **push to main:** sieve's observe form, `--event pull_request --base <base>
-  --head HEAD`, so the record covers the push's whole diff. `<base>` is
-  `github.event.before` when it is a real commit in the checkout, otherwise
-  `HEAD~1` (the first parent). Without either, the step fails loudly and nothing
-  is recorded. A push run cancelled by the concurrency group records nothing.
+On a pull request, the last record of each classifier job is **the verdict of
+record**: the verdict that actually skipped jobs. Push and merge_group records
+say run_all, which is right, because gating on push stays `--event push` and
+main pushes never skip anything.
 
-The job runs `sieve classify --format json --explain` once. It checks the
-record with `jq -e -f tools/ci/sieve-verdict.jq` against `sieve graph`: the
-record must parse, name `sieve.classify.v1` and carry a boolean for every class
-in sieve.toml. A missing jq fails the step with a clear message. The record is
-uploaded as `sieve-verdict-<run_attempt>`, kept 90 days, with
-`if-no-files-found: error`. `sieve observe` can later compare these records
-with the jobs' results.
+There is no separate jq validation step. The record is sieve's own output,
+written before any gating output. A validation step in the gating job would
+tie every PR's gating to jq on the runner. The gate holds the shape instead:
+`sieve-pin` requires the exact classify call and the upload right after it.
 
-It is a separate job because a classifier job may run `sieve classify` only
-once (check-workflows gate b), and sieve 0.3.0's github-output mode writes no
-JSON. Moving the record into that single call is tracked in sieve#25.
+### Follow-up: counting misses (not built in L17)
 
-The sieve#25 branch (PR #26, 30b587ee, built locally) was tested in a copy of
-this tree:
+`sieve observe` will compare the verdict of record with the jobs of the push run
+on main after the merge. gale has no merge queue, so that push run runs
+everything. The steps are:
 
-- with `--record "$RUNNER_TEMP/sieve-verdict.json"` added to all six classifier
-  steps, its check-workflows exits 0 (sieve 0.3.0 exits 1);
-- the record passes this validation;
-- an unwritable record path exits 2 and writes no outputs, so every gated job
-  runs.
+1. find the PR for the merge commit;
+2. download that PR's last `sieve-verdict-*` artifacts;
+3. run `sieve observe` with the push run's job results.
 
-The swap waits for a cosign-verified v0.4.0.
-
-The job is not a required context. It is on `never_skip_jobs`, so a job-level
-`if:` fails check-workflows.
+A commit with no PR record is **uncompared**, never "no miss". Recomputing a
+verdict from the merge commit's own diff is not a substitute: when main moved
+while the PR was open, that is a different verdict from the one that gated.
 
 ## Evidence for the switch
 
 `sieve equivalence` replays gale's last 400 first-parent commits (to a0e9d47c)
 through each old detector in `GATE_PROBE_FILES` mode and through sieve, class
 by class. A narrowing (sieve selecting less than the old detector) fails it.
+Numbers with sieve 0.4.0:
 
 | old detector | compared | narrower | identical / wider | exit |
 |---|---|---|---|---|
 | `tools/ci/detect-changes.sh` (`code`) | 400/400 | 0 | 400 / 0 | 0 |
 | the inline V-closure and cross-arch regexes, copied verbatim (`v_closure`, `cross_arch`) | 400/400 | 0 | 63 / 337 | 0 |
-| Python reference, `--map zephyr=code` (and `cross_arch`) | 400/400 | 0 | 360 / 40 | 0 |
-| Python reference, `--map zephyr_renode=code` | 400/400 | 0 | 360 / 40 | 0 |
-| Python reference, `--map rust_cov=code` | 400/400 | 0 | 356 / 44 | 0 |
-| Python reference, `--map proofs=code` | 400/400 | 0 | 367 / 33 | 0 |
-| Python reference, `--map gust_renode=code` | 400/400 | 0 | 356 / 44 | 0 |
+| Python reference, its five heavy-job outputs all mapped to `code` (a union), plus `cross_arch` | 400/400 | 0 | 371 / 29 | 0 |
 
-`--map` keeps the last old output written for a class. That is why each
-reference output gets its own run.
+Under sieve 0.3.0, `--map` kept only the last old output written for a class, so
+each reference output got its own run (wider 40, 40, 44, 33, 44; 0 narrower each).
 
 The first run against the Python reference narrowed `cross_arch` on 2 commits
 that changed `os/gust/Cargo.lock`. sieve scopes a nested workspace's lock to the
@@ -155,7 +148,9 @@ Turning the scoping on is a separate decision.
 Run from a checkout of this branch with the pinned sieve on PATH, and with
 `$T` a scratch directory outside the tree. The Python reference needs Python
 3.11 or later (`tomllib`); an older one, or a missing Bazel snapshot, makes it
-run everything on every commit, and that shows up as narrowing.
+run everything on every commit, and that shows up as narrowing. The inline
+guards were three `grep -E` regexes in the old workflows; they have no script to
+rerun from here.
 
 ```sh
 # the old docs-only detector, from the last commit that had it
@@ -168,13 +163,11 @@ sieve equivalence --config sieve.toml --ref a0e9d47c --commits 400 \
 git show 4050000f:tools/ci/classify-changes.py > "$T/classify-changes.py"
 git show 4050000f:tools/ci/inputs-bazel.json > tools/ci/inputs-bazel.json
 sieve equivalence --config sieve.toml --ref a0e9d47c --commits 400 \
-  --old python3.12 --old-arg -I --old-arg "$T/classify-changes.py" --map zephyr=code
+  --old python3.12 --old-arg -I --old-arg "$T/classify-changes.py" \
+  --map zephyr=code --map zephyr_renode=code --map rust_cov=code \
+  --map proofs=code --map gust_renode=code
 rm tools/ci/inputs-bazel.json
 ```
-
-Repeat the second command with `--map zephyr_renode=code`, `rust_cov=code`,
-`proofs=code` and `gust_renode=code` for the other rows.
-
 ## Paths that still run everything
 
 A replay of gale's last 80 merged PRs found PRs that ran everything only

@@ -82,7 +82,19 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: sieve classify --config sieve.toml --base "$BASE_SHA" --event "$EVENT_NAME" --format github-output
+        run: sieve classify --config sieve.toml --base "$BASE_SHA" --event "$EVENT_NAME" --format github-output --record "$RUNNER_TEMP/sieve-verdict.json"
+      # The verdict of record: the JSON this classify call wrote before its
+      # outputs (sieve exits 2 and writes no output if it cannot). On a pull
+      # request it is the verdict that skipped jobs; push and merge_group record
+      # run_all. docs/ci/sieve.md has the observe follow-up that reads it.
+      - name: Upload the verdict of record
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sieve-verdict-zephyr-tests-changes-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sieve-verdict.json
+          if-no-files-found: error
+          retention-days: 90
 
   zephyr-test:
     needs: changes
