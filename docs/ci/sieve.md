@@ -32,9 +32,9 @@ context, but it is on the list too; it has no path guard, and
 
 Everything runs when sieve is unsure: any event but `pull_request` (push,
 merge_group, schedule), no base, a failed or empty diff, a path no class
-claims, a change to `.github/**`, `tools/**`, `bzl/**`, `sieve.toml`, any
-`Cargo.lock` or a toolchain or Bazel file, and a classifier job that failed, was
-cancelled or wrote nothing.
+claims, a change to `.github/**` (except a scoped leaf-workflow edit, below),
+`tools/**`, `bzl/**`, `sieve.toml`, any `Cargo.lock` or a toolchain or Bazel
+file, and a classifier job that failed, was cancelled or wrote nothing.
 
 ## How a job is gated
 
@@ -82,6 +82,8 @@ The required job "every required context can actually report"
     least 2;
   - the required job keeps all four sieve steps, unguarded and with nothing
     appended.
+  - `sieve.toml` keeps exactly one `scope_leaf_edits = true` under
+    `[workflows]` (dropped, `false`, commented out, moved or overridden fails).
 
 What sieve-pin cannot see is listed in REQ-CI-SIEVE-002.
 
@@ -129,7 +131,9 @@ while the PR was open, that is a different verdict from the one that gated.
 `sieve equivalence` replays gale's last 400 first-parent commits (to a0e9d47c)
 through each old detector in `GATE_PROBE_FILES` mode and through sieve, class
 by class. A narrowing (sieve selecting less than the old detector) fails it.
-Numbers with sieve 0.4.0:
+Numbers with sieve 0.4.0 (rerun with 0.4.2 and leaf scoping on in lane L18, to
+f0ac6e3e: `detect-changes.sh` 400/400, 0 narrower, 400 identical; the Python
+reference union 400/400, 0 narrower, 371 identical, 29 wider; both exit 0):
 
 | old detector | compared | narrower | identical / wider | exit |
 |---|---|---|---|---|
@@ -171,6 +175,107 @@ sieve equivalence --config sieve.toml --ref a0e9d47c --commits 400 \
   --map proofs=code --map gust_renode=code
 rm tools/ci/inputs-bazel.json
 ```
+## Scoped leaf-workflow edits (sieve 0.4.2, lane L18)
+
+`[workflows] scope_leaf_edits = true` lets an edit to one file directly under
+`.github/workflows/` select less than everything (sieve README, "Scoped
+leaf-workflow edits"). The README is authoritative. In short:
+
+- A job-body edit selects the classes that the classifier `if:` reads, for the
+  changed jobs, the jobs that need them and the jobs those need (REQ-030).
+- A workflow that hosts no classifier selects no class, because its jobs all
+  run anyway (REQ-035).
+- `.github/dependabot.yml`, `CODEOWNERS` and the templates select nothing unless
+  something names them (REQ-036).
+- Everything else under `.github/` still runs everything: composite actions,
+  `.github/zephyr-fork-pin` (which `code` jobs read), `required-contexts.txt`
+  and `gate-probe.json`. So do these workflow edits:
+  - a change outside `jobs:`;
+  - a change to a job's `if:`, `needs:`, `outputs:`, `strategy:` or
+    `continue-on-error:`, or to a step's `if:`;
+  - any edit to a job that runs `sieve classify`;
+  - an edit made with no workflow blob at the merge base.
+
+Scoping only works if the workflows have the shape sieve can read. gale's
+workflows keep these rules (L18 made them true):
+
+- every gating job `if:` is exactly the classifier form. The dead
+  `github.event_name != 'merge_group'` terms are gone, because gale has no
+  merge queue;
+- no step `if:` reads a context other than `github` or `runner`. The Codecov
+  uploads test `github.event.pull_request.head.repo.fork` and `github.actor`,
+  and the TSan sysctl tests its matrix value inside the script;
+- no job reads `needs` outside its `if:`. sieve 0.4.2 also counts the bare
+  word "needs" in `run:` script text, comments included, so scripts avoid it.
+
+`cargo xtask check sieve-pin` fails if the `scope_leaf_edits = true` line is
+dropped. Turning scoping off is safe (everything runs again) but gives the
+saving back, so it has to be a visible change to the gate.
+
+### Blocker: `uses: ./gale/.github/actions/setup-renode`
+
+Five Renode workflows check gale out under `path: gale` and call
+`uses: ./gale/.github/actions/setup-renode`. sieve 0.4.2 scans every workflow
+for whole-repository linters on every scoped edit, and it cannot resolve that
+path to the tracked `.github/actions/setup-renode`. **Every scoped edit
+therefore still runs everything on this branch.** The probe below measures it.
+The fix belongs in sieve: resolve `./<p>/` through the job's same-repository
+`actions/checkout` `path: <p>`. The alternative is moving those five jobs'
+checkout to the workspace root, which is an owner decision. Until one of them
+lands, the shaping above is ready but saves nothing.
+
+### Measurements
+
+Scripts and raw JSONL live in the lane's scratch area. The method follows jig's
+replay: for each of the last 80 first-parent commits M on main, one
+`sieve classify --event pull_request --base M^ --head M` in git mode. It uses
+today's `sieve.toml` and tree for old diffs, and models no merge_group or push
+run. Leaf scoping reads each workflow as it was at M^ and M, so this replay
+mostly measures the workflow shapes of that time. The per-job probe measures
+today's shapes: one harmless step is inserted into each of the 82 jobs, and the
+edit is classified against the tree.
+
+| replay (80 PRs) | run_all | est. min/PR saved |
+|---|---|---|
+| f0ac6e3e, sieve 0.4.0, scoping off | 75 | 0.2 |
+| f0ac6e3e, sieve 0.4.0, scoping on | 73 | 14.9 |
+| f0ac6e3e, sieve 0.4.2, scoping off | 75 | 0.2 |
+| f0ac6e3e, sieve 0.4.2, scoping on | 75 | 0.2 |
+| this branch, sieve 0.4.2 | 75 | 0.2 |
+| this branch, `./gale/` simulated resolvable | 73 | 14.9 |
+
+| per-job probe (82 jobs, sieve 0.4.2) | scoped | run_all |
+|---|---|---|
+| this branch | 0 | 82 (all: `./gale/` resolution) |
+| this branch, `./gale/` simulated resolvable | 74 | 8 (6 classifier jobs; gustos-publish's tag/dispatch `if:`, 2 jobs) |
+
+Minutes are an **estimate**. Each skipped job costs its median measured duration
+over 8 successful push runs on main, with matrix legs counted one by one:
+`code` 581.5 min, `cross_arch` 5.0, `v_closure` 0.2. The classifier jobs' own
+cost (about 0.2 min each) is not subtracted.
+
+Under 0.4.0, scoping also passed #456 and #447, which were one-line
+compliance.yml edits. 0.4.2 refuses them because of the word "needs" in a
+script comment. On today's tree that word is gone.
+
+Safety plants (sieve 0.4.2, on the branch with `./gale/` simulated resolvable;
+on the real branch every row runs everything):
+
+| plant | expected | observed |
+|---|---|---|
+| a step added to rust-coverage / cross-arch / v-closure / zephyr-test | its class | `code` / `cross_arch` / `v_closure` / `code` |
+| a step added to a proof job (verus) | no class (proofs never skip) | none |
+| rust-coverage `if:`, `needs:`, `outputs:`, a step `if:` changed | everything | everything |
+| coverage.yml `concurrency`, drv-cross-arch.yml top-level `env` | everything | everything |
+| a step added to a classifier job (coverage, rivet-v-closure) | everything | everything |
+| a depth-1 checkout | everything | everything ("git diff failed against <base>") |
+| a blobless clone with no reachable promisor | everything | everything ("cannot read ... at the merge base") |
+| `scope_leaf_edits` removed or `false` | everything | everything |
+
+A shallow or blobless checkout fails safe and silently. Nothing goes red: the
+saving disappears, and the only trace is the verdict of record's `reason`. sieve-pin
+keeps every `sieve classify --base` checkout at fetch-depth 0 (or at least 2).
+
 ## Paths that still run everything
 
 A replay of gale's last 80 merged PRs found PRs that ran everything only
