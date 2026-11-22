@@ -4,10 +4,20 @@
 #   Nix is installed because rules_rocq_rust (in MODULE.bazel) requires
 #   nix-build for toolchain resolution, even when only running Verus.
 #
-# Kani: runs via cargo kani. Two invocations — main crate (87 harnesses)
-#   and FFI crate (98 harnesses), 185 total.
+# Kani: runs via cargo kani. Two invocations -- main crate (112 harnesses
+#   compiled: 87 in tests/ + 25 in plain/src; the 25 Verus originals in src/
+#   are never built) and FFI crate (258), 370 total. The job name still says
+#   185: it is a required context (.github/required-contexts.txt), so renaming
+#   it is the owner's call.
+#   kani-drivers runs `cargo kani` in each of the 14 driver crates (101
+#   harnesses; none was run by CI before). Figures measured 2026-11-20 by
+#   `cargo xtask check kani-coverage`, which prints them and gates that every
+#   harness crate is run by some invocation that can fail; the figures in this
+#   comment are not gated.
 #
-# Rocq: compiles 149 theorems across 9 proof files.
+# Rocq: 13 proof files (the job name says 14; it is a required context); 164
+#   closed (Qed/Defined) theorems in 10 of them, 74 Admitted in 3 (measured
+#   2026-11-20 by `cargo xtask check trust-ledger`; not gated here).
 #   Uses Bazel (rules_rocq_rust) to translate plain/*.rs to Rocq via
 #   coq-of-rust, then checks all proofs. Nix provides the Rocq toolchain.
 
@@ -22,6 +32,9 @@ on:
       - 'ffi/**'
       - 'tests/**'
       - 'proofs/**'
+      # kani-drivers (below) runs on push too: a drivers-only push to main must
+      # trigger it, or 'runs on push' (kani-coverage's path-guard note) is false.
+      - 'drivers/**'
       - 'BUILD.bazel'
       - 'MODULE.bazel'
       # this workflow must test its own changes, or a PR that edits the gate
@@ -64,6 +77,7 @@ jobs:
     timeout-minutes: 45
     outputs:
       run: ${{ steps.q.outputs.run }}
+      drivers: ${{ steps.q.outputs.drivers }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -72,9 +86,17 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ github.event_name }}" != "merge_group" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"; echo "not a PR — run"; exit 0
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "drivers=true" >> "$GITHUB_OUTPUT"; echo "not a PR — run"; exit 0
           fi
           changed="$(git diff --name-only "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"...HEAD)"
+          # The driver crates' Kani harnesses (kani-drivers below) have their own
+          # filter: a driver change does not rebuild the kernel proofs, and a
+          # kernel change does not re-run the 14 driver crates.
+          if printf '%s\n' "$changed" | grep -qE '^drivers/|^\.github/workflows/formal-verification\.yml$'; then
+            echo "drivers=true" >> "$GITHUB_OUTPUT"; echo "driver paths changed"
+          else
+            echo "drivers=false" >> "$GITHUB_OUTPUT"
+          fi
           if printf '%s\n' "$changed" | grep -qE '^src/|^plain/|^ffi/|^tests/|^proofs/|^BUILD\.bazel$|^MODULE\.bazel$|^\.github/workflows/formal-verification\.yml$'; then
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "proof-relevant paths changed"
           else
@@ -133,6 +155,117 @@ jobs:
         run: cargo kani --tests --all-features
         working-directory: ffi
         timeout-minutes: 45
+
+  # Found 2026-11-19: the job above and nightly's kani-extended ran `cargo kani`
+  # at the root and in ffi/ only, so the harnesses in drivers/* were checked by
+  # nothing. One step per crate, not a loop or a matrix: each crate reports on
+  # its own line, and a step cannot swallow another's failure.
+  # `cargo xtask check kani-coverage` (kill-criteria.yml) fails if a crate with
+  # a #[kani::proof] harness is not run by an invocation like these. NOT a
+  # required context (that is the owner's call).
+  kani-drivers:
+    name: Kani BMC (driver crates)
+    needs: guard
+    # Routes fork PRs to GitHub-hosted runners by default. This is NOT a security
+    # boundary: a fork PR can edit this file. Isolation is enforced by the org's
+    # smithy runner-group policy and fork-PR approval (pulseengine/warte#35).
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","rust-cpu"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: dtolnay/rust-toolchain@nightly
+        if: needs.guard.outputs.drivers == 'true'
+
+      - name: Install Kani
+        if: needs.guard.outputs.drivers == 'true'
+        run: |
+          cargo install --locked kani-verifier
+          cargo kani setup
+
+      - name: Kani drivers/adc-thin
+        if: needs.guard.outputs.drivers == 'true'
+        run: cargo kani
+        working-directory: drivers/adc-thin
+        timeout-minutes: 30
+
+      - name: Kani drivers/can-thin
+        if: needs.guard.outputs.drivers == 'true'
+        run: cargo kani
+        working-directory: drivers/can-thin
+        timeout-minutes: 30
+
+      - name: Kani drivers/dac-thin
+        if: needs.guard.outputs.drivers == 'true'
+        run: cargo kani
+        working-directory: drivers/dac-thin
+        timeout-minutes: 30
+
+      - name: Kani drivers/dma-own
+        if: needs.guard.outputs.drivers == 'true'
+        run: cargo kani
+        working-directory: drivers/dma-own
+        timeout-minutes: 30
+
+      - name: Kani drivers/gpio-thin
+        if: needs.guard.outputs.drivers == 'true'
+        run: cargo kani
+        working-directory: drivers/gpio-thin
+        timeout-minutes: 30
+
+      - name: Kani drivers/i2c-thin
+        if: needs.guard.outputs.drivers == 'true'
+        run: cargo kani
+        working-directory: drivers/i2c-thin
+        timeout-minutes: 30
+
+      - name: Kani drivers/i2c-v2-thin
+        if: needs.guard.outputs.drivers == 'true'
+        run: cargo kani
+        working-directory: drivers/i2c-v2-thin
+        timeout-minutes: 30
+
+      - name: Kani drivers/os-time-math
+        if: needs.guard.outputs.drivers == 'true'
+        run: cargo kani
+        working-directory: drivers/os-time-math
+        timeout-minutes: 30
+
+      - name: Kani drivers/pwm-thin
+        if: needs.guard.outputs.drivers == 'true'
+        run: cargo kani
+        working-directory: drivers/pwm-thin
+        timeout-minutes: 30
+
+      - name: Kani drivers/sen66-thin
+        if: needs.guard.outputs.drivers == 'true'
+        run: cargo kani
+        working-directory: drivers/sen66-thin
+        timeout-minutes: 30
+
+      - name: Kani drivers/spi-thin
+        if: needs.guard.outputs.drivers == 'true'
+        run: cargo kani
+        working-directory: drivers/spi-thin
+        timeout-minutes: 30
+
+      - name: Kani drivers/timer-thin
+        if: needs.guard.outputs.drivers == 'true'
+        run: cargo kani
+        working-directory: drivers/timer-thin
+        timeout-minutes: 30
+
+      - name: Kani drivers/uart-thin
+        if: needs.guard.outputs.drivers == 'true'
+        run: cargo kani
+        working-directory: drivers/uart-thin
+        timeout-minutes: 30
+
+      - name: Kani drivers/wdg-thin
+        if: needs.guard.outputs.drivers == 'true'
+        run: cargo kani
+        working-directory: drivers/wdg-thin
+        timeout-minutes: 30
 
   rocq:
     name: Rocq Proofs (14 files)

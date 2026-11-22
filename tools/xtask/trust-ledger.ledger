@@ -1,0 +1,110 @@
+# The trust ledger (v0.11.0 bet 3; `cargo xtask check trust-ledger`).
+#
+# One row per (class, file): how many times the file SPELLS an input-narrowing
+# assumption, and the artifact that justifies the figure. It counts spellings,
+# not how much each one narrows; the gate prints the forms it cannot see.
+#
+# mode = equality     any change in any row fails -- growth AND an unrecorded
+#                     shrink -- unless the same commit edits the row and names
+#                     the artifact that justifies it.
+# mode = shrink-only  set ONCE, in the first commit AFTER the v0.11.0 tag, with
+#                     `baseline = <the sha the v0.11.0 tag points at>` (a commit
+#                     cannot contain its own sha, so the baseline is the tagged
+#                     commit, an ancestor). The gate requires the baseline to be a
+#                     commit a `v*` tag points at, an ancestor of HEAD, AND the
+#                     newest v* release (highest version) in HEAD's history, not
+#                     counting a tag on HEAD itself -- so the ceiling only moves
+#                     forward -- and reads the ledger AT it (git show), with paths
+#                     carried through exact renames, as the ceiling: no row may
+#                     exceed its baseline row and no new row may appear unless an
+#                     `admit` row names it; the tree may not exceed this ledger; a
+#                     shrink passes and is listed. After each new release tag the
+#                     next commit is red until it moves the baseline to it (tags
+#                     are the owner's) and folds the admits in (deletes them: the
+#                     new baseline already carries the growth). Switching back to
+#                     equality does not lift the ceiling: the last shrink-only
+#                     ledger in history still names it. One `mode` and one
+#                     `baseline` line only. The CI job checks out full history and
+#                     tags for this.
+#
+# Admits: `admit <class> <path> +<N> @<baseline sha or v* tag> <#NNN |
+# owner/repo#NNN> <reason>` -- one per item, N exactly the growth above the
+# baseline row, written against the current baseline (an admit left in place
+# when the baseline moves fails, and so does one already in the ledger AT that
+# baseline: written before it, it admits nothing). Stale, oversized, duplicate or malformed
+# admits fail. The gate checks the row is recorded against that baseline; it
+# does not fetch the issue and cannot show that anyone reviewed or approved it.
+#
+# Rows: `<class> <path> <count> <ARTIFACT-ID>`; kani::unwind rows carry the
+# sorted bounds before the ID, so a lowered bound is a change.
+# Regenerate: `cargo xtask trust-ledger --write --id <ARTIFACT-ID>` (rows whose
+# figure is unchanged keep their ID).
+#
+# Seeded 2026-11-20 at e85b7620 + this lane: 422 kani::assume in 22 files,
+# 74 kani::unwind in 14, 135 external_body in 12, 2 assume_specification in 1,
+# 74 Rocq Admitted in 3, 0 Lean sorry/axiom, 24 Rocq targets built with
+# "-impredicative-set" (14 literals; plain/BUILD.bazel's one covers 11
+# targets); denominators: 383 .rs, 13 .v, 8 .lean and 14 Bazel tracked
+# files scanned (tools/xtask/ excluded). 496 #[kani::proof] attributes are in
+# source -- a spelling count; kani-coverage prints how many sit in compiled
+# roots (471, an upper bound on what CI runs: the root package's 25 in src/
+# are never built).
+
+mode = equality
+baseline = none
+
+kani::assume drivers/adc-thin/src/lib.rs 2 VER-HONESTY-LEDGER-GATE-001
+kani::assume drivers/dac-thin/src/lib.rs 2 VER-HONESTY-LEDGER-GATE-001
+kani::assume drivers/dma-own/src/lib.rs 4 VER-HONESTY-LEDGER-GATE-001
+kani::assume drivers/gpio-thin/src/lib.rs 3 VER-HONESTY-LEDGER-GATE-001
+kani::assume drivers/i2c-thin/src/lib.rs 2 VER-HONESTY-LEDGER-GATE-001
+kani::assume drivers/i2c-v2-thin/src/lib.rs 3 VER-HONESTY-LEDGER-GATE-001
+kani::assume drivers/os-time-math/src/lib.rs 4 VER-HONESTY-LEDGER-GATE-001
+kani::assume drivers/sen66-thin/src/lib.rs 5 VER-HONESTY-LEDGER-GATE-001
+kani::assume drivers/spi-thin/src/lib.rs 6 VER-HONESTY-LEDGER-GATE-001
+kani::assume drivers/timer-thin/src/lib.rs 2 VER-HONESTY-LEDGER-GATE-001
+kani::assume drivers/wdg-thin/src/lib.rs 4 VER-HONESTY-LEDGER-GATE-001
+kani::assume ffi/src/lib.rs 201 VER-HONESTY-LEDGER-GATE-001
+kani::assume plain/src/executor.rs 3 VER-HONESTY-LEDGER-GATE-001
+kani::assume plain/src/health_monitor.rs 9 VER-HONESTY-LEDGER-GATE-001
+kani::assume plain/src/mpu_switch.rs 11 VER-HONESTY-LEDGER-GATE-001
+kani::assume plain/src/partition_switch.rs 12 VER-HONESTY-LEDGER-GATE-001
+kani::assume src/executor.rs 3 VER-HONESTY-LEDGER-GATE-001
+kani::assume src/health_monitor.rs 9 VER-HONESTY-LEDGER-GATE-001
+kani::assume src/mpu_switch.rs 11 VER-HONESTY-LEDGER-GATE-001
+kani::assume src/partition_switch.rs 12 VER-HONESTY-LEDGER-GATE-001
+kani::assume tests/kani_equivalence.rs 36 VER-HONESTY-LEDGER-GATE-001
+kani::assume tests/kani_harnesses.rs 78 VER-HONESTY-LEDGER-GATE-001
+kani::unwind drivers/i2c-v2-thin/src/lib.rs 1 257 VER-HONESTY-LEDGER-GATE-001
+kani::unwind drivers/sen66-thin/src/lib.rs 3 6,28,30 VER-HONESTY-LEDGER-GATE-001
+kani::unwind drivers/wdg-thin/src/lib.rs 2 3,3 VER-HONESTY-LEDGER-GATE-001
+kani::unwind ffi/src/lib.rs 1 4 VER-HONESTY-LEDGER-GATE-001
+kani::unwind plain/src/executor.rs 3 9,9,9 VER-HONESTY-LEDGER-GATE-001
+kani::unwind plain/src/health_monitor.rs 4 7,8,8,8 VER-HONESTY-LEDGER-GATE-001
+kani::unwind plain/src/mpu_switch.rs 9 33,33,33,33,33,33,33,33,33 VER-HONESTY-LEDGER-GATE-001
+kani::unwind plain/src/partition_switch.rs 1 5 VER-HONESTY-LEDGER-GATE-001
+kani::unwind src/executor.rs 3 9,9,9 VER-HONESTY-LEDGER-GATE-001
+kani::unwind src/health_monitor.rs 4 7,8,8,8 VER-HONESTY-LEDGER-GATE-001
+kani::unwind src/mpu_switch.rs 9 33,33,33,33,33,33,33,33,33 VER-HONESTY-LEDGER-GATE-001
+kani::unwind src/partition_switch.rs 1 5 VER-HONESTY-LEDGER-GATE-001
+kani::unwind tests/kani_equivalence.rs 9 5,5,9,17,17,17,17,17,17 VER-HONESTY-LEDGER-GATE-001
+kani::unwind tests/kani_harnesses.rs 24 5,6,6,6,6,6,6,6,6,6,6,9,9,9,9,9,11,11,17,17,17,17,17,17 VER-HONESTY-LEDGER-GATE-001
+verus:external_body src/executor.rs 1 VER-HONESTY-LEDGER-GATE-001
+verus:external_body src/ipc.rs 22 VER-HONESTY-LEDGER-GATE-001
+verus:external_body src/mmu.rs 20 VER-HONESTY-LEDGER-GATE-001
+verus:external_body src/mpu.rs 1 VER-HONESTY-LEDGER-GATE-001
+verus:external_body src/mpu_switch.rs 1 VER-HONESTY-LEDGER-GATE-001
+verus:external_body src/net_buf.rs 36 VER-HONESTY-LEDGER-GATE-001
+verus:external_body src/partition_switch.rs 3 VER-HONESTY-LEDGER-GATE-001
+verus:external_body src/pm.rs 22 VER-HONESTY-LEDGER-GATE-001
+verus:external_body src/poll.rs 2 VER-HONESTY-LEDGER-GATE-001
+verus:external_body src/sched.rs 4 VER-HONESTY-LEDGER-GATE-001
+verus:external_body src/thread_lifecycle.rs 5 VER-HONESTY-LEDGER-GATE-001
+verus:external_body src/usage.rs 18 VER-HONESTY-LEDGER-GATE-001
+verus:assume_specification src/sched.rs 2 VER-HONESTY-LEDGER-GATE-001
+rocq:Admitted proofs/poll_proofs.v 22 VER-HONESTY-LEDGER-GATE-001
+rocq:Admitted proofs/sched_proofs.v 23 VER-HONESTY-LEDGER-GATE-001
+rocq:Admitted proofs/thread_lifecycle_proofs.v 29 VER-HONESTY-LEDGER-GATE-001
+rocq:impredicative-set bzl/private/verus_to_rocq.bzl 1 VER-HONESTY-LEDGER-GATE-001
+rocq:impredicative-set plain/BUILD.bazel 11 VER-HONESTY-LEDGER-GATE-001
+rocq:impredicative-set proofs/BUILD.bazel 12 VER-HONESTY-LEDGER-GATE-001
