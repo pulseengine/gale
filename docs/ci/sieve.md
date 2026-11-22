@@ -11,7 +11,8 @@ and the drv-cross-arch step guard.
 | `sieve.toml` | the classes, what runs everything, the never-skip jobs |
 | `.github/actions/setup-sieve/action.yml` | installs the pinned sieve (version + sha256) |
 | `tools/ci/sieve-gate-probe.sh` | hands temper's gate probe to sieve |
-| `cargo xtask check sieve-pin` | the pin agrees with itself; every job that runs sieve installs it |
+| `cargo xtask check sieve-pin` | the pin agrees with itself; every job that runs sieve installs it; the verdict record stays intact |
+| `.github/workflows/sieve-verdict.yml`, `tools/ci/sieve-verdict.jq` | records and validates sieve's verdict on every run |
 
 ## The classes
 
@@ -51,6 +52,29 @@ A skipped job still reports its required context. No workflow that hosts a
 required context has a `paths:` filter. `sieve check-workflows` (run by the
 "every required context can actually report" job) enforces this, and
 `sieve check-graph` checks that every class input really selects its class.
+
+## The verdict record
+
+Every run (pull_request, merge_group, push to main) records sieve's verdict in
+one repo-wide job, "record sieve's verdict" in
+`.github/workflows/sieve-verdict.yml`. It runs
+`sieve classify --format json --explain` once, checks the record with
+`jq -e -f tools/ci/sieve-verdict.jq` against `sieve graph` (it must parse,
+name `sieve.classify.v1` and carry a boolean for every class in sieve.toml),
+and uploads it as `sieve-verdict-<run_attempt>`, kept 90 days, with
+`if-no-files-found: error`. `sieve observe` can compare these records with
+the jobs' results later.
+
+It is a separate job because a classifier job may run `sieve classify` only
+once (check-workflows gate b) and sieve 0.3.0's github-output mode writes no
+JSON. Moving the record into that single call is tracked in sieve#25. On push
+and merge_group the record is a run_all verdict, since the event is not a
+pull request.
+
+The job is not a required context. It is on `never_skip_jobs`, so a
+job-level `if:` fails check-workflows, and `cargo xtask check sieve-pin`
+fails if the validation or the upload step is removed, reordered, guarded or
+pointed at another path.
 
 ## Evidence for the switch
 

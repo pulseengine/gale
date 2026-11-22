@@ -103,6 +103,8 @@ never_skip_jobs = [
   "Kani BMC (185 harnesses)",
   "Rocq Proofs (14 files)",
   "Lean Proofs",
+  # Not a required context: the repo-wide verdict record (sieve-verdict.yml).
+  "record sieve's verdict",
 ]
 # scope_leaf_edits stays off: a .github/ edit runs everything.
 

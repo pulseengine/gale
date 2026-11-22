@@ -21,6 +21,13 @@
 //! GITHUB_PATH write only reaches later steps. No other workflow or action may
 //! download a sieve release, so the pin exists once.
 //!
+//! The repo-wide verdict record (.github/workflows/sieve-verdict.yml) must keep,
+//! in order and unguarded, the `sieve classify --format json` step writing the
+//! record, the `jq -e -f tools/ci/sieve-verdict.jq` validation and a SHA-pinned
+//! upload-artifact step (name sieve-verdict-<run_attempt>, the same path,
+//! if-no-files-found: error, retention-days: 90, `if:` only always()), with no
+//! job-level `if:`. TODO(sieve#25): drops out when one classify call records.
+//!
 //! What it cannot see: that the sha256 values are the release's real ones (that
 //! was checked with cosign when they were copied; docs/ci/sieve.md), a job that
 //! reaches sieve through a name other than `sieve`, or PATH changes made inside
@@ -301,6 +308,107 @@ fn files(repo: &Path) -> Option<Vec<(String, String)>> {
     Some(v)
 }
 
+// ------------------------------------------------ the repo-wide verdict record
+
+const VERDICT_WF: &str = ".github/workflows/sieve-verdict.yml";
+const VERDICT_JQ: &str = "tools/ci/sieve-verdict.jq";
+const VERDICT_FILE: &str = "\"$RUNNER_TEMP/sieve-verdict.json\"";
+
+/// Lines the validation filter must carry: the schema, the per-class
+/// completeness test against `sieve graph`, and the boolean test.
+const JQ_LINES: &[&str] = &[
+    r#"and (.schema == "sieve.classify.v1")"#,
+    r#"and (($g[0].classes | keys) - (.classes | keys) | length == 0)"#,
+    r#"and ([.classes[] | type == "boolean"] | all)"#,
+];
+
+/// Keys the upload step must carry, exactly (outside comments).
+const UPLOAD_LINES: &[&str] = &[
+    "name: sieve-verdict-${{ github.run_attempt }}",
+    "path: ${{ runner.temp }}/sieve-verdict.json",
+    "if-no-files-found: error",
+    "retention-days: 90",
+];
+
+fn is_upload(step: &str) -> bool {
+    step.lines().filter_map(code_of).any(|c| {
+        c.strip_prefix("uses: actions/upload-artifact@").is_some_and(|r| {
+            let sha = r.split_whitespace().next().unwrap_or("");
+            sha.len() == 40 && sha.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        })
+    })
+}
+
+/// The step's `if:` value, if any.
+fn step_if(step: &str) -> Option<String> {
+    step.lines().filter_map(code_of).find_map(|c| c.strip_prefix("if:").map(|v| v.trim().to_string()))
+}
+
+/// Why the verdict record is missing or can go missing silently.
+/// `wf`/`jq`: the texts of VERDICT_WF and VERDICT_JQ (None when absent).
+fn verdict_problems(wf: Option<&str>, jq: Option<&str>) -> Vec<String> {
+    let mut out = Vec::new();
+    let Some(wf) = wf else {
+        return vec![format!("{VERDICT_WF} is missing: no run records sieve's verdict")];
+    };
+    match jq {
+        None => out.push(format!("{VERDICT_JQ} is missing: the verdict is not validated")),
+        Some(t) => {
+            for l in JQ_LINES {
+                if !has_code_line(t, l) {
+                    out.push(format!("{VERDICT_JQ}: missing the line `{l}`"));
+                }
+            }
+        }
+    }
+    let records: Vec<(String, String)> = jobs(wf)
+        .into_iter()
+        .filter(|(_, b)| b.lines().any(|l| invokes_sieve(l) && l.contains("--format json")))
+        .collect();
+    if records.len() != 1 {
+        out.push(format!("{VERDICT_WF}: {} jobs run `sieve classify --format json`; exactly one must", records.len()));
+        return out;
+    }
+    let (name, body) = &records[0];
+    if has_key(&steps(body)[0], "if:") {
+        out.push(format!("{VERDICT_WF}: job `{name}` has a job-level `if:`; the record must be made on every run"));
+    }
+    let st = steps(body);
+    let pos = |f: &dyn Fn(&str) -> bool| st.iter().position(|s| f(s));
+    let classify = pos(&|s: &str| s.lines().any(|l| invokes_sieve(l) && l.contains("--format json") && l.contains(&format!("> {VERDICT_FILE}"))));
+    let validate = pos(&|s: &str| has_code_line(s, "jq -e --slurpfile g") && has_code_line(s, &format!("-f {VERDICT_JQ} {VERDICT_FILE}")));
+    let upload = pos(&|s: &str| is_upload(s));
+    match (classify, validate, upload) {
+        (None, _, _) => out.push(format!("{VERDICT_WF}: no step writes `sieve classify ... --format json` to {VERDICT_FILE}")),
+        (_, None, _) => out.push(format!("{VERDICT_WF}: no step validates {VERDICT_FILE} with `jq -e ... -f {VERDICT_JQ}`")),
+        (_, _, None) => out.push(format!("{VERDICT_WF}: no SHA-pinned actions/upload-artifact step uploads the verdict")),
+        (Some(c), Some(v), Some(u)) => {
+            if !(c < v && v < u) {
+                out.push(format!("{VERDICT_WF}: the steps must run classify, then validate, then upload"));
+            }
+            let up = &st[u];
+            for l in UPLOAD_LINES {
+                if !up.lines().filter_map(code_of).any(|c| c == *l) {
+                    out.push(format!("{VERDICT_WF}: the upload step lacks `{l}`"));
+                }
+            }
+            if has_key(up, "continue-on-error:") {
+                out.push(format!("{VERDICT_WF}: the upload step carries `continue-on-error:`"));
+            }
+            match step_if(up).as_deref() {
+                None | Some("always()") | Some("${{ always() }}") => {}
+                Some(other) => out.push(format!("{VERDICT_WF}: the upload step's `if: {other}` can skip it (only always() is allowed)")),
+            }
+            for (what, i) in [("classify", c), ("validation", v)] {
+                if guarded(&st[i]) {
+                    out.push(format!("{VERDICT_WF}: the {what} step carries `if:` or `continue-on-error:`"));
+                }
+            }
+        }
+    }
+    out
+}
+
 pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
     let Ok(action) = std::fs::read_to_string(repo.join(ACTION)) else {
         return Verdict::Refused(format!("cannot read {ACTION} -- no pinned install exists"));
@@ -308,7 +416,20 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
     let Some(fs) = files(repo) else {
         return Verdict::Refused("cannot read .github/workflows".into());
     };
-    check(&action, &fs)
+    let wf = std::fs::read_to_string(repo.join(VERDICT_WF)).ok();
+    let jq = std::fs::read_to_string(repo.join(VERDICT_JQ)).ok();
+    let vp = verdict_problems(wf.as_deref(), jq.as_deref());
+    match check(&action, &fs) {
+        Verdict::Pass(mut l) if vp.is_empty() => {
+            l.push(format!("{VERDICT_WF}: the verdict is recorded, validated and uploaded on every run"));
+            Verdict::Pass(l)
+        }
+        Verdict::Pass(mut l) | Verdict::Fail(mut l) => {
+            l.extend(vp.into_iter().map(|p| format!("FAIL: {p}")));
+            Verdict::Fail(l)
+        }
+        r => r,
+    }
 }
 
 const SHA_X: &str = "aae674edf2c454ae5047409f571160f4615ef67f901b2e55628e8b756fb69b40";
@@ -342,6 +463,41 @@ fn wf(steps: &str) -> Vec<(String, String)> {
     vec![(".github/workflows/w.yml".into(), format!("name: w\non: pull_request\njobs:\n  classify:\n    steps:\n{steps}"))]
 }
 
+/// The verdict job's steps as the workflow carries them (self-test fixture).
+const VERDICT_GOOD: &str = r#"name: sieve verdict
+on:
+  pull_request:
+jobs:
+  verdict:
+    name: "record sieve's verdict"
+    runs-on: x
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup-sieve
+      - name: Pinned sieve is the one on PATH
+        run: |
+          set -euo pipefail
+          got="$(command -v sieve || true)"
+          if [ "$got" != "$SIEVE_PINNED_DIR/sieve" ]; then
+            exit 1
+          fi
+      - name: Classify this change (JSON record)
+        run: sieve classify --config sieve.toml --base "$BASE_SHA" --event "$EVENT_NAME" --format json --explain > "$RUNNER_TEMP/sieve-verdict.json"
+      - name: The verdict is a complete sieve.classify.v1 record
+        run: |
+          set -euo pipefail
+          sieve graph --config sieve.toml --format json > "$RUNNER_TEMP/sieve-graph.json"
+          jq -e --slurpfile g "$RUNNER_TEMP/sieve-graph.json" -f tools/ci/sieve-verdict.jq "$RUNNER_TEMP/sieve-verdict.json"
+      - name: Upload the verdict
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sieve-verdict-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sieve-verdict.json
+          if-no-files-found: error
+          retention-days: 90
+"#;
 pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
     let mut lines = Vec::new();
     let mut broken = false;
@@ -399,5 +555,34 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
     ck("a comment naming sieve classify is not a use", !invokes_sieve("    # sieve classify decides"));
     ck("no workflow running sieve is refused, not passed",
        matches!(check(&good, &wf("      - run: echo hi\n")), Verdict::Refused(_)));
+
+    // The repo-wide verdict record (sieve-verdict.yml + tools/ci/sieve-verdict.jq).
+    let jq_good: String = std::iter::once("(type == \"object\")").chain(JQ_LINES.iter().copied()).collect::<Vec<_>>().join("\n");
+    let vwf = VERDICT_GOOD.to_string();
+    let ok = |w: &str| verdict_problems(Some(w), Some(&jq_good)).is_empty();
+    let bad = |w: &str| !verdict_problems(Some(w), Some(&jq_good)).is_empty();
+    ck("the verdict workflow as committed passes", ok(&vwf));
+    let no_upload = vwf[..vwf.find("      - name: Upload the verdict").unwrap()].to_string();
+    ck("PLANT 1: the upload step removed fails", bad(&no_upload));
+    ck("PLANT 2: the upload path pointing elsewhere fails",
+       bad(&vwf.replacen("path: ${{ runner.temp }}/sieve-verdict.json", "path: ${{ runner.temp }}/nope.json", 1)));
+    ck("if-no-files-found: warn fails", bad(&vwf.replacen("if-no-files-found: error", "if-no-files-found: warn", 1)));
+    ck("a retention other than 90 days fails", bad(&vwf.replacen("retention-days: 90", "retention-days: 30", 1)));
+    ck("another artifact name fails", bad(&vwf.replacen("name: sieve-verdict-${{ github.run_attempt }}", "name: verdict", 1)));
+    ck("an upload-artifact pinned to a tag fails", bad(&vwf.replacen("upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9", "upload-artifact@v7", 1)));
+    ck("`continue-on-error:` on the upload fails", bad(&vwf.replacen("        if: always()\n", "        if: always()\n        continue-on-error: true\n", 1)));
+    ck("an upload `if:` other than always() fails", bad(&vwf.replacen("        if: always()\n", "        if: success()\n", 1)));
+    ck("PLANT 3 (static): the jq validation step removed fails",
+       bad(&vwf.replacen("-f tools/ci/sieve-verdict.jq", "-f /dev/null", 1)));
+    ck("the classify record written to another file fails",
+       bad(&vwf.replacen("--explain > \"$RUNNER_TEMP/sieve-verdict.json\"", "--explain > out.json", 1)));
+    ck("PLANT 4: a job-level `if:` on the verdict job fails",
+       bad(&vwf.replacen("    timeout-minutes: 10\n", "    timeout-minutes: 10\n    if: github.event_name == 'push'\n", 1)));
+    ck("a missing workflow fails", !verdict_problems(None, Some(&jq_good)).is_empty());
+    ck("a missing jq filter fails", !verdict_problems(Some(&vwf), None).is_empty());
+    for l in JQ_LINES {
+        let gutted = jq_good.replacen(l, "", 1);
+        ck(&format!("a jq filter without `{l}` fails"), !verdict_problems(Some(&vwf), Some(&gutted)).is_empty());
+    }
     if broken { Verdict::Fail(lines) } else { Verdict::Pass(lines) }
 }

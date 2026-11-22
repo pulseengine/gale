@@ -1,0 +1,78 @@
+# Records sieve's verdict for every run, so `sieve observe` can later compare
+# what sieve would have skipped against what actually failed (docs/ci/sieve.md).
+#
+# One repo-wide job (owner decision, option b): the verdict is a function of
+# sieve.toml, the base and the head only, so every gated workflow's classifier
+# would record the same JSON. It cannot be recorded inside those classifier
+# jobs: `sieve check-workflows` gate (b) allows exactly one step mentioning
+# `sieve classify` per classifier job, and sieve 0.3.0's github-output mode
+# writes no JSON.
+# TODO(sieve#25): when one `sieve classify` call can write both the
+# github-output and the JSON record, record it in the classifier jobs and
+# delete this workflow.
+#
+# Not a required context. It is on sieve.toml `[workflows] never_skip_jobs`,
+# so check-workflows fails if it gains an `if:` (other than always()/
+# !cancelled()), a skippable `needs:` or a trigger filter; `cargo xtask check
+# sieve-pin` fails if the validation or the upload step goes missing or drifts.
+name: sieve verdict
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verdict:
+    name: "record sieve's verdict"
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sieve
+      - name: Pinned sieve is the one on PATH
+        run: |
+          set -euo pipefail
+          got="$(command -v sieve || true)"
+          if [ "$got" != "$SIEVE_PINNED_DIR/sieve" ]; then
+            echo "::error::sieve on PATH is '${got:-<none>}', not the pinned $SIEVE_PINNED_DIR/sieve"
+            exit 1
+          fi
+      # The base for the event: the PR base, the queue base, or the commit
+      # before the push. On any event but pull_request sieve selects every
+      # class (fail open) and the record says so in `reason`. A crash inside
+      # sieve is also a run_all verdict; whatever it wrote is validated and
+      # uploaded below.
+      - name: Classify this change (JSON record)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: sieve classify --config sieve.toml --base "$BASE_SHA" --event "$EVENT_NAME" --format json --explain > "$RUNNER_TEMP/sieve-verdict.json"
+      # The record must parse, name the classify schema, and carry a boolean
+      # for every class sieve.toml declares (read back through `sieve graph`,
+      # sieve's own parse of the config, so no class list is kept here).
+      - name: The verdict is a complete sieve.classify.v1 record
+        run: |
+          set -euo pipefail
+          sieve graph --config sieve.toml --format json > "$RUNNER_TEMP/sieve-graph.json"
+          jq -e --slurpfile g "$RUNNER_TEMP/sieve-graph.json" -f tools/ci/sieve-verdict.jq "$RUNNER_TEMP/sieve-verdict.json"
+      - name: Upload the verdict
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sieve-verdict-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sieve-verdict.json
+          if-no-files-found: error
+          retention-days: 90
