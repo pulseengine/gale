@@ -3,10 +3,12 @@
   "detectors": [
     {
       "command": [
-        "tools/ci/detect-changes.sh"
+        "tools/ci/sieve-gate-probe.sh"
       ],
       "outputs": [
-        "code"
+        "code",
+        "cross_arch",
+        "v_closure"
       ],
       "controls": [
         "docs/safety/verification-honesty.md"
