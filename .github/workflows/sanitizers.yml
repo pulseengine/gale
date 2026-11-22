@@ -89,9 +89,17 @@ jobs:
           echo "target=${HOST}" >> "$GITHUB_OUTPUT"
           echo "Host target: ${HOST}"
 
+      # The thread-only test is in the script, not a step `if:` on matrix: a
+      # step `if:` reading any context but github or runner makes every edit
+      # to this file run everything (sieve REQ-035).
       - name: Lower mmap randomization entropy for TSan
-        if: matrix.sanitizer == 'thread'
+        env:
+          SAN: ${{ matrix.sanitizer }}
         run: |
+          if [ "$SAN" != thread ]; then
+            echo "sanitizer $SAN: the TSan sysctl is not needed"
+            exit 0
+          fi
           # TSan's shadow memory layout is incompatible with the 32-bit
           # mmap_rnd_bits newer kernels default to — it aborts at startup
           # with "FATAL: ThreadSanitizer: memory layout is incompatible,

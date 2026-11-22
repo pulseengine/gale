@@ -15,7 +15,10 @@ on:
   # run on merge_group or a queued PR waits on checks nothing reports
   # (tools/check-required-contexts.py fails a PR that drops this).
   # Required: Verus-Strip Gate, FFI Feature Sizes (run in full). The
-  # Test + Lint matrix is not required and is skipped in the queue.
+  # Test + Lint matrix is not required. gale has no merge queue today (no
+  # merge_queue rule on main); if one is turned on, the matrix runs there too,
+  # because a job-level `if:` other than the classifier form or a job-level
+  # skip would make every edit to this file run everything (sieve REQ-035).
   merge_group:
 
 permissions:
@@ -27,7 +30,6 @@ concurrency:
 
 jobs:
   test:
-    if: github.event_name != 'merge_group'
     name: "Test + Lint (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45

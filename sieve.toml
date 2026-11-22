@@ -1,4 +1,4 @@
-# sieve: which heavy CI jobs does a pull request need? (pulseengine/sieve v0.3.0)
+# sieve: which heavy CI jobs does a pull request need? (pulseengine/sieve v0.4.2)
 #
 # This file replaces gale's hand-written change detectors:
 #   - tools/ci/detect-changes.sh ("docs-only change?") -> class `code`
@@ -12,8 +12,8 @@
 # last 400 first-parent commits (`sieve equivalence`, see docs/ci/sieve.md).
 # When sieve is unsure, everything runs: any event but pull_request (push,
 # merge_group, schedule), no base, a failed or empty diff, a path no class
-# claims, and any edit to this file, .github/**, Cargo.lock or a toolchain or
-# build-system file.
+# claims, and any edit to this file, .github/** (except a scoped leaf-workflow
+# edit, [workflows] below), Cargo.lock or a toolchain or build-system file.
 schema = "sieve.config.v1"
 
 [run_all]
@@ -113,7 +113,17 @@ never_skip_jobs = [
   # Not a required context (owner's call), but a proof job: it never skips either.
   "Kani BMC (driver crates)",
 ]
-# scope_leaf_edits stays off: a .github/ edit runs everything.
+# Leaf-workflow scoping (sieve REQ-030, REQ-035, REQ-036; docs/ci/sieve.md).
+# An edit to one file directly under .github/workflows/ that changes only job
+# bodies selects the classes the classifier `if:` reads for the changed jobs,
+# the jobs that need them and the jobs those need; a workflow with no
+# classifier selects no class (its jobs all run anyway). Everything still runs
+# on any other .github/ path (composite actions, .github/zephyr-fork-pin, the
+# required-contexts list), on a change outside `jobs:`, to an `if:`, `needs:`,
+# `outputs:`, `strategy:` or `continue-on-error:`, to a job that runs
+# `sieve classify`, and when the checkout has no history at the merge base.
+# `cargo xtask check sieve-pin` fails if this line is dropped or set false.
+scope_leaf_edits = true
 
 [workflows.coe_exempt]
 # HAND-MAINTAINED: `continue-on-error` steps in required jobs that nothing

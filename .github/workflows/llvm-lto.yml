@@ -19,7 +19,9 @@ on:
   # run on merge_group or a queued PR waits on checks nothing reports
   # (tools/check-required-contexts.py fails a PR that drops this).
   # Required: LLVM LTO build + size comparison (skips on docs-only). The
-  # llvm-lto-test matrix is advisory: skipped in the queue and on docs-only.
+  # llvm-lto-test matrix is advisory: skipped on docs-only, through the exact
+  # classifier `if:` only. gale has no merge queue today; if one is turned on,
+  # it runs there too.
   merge_group:
 
 concurrency:
@@ -134,7 +136,7 @@ jobs:
           # command is checked), so a failed apt-get update once skipped the curl
           # install silently and the job died 5 min later as "rustup download failed"
           # with `curl: not found` (#450 CI, 2026-10-21). Retry the transient mirror
-          # failure, then fail LOUDLY; and prove curl exists before anything needs it.
+          # failure, then fail LOUDLY; and prove curl exists before anything uses it.
           _u=0; for _a in 1 2 3; do if apt-get update -qq; then _u=1; break; fi; sleep 10; done
           [ "$_u" = 1 ] || { echo "::error::apt-get update failed after 3 attempts" >&2; exit 1; }
           apt-get install -y -qq curl > /dev/null
@@ -150,7 +152,7 @@ jobs:
           # jobs run in containers, and GitHub picks `sh -e {0}` when the image
           # has no bash — dash rejects pipefail outright:
           #     set: Illegal option -o pipefail
-          # Downloading to a file and running it needs no pipefail, works under
+          # Downloading to a file and running it requires no pipefail, works under
           # both sh and bash, and removes the truncation ambiguity entirely:
           # curl -f fails on HTTP errors, and the installer runs as a plain
           # command whose status `set -e` already honours.
@@ -187,7 +189,7 @@ jobs:
             # The pipe is REMOVED rather than wrapped in pipefail. These jobs run in
             # containers, and GitHub picks `sh -e {0}` where the image has no bash;
             # dash rejects `set -o pipefail` outright ("Illegal option"), which fails
-            # every attempt on the option itself. Downloading then running needs no
+            # every attempt on the option itself. Downloading then running requires no
             # pipefail, works under sh and bash, and removes truncation ambiguity.
             # llvm.sh downloads the signing key only when this file is absent, and
             # writes it through `wget | tee`, so a failed fetch leaves an empty file
@@ -446,7 +448,7 @@ jobs:
 
   llvm-lto-test:
     needs: changes
-    if: ${{ !cancelled() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}
     name: "llvm-lto-test"
     runs-on: ubuntu-22.04
     # MEASURED BOUND (gale#382). Job durations over 12 runs:
@@ -508,7 +510,7 @@ jobs:
           # command is checked), so a failed apt-get update once skipped the curl
           # install silently and the job died 5 min later as "rustup download failed"
           # with `curl: not found` (#450 CI, 2026-10-21). Retry the transient mirror
-          # failure, then fail LOUDLY; and prove curl exists before anything needs it.
+          # failure, then fail LOUDLY; and prove curl exists before anything uses it.
           _u=0; for _a in 1 2 3; do if apt-get update -qq; then _u=1; break; fi; sleep 10; done
           [ "$_u" = 1 ] || { echo "::error::apt-get update failed after 3 attempts" >&2; exit 1; }
           apt-get install -y -qq curl > /dev/null
@@ -524,7 +526,7 @@ jobs:
           # jobs run in containers, and GitHub picks `sh -e {0}` when the image
           # has no bash — dash rejects pipefail outright:
           #     set: Illegal option -o pipefail
-          # Downloading to a file and running it needs no pipefail, works under
+          # Downloading to a file and running it requires no pipefail, works under
           # both sh and bash, and removes the truncation ambiguity entirely:
           # curl -f fails on HTTP errors, and the installer runs as a plain
           # command whose status `set -e` already honours.
@@ -560,7 +562,7 @@ jobs:
             # The pipe is REMOVED rather than wrapped in pipefail. These jobs run in
             # containers, and GitHub picks `sh -e {0}` where the image has no bash;
             # dash rejects `set -o pipefail` outright ("Illegal option"), which fails
-            # every attempt on the option itself. Downloading then running needs no
+            # every attempt on the option itself. Downloading then running requires no
             # pipefail, works under sh and bash, and removes truncation ambiguity.
             # llvm.sh downloads the signing key only when this file is absent, and
             # writes it through `wget | tee`, so a failed fetch leaves an empty file

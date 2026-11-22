@@ -15,7 +15,10 @@ on:
   # run on merge_group or a queued PR waits on checks nothing reports
   # (tools/check-required-contexts.py fails a PR that drops this).
   # Required: Rust Coverage, Zephyr C Coverage (skip on docs-only). The
-  # gale-enabled run and the delta are advisory: skipped in the queue.
+  # gale-enabled run and the delta are advisory. They are gated by the exact
+  # classifier `if:` and nothing else, so an edit to one job scopes to its class
+  # (sieve.toml [workflows] scope_leaf_edits). gale has no merge queue today; if
+  # one is turned on, they run there too.
   merge_group:
 
 concurrency:
@@ -91,8 +94,13 @@ jobs:
           cargo llvm-cov --locked --workspace --lcov --output-path lcov-rust.info
           cargo llvm-cov --locked --workspace --html --output-dir coverage-rust
 
+      # The three Codecov uploads skip where GitHub withholds the token (a fork
+      # PR, a Dependabot-triggered run), read from the github context only: a
+      # step `if:` reading env (it used to test env.CODECOV_TOKEN) makes every
+      # edit to this file run everything (sieve REQ-030 leaf scoping). Anywhere
+      # else a missing token fails the upload softly (fail_ci_if_error: false).
       - name: Upload LCOV to Codecov
-        if: (env.CODECOV_TOKEN != '') && github.event.pull_request.head.repo.fork != true
+        if: github.event.pull_request.head.repo.fork != true && github.actor != 'dependabot[bot]'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: lcov-rust.info
@@ -134,7 +142,7 @@ jobs:
           # command is checked), so a failed apt-get update once skipped the curl
           # install silently and the job died 5 min later as "rustup download failed"
           # with `curl: not found` (#450 CI, 2026-10-21). Retry the transient mirror
-          # failure, then fail LOUDLY; and prove curl exists before anything needs it.
+          # failure, then fail LOUDLY; and prove curl exists before anything uses it.
           _u=0; for _a in 1 2 3; do if apt-get update -qq; then _u=1; break; fi; sleep 10; done
           [ "$_u" = 1 ] || { echo "::error::apt-get update failed after 3 attempts" >&2; exit 1; }
           apt-get install -y -qq curl > /dev/null
@@ -150,7 +158,7 @@ jobs:
           # jobs run in containers, and GitHub picks `sh -e {0}` when the image
           # has no bash — dash rejects pipefail outright:
           #     set: Illegal option -o pipefail
-          # Downloading to a file and running it needs no pipefail, works under
+          # Downloading to a file and running it requires no pipefail, works under
           # both sh and bash, and removes the truncation ambiguity entirely:
           # curl -f fails on HTTP errors, and the installer runs as a plain
           # command whose status `set -e` already honours.
@@ -273,7 +281,7 @@ jobs:
           PYEOF
 
       - name: Upload LCOV to Codecov
-        if: (env.CODECOV_TOKEN != '') && github.event.pull_request.head.repo.fork != true
+        if: github.event.pull_request.head.repo.fork != true && github.actor != 'dependabot[bot]'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           directory: twister-out/coverage/
@@ -293,7 +301,7 @@ jobs:
           retention-days: 14
   zephyr-coverage-gale:
     needs: changes
-    if: ${{ !cancelled() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}
     name: Zephyr C Coverage (gale-enabled)
     # MEASUREMENT LEG (gale#395). Identical to zephyr-coverage except gale's
     # module + overlay are injected. Not a required context: its purpose
@@ -320,7 +328,7 @@ jobs:
           # command is checked), so a failed apt-get update once skipped the curl
           # install silently and the job died 5 min later as "rustup download failed"
           # with `curl: not found` (#450 CI, 2026-10-21). Retry the transient mirror
-          # failure, then fail LOUDLY; and prove curl exists before anything needs it.
+          # failure, then fail LOUDLY; and prove curl exists before anything uses it.
           _u=0; for _a in 1 2 3; do if apt-get update -qq; then _u=1; break; fi; sleep 10; done
           [ "$_u" = 1 ] || { echo "::error::apt-get update failed after 3 attempts" >&2; exit 1; }
           apt-get install -y -qq curl > /dev/null
@@ -336,7 +344,7 @@ jobs:
           # jobs run in containers, and GitHub picks `sh -e {0}` when the image
           # has no bash — dash rejects pipefail outright:
           #     set: Illegal option -o pipefail
-          # Downloading to a file and running it needs no pipefail, works under
+          # Downloading to a file and running it requires no pipefail, works under
           # both sh and bash, and removes the truncation ambiguity entirely:
           # curl -f fails on HTTP errors, and the installer runs as a plain
           # command whose status `set -e` already honours.
@@ -443,7 +451,7 @@ jobs:
           PYEOF
 
       - name: Upload LCOV to Codecov
-        if: (env.CODECOV_TOKEN != '') && github.event.pull_request.head.repo.fork != true
+        if: github.event.pull_request.head.repo.fork != true && github.actor != 'dependabot[bot]'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           directory: twister-out-gale/coverage/
@@ -465,10 +473,12 @@ jobs:
   coverage-delta:
     name: "Upstream vs gale — kernel test delta (gale#395)"
     needs: [changes, zephyr-coverage, zephyr-coverage-gale]
-    # always(): the delta is most valuable exactly when one leg went red.
-    # Advisory: skipped in the merge queue, and on a docs-only change, where
-    # both legs were skipped and there are no results to compare.
-    if: always() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false')
+    # !cancelled(): the delta is most valuable exactly when one leg went red,
+    # and !cancelled() still runs it then (only a cancelled run skips it).
+    # Advisory: skipped on a docs-only change, where both legs were skipped and
+    # there are no results to compare. The `if:` is the exact classifier form,
+    # so an edit to this job scopes to `code` (sieve.toml scope_leaf_edits).
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
