@@ -1,7 +1,9 @@
-# Exact release, so every build -- local, CI, Zephyr module -- compiles with the
-# same rustc (gale#434: a floating `stable` moved codegen under a fixed pin set).
-# Jobs that genuinely need nightly (sanitizers, fuzz) name a DATED nightly with
-# `cargo +nightly-YYYY-MM-DD`; `cargo xtask check toolchain-pin` enforces both.
+# Exact release, so cargo builds -- local, CI, the Zephyr module -- use one rustc
+# (gale#434: a floating `stable` moved codegen under a fixed pin set).
+# Not selected by this file: Bazel builds use rules_rust's toolchain (MODULE.bazel,
+# 1.85.0); Kani runs the nightly its kani-verifier release (pinned in the workflows)
+# bundles; fuzz and sanitizer jobs run `cargo +nightly-2026-09-17`.
+# `cargo xtask check toolchain-pin` checks this file and every workflow toolchain.
 # Targets (wasm32-*, thumbv*) are installed per job by the workflow, not here:
 # listing them would make every job download every target.
 [toolchain]
