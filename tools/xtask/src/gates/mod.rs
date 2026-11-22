@@ -9,6 +9,8 @@ pub mod criticality_axis;
 pub mod data_overlap;
 pub mod graph_env;
 pub mod job_timeouts;
+pub mod kani_coverage;
+pub mod lex;
 pub mod lockfile_audit;
 pub mod lockfile_census;
 pub mod moved_paths;
@@ -22,9 +24,11 @@ pub mod renode_targets;
 pub mod retry_loops;
 pub mod target_reference;
 pub mod toolchain_pin;
+pub mod trust_ledger;
 pub mod trusted_base;
 pub mod vacuous_lemmas;
 pub mod wit_resolve;
+pub mod yaml;
 pub mod zephyr_module_archive;
 
 use crate::verdict::Verdict;
@@ -79,6 +83,12 @@ pub const GATES: &[Gate] = &[
         about: "every CI job declares a timeout-minutes",
         run: job_timeouts::run,
         self_test: job_timeouts::self_test,
+    },
+    Gate {
+        name: kani_coverage::NAME,
+        about: "every crate with a #[kani::proof] harness is run by a CI cargo kani that can fail",
+        run: kani_coverage::run,
+        self_test: kani_coverage::self_test,
     },
     Gate {
         name: lockfile_audit::NAME,
@@ -151,6 +161,12 @@ pub const GATES: &[Gate] = &[
         about: "rust-toolchain.toml and every CI toolchain name an exact or dated Rust, on a SHA-pinned action",
         run: toolchain_pin::run,
         self_test: toolchain_pin::self_test,
+    },
+    Gate {
+        name: trust_ledger::NAME,
+        about: "assumption spellings per file equal the committed ledger (v0.11.0 bet 3)",
+        run: trust_ledger::run,
+        self_test: trust_ledger::self_test,
     },
     Gate {
         name: trusted_base::NAME,

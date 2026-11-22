@@ -390,6 +390,64 @@ jobs:
       - name: The doc's trusted-base block equals the source
         run: cargo xtask check trusted-base
 
+  trust-ledger:
+    name: "the trust ledger counts every assumption spelling it can see (v0.11.0 bet 3)"
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        # Full history and tags: shrink-only mode resolves the baseline commit,
+        # checks a v* tag points at it, and reads the ledger's history (a
+        # depth-1 clone is red: "not a commit in this repository").
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      # Self-hosted `light` runners do not promise a preinstalled toolchain.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
+
+      # trusted-base keeps the doc's figures equal to src/; it cannot see the
+      # assumptions a Kani harness narrows its inputs with, and does not judge
+      # growth. This counts kani::assume, #[kani::unwind(N)] bounds, the Verus
+      # trust attributes, Rocq Admitted/admit/Axiom/Parameter/top-level Variable,
+      # Lean sorry/admit/axiom and Bazel "-impredicative-set" per file, against tools/xtask/trust-ledger.ledger: an
+      # EQUALITY ledger until the baseline is set in the first commit after the
+      # release tag, then shrink-only (one field in the ledger), with growth only
+      # through `admit` rows (item, exact amount, the baseline it is written
+      # against, issue, reason) -- recorded, not proof of review or approval. The self-test carries the
+      # plan's planted inputs and the reformat that must stay stable.
+      # NOT a required context yet (the owner's call, after the baseline).
+      - name: Negative control -- an added assume, a lowered bound, an added Admitted and an unrecorded shrink must fail
+        run: cargo xtask check trust-ledger --self-test
+
+      - name: Every assumption spelling equals its ledger row
+        run: cargo xtask check trust-ledger
+
+  kani-coverage:
+    name: "every crate with a Kani harness is run by a CI cargo kani that can fail"
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Self-hosted `light` runners do not promise a preinstalled toolchain.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
+
+      # Found 2026-11-19: no CI job ran `cargo kani` in drivers/*, so 14 crates'
+      # harnesses were checked by nothing (renode-targets' shape, for Kani).
+      # A step counts only in the ALLOWLISTED shape (kani_coverage.rs): allowlisted
+      # step and job keys, the path-guard `if:` or none, and a script that is one
+      # `cargo kani` line of allowlisted literal flags (optionally after
+      # `set -o pipefail`, optionally `| tee <path>`). Anything else does not
+      # count. NOT required.
+      - name: Negative control -- a planted uncovered crate must fail
+        run: cargo xtask check kani-coverage --self-test
+
+      - name: Every harness crate has a CI cargo kani
+        run: cargo xtask check kani-coverage
+
   moved-paths:
     name: "a directory moved in the rework leaves no live reference"
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-24.04' }}

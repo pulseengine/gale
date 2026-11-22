@@ -1,0 +1,128 @@
+# v0.11.0 bet 3, lane L11: the trust ledger and Kani coverage of the driver
+# crates. REQ-HONESTY-LEDGER-001, VER-HONESTY-LEDGER-001 and
+# REQ-HONESTY-AXIOMS-001 live in artifacts/release_v0_11_0.yaml. The axiom
+# audit (REQ-HONESTY-AXIOMS-001) is NOT in this lane: no axioms gate exists;
+# a follow-up lane owns it (docs/design/axioms-trusted-audit.md).
+artifacts:
+  - id: REQ-HONESTY-KANI-COVERAGE-001
+    type: sw-req
+    title: Every crate with a Kani harness is run by a CI cargo kani invocation that can fail
+    status: proposed
+    release: v0.11.0
+    description: >
+      Found 2026-11-19: formal-verification.yml and nightly.yml ran `cargo kani`
+      only at the repository root and in ffi/, so the harnesses in the driver
+      crates (14 crates, 101 #[kani::proof] harnesses at e85b7620) were checked
+      by no CI job, and "Kani-proven" in their docs was a local result. SHALL:
+      every package with a #[kani::proof] or #[kani::proof_for_contract]
+      harness in code is run by at least one
+      CI `cargo kani` invocation that can fail its job. An invocation counts
+      only in an ALLOWLISTED shape (anything else is void): workflows read by
+      a strict YAML reader (anchors, tags, duplicate keys, continued scalars
+      and any line break other than LF/CRLF are refused); step keys only
+      name, id, if, run, working-directory, timeout-minutes; every `if:` on
+      the path (job and step) absent or exactly the path-guard form, with a
+      guard job whose keys, env names and script template are allowlisted (no
+      `if:`, `needs:`, `container:`, `defaults:` or `concurrency:` on it, and
+      only checkout steps before the template step); job keys and
+      job/workflow env names allowlisted; a script that is exactly one
+      `cargo kani` line of allowlisted literal flags, optionally after one
+      `set -o pipefail` line and optionally ending `| tee <path>`; a trigger
+      that the gate reads as running for main (a schedule whose crons parse
+      and fire every year, or push/pull_request with a branches list naming
+      main and no `!` pattern -- read from the workflow text, not observed),
+      and for a path-guarded invocation a push-to-main or schedule trigger,
+      since on a pull_request the guard may skip it every time; no matrix
+      `exclude:` when the directory comes from the matrix. The directory is
+      the most specific `working-directory` (step, else job, else workflow
+      default; it replaces the others, as GitHub documents) or
+      `--manifest-path`. A crate whose
+      harnesses all sit outside its compiled roots fails even with a step.
+      `cargo xtask check kani-coverage` fails otherwise. The job that runs the driver harnesses is
+      not a required context; making it one is the owner's decision.
+    tags: [honesty, kani, ci, gate, v0.11.0]
+    fields:
+      priority: must
+      req-type: constraint
+      verification-criteria: "`cargo xtask check kani-coverage --self-test` passes (a crate dropped from the job, a new crate with no job, a crate with no harness in a compiled root, root tests/ harnesses without --tests, and each form outside the allowlist above -- at step and job level where both exist, including the reviews' planted bypasses: `continue-on-error` in any spelling, `if: true` / `if: false` / an undeclared guard output on the job, `env: BASH_ENV`, `shell:`, `builtin`/`eval` `set +e`, sourcing a script, `&&`/`;`/`||`, `set -- -o pipefail`, a pipe without pipefail, `|&`, `--harness`/`-p`, a wide-dash `-   run:` step, a CR-hidden key, a guard job with env/defaults/container/needs, `branches: [main, '!main']`, `schedule: []` -- are each caught); `cargo xtask check kani-coverage` passes on the branch and fails on e85b7620 (14 driver crates uncovered)."
+    links:
+      - type: derives-from
+        target: SYSREQ-COV-001
+      - type: related-to
+        target: REQ-OS-TRITRACK-001
+      - type: related-to
+        target: REQ-HONESTY-TCB-001
+
+  - id: VER-HONESTY-KANI-COVERAGE-001
+    type: sw-verification
+    title: Kani coverage gate self-test with a planted uncovered crate, and the driver harnesses run in CI
+    status: proposed
+    release: v0.11.0
+    description: >
+      Oracle: `cargo xtask check kani-coverage --self-test` (planted: a crate
+      dropped from the job, a new harness crate with no job, voided invocations)
+      and `cargo xtask check kani-coverage` on the tree; the formal-verification
+      job "Kani BMC (driver crates)" runs `cargo kani` in each of the 14 driver
+      crates. The gate prints harnesses in source and compiled per crate (root:
+      137 in source, 112 compiled -- src/'s 25 are never built; 471 of 496
+      overall; a compiled-roots count, an upper bound on what CI runs, not a
+      count of harnesses run or passed). NOT SHOWN: whether each harness's assumptions are adequate (the
+      trust ledger counts their spellings); harnesses produced by macros; jobs
+      skipped through a `needs:` chain.
+    tags: [honesty, kani, ci, gate, v0.11.0]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-HONESTY-KANI-COVERAGE-001
+
+  - id: VER-HONESTY-LEDGER-GATE-001
+    type: sw-verification
+    title: The trust-ledger gate counts assumption spellings per file against an equality ledger, and its planted inputs fail
+    status: proposed
+    release: v0.11.0
+    description: >
+      Implements the oracle planned as VER-HONESTY-LEDGER-001 (artifacts/release_v0_11_0.yaml). `cargo xtask check trust-ledger`
+      counts, per tracked .rs/.v/.lean file, kani::assume, #[kani::unwind(N)]
+      with its bound, Verus external_body / assume_specification / bare assume
+      and admit, Rocq Admitted / admit / Axiom / Parameter, and Lean sorry /
+      admit / axiom, and holds them equal to tools/xtask/trust-ledger.ledger
+      (mode = equality; `mode = shrink-only` with `baseline = <sha>` is the one
+      switch, set in the first commit after the release tag). Each row names the artifact that justifies
+      it and the gate checks that artifact exists. Self-test: an added
+      kani::assume, a lowered unwind bound, an added Admitted. and an unrecorded
+      shrink each fail; a reformat and a comment-only edit do not. Seeded
+      counts at e85b7620: 422 kani::assume in 22 files, 74 kani::unwind in 14,
+      135 external_body in 12, 2 assume_specification in 1, 74 Rocq Admitted in
+      3, 0 Lean sorry; 14 "-impredicative-set" flags in 3 Bazel files (class
+      rocq:impredicative-set); 496 #[kani::proof] attributes in source (a
+      spelling count; 471 are compiled). Also counted, all 0 today:
+      kani::any_where, `axiom fn`, Rocq top-level Variable/Hypothesis and Admit
+      Obligations, Lean sorryAx, and the cfg_attr forms of kani::proof,
+      kani::unwind and external_body. Shrink-only mode reads the ledger at the
+      baseline commit (one a v* tag points at, an ancestor of HEAD) as the
+      ceiling (the newest v* release by version, not counting a tag on HEAD),
+      plus `admit` rows (one per item, exactly the growth, a #NNN or
+      owner/repo#NNN issue and a reason; stale, oversized, duplicate or
+      malformed admits fail, and so does an admit naming another baseline
+      than the current one or already present in the ledger at it; the gate checks the row is recorded, not that
+      anyone reviewed or approved it), and returning to equality
+      keeps it; duplicate mode or
+      baseline lines are rejected; an ambiguous unwind change fails, judged for
+      the ledger and for the tree each against the baseline directly (a removal
+      recorded in the ledger cannot hide a lowered bound in the tree); a
+      shallow clone is refused (the ceiling is read from history); a .lean file
+      with an unescaped `{` in a string literal (a possible interpolation) is
+      refused. NOT SHOWN:
+      how much each assumption narrows; the forms the gate prints as unseen
+      (aliases among them).
+    tags: [honesty, ledger, kani, gate, v0.11.0]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-HONESTY-LEDGER-001
+      - type: related-to
+        target: REQ-HONESTY-TCB-001
+      - type: related-to
+        target: VER-HONESTY-LEDGER-001

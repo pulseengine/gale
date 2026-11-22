@@ -49,22 +49,23 @@ jobs:
           cargo install --locked kani-verifier --version 0.68.0
           cargo kani setup
 
+      - name: Kani reports directory
+        run: mkdir -p kani-reports
+
+      # Each Kani step is the shape `cargo xtask check kani-coverage` allowlists:
+      # one `set -o pipefail` line (GitHub's default `run` shell is `bash -e`
+      # without it, so the pipe's status was tee's and a failing harness left
+      # this green), then one `cargo kani ... 2>&1 | tee <literal>` line.
       - name: Kani with extended bounds (main crate)
-        env:
-          KANI_FLAGS: "--default-unwind 16 --object-bits 12"
         run: |
-          mkdir -p kani-reports
-          # shellcheck disable=SC2086
-          cargo kani --tests $KANI_FLAGS 2>&1 | tee kani-reports/main.log
+          set -o pipefail
+          cargo kani --tests --default-unwind 16 --object-bits 12 2>&1 | tee kani-reports/main.log
 
       - name: Kani with extended bounds (ffi crate)
-        env:
-          KANI_FLAGS: "--default-unwind 16 --object-bits 12"
         working-directory: ffi
         run: |
-          mkdir -p ../kani-reports
-          # shellcheck disable=SC2086
-          cargo kani --tests --all-features $KANI_FLAGS 2>&1 | tee ../kani-reports/ffi.log
+          set -o pipefail
+          cargo kani --tests --all-features --default-unwind 16 --object-bits 12 2>&1 | tee ../kani-reports/ffi.log
 
       - name: Upload Kani reports
         if: always()
