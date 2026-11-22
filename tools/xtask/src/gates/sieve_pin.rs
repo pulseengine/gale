@@ -185,6 +185,11 @@ fn unpinned_jobs(file: &str, wf: &str) -> Vec<String> {
     let mut out = Vec::new();
     for (name, body) in jobs(wf) {
         let st = steps(&body);
+        // A shallow checkout cannot resolve the PR base: sieve then runs everything
+        // with a "git diff failed" reason, silently, and the saving disappears.
+        if body.lines().any(|l| invokes_sieve(l) && l.contains(" classify") && l.contains("--base")) && !fetch_depth_ok(&body) {
+            out.push(format!("{file}: job `{name}` runs `sieve classify --base` without a checkout of fetch-depth 0 or >= 2"));
+        }
         let mut installed = false;
         for (i, step) in st.iter().enumerate() {
             if i > 0 && is_install(step) {
@@ -338,7 +343,7 @@ const JQ_PRESENT: &str = "command -v jq >/dev/null || {";
 fn fetch_depth_ok(job: &str) -> bool {
     job.lines()
         .filter_map(code_of)
-        .find_map(|c| c.strip_prefix("fetch-depth:").map(|v| v.trim().to_string()))
+        .find_map(|c| c.strip_prefix("fetch-depth:").map(|v| v.split_whitespace().next().unwrap_or("").to_string()))
         .and_then(|v| v.parse::<u32>().ok())
         .is_some_and(|d| d == 0 || d >= 2)
 }
@@ -491,6 +496,7 @@ fn install_and_verify() -> String {
     s
 }
 
+const CHECKOUT: &str = "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n        with:\n          fetch-depth: 0\n";
 const CLASSIFY: &str = "      - id: sieve\n        run: sieve classify --config sieve.toml --base \"$BASE_SHA\" --event \"$EVENT_NAME\" --format github-output\n";
 
 fn wf(steps: &str) -> Vec<(String, String)> {
@@ -559,7 +565,7 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
     let fail = |v: &Verdict| matches!(v, Verdict::Fail(_));
     let good = action_text("0.3.0", "0.3.0", SHA_X, SHA_A);
     let iv = install_and_verify();
-    let pinned = format!("{iv}{CLASSIFY}");
+    let pinned = format!("{CHECKOUT}{iv}{CLASSIFY}");
 
     ck("a self-consistent action + a pinned classify job pass", pass(&check(&good, &wf(&pinned))));
     ck("a version that is not exact X.Y.Z fails", fail(&check(&action_text("0.3", "0.3", SHA_X, SHA_A), &wf(&pinned))));
@@ -578,6 +584,11 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
     ck("a missing sha256 slot is refused, not passed",
        matches!(check(&good.replacen("SIEVE_SHA256_AARCH64:", "X:", 1), &wf(&pinned)), Verdict::Refused(_)));
 
+    ck("a classify --base job on a depth-1 checkout fails", fail(&check(&good, &wf(&pinned.replacen("fetch-depth: 0", "fetch-depth: 1", 1)))));
+    ck("fetch-depth: 0 with a trailing comment passes",
+       pass(&check(&good, &wf(&pinned.replacen("fetch-depth: 0", "fetch-depth: 0        # sieve diffs against the PR base", 1)))));
+    ck("a classify --base job with no fetch-depth fails",
+       fail(&check(&good, &wf(&pinned.replacen("        with:\n          fetch-depth: 0\n", "", 1)))));
     ck("a job running sieve classify with no install fails", fail(&check(&good, &wf(CLASSIFY))));
     ck("an install AFTER sieve classify does not count", fail(&check(&good, &wf(&format!("{CLASSIFY}{iv}")))));
     ck("an install not followed by the verify step fails",
@@ -596,7 +607,7 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
        fail(&check(&good, &wf(&format!("      - uses: {GATE_PROBE_ACTION}@0000000000000000000000000000000000000000\n")))));
     ck("a second sieve download in a workflow fails",
        fail(&check(&good, &wf(&format!("{pinned}      - run: curl -sSfLO https://github.com/pulseengine/sieve/releases/download/v0.2.1/x.tar.gz\n")))));
-    let two = format!("jobs:\n  a:\n    steps:\n{pinned}  b:\n    steps:\n{CLASSIFY}");
+    let two = format!("jobs:\n  a:\n    steps:\n{pinned}  b:\n    steps:\n{CHECKOUT}{CLASSIFY}");
     let bad = unpinned_jobs("w.yml", &two);
     ck("an install in job a does not cover job b", bad.len() == 1 && bad[0].contains("job `b`"));
     ck("`command -v sieve` is not a use", !invokes_sieve("          got=\"$(command -v sieve || true)\""));

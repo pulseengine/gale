@@ -49,7 +49,10 @@ cmake_root_vars = ["GALE_DIR"]
 # gust dissolved on Renode, LLVM LTO build + size comparison, Binary size
 # comparison (and their advisory siblings).
 [class.code]
-cargo = ["Cargo.toml", "ffi/Cargo.toml", "os/gust/Cargo.toml"]
+# drivers/dma-own is its own workspace: no class root reaches it (it is not a
+# *-thin driver, and os/gust/build.rs links only its committed dma-own-cm3.o),
+# so it is a root here. Its source is not docs, so the docs-only class runs.
+cargo = ["Cargo.toml", "ffi/Cargo.toml", "os/gust/Cargo.toml", "drivers/dma-own/Cargo.toml"]
 cargo_glob = ["drivers/*-thin/Cargo.toml"]
 zephyr = ["zephyr/module.yml"]
 # HAND-MAINTAINED: inputs with no Cargo/Zephyr graph.
@@ -62,6 +65,9 @@ hand = [
   "drivers/build-cross-arch.sh",
   "drivers/check-cross-arch.py",
   "artifacts/",                 # read by the V-closure gate
+  # Named by the cross-arch gate's scripts and workflow (its policy record), so
+  # not docs-only under the rule this class reproduces; no build reads it.
+  "drivers/CROSS-ARCH.md",
 ]
 true_inputs = [
   "ffi/src/lib.rs",
@@ -72,6 +78,7 @@ true_inputs = [
   "proofs/sem_proofs.v",
   "os/gust/src/main.rs",
   "drivers/uart-thin/src/lib.rs",
+  "drivers/dma-own/src/lib.rs",
   "artifacts/requirements.yaml",
 ]
 

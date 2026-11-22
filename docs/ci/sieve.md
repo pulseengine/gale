@@ -67,7 +67,12 @@ the jobs' results later.
 
 It is a separate job because a classifier job may run `sieve classify` only
 once (check-workflows gate b) and sieve 0.3.0's github-output mode writes no
-JSON. Moving the record into that single call is tracked in sieve#25. On a pull
+JSON. Moving the record into that single call is tracked in sieve#25. The
+sieve#25 branch (PR #26, 30b587ee, built locally) was tested in a copy of this
+tree. With `--record "$RUNNER_TEMP/sieve-verdict.json"` added to all six
+classifier steps, its check-workflows exits 0 (sieve 0.3.0 exits 1). The record
+passes this validation. An unwritable record path exits 2 and writes no
+outputs, so every gated job runs. The swap waits for a cosign-verified v0.4.0. On a pull
 request it classifies the PR against its base. On merge_group it is a run_all
 verdict (the event is not a pull request). On push to main it uses sieve's
 observe form, `--event pull_request --base HEAD~1 --head HEAD`: the pushed
@@ -99,6 +104,32 @@ classes that build in it (sieve REQ-027), the reference ran everything.
 `[run_all] basenames = ["Cargo.lock"]` restores the reference's behaviour; turning
 the scoping on is a separate decision.
 
+## Paths that still run everything
+
+A replay of gale's last 80 merged PRs found PRs that ran everything only
+because a changed path was claimed by no class:
+
+- `drivers/dma-own/**`: its own Cargo workspace, which no class root reached (it
+  is not a `*-thin` driver, and `os/gust/build.rs` links only its committed
+  object). It is now a `code` root.
+- `drivers/CROSS-ARCH.md`: the cross-arch gate's policy record, named by its
+  scripts, so not docs-only. It is now claimed by `code`.
+- `README.md`, `docs/safety/verification-honesty.md`,
+  `docs/architecture/three-modes-two-axes.md`, `docs/releases/v0.11.0-plan.md`:
+  no job reads them, but a non-markdown file names each one (artifact prose,
+  proof comments, a `README.md` basename in `binaries.toml`), so the docs rule
+  treats them as code. They stay unclaimed, so they run everything. Claiming them
+  in `code` would narrow `cross_arch` on 4 of the 400 commits against the Python
+  reference, which ran everything on them. Listing them `[inert]` would narrow
+  `code` against both `detect-changes.sh` and the reference. Either way needs an
+  owner decision.
+- Paths under the old `benches/gust/` (moved to `os/gust/`): only history. No
+  class root points at the old location, and the paths no longer exist.
+
+Every job that runs `sieve classify --base` checks out with `fetch-depth: 0`
+(`cargo xtask check sieve-pin` enforces 0 or at least 2). A depth-1 checkout
+cannot resolve the PR base, so sieve runs everything, with the reason
+"git diff failed against <base>". The saving disappears without any error.
 ## Bumping sieve
 
 1. Download the release's `SHA256SUMS.txt` and its signature bundle, and verify:
