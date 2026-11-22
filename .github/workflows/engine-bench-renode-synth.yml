@@ -23,17 +23,18 @@
 #
 # Sample count: 10,000 per build (long sweep), matching the LTO workflow.
 # Runtime ~15-25 min per build x 3 builds, ~10-15 min per Renode run x 5
-# (baseline 1.16.0, synth 1.16.0, rustc-direct 1.16.0, baseline nightly,
+# (baseline 1.17.0, synth 1.17.0, rustc-direct 1.17.0, baseline nightly,
 # synth nightly). timeout-minutes: 300 covers it with margin.
 #
-# Cycle-model A/B (controls a/b/c): the container ships Renode 1.16.0.
+# Cycle-model A/B (controls a/b/c): the headline arms run the pinned Renode
+# 1.17.0 (.github/actions/setup-renode), not the container's bundled 1.16.0.
 # The same baseline + synth ELFs are also run under Renode nightly to
 # attribute the observed gale-vs-baseline cycle delta — see the "Render
 # nightly comparison" step.
 #
 # Synth correctness control (audit P7, DO-330 §6.1.4): a third gale
 # build via rustc-direct (no synth in the chain) is run alongside under
-# 1.16.0. If synth's handoff median agrees with rustc-direct's within
+# 1.17.0. If synth's handoff median agrees with rustc-direct's within
 # ~3%, the synth-emitted ELF is a faithful Cortex-M codegen of the same
 # Rust source. See the "Render synth-vs-rustc-direct" step.
 #
@@ -203,9 +204,38 @@ jobs:
           echo "ZEPHYR_SDK_INSTALL_DIR=${SDK_DIR}" >> "$GITHUB_ENV"
           echo "SDK: ${SDK_DIR}"
 
+      # Renode 1.17.0 pinned by sha256 (.github/actions/setup-renode), first on
+      # PATH -- not the 1.16.0 the ci-base container bundles at /opt/renode.
+      # Before the nightly install, so every renode call in this job comes after
+      # the pin (cargo xtask check renode-pin).
+      - name: Install pinned Renode
+        uses: ./gale/.github/actions/setup-renode
+        with:
+          prefix: /mnt
+
+      # The action's GITHUB_PATH write reaches only later steps, so this is the
+      # first point where what `renode` resolves to can be checked. A later PATH
+      # entry or a container quirk that put the bundled /opt/renode first would
+      # otherwise run every robot on the wrong simulator, green.
+      - name: Pinned Renode is the one on PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          for t in renode renode-test; do
+            got="$(command -v "$t" || true)"
+            [ "$got" = "$RENODE_PINNED_DIR/$t" ] || { echo "::error::$t resolves to '$got', not $RENODE_PINNED_DIR/$t"; exit 1; }
+          done
+          v="$(renode --version 2>&1 || true)"
+          echo "$v"
+          case "$v" in
+            *"v$RENODE_PINNED_VERSION"*) ;;
+            *) echo "::error::renode on PATH does not report v$RENODE_PINNED_VERSION"; exit 1 ;;
+          esac
+
       - name: Install Renode nightly (parallel install, for cycle-model A/B)
         run: |
-          # Container ships Renode 1.16.0 (pinned in zephyr docker-image
+          # The headline arms run the pinned Renode 1.17.0 (setup-renode, above).
+          # History: they ran the container's 1.16.0 (zephyr docker-image
           # Dockerfile.base across v0.28.x → v0.29.2). The unexplained
           # gale-via-synth -34.5% cycle delta might be partly an artifact
           # of the 1.16.0 Cortex-M cycle model (Thumb-2 dispatch / SP[1:0]
@@ -217,14 +247,17 @@ jobs:
           # Download to a known path so we can sha256 it for the
           # build manifest (D6) — without this, the same "nightly"
           # arm cannot be reproduced 6 months from now.
+          # 1.17 dropped the "-dotnet" infix: renode-latest.linux-portable-dotnet
+          # stopped updating on 2026-06-23, so this arm had been a frozen June
+          # build, not nightly.
           curl -sSL -o /tmp/renode-nightly.tgz \
-            https://builds.renode.io/renode-latest.linux-portable-dotnet.tar.gz
+            https://builds.renode.io/renode-latest.linux-portable.tar.gz
           sha256sum /tmp/renode-nightly.tgz
           tar xzf /tmp/renode-nightly.tgz -C /opt/renode-nightly \
             --strip-components=1
           /opt/renode-nightly/renode --version
-          # Robot framework deps for renode-test — same set as the bundled
-          # 1.16.0 install but for the nightly tree.
+          # Robot framework deps for renode-test — same set as the
+          # pinned install but for the nightly tree.
           pip3 install -r /opt/renode-nightly/tests/requirements.txt --no-cache-dir
 
       - name: Build baseline (GCC -Os, no Gale, long sweep)
@@ -302,13 +335,14 @@ jobs:
           BENCH_CSV_OUT: /tmp/engine-rustc-long/output.csv
           GALE_ROOT:     ${{ github.workspace }}/gale
         run: |
-          # Same Renode 1.16.0 as the headline two arms — the question
+          # Same Renode 1.17.0 as the headline two arms — the question
           # this run answers is "does synth's Cortex-M codegen produce
           # the same cycle counts as rustc-direct on the same Rust
           # source?" — *not* a cycle-model question. We don't run this
           # ELF under nightly Renode because the cycle-model A/B
           # already established on baseline + gale-via-synth that
-          # 1.16.0 ≡ nightly within rounding (see step "Render nightly
+          # 1.16.0 ≡ nightly within rounding, measured when the headline
+          # ran 1.16.0; not re-measured on 1.17.0 (see step "Render nightly
           # comparison" output (b) and (c)).
           mkdir -p "$GITHUB_WORKSPACE/renode-gale-rustc"
           cd "$GITHUB_WORKSPACE/renode-gale-rustc"
@@ -320,9 +354,9 @@ jobs:
           BENCH_CSV_OUT: /tmp/engine-baseline-long/output-nightly.csv
           GALE_ROOT:     ${{ github.workspace }}/gale
         run: |
-          # Same ELF as the 1.16.0 baseline run; only the simulator
+          # Same ELF as the 1.17.0 baseline run; only the simulator
           # changes. PATH override puts nightly's renode/renode-test
-          # in front of the container's bundled 1.16.0.
+          # in front of the pinned 1.17.0.
           export PATH="/opt/renode-nightly:$PATH"
           renode --version
           mkdir -p "$GITHUB_WORKSPACE/renode-baseline-nightly"
@@ -377,7 +411,7 @@ jobs:
                       print(f"M,R1,{variant},END")
           PY
           # Nightly Renode outputs — same R1 tagging (single run each),
-          # written to events-nightly.csv so the headline 1.16.0 comparison
+          # written to events-nightly.csv so the headline 1.17.0 comparison
           # is undisturbed.
           python3 - <<'PY' \
               /tmp/engine-baseline-long/output-nightly.csv baseline \
@@ -461,10 +495,10 @@ jobs:
           # Three additional comparisons to attribute the observed delta:
           #   (a) baseline vs gale, BOTH under nightly Renode
           #       — does the gale delta change when the cycle model changes?
-          #   (b) baseline_1.16.0 vs baseline_nightly (same ELF)
+          #   (b) baseline_1.17.0 vs baseline_nightly (same ELF)
           #       — control: how much does the cycle model alone shift cycles
           #         on identical instructions?
-          #   (c) gale_1.16.0 vs gale_nightly (same ELF)
+          #   (c) gale_1.17.0 vs gale_nightly (same ELF)
           #       — does the model shift gale's instructions more than the
           #         baseline's? If yes, gale's instruction mix is mis-scored
           #         by the older model and the delta is partly artifactual.
@@ -489,36 +523,35 @@ jobs:
             > /tmp/engine-cross-renode-gale.md || true
           {
             echo ''
-            echo '## Cycle-model A/B — Renode 1.16.0 vs nightly'
+            echo '## Cycle-model A/B — Renode 1.17.0 vs nightly'
             echo ''
-            echo 'The headline comparison above was run under Renode 1.16.0'
-            echo '(pinned in the zephyr docker-image). The same two ELFs are'
+            echo 'The headline comparison above was run under Renode 1.17.0'
+            echo '(pinned by .github/actions/setup-renode). The same two ELFs are'
             echo 'also run under Renode nightly to test whether the observed'
             echo 'gale-via-synth delta is partly a cycle-model artifact.'
             echo ''
             echo '### (a) baseline vs gale, both under nightly Renode'
             echo ''
-            echo 'If the gale-vs-baseline gap looks similar to the 1.16.0 run,'
+            echo 'If the gale-vs-baseline gap looks similar to the 1.17.0 run,'
             echo 'the delta is real (in the instruction stream). If it shrinks'
-            echo 'or vanishes, the 1.16.0 cycle model was over-counting one of'
+            echo 'or vanishes, the 1.17.0 cycle model was over-counting one of'
             echo 'the two paths.'
             echo ''
             cat /tmp/engine-comparison-synth-nightly.md
             echo ''
-            echo '### (b) baseline ELF: 1.16.0 vs nightly (same .elf)'
+            echo '### (b) baseline ELF: 1.17.0 vs nightly (same .elf)'
             echo ''
             echo 'Control. Same compiled bytes, different simulator. Any nonzero'
-            echo 'delta is pure cycle-model drift. "baseline" column = 1.16.0,'
+            echo 'delta is pure cycle-model drift. "baseline" column = 1.17.0,'
             echo '"gale" column = nightly.'
             echo ''
             cat /tmp/engine-cross-renode-baseline.md
             echo ''
-            echo '### (c) gale ELF: 1.16.0 vs nightly (same .elf)'
+            echo '### (c) gale ELF: 1.17.0 vs nightly (same .elf)'
             echo ''
             echo 'Same control on the gale path. If (c) shows a larger drift'
-            echo 'than (b), the 1.16.0 model is mis-scoring gale-specific'
-            echo 'instructions (Thumb-2 dispatch / SP[1:0] / FPU-disabled were'
-            echo 'all touched in 1.16.1). "baseline" column = 1.16.0,'
+            echo 'than (b), the pinned model is mis-scoring gale-specific'
+            echo 'instructions relative to nightly. "baseline" column = 1.17.0,'
             echo '"gale" column = nightly.'
             echo ''
             cat /tmp/engine-cross-renode-gale.md
@@ -573,6 +606,13 @@ jobs:
           # input in this workflow is a branch tip or a moving tag.
           mkdir -p /tmp/manifest
           . /root/.cargo/env || true
+          # The manifest names the Renode that produced the numbers, so a mismatch
+          # with the pin is an error here, not a line that quietly says 1.16.
+          rv="$(renode --version 2>&1 || true)"
+          case "$rv" in
+            *"v${RENODE_PINNED_VERSION:?setup-renode did not run in this job}"*) ;;
+            *) echo "::error::renode on PATH reports '$rv', not the pinned v$RENODE_PINNED_VERSION"; exit 1 ;;
+          esac
           {
             echo "# Gale bench manifest — single point of provenance"
             echo "# Produced by .github/workflows/engine-bench-renode-synth.yml"
@@ -595,7 +635,7 @@ jobs:
             echo "sdk_dir:               ${ZEPHYR_SDK_INSTALL_DIR:-unknown}"
             echo "---"
             echo "# Renode"
-            echo "renode_1.16.0:         $(renode --version 2>&1 | head -1)"
+            echo "renode_pinned:         ${rv%%$'\n'*}"
             echo "renode_nightly:        $(/opt/renode-nightly/renode --version 2>&1 | head -1)"
             if [ -f /tmp/renode-nightly.tgz ]; then
               echo "renode_nightly_sha256: $(sha256sum /tmp/renode-nightly.tgz | awk '{print $1}')"

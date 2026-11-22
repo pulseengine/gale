@@ -34,7 +34,9 @@ the analyzer's report header so any reader can audit and re-add it.
 Matches Zephyr 4.4 `ztest_bench`'s `ctrl` pattern.
 
 The current measurement target is one of:
-- **Renode 1.16.0** (CI default, container-pinned), or
+- **Renode 1.17.0** (CI default, pinned by sha256 in
+  `.github/actions/setup-renode`; before that pin, CI ran the 1.16.0 the
+  ci-base container bundles), or
 - **Renode nightly** (CI cycle-model A/B control), or
 - **Real silicon** (when item 1 lands; STM32F4 Discovery via SWO/DWT
   capture).
@@ -89,9 +91,13 @@ certification evidence and does **not** measure any of the following:
 
 The headline `−34.5%` handoff-cycle delta (gale vs GCC baseline) is:
 
-- **Real** — the cross-Renode A/B (1.16.0 vs nightly) shows 0.0%
-  drift on identical ELFs across simulator versions, ruling out the
-  cycle model as the source. The synth-vs-rustc-direct cross-check
+- **Real** — the cross-Renode A/B (1.16.0 vs nightly, measured while CI
+  ran the container's 1.16.0) showed 0.0% drift on identical ELFs across
+  simulator versions, ruling out the cycle model as the source. CI now
+  runs the pinned 1.17.0; the A/B has not been re-measured on 1.17.0,
+  and the `-dotnet` nightly asset that arm downloaded stopped
+  updating on 2026-06-23, so any run after that date compared against a
+  June build, not a current nightly. The synth-vs-rustc-direct cross-check
   shows synth's codegen agrees with (in fact slightly outperforms)
   rustc-direct, ruling out a synth miscompile.
 - **Tool-bounded** — produced by the on-target `k_cycle_get_32`

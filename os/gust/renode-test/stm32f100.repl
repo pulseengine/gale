@@ -22,7 +22,10 @@ flash: Memory.MappedMemory @ sysbus 0x0
     size: 0x20000
 sram: Memory.MappedMemory @ sysbus 0x20000000
     size: 0x2000
-uartSemihosting: UART.SemihostingUart @ cpu
+// Renode 1.17 moved semihosting into its own handler: a SemihostingUart now
+// registers on a CPU.SemihostingHandler, not on the CPU (1.16 form fails E05).
+semihosting: CPU.SemihostingHandler @ cpu
+uartSemihosting: UART.SemihostingUart @ semihosting
 // USART1 — the real STM32 USART register model (F100 value line is compatible
 // with the F103 USART Renode models). The dissolved thin-seam UART driver drives
 // this directly via gust:hal mmio writes (DR @ 0x40013804, etc.). IRQ 37 = the

@@ -159,6 +159,32 @@ jobs:
               -DOVERLAY_CONFIG="$GALE_ROOT/benches/flight_control/prj-gale.conf" \
               -DENGINE_BENCH_SWEEP=long
 
+      # Renode 1.17.0 pinned by sha256 (.github/actions/setup-renode), first on
+      # PATH -- not the 1.16.0 the ci-base container bundles at /opt/renode.
+      - name: Install pinned Renode
+        uses: ./gale/.github/actions/setup-renode
+        with:
+          prefix: /mnt
+
+      # The action's GITHUB_PATH write reaches only later steps, so this is the
+      # first point where what `renode` resolves to can be checked. A later PATH
+      # entry or a container quirk that put the bundled /opt/renode first would
+      # otherwise run every robot on the wrong simulator, green.
+      - name: Pinned Renode is the one on PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          for t in renode renode-test; do
+            got="$(command -v "$t" || true)"
+            [ "$got" = "$RENODE_PINNED_DIR/$t" ] || { echo "::error::$t resolves to '$got', not $RENODE_PINNED_DIR/$t"; exit 1; }
+          done
+          v="$(renode --version 2>&1 || true)"
+          echo "$v"
+          case "$v" in
+            *"v$RENODE_PINNED_VERSION"*) ;;
+            *) echo "::error::renode on PATH does not report v$RENODE_PINNED_VERSION"; exit 1 ;;
+          esac
+
       - name: Run baseline in Renode
         env:
           ELF:           /tmp/flight-baseline-long/zephyr/zephyr.elf
@@ -220,6 +246,13 @@ jobs:
           # the synth workflow's manifest. See that file for full rationale.
           mkdir -p /tmp/manifest
           . /root/.cargo/env || true
+          # The manifest names the Renode that produced the numbers, so a mismatch
+          # with the pin is an error here, not a line that quietly says 1.16.
+          rv="$(renode --version 2>&1 || true)"
+          case "$rv" in
+            *"v${RENODE_PINNED_VERSION:?setup-renode did not run in this job}"*) ;;
+            *) echo "::error::renode on PATH reports '$rv', not the pinned v$RENODE_PINNED_VERSION"; exit 1 ;;
+          esac
           {
             echo "# Gale flight-bench manifest"
             echo "# Produced by .github/workflows/engine-bench-renode-flight.yml"
@@ -240,7 +273,7 @@ jobs:
             echo "sdk_dir:               ${ZEPHYR_SDK_INSTALL_DIR:-unknown}"
             echo "---"
             echo "# Renode"
-            echo "renode_1.16.0:         $(renode --version 2>&1 | head -1)"
+            echo "renode_pinned:         ${rv%%$'\n'*}"
             echo "---"
             echo "# West manifest (Zephyr fork + modules at landed sha)"
             ( cd "${GITHUB_WORKSPACE}/zephyr-workspace" \

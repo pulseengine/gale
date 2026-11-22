@@ -13,7 +13,10 @@ flash: Memory.MappedMemory @ sysbus 0x0
     size: 0x80000
 sram: Memory.MappedMemory @ sysbus 0x20000000
     size: 0x10000
-uartSemihosting: UART.SemihostingUart @ cpu
+// Renode 1.17 moved semihosting into its own handler: a SemihostingUart now
+// registers on a CPU.SemihostingHandler, not on the CPU (1.16 form fails E05).
+semihosting: CPU.SemihostingHandler @ cpu
+uartSemihosting: UART.SemihostingUart @ semihosting
 // USART1 (STM32 F1/F103RE-class USART model) for the thin-seam UART driver demo.
 usart1: UART.STM32_UART @ sysbus <0x40013800, +0x100>
     -> nvic@37

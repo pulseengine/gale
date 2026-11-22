@@ -10,4 +10,7 @@ flash: Memory.MappedMemory @ sysbus 0x0
     size: 0x40000
 sram: Memory.MappedMemory @ sysbus 0x20000000
     size: 0x2000
-uartSemihosting: UART.SemihostingUart @ cpu
+// Renode 1.17 moved semihosting into its own handler: a SemihostingUart now
+// registers on a CPU.SemihostingHandler, not on the CPU (1.16 form fails E05).
+semihosting: CPU.SemihostingHandler @ cpu
+uartSemihosting: UART.SemihostingUart @ semihosting

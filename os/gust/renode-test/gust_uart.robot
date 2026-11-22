@@ -4,7 +4,7 @@ Documentation     gust:hal thin-seam UART driver — the dissolved driver (the w
 ...               driving a REAL STM32 USART model. The app TXes "gust-uart-thin" via
 ...               the driver's uart_tx_byte primitive over MMIO; this asserts the
 ...               emitted content on the wire (not just no-fault). A real USART is
-...               capturable headless (unlike the SemihostingUart). ELF + platform
+...               capturable headless (the SemihostingUart was not, before Renode 1.17). ELF + platform
 ...               injected by renode_test.
 Resource          ${RENODEKEYWORDS}
 
