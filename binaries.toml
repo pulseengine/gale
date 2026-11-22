@@ -30,10 +30,16 @@
 # The move to covalent 2026.11.7 (2026-11-20) rebuilt 11 of the 19 gated objects on that pin
 # and committed them (iso-core-fused, mpu/switch/hm-thin, dma-own, and the i2c/pwm/spi/timer/
 # uart/wdg thin drivers), and the 17 Renode targets re-ran on them.
-# The rustc move 1.99.1 -> 1.100.0 rebuilt them again: hm/pwm/spi/uart/wdg-thin changed bytes
-# (rustc reorders functions in the wasm, so synth numbers its LOCAL func_N symbols differently;
-# .text, global symbols and relocation targets are byte-identical), the other six reproduced
-# byte-for-byte (switch-thin by its wasm code sections, the rest by full rebuild).
+# The rustc move 1.99.1 -> 1.100.0 rebuilt them again (full rebuild, each recipe checked to give
+# the old bytes on 1.99.1). Six reproduce byte-for-byte on 1.100.0: iso-core-fused, mpu, switch,
+# i2c, timer, dma-own. Five change: hm, pwm, spi, uart, wdg-thin. rustc 1.100.0 orders the wasm
+# functions and types differently, so (1) synth numbers its LOCAL func_N symbols differently
+# (.strtab; for pwm, spi, uart also .symtab name offsets), and (2) for spi and uart the non-alloc
+# .synth.table_type_ids section lists the same type ids in a different order (spi 05,06 -> 06,05;
+# uart 07,06 -> 05,07). Nothing in this repo reads that section by name, and as a non-alloc
+# section it is not part of the loaded image. The file sizes of pwm, spi, uart move by one byte
+# (.strtab). .text, .rel.text, all non-LOCAL and undefined symbols and every other section are
+# identical, so the loaded code is the same.
 # They carry no stale_ lines and read `recorded-fresh (not rebuilt)`: the gate trusts the
 # record and cross-checks it against git dates, it does not rebuild. 8 remain known-stale,
 # each with its reason in a comment: breadth and os-{time,tl,ts} (no builder can produce them
@@ -295,7 +301,7 @@ regenerate = "drivers/spi-thin/RESULTS.md"
 [[binary]]
 path = "drivers/switch-thin/switch-thin-cm3.o"
 sha256 = "948dac28dfd5d9be647a49c27635a1bcc53f2c6d321a19382d34cd9b7d79971b"
-inputs_sha256 = "e3521c1a87ed1cdf612a89671a2f41c651292db9355c56b3267ed342a2e3c26f"
+inputs_sha256 = "ff35fff84a156480ac8aa8bbee897011c5532dc801d50d014104a1322787974e"
 toolchain = "varve.toml: channel=rolling digest=sha256:ba7bd8910ced7ace594566941aeb870d78114670f04e489661c6e8b3cc2b9cc0 layer=2026.11.7 realm=covalent; rust-toolchain.toml: channel=1.100.0 components=[rustfmt, clippy]"
 kind = "synth-object"
 consumer = "drivers/check-driver-components.py"
