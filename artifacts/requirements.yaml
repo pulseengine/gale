@@ -5849,3 +5849,74 @@ artifacts:
       model: claude-opus-5-5
       timestamp: 2026-11-22T08:00:00Z
 
+  - id: REQ-CI-SIEVE-001
+    type: sw-req
+    title: A heavy CI job skips only through sieve's fail-open classifier, and the proof jobs never skip
+    status: implemented
+    description: "Raised by gale#294 and lane L17 (2026-11-22). gale decided which heavy jobs a PR runs with three hand-written detectors: tools/ci/detect-changes.sh (docs-only, in coverage, gust-renode, llvm-lto and zephyr-tests), a path regex in the required \"V-closure needed?\" job, and a step-level guard inside the drv-cross-arch job; \"proofs needed?\" step-skipped Verus, Kani, Rocq and Lean. SHALL: (1) the decision is made by sieve (pulseengine's shared CI path classifier) from sieve.toml, whose classes are `code` (false only on a docs-only change), `cross_arch` and `v_closure`; (2) a required job is skipped only by a job-level `if:` of exactly the form `!cancelled() && (needs.<C>.result != 'success' || needs.<C>.outputs.<class> != 'false')`, with <C> the one job running `sieve classify --config sieve.toml --base \"$BASE_SHA\" --event \"$EVENT_NAME\" --format github-output`, so a failed, cancelled or silent classifier runs the job, and a skipped job still reports its context; (3) everything runs on any event but pull_request (push, merge_group, schedule), with no base, on a failed or empty diff, on a path no class claims, and on a change to .github/**, tools/**, bzl/**, sieve.toml, any Cargo.lock (nested ones included), or a toolchain or Bazel file; (4) the proof jobs (Verus SMT, Kani BMC, Rocq Proofs, Lean Proofs) and \"proofs needed?\" never skip (owner, 2026-11-20): they are sieve.toml `[workflows] never_skip_jobs`, carry no `if:` beyond always()/!cancelled(), no step-level skip and no skippable `needs:`; (5) no workflow that hosts a required context has a `paths:` filter on its pull_request trigger, and each also triggers on merge_group; (6) the required context names in .github/required-contexts.txt are unchanged (\"proofs needed?\" and \"V-closure needed?\" still report). Enforced by `sieve check-workflows` (gates a-d plus never_skip_jobs) and `sieve check-graph` in the required job \"every required context can actually report\". The switch was gated by equivalence: over gale's last 400 first-parent commits to a0e9d47c, sieve selected nothing less than any old detector it replaced. KNOWN GAPS, stated: gate (a) checks only the pull_request trigger, so a `paths:` filter on a push trigger is not caught (planted on rivet-v-closure.yml: check-workflows exit 0; tracked in sieve#25); the push filters were removed from formal-verification.yml and rivet-v-closure.yml by hand. Sieve's verdict for each run is NOT yet recorded as an artifact: the classifier job may run `sieve classify` exactly once (gate b), and sieve 0.3.0's github-output mode writes no JSON, so recording needs either an extra job or a sieve change (sieve#25); that is pending an owner decision. The independent false-skip controls live in pulseengine/plant, not here. Kill criterion: a required job is skipped on a PR by anything other than the classifier form, a proof job is skipped, or a change to a class's input skips that class's job."
+    tags: [ci, sieve, gate, gale#294]
+    fields:
+      priority: must
+      req-type: constraint
+      verification-criteria: "`sieve check-workflows --config sieve.toml` and `sieve check-graph --config sieve.toml` exit 0 in the required job \"every required context can actually report\" on every PR; planted on the real tree, a classifier `if:` on the Verus job, a `paths:` on coverage.yml's pull_request trigger and the old `if:` form without the result term each make check-workflows exit 1; sieve.toml, a workflow, the setup-sieve action, the root and a nested Cargo.lock each classify as run_all; `sieve equivalence` over 400 commits shows 0 narrower against every replaced detector."
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: traces-to
+        target: REQ-CI-SIEVE-002
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-22T16:00:00Z
+
+  - id: VER-CI-SIEVE-001
+    type: sw-verification
+    title: "Heavy jobs skip only through sieve, proofs never skip, and the switch selects no less than the detectors it replaced"
+    status: implemented
+    description: "Wiring: coverage, gust-renode, llvm-lto and zephyr-tests run `sieve classify` in their classifier job and gate Rust Coverage, Zephyr C Coverage, gust dissolved on Renode, LLVM LTO build + size comparison and Binary size comparison on `code`; drv-cross-arch gained a `classify` job and gates on `cross_arch` (its step-level guard is gone); \"V-closure needed?\" hosts `sieve classify` and gates on `v_closure`; formal-verification's proof jobs lost `needs: guard` and every step-level skip. supply-chain.yml gained the merge_group trigger it lacked (sieve gate a found it; tools/check-required-contexts.py returns OK for a bare `pull_request:` before it checks merge_group). Results at the lane tip, sieve 0.3.0: check-workflows exit 0 (24 required contexts, 5 never-skip jobs, the classifier fails open in 5 scenarios x 3 classes), also in a depth-1 clone; check-graph exit 0 (1548/1548 controls). Equivalence (`sieve equivalence --ref a0e9d47c --commits 400`, each old detector run in GATE_PROBE_FILES mode): against tools/ci/detect-changes.sh (code) 400/400 compared, 400 identical, 0 narrower; against the inline V-closure and cross-arch regexes copied verbatim into a one-off oracle (v_closure, cross_arch) 400/400, 61 identical, 339 wider, 0 narrower; against the Python reference classify-changes.py (4050000f, Python 3.12), one run per heavy-job output mapped to code (zephyr, zephyr_renode, rust_cov, proofs, gust_renode) with cross_arch compared in each, 400/400 each, 0 narrower (wider 40/40/44/33/44). A first reference run narrowed cross_arch on 2 commits changing os/gust/Cargo.lock (sieve's nested-lock scoping, sieve REQ-027); sieve.toml was changed to keep every Cargo.lock run-all and the narrowing disappeared. Planted on the real tree: a classifier `if:` on the Verus job -> exit 1 (never-skip-if); `paths:` on coverage.yml's pull_request -> exit 1 (paths-filter); the old docs-only `if:` form -> exit 1 (if-form); `paths:` on rivet-v-closure.yml's push trigger -> exit 0 (NOT caught: the gap in REQ-CI-SIEVE-001). temper's gate probe runs sieve on its controls (4 closed, the negative control non-code, exit 0). tools/check-required-contexts.py against the live branch protection: PASS, 24 contexts match. Not verified here: that sieve's verdict is recorded per run (not implemented, pending a decision), and false-skip controls independent of sieve's own graph (pulseengine/plant)."
+    tags: [ci, sieve, gate, verification, gale#294]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-CI-SIEVE-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-22T16:00:00Z
+
+  - id: REQ-CI-SIEVE-002
+    type: sw-req
+    title: CI runs only the pinned sieve, installed by sha256 values checked with cosign, and the pin agrees with itself
+    status: implemented
+    description: "sieve is not in the varve layer gale pins (covalent 2026.11.7, frozen for v0.11.0), so CI installs it from its GitHub release through .github/actions/setup-sieve. SHALL: (1) before a sha256 is copied into the action, the release's SHA256SUMS.txt is verified with `cosign verify-blob --certificate-identity-regexp '^https://github.com/pulseengine/sieve/.github/workflows/release.yml@refs/tags/v.*$' --certificate-oidc-issuer https://token.actions.githubusercontent.com --bundle SHA256SUMS.txt.cosign.bundle SHA256SUMS.txt` (docs/ci/sieve.md); (2) the action pins SIEVE_VERSION (an exact X.Y.Z that its step name repeats) and one sha256 per architecture (x86_64 and aarch64 linux-musl, 64 lowercase hex, different from each other), checks the archive with sha256sum -c, checks the binary's own `--version`, and puts it on PATH, with no `if:` or `continue-on-error:`; (3) every workflow job that runs sieve, or temper's gate probe (which runs sieve through tools/ci/sieve-gate-probe.sh), runs the action and, as its very next step, \"Pinned sieve is the one on PATH\", before the first use; (4) no other workflow or action downloads a sieve release. Enforced by `cargo xtask check sieve-pin`. What it cannot see: that the pinned sha256 values are the release's real ones (that is step 1, done by hand at each bump), a job reaching sieve by another name, and PATH changes inside a script. Kill criterion: a job runs a sieve that is not the pinned, sha256-checked one, or the action's version and sha256 values disagree."
+    tags: [ci, sieve, supply-chain, gate]
+    fields:
+      priority: must
+      req-type: constraint
+      verification-criteria: "`cargo xtask check sieve-pin --self-test` passes in kill-criteria.yml on every PR (33 cases: a non-exact version, a step name naming another version, an uppercase, a short and a duplicated sha256, each missing install line, a commented-out line, `if:` in the action, a job running sieve without the install, an install after the use, an install without the verify step, each missing verify check, `continue-on-error:`/`if:` on either step, a path-qualified sieve, the gate-probe action without the install, a second download and an install in another job each fail; a missing sha256 slot and no sieve-running workflow refuse; a self-consistent action and pinned job pass). `cargo xtask check sieve-pin` passes on the tree."
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: traces-to
+        target: REQ-CI-SIEVE-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-22T16:00:00Z
+
+  - id: VER-CI-SIEVE-002
+    type: sw-verification
+    title: "The sieve pin was cosign-verified, and the pin gate can fail (cargo xtask check sieve-pin)"
+    status: implemented
+    description: "Release verification for sieve 0.3.0 (cosign v3.1.3): the bundle form of REQ-CI-SIEVE-002 (1) printed Verified OK (exit 0); the .sig + .pem pair against the exact identity .../release.yml@refs/tags/v0.3.0 printed Verified OK (exit 0); negative controls: SHA256SUMS.txt with one digit changed exit 1, an identity regexp for another repository exit 1. sha256sum -c: the x86_64-musl, aarch64-musl and aarch64-apple-darwin archives OK. `gh attestation verify sieve-v0.3.0-x86_64-unknown-linux-musl.tar.gz --repo pulseengine/sieve` exit 0. Pinned: x86_64 aae674edf2c454ae5047409f571160f4615ef67f901b2e55628e8b756fb69b40, aarch64 b8e8cd3167ae3adcbecdcb7081fedf66430ff671d97537597890c31a01fc3e0d. Gate: tools/xtask/src/gates/sieve_pin.rs, indentation-scanned like renode_pin.rs, run as two steps (self-test, then real) in kill-criteria.yml's renode-targets job. At the lane tip: 8/8 required action lines present, 33 files scanned, 8 workflows run sieve, PASS. Self-test 33/33 (REQ-CI-SIEVE-002's criteria), its positive control included; the first draft's positive control failed (a step-name needle carried the list dash the scanner strips), which is why it is kept. Planted on the real tree: the install step removed from coverage.yml -> exit 1; SIEVE_VERSION changed to 0.3.1 without the step name -> exit 1."
+    tags: [ci, sieve, supply-chain, gate, verification]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-CI-SIEVE-002
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-22T16:00:00Z
