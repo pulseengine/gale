@@ -64,12 +64,16 @@
 //! shrink-only mode the bounds may only lose attributes (a sub-multiset) or
 //! only be raised (same count, each sorted bound >= its partner); anything
 //! else -- a removal together with a change, a `?` gained -- is ambiguous and
-//! fails.
+//! fails. The rule is applied to the ledger against the baseline AND to the
+//! tree against the baseline directly, not only through the ledger: the
+//! relation does not compose (round 11, F3: a removal recorded in the ledger
+//! plus a "raise" in the tree hid a lowered bound). With an admit, every
+//! baseline bound must still be in the tree unchanged.
 //!
 //! What it counts is listed by `CLASSES`; what it cannot see is `CANNOT_SEE`,
 //! printed on every run. It counts spellings, not how much each one narrows.
 
-use crate::gates::lex::{cfg_attr_items, count_token, lean_code, rocq_code, rocq_sentences, rust_code, token_positions};
+use crate::gates::lex::{cfg_attr_items, count_token, lean_code, lean_unmodelled, rocq_code, rocq_sentences, rust_code, token_positions};
 use crate::verdict::Verdict;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -90,7 +94,7 @@ const EXCLUDED_PREFIXES: &[&str] = &["tools/xtask/"];
 
 /// (class, language, what is counted)
 pub const CLASSES: &[(&str, &str, &str)] = &[
-    ("kani::assume", "rs", "`kani::assume(` calls"),
+    ("kani::assume", "rs", "the path `kani::assume`: calls, `kani::assume::<>(..)`, `(kani::assume)(..)`, and a `use`/`let` naming it"),
     ("kani::any_where", "rs", "`kani::any_where` (a generator with a built-in assumption)"),
     ("kani::unwind", "rs", "`#[kani::unwind(N)]` attributes (also inside `cfg_attr`), with the bound N"),
     ("verus:external_body", "rs", "`#[verifier::external_body]` / `#[verifier(external_body)]` / `#![...]` / inside `cfg_attr`"),
@@ -117,7 +121,8 @@ pub const CANNOT_SEE: &[&str] = &[
     "a rename that also edits the file (only exact `-M100%` renames carry a baseline row to its new path; anything else is growth in the new path)",
     "assumptions written as narrowed types or bounded generators (e.g. `kani::any::<u8>()` where u32 is the domain)",
     "Verus `requires` clauses and spec-level preconditions; `#[verifier::external]`, `external_fn_specification`, `external_type_specification`",
-    "aliases: `use kani::assume as a;`, `use kani as k;`, `let f = kani::assume;`, `use kani::assume;` + bare `assume(` (counted as verus:assume), `vstd::prelude::assume(` (a path call, not counted)",
+    "aliases: the calls made through `use kani::assume as a;` or `let f = kani::assume;` (the naming itself is counted once), `use kani as k;` + `k::assume(`, `use kani::assume;` + bare `assume(` (counted as verus:assume), `vstd::prelude::assume(` (a path call, not counted)",
+    "Lean string interpolation (`s!\"{..}\"`, `m!`, `f!`, `throwError`, any `interpolatedStr` syntax): its braces hold code the lexer does not model, so a .lean file with an unescaped `{` inside a string literal is REFUSED (fails closed), never counted around",
     "Kani contracts and stubs: `#[kani::stub]`, `#[kani::requires]`, `#[kani::proof_for_contract]`",
     "harnesses or assumptions produced by macros, and `include!` of a non-.rs file",
     "unwind bounds given on the command line (`--default-unwind`, `--unwind`) or a non-literal `#[kani::unwind(CONST)]` bound (recorded as `?`)",
@@ -180,6 +185,14 @@ pub fn kani_proofs(text: &str) -> usize {
     t.matches("#[kani::proof]").count() + cfg_attr_items(&t).iter().filter(|i| *i == "kani::proof").count()
 }
 
+/// `#[kani::proof_for_contract(f)]` harnesses in one file (attribute and
+/// `cfg_attr` forms). `cargo kani` runs them like `#[kani::proof]`; they are
+/// kept apart so trust-ledger's `#[kani::proof]` figure keeps its meaning.
+pub fn kani_contract_proofs(text: &str) -> usize {
+    let t = tighten(&rust_code(text));
+    t.matches("#[kani::proof_for_contract(").count() + cfg_attr_items(&t).iter().filter(|i| i.starts_with("kani::proof_for_contract(")).count()
+}
+
 /// Rocq declarations outside a Section that a Section would scope:
 /// `Variable(s)`, `Hypothesis`, `Hypotheses`, `Context`.
 fn rocq_top_level_variables(code: &str) -> usize {
@@ -222,7 +235,9 @@ pub fn count_file(path: &str, text: &str) -> FileCounts {
         Some("rs") => {
             let t = tighten(&rust_code(text));
             let cfg = cfg_attr_items(&t);
-            put("kani::assume", t.matches("kani::assume(").count(), &mut fc);
+            // Every `kani::assume` path, not only `kani::assume(`: rustc also runs
+            // `(kani::assume)(c)` and `kani::assume::<>(c)` (round 11, F6).
+            put("kani::assume", token_positions(&t, "assume").into_iter().filter(|&i| t[..i].ends_with("kani::")).count(), &mut fc);
             put("kani::any_where", token_positions(&t, "any_where").into_iter().filter(|&i| t[..i].ends_with("kani::")).count(), &mut fc);
             let mut from = 0;
             while let Some(i) = t[from..].find("#[kani::unwind(") {
@@ -390,6 +405,9 @@ pub struct Census {
     /// `#[kani::proof]` attributes in tracked source (attribute and `cfg_attr`
     /// forms) -- a spelling count, not the number CI compiles or runs.
     pub kani_proofs: usize,
+    /// Files the lexer cannot model (a Lean string with an unescaped `{`: a
+    /// possible interpolation), as `path:line`. Any entry REFUSES the run.
+    pub unmodelled: Vec<String>,
 }
 
 pub fn census_of<'a, I: IntoIterator<Item = (&'a str, &'a str)>>(files: I) -> Census {
@@ -404,6 +422,11 @@ pub fn census_of<'a, I: IntoIterator<Item = (&'a str, &'a str)>>(files: I) -> Ce
         *c.scanned.entry(lang).or_default() += 1;
         if lang == "rs" {
             c.kani_proofs += kani_proofs(text);
+        }
+        if lang == "lean" {
+            if let Some(line) = lean_unmodelled(text) {
+                c.unmodelled.push(format!("{path}:{line}"));
+            }
         }
         if lang == "bazel" {
             if path.ends_with(".bzl") {
@@ -432,6 +455,12 @@ pub fn census_of<'a, I: IntoIterator<Item = (&'a str, &'a str)>>(files: I) -> Ce
 
 /// An empty scan of any language is a broken scan, not an empty ledger.
 pub fn check_scanned(c: &Census) -> Result<(), String> {
+    if !c.unmodelled.is_empty() {
+        return Err(format!(
+            "a Lean string literal holds an unescaped `{{` at {} -- possibly an interpolation (`s!\"{{..}}\"`, `m!`, `f!`, `throwError`), whose braces hold code the lexer does not model; refusing rather than count around it (escape it as `\\{{` if it is a literal brace)",
+            c.unmodelled.join(", ")
+        ));
+    }
     for lang in ["rs", "v", "lean", "bazel"] {
         if c.scanned.get(lang).copied().unwrap_or(0) == 0 {
             return Err(format!("scanned 0 {lang} files -- an empty scan is not an empty ledger"));
@@ -795,6 +824,28 @@ pub fn compare(ledger: &Ledger, c: &Census, ids: &BTreeSet<String>, baseline: Op
                     ));
                 }
             }
+            // The TREE against the baseline directly (round 11, F3): for unwind
+            // bounds the two comparisons -- ledger vs baseline above, tree vs
+            // ledger below -- do not compose. Baseline [6,28,30], ledger [6,28]
+            // (a removal) and tree [7,28] (a "raise" over the ledger) passed both
+            // while the 30 was lowered to 7.
+            for (k, tree) in &cur {
+                if k.0 != "kani::unwind" {
+                    continue;
+                }
+                let Some(br) = base.get(k) else { continue };
+                let ok = if admits.contains_key(k) { bounds_kept(&br.bounds, &tree.1) } else { unwind_not_narrower(&tree.1, &br.bounds) };
+                if !ok {
+                    fails.push(format!(
+                        "{} {}: tree [{}] against the baseline's [{}] -- neither only removed nor only raised bounds{} (a lowered bound can hide behind a removal recorded in the ledger) -- {GROWTH_RULE}",
+                        k.0,
+                        k.1,
+                        fmt_bounds(&tree.1),
+                        fmt_bounds(&br.bounds),
+                        if admits.contains_key(k) { ", and an admit keeps every baseline bound unchanged" } else { "" }
+                    ));
+                }
+            }
             for (k, a) in &admits {
                 if !rec.contains_key(k) {
                     fails.push(format!("admit {} {} +{} ({}): no ledger row for that item -- a stale admit", k.0, k.1, a.n, a.issue));
@@ -997,6 +1048,19 @@ pub fn newest_release_with(g: GitQuery) -> Result<String, String> {
     Ok(sha.to_string())
 }
 
+/// The ceiling is read from history (the baseline commit, its tags, every
+/// past shrink-only ledger). In a shallow clone, "never shrink-only" and
+/// "history missing" look the same and the ceiling would be silently
+/// forgotten (round 11, F5), so a shallow repository -- or one that cannot
+/// say -- is refused.
+fn full_history_with(g: GitQuery) -> Result<(), String> {
+    match g(&["rev-parse", "--is-shallow-repository"])? {
+        (true, s) if s.trim() == "false" => Ok(()),
+        (true, s) if s.trim() == "true" => Err("a shallow clone: the ceiling is read from history (fetch-depth: 0 and the tags), refusing rather than forget it".into()),
+        (_, s) => Err(format!("git rev-parse --is-shallow-repository answered `{}` -- cannot tell whether history is complete", s.trim())),
+    }
+}
+
 pub fn baseline_ledger(repo: &Path, sha: &str) -> Result<Ledger, String> {
     baseline_ledger_with(&real_git(repo), sha)
 }
@@ -1143,6 +1207,9 @@ fn run_with(repo: &Path, census: Result<Census, String>) -> Verdict {
         Err(e) => return Verdict::Refused(e),
     };
     let g = real_git(repo);
+    if let Err(e) = full_history_with(&g) {
+        return Verdict::Refused(e);
+    }
     let ceiling = match ceiling_with(&g, &ledger) {
         Ok(c) => c,
         Err(e) => return Verdict::Fail(vec![format!("{LEDGER}: {e}")]),
@@ -1479,6 +1546,45 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     ck("shrink-only: raising only passes", unwind_not_narrower(&[Some(9), Some(28)], &[Some(6), Some(28)]));
     ck("PLANTED shrink-only: gaining a `?` fails", !unwind_not_narrower(&[None, None], &[Some(5), None]));
     ck("PLANTED shrink-only: a `?` replaced by a literal fails", !unwind_not_narrower(&[Some(5)], &[None]));
+    // Round 11, F3: the same fake shrink split across the two comparisons --
+    // the ledger records the removal ([6,28,30] -> [6,28], a sub-multiset) and
+    // the tree "raises" over the ledger ([6,28] -> [7,28]).
+    let u3 = |bs: &[u64]| bs.iter().enumerate().map(|(n, b)| format!("#[kani::proof]\n#[kani::unwind({b})]\nfn u{n}() {{}}\n")).collect::<String>();
+    let base3 = parse_ledger(&format!("mode = equality\nbaseline = none\n{}", render_rows(&tree(&u3(&[6, 28, 30]), base_v), None, "VER-X-001"))).expect("parses");
+    let led3 = |bs: &[u64]| parse_ledger(&format!("mode = shrink-only\nbaseline = {sha}\n{}", render_rows(&tree(&u3(bs), base_v), None, "VER-X-001"))).expect("parses");
+    ck("F3 control: baseline [6,28,30], ledger and tree [6,28] (an honest removal) passes",
+        compare(&led3(&[6, 28]), &tree(&u3(&[6, 28]), base_v), &ids, Some(&base3)).is_ok());
+    ck("F3 control: baseline [6,28,30], ledger and tree [6,28,31] (a raise) passes",
+        compare(&led3(&[6, 28, 31]), &tree(&u3(&[6, 28, 31]), base_v), &ids, Some(&base3)).is_ok());
+    ck("PLANTED F3 baseline [6,28,30], ledger [6,28], tree [7,28] (30 lowered to 7 behind a recorded removal) fails",
+        compare(&led3(&[6, 28]), &tree(&u3(&[7, 28]), base_v), &ids, Some(&base3)).is_err());
+    ck("PLANTED F3b baseline [6,28,30], ledger [6], tree [7] fails",
+        compare(&led3(&[6]), &tree(&u3(&[7]), base_v), &ids, Some(&base3)).is_err());
+    // Round 11, F1 and F6: spellings that hid a kani::assume.
+    let assumes = |src: &str| count_file("x.rs", src).counts.get("kani::assume").copied().unwrap_or(0);
+    ck("PLANTED F1 a kani::assume after a raw C string `cr\"\\\"` (a `\"` in the trailing comment) counts",
+        assumes("fn h(c: bool) {\n  kani::assume(c);\n  let _p = cr\"\\\"; kani::assume(c); // \"\n}\n") == 2);
+    ck("PLANTED F1 ... and after `cr#\"\\\"#`", assumes("fn h(c: bool) { let _p = cr#\"\\\"#; kani::assume(c); } // \"\n") == 1);
+    ck("PLANTED F6 `(kani::assume)(c)` counts", assumes("fn h(c: bool) { (kani::assume)(c); }\n") == 1);
+    ck("PLANTED F6 `kani::assume::<>(c)` counts", assumes("fn h(c: bool) { kani::assume::<>(c); }\n") == 1);
+    ck("F6 `kani::assume_x(c)` and `kani::assumed` are other names", assumes("fn h(c: bool) { kani::assume_x(c); let _ = kani::assumed; }\n") == 0);
+    // Round 11, F2: a Lean interpolated string holding a quote hid a `sorry`.
+    let interp = census_of([
+        ("a/src/lib.rs", base_rs),
+        ("proofs/p.v", base_v),
+        ("proofs/L.lean", "def zz_s : String := s!\"{\"\\\"\"}\"\ntheorem zz_bad : False := sorry\n-- \"\n"),
+        ("proofs/BUILD.bazel", "x = 1\n"),
+    ]);
+    ck("PLANTED F2 a Lean `s!\"{\"\\\"\"}\"` before a `sorry` is REFUSED (not counted around)",
+        check_scanned(&interp).is_err_and(|e| e.contains("proofs/L.lean:1")));
+    ck("PLANTED F2 ... and the run is REFUSED, not a pass", matches!(run_with(repo, check_scanned(&interp).map(|_| Census::default())), Verdict::Refused(_)));
+    // Round 11, F5: a shallow clone would forget the ceiling.
+    let shallow = |ok: bool, ans: &'static str| move |args: &[&str]| -> Result<(bool, String), String> {
+        Ok(if args == ["rev-parse", "--is-shallow-repository"] { (ok, format!("{ans}\n")) } else { (false, String::new()) })
+    };
+    ck("F5 control: a full clone (`false`) is accepted", full_history_with(&shallow(true, "false")).is_ok());
+    ck("PLANTED F5 a shallow clone (`true`) is refused", full_history_with(&shallow(true, "true")).is_err());
+    ck("PLANTED F5 a git that cannot answer is refused", full_history_with(&shallow(false, "")).is_err() && full_history_with(&shallow(true, "--is-shallow-repository")).is_err());
     ck("SWITCH shrink-only without a baseline sha is rejected",
         parse_ledger(&eq_text.replace("mode = equality", "mode = shrink-only")).is_err());
     ck("equality with a baseline set is rejected",

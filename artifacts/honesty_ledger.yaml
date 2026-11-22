@@ -14,7 +14,8 @@ artifacts:
       only at the repository root and in ffi/, so the harnesses in the driver
       crates (14 crates, 101 #[kani::proof] harnesses at e85b7620) were checked
       by no CI job, and "Kani-proven" in their docs was a local result. SHALL:
-      every package with a #[kani::proof] harness in code is run by at least one
+      every package with a #[kani::proof] or #[kani::proof_for_contract]
+      harness in code is run by at least one
       CI `cargo kani` invocation that can fail its job. An invocation counts
       only in an ALLOWLISTED shape (anything else is void): workflows read by
       a strict YAML reader (anchors, tags, duplicate keys, continued scalars
@@ -32,7 +33,10 @@ artifacts:
       main and no `!` pattern -- read from the workflow text, not observed),
       and for a path-guarded invocation a push-to-main or schedule trigger,
       since on a pull_request the guard may skip it every time; no matrix
-      `exclude:` when the directory comes from the matrix. A crate whose
+      `exclude:` when the directory comes from the matrix. The directory is
+      the most specific `working-directory` (step, else job, else workflow
+      default; it replaces the others, as GitHub documents) or
+      `--manifest-path`. A crate whose
       harnesses all sit outside its compiled roots fails even with a step.
       `cargo xtask check kani-coverage` fails otherwise. The job that runs the driver harnesses is
       not a required context; making it one is the owner's decision.
@@ -104,7 +108,12 @@ artifacts:
       than the current one or already present in the ledger at it; the gate checks the row is recorded, not that
       anyone reviewed or approved it), and returning to equality
       keeps it; duplicate mode or
-      baseline lines are rejected; an ambiguous unwind change fails. NOT SHOWN:
+      baseline lines are rejected; an ambiguous unwind change fails, judged for
+      the ledger and for the tree each against the baseline directly (a removal
+      recorded in the ledger cannot hide a lowered bound in the tree); a
+      shallow clone is refused (the ceiling is read from history); a .lean file
+      with an unescaped `{` in a string literal (a possible interpolation) is
+      refused. NOT SHOWN:
       how much each assumption narrows; the forms the gate prints as unseen
       (aliases among them).
     tags: [honesty, ledger, kani, gate, v0.11.0]

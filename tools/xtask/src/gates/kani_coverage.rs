@@ -51,12 +51,15 @@
 //! A crate whose harnesses all sit outside its compiled roots fails even when a
 //! step runs there: `cargo kani` would build none of them.
 //!
-//! The directory comes from `working-directory:` (step, then job and workflow
-//! `defaults`) or `--manifest-path`; `${{ matrix.K }}` expands over the job's
+//! The directory comes from `working-directory:` (step, else job, else workflow
+//! `defaults`: the most specific one REPLACES the others and a relative one
+//! resolves from the workspace, as GitHub documents -- never joined) or
+//! `--manifest-path`; `${{ matrix.K }}` expands over the job's
 //! matrix list. `cargo kani setup`, `list`, `--version` and `--help` lines are
 //! not invocations.
 //!
-//! Harness figures: "in source" counts `#[kani::proof]` in a package's files;
+//! A harness is `#[kani::proof]` or `#[kani::proof_for_contract(f)]` (also
+//! inside `cfg_attr`). Harness figures: "in source" counts them in a package's files;
 //! "compiled" drops files outside the package's compiled roots (the `[lib]`
 //! path's directory, `tests/`, `benches/`, `examples/`, `src/bin/`). The root
 //! package's lib is `plain/src`, so `src/`'s harnesses (the Verus originals of
@@ -64,7 +67,7 @@
 //!
 //! What it cannot see is `CANNOT_SEE`, printed on every run.
 
-use crate::gates::trust_ledger::kani_proofs;
+use crate::gates::trust_ledger::{kani_contract_proofs, kani_proofs};
 use crate::gates::yaml::{self, Node, Style};
 use crate::verdict::Verdict;
 use std::collections::{BTreeMap, BTreeSet};
@@ -692,7 +695,10 @@ pub fn workflow_invocations(name: &str, text: &str) -> Vec<Invocation> {
             set_void(&mut job_void, format!("job needs `{other}` -- the gate cannot affirm that job runs"));
         }
         let job_wd = match defaults_of("job", body.get("defaults")) {
-            Ok(Some(w)) => join_dir(&wf_wd, &norm_dir(&w)),
+            // The most specific `working-directory` REPLACES the others; a
+            // relative one resolves from the workspace (GitHub's documented
+            // rule; round 11, F4: it used to be joined onto the outer default).
+            Ok(Some(w)) => norm_dir(&w),
             Ok(None) => wf_wd.clone(),
             Err(e) => {
                 set_void(&mut job_void, e);
@@ -745,7 +751,7 @@ pub fn workflow_invocations(name: &str, text: &str) -> Vec<Invocation> {
                 set_void(&mut void, "a path-guarded invocation in a workflow with no push-to-main or schedule trigger: on pull_request the guard may skip it every time".into());
             }
             let base = match step.get("working-directory").and_then(Node::str) {
-                Some(w) => join_dir(&job_wd, &norm_dir(w)),
+                Some(w) => norm_dir(w),
                 None => job_wd.clone(),
             };
             let d = match mdir {
@@ -802,7 +808,8 @@ pub fn in_compiled_root(inner: &str, lib_dir: &str) -> bool {
 pub fn harness_crates<'a, I: IntoIterator<Item = (&'a str, &'a str, String, String)>>(files: I) -> BTreeMap<String, HarnessCrate> {
     let mut m: BTreeMap<String, HarnessCrate> = BTreeMap::new();
     for (path, text, pkg, lib_dir) in files {
-        let n = kani_proofs(text);
+        // `#[kani::proof_for_contract]` is a harness too (round 11, F6).
+        let n = kani_proofs(text) + kani_contract_proofs(text);
         if n == 0 {
             continue;
         }
@@ -1017,6 +1024,16 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     let crates = harness_crates(files.iter().map(|(p, t, k, l)| (*p, *t, k.clone(), l.clone())));
     ck("5 crates with harnesses; a comment mention is not a harness", crates.len() == 5 && !crates.contains_key("drivers/none"));
     ck("a `#[cfg_attr(kani, kani::proof)]` harness is a harness", crates.get("drivers/cfg").is_some_and(|c| c.harnesses == 1));
+    // Round 11, F6 and F1: a contract harness, and a harness after a raw C string.
+    let hidden = harness_crates([
+        ("drivers/ctr/src/lib.rs", "pub fn g(x: u8) -> u8 { x }\n#[cfg(kani)]\n#[kani::proof_for_contract(g)]\nfn zz() { g(kani::any()); }\n", "drivers/ctr".to_string(), "src".to_string()),
+        ("drivers/cfc/src/lib.rs", "#[cfg_attr(kani, kani::proof_for_contract(g))]\nfn zz() {}\n", "drivers/cfc".to_string(), "src".to_string()),
+        ("drivers/crs/src/lib.rs", "const _P: &core::ffi::CStr = cr\"\\\"; #[cfg(kani)] #[kani::proof] fn zz() { assert!(false); } // \"\n", "drivers/crs".to_string(), "src".to_string()),
+    ]);
+    ck("PLANTED F6 a crate whose only harness is `#[kani::proof_for_contract(g)]` is a harness crate (and, with no CI step, fails)",
+        hidden.get("drivers/ctr").is_some_and(|c| c.harnesses == 1) && check(&hidden, &[]).is_err());
+    ck("F6 the `cfg_attr(kani, kani::proof_for_contract(g))` form is a harness", hidden.get("drivers/cfc").is_some_and(|c| c.harnesses == 1));
+    ck("PLANTED F1 a `#[kani::proof]` after a raw C string `cr\"\\\"` on its line is a harness", hidden.get("drivers/crs").is_some_and(|c| c.harnesses == 1));
     let crates: BTreeMap<String, HarnessCrate> = crates.into_iter().filter(|(k, _)| k != "drivers/cfg").collect();
     ck("2 harnesses per driver crate (whitespace-tolerant)", ["ffi", "drivers/dma-own", "drivers/wdg-thin"].iter().all(|c| crates[*c].harnesses == 2));
     ck("root: 4 in source, 2 compiled (src/ is outside the lib root plain/src)",
@@ -1134,6 +1151,17 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
         red("VOID `\"continue-on-error\": true`", &with_step(&format!("      - \"continue-on-error\": true\n        run: cargo kani\n{wd}"))),
         red("VOID job `'if': false`", &with_job("    'if': false\n")),
         red("VOID an anchor in the workflow (not read)", &with_job("    timeout-minutes: &t 30\n")),
+        // Round 11, F4: the most specific working-directory REPLACES the others.
+        green("F4 control: job default `drivers/${{ matrix.crate }}`, step with no working-directory",
+            &with_job("    defaults:\n      run:\n        working-directory: drivers/${{ matrix.crate }}\n").replace(step, "      - run: cargo kani\n")),
+        red("PLANTED F4 false green: job default `drivers/${{ matrix.crate }}`, step `working-directory: .` (the step runs at the root)",
+            &with_job("    defaults:\n      run:\n        working-directory: drivers/${{ matrix.crate }}\n").replace(step, "      - run: cargo kani\n        working-directory: .\n")),
+        red("PLANTED F4 false green: ... step `working-directory: ffi/..`",
+            &with_job("    defaults:\n      run:\n        working-directory: drivers/${{ matrix.crate }}\n").replace(step, "      - run: cargo kani\n        working-directory: ffi/..\n")),
+        green("PLANTED F4 false red: job default `ffi`, step `working-directory: drivers/${{ matrix.crate }}` (not ffi/drivers/..)",
+            &with_job("    defaults:\n      run:\n        working-directory: ffi\n")),
+        green("PLANTED F4 false red: a job default `.` replaces a workflow default `ffi`",
+            &wf.replace("jobs:\n", "defaults:\n  run:\n    working-directory: ffi\njobs:\n").replace("  kani:\n    runs-on: ubuntu-24.04\n", "  kani:\n    runs-on: ubuntu-24.04\n    defaults:\n      run:\n        working-directory: .\n")),
     ];
     for (what, got) in cases {
         ck(&what, got);

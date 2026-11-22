@@ -57,12 +57,7 @@ options. REQ-HONESTY-AXIOMS-001 stays `proposed` and this lane owns it.
   - A Prop-valued `Definition x : P := …` is skipped silently by a
     source-derived theorem list. A `coqchk` library audit covers it.
 
-## Plant locations (scratch: copy into the lane's fixtures)
+## Plants
 
-- Rocq r10: `/Volumes/Home/tmp/gale-lane-scratch/l11-r10/` (plants/, run.sh,
-  README.txt: a1_pose_proof, a1b_pose_I, a1c_classic, a1d_admitted,
-  a2c_ltac_function, a2d_tacnot_before, a3_nbsp_name, ctl_*).
-- Rounds 4-8: `/Volumes/Home/tmp/gale-lane-scratch/l11-r{4..8}/plants/`
-  (ax*.py, p1-p5.py, h.py; real coqc/lean outputs in real/, r5/, r6/).
-- Lean r9: the L11 coordinator's session scratchpad `lean/` and `r9/`
-  (PA-PE, KC, KN, Q1).
+The L11 plants were run outside the repository and are not committed. The
+follow-up lane rebuilds them as fixtures from the list above.

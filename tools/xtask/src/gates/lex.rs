@@ -9,8 +9,12 @@
 //! These are deliberately lexers, not parsers. What they cannot see is listed by
 //! the gates that use them.
 
-/// Rust: `//` and nested `/* */` comments, `"..."`, `r#"..."#`, `b"..."`, char
-/// literals (`'"'` must not open a string) -- lifetimes are left alone.
+/// Rust: `//` and nested `/* */` comments, `"..."` (also `b"..."` and `c"..."`:
+/// the prefix letter is just an identifier character before an ordinary quote),
+/// the raw forms `r"..."` / `r#"..."#` with their `br` and `cr` prefixes (the
+/// only raw prefixes rustc 1.100 accepts; any other `<ident>"` is a
+/// reserved-prefix error since edition 2021), and char literals (`'"'` and
+/// `b'"'` must not open a string) -- lifetimes are left alone.
 pub(crate) fn rust_code(src: &str) -> String {
     let c: Vec<char> = src.chars().collect();
     let mut out = String::with_capacity(src.len());
@@ -41,8 +45,10 @@ pub(crate) fn rust_code(src: &str) -> String {
                     i += 1;
                 }
             }
-        } else if ch == 'r' && (next == Some('"') || next == Some('#')) && !prev_is_ident(&c, i) && raw_start(&c, i + 1).is_some() {
-            // r"..." / r#"..."#  (also reached for br"..." via the 'b' skip below)
+        } else if ch == 'r' && (next == Some('"') || next == Some('#')) && !prev_is_ident_except(&c, i, &['b', 'c']) && raw_start(&c, i + 1).is_some() {
+            // r"..." / r#"..."#, and br"..." / cr"..." (round 11, F1: only `b`
+            // was exempt, so `cr"\"` read as an escaped quote and opened a
+            // phantom string that hid the code after it)
             let hashes = raw_start(&c, i + 1).unwrap_or(0);
             out.push('r');
             for _ in 0..hashes {
@@ -85,7 +91,7 @@ pub(crate) fn rust_code(src: &str) -> String {
                 blank(&mut out, c[i]);
                 i += 1;
             }
-        } else if ch == '\'' && !prev_is_ident(&c, i) {
+        } else if ch == '\'' && !prev_is_ident_except(&c, i, &['b']) {
             // char literal: '\x..' / '\u{..}' / '\n' / 'c' -- otherwise a lifetime.
             if next == Some('\\') {
                 // The escaped character itself (`'\''`, `'\\'`) is never the close.
@@ -117,8 +123,12 @@ pub(crate) fn rust_code(src: &str) -> String {
     out
 }
 
-fn prev_is_ident(c: &[char], i: usize) -> bool {
-    i > 0 && (c[i - 1].is_alphanumeric() || c[i - 1] == '_') && !(c[i - 1] == 'b' && (i < 2 || !(c[i - 2].is_alphanumeric() || c[i - 2] == '_')))
+/// Is the character before `i` an identifier character, other than a lone
+/// literal-prefix letter from `prefixes` (one not itself preceded by an
+/// identifier character)?
+fn prev_is_ident_except(c: &[char], i: usize, prefixes: &[char]) -> bool {
+    let id = |x: char| x.is_alphanumeric() || x == '_';
+    i > 0 && id(c[i - 1]) && !(prefixes.contains(&c[i - 1]) && (i < 2 || !id(c[i - 2])))
 }
 
 /// At `j` (just after the `r`): `#`* then `"` -> the hash count.
@@ -199,8 +209,27 @@ pub(crate) fn rocq_code(src: &str) -> String {
 /// Lean 4: `--` line comments, nested `/- -/` block (and doc) comments,
 /// `"..."` strings, and char literals (`'"'` must not open a string; `'` after
 /// an identifier character is part of the name, as in `h'`).
+///
+/// NOT modelled: string interpolation. In `s!"{e}"`, `m!"..."`, `f!"..."`,
+/// `throwError "..."` and any syntax built on `interpolatedStr`, the braces
+/// hold a TERM -- code that may itself contain strings, comments or a `sorry`
+/// (round 11, F2: `s!"{"\""}"` opened a phantom string here that hid a later
+/// `sorry`). Whether a string is interpolated depends on the syntax around it,
+/// which a lexer cannot know, so `lean_unmodelled` reports every unescaped `{`
+/// inside a string literal and the gate REFUSES the file (fails closed).
 pub(crate) fn lean_code(src: &str) -> String {
+    lean_lex(src).0
+}
+
+/// The 1-based line of the first unescaped `{` inside a Lean string literal
+/// (a possible interpolation the lexer cannot model), if any.
+pub(crate) fn lean_unmodelled(src: &str) -> Option<usize> {
+    lean_lex(src).1
+}
+
+fn lean_lex(src: &str) -> (String, Option<usize>) {
     let c: Vec<char> = src.chars().collect();
+    let mut brace: Option<usize> = None;
     let mut out = String::with_capacity(src.len());
     let blank = |out: &mut String, ch: char| out.push(if ch == '\n' { '\n' } else { ' ' });
     let mut i = 0;
@@ -297,6 +326,9 @@ pub(crate) fn lean_code(src: &str) -> String {
                     i += 1;
                     break;
                 }
+                if c[i] == '{' && brace.is_none() {
+                    brace = Some(1 + c[..i].iter().filter(|x| **x == '\n').count());
+                }
                 blank(&mut out, c[i]);
                 i += 1;
             }
@@ -305,7 +337,7 @@ pub(crate) fn lean_code(src: &str) -> String {
             i += 1;
         }
     }
-    out
+    (out, brace)
 }
 
 /// Self-test plants for the lexers (run by trust-ledger's self-test): each is
@@ -336,6 +368,28 @@ pub(crate) fn self_check() -> Vec<(String, bool)> {
     ck("lean `«end»` is a name, not the keyword `end`", count_token(&lean_code("structure S where\n  «end» : Nat\n"), "end") == 0);
     ck("lean a `'«'` char literal is not a guillemet name", count_token(&lean_code("def c : Char := '«'\ntheorem t : True := sorry\ndef d : Char := '»'\n"), "sorry") == 1);
     ck("lean `r` inside an identifier is not a raw string", count_token(&lean_code("def br := 1\ntheorem t : True := sorry\n"), "sorry") == 1);
+    // Round 11, F1: raw C strings. `cr"\"` is complete (no escapes); read as
+    // an escaped quote it opened a phantom string up to the `"` in the comment.
+    for (what, src) in [
+        ("PLANTED F1 `cr\"\\\"`", "let _p = cr\"\\\"; kani::assume(c); // \"\n"),
+        ("PLANTED F1 `cr#\"\\\"#`", "let _p = cr#\"\\\"#; kani::assume(c); // \"\n"),
+        ("control `br\"\\\"`", "let _p = br\"\\\"; kani::assume(c); // \"\n"),
+        ("control `r\"\\\"`", "let _p = r\"\\\"; kani::assume(c); // \"\n"),
+        ("`c\"\\\"\"` (an ordinary C string, escapes apply)", "let _p = c\"\\\"\"; kani::assume(c); // \"\n"),
+        ("`b'\"'` (a byte char)", "let _p = b'\"'; kani::assume(c); // \"\n"),
+    ] {
+        ck(&format!("rust {what}: the kani::assume after it stays code"), count_token(&rust_code(src), "assume") == 1);
+    }
+    ck("rust `cr\"...\"` contents are blanked", count_token(&rust_code("let _p = cr\"kani::assume(x)\";\n"), "assume") == 0);
+    ck("rust `xcr\"` is not a raw prefix (an identifier ending in cr)", count_token(&rust_code("let _p = xcr\"\\\"\"; kani::assume(c);\n"), "assume") == 1);
+    // Round 11, F2: an interpolated Lean string is reported, never lexed.
+    ck(
+        "PLANTED F2 lean `s!\"{\"\\\"\"}\"` is reported as unmodelled (line 1)",
+        lean_unmodelled("def zz_s : String := s!\"{\"\\\"\"}\"\ntheorem zz_bad : False := sorry\n-- \"\n") == Some(1),
+    );
+    ck("lean `throwError \"{sorry}\"` (no `!`) is reported too", lean_unmodelled("theorem t : True := trivial\ndef f := throwError \"{sorry}\"\n") == Some(2));
+    ck("lean an escaped `\\{` in a string is not reported", lean_unmodelled("def s := \"a \\{ b\"\n").is_none());
+    ck("lean a `{` in a comment or a char literal is not reported", lean_unmodelled("-- \"{\"\n/- \"{\" -/\ndef c := '{'\ndef d := { x := 1 }\n").is_none());
     v
 }
 

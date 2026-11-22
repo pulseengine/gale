@@ -15,9 +15,11 @@
 #   harness crate is run by some invocation that can fail; the figures in this
 #   comment are not gated.
 #
-# Rocq: 13 proof files (the job name says 14; it is a required context); 164
-#   closed (Qed/Defined) theorems in 10 of them, 74 Admitted in 3 (measured
-#   2026-11-20 by `cargo xtask check trust-ledger`; not gated here).
+# Rocq: 13 proof files (the job name says 14; it is a required context).
+#   74 Admitted in 3 of them, as `cargo xtask check trust-ledger` prints
+#   (rocq:Admitted); 164 `Qed.`/`Defined.` terminators in 10 of them, a grep
+#   count (`grep -oE '\b(Qed|Defined)\.' proofs/*.v`, 2026-11-22) that no
+#   gate prints. Neither figure is gated here.
 #   Uses Bazel (rules_rocq_rust) to translate plain/*.rs to Rocq via
 #   coq-of-rust, then checks all proofs. Nix provides the Rocq toolchain.
 
