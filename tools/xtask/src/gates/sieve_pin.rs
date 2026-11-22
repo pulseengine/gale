@@ -322,6 +322,26 @@ const JQ_LINES: &[&str] = &[
     r#"and ([.classes[] | type == "boolean"] | all)"#,
 ];
 
+/// The classify step's push branch: sieve's observe form (the pushed commit's
+/// own diff as a pull request against HEAD~1), failing loudly without HEAD~1.
+const PUSH_LINES: &[&str] = &[
+    r#"if [ "$EVENT_NAME" = push ]; then"#,
+    r#"ev=pull_request"#,
+    r#"base="$(git rev-parse --verify --quiet 'HEAD~1^{commit}')" || {"#,
+    r#"exit 1"#,
+];
+
+/// The validation step's tool check: no jq is a loud failure, not a skip.
+const JQ_PRESENT: &str = "command -v jq >/dev/null || {";
+
+/// The checkout's fetch-depth: 0 (all history) or at least 2, so HEAD~1 exists.
+fn fetch_depth_ok(job: &str) -> bool {
+    job.lines()
+        .filter_map(code_of)
+        .find_map(|c| c.strip_prefix("fetch-depth:").map(|v| v.trim().to_string()))
+        .and_then(|v| v.parse::<u32>().ok())
+        .is_some_and(|d| d == 0 || d >= 2)
+}
 /// Keys the upload step must carry, exactly (outside comments).
 const UPLOAD_LINES: &[&str] = &[
     "name: sieve-verdict-${{ github.run_attempt }}",
@@ -370,6 +390,9 @@ fn verdict_problems(wf: Option<&str>, jq: Option<&str>) -> Vec<String> {
         return out;
     }
     let (name, body) = &records[0];
+    if !fetch_depth_ok(body) {
+        out.push(format!("{VERDICT_WF}: job `{name}` must check out with fetch-depth 0 or >= 2 (the push record needs HEAD~1)"));
+    }
     if has_key(&steps(body)[0], "if:") {
         out.push(format!("{VERDICT_WF}: job `{name}` has a job-level `if:`; the record must be made on every run"));
     }
@@ -398,6 +421,17 @@ fn verdict_problems(wf: Option<&str>, jq: Option<&str>) -> Vec<String> {
             match step_if(up).as_deref() {
                 None | Some("always()") | Some("${{ always() }}") => {}
                 Some(other) => out.push(format!("{VERDICT_WF}: the upload step's `if: {other}` can skip it (only always() is allowed)")),
+            }
+            for l in PUSH_LINES {
+                if !has_code_line(&st[c], l) {
+                    out.push(format!("{VERDICT_WF}: the classify step lacks the push observe-form line `{l}`"));
+                }
+            }
+            if !has_code_line(&st[c], "--head HEAD") {
+                out.push(format!("{VERDICT_WF}: the classify call lacks `--head HEAD`"));
+            }
+            if !has_code_line(&st[v], JQ_PRESENT) {
+                out.push(format!("{VERDICT_WF}: the validation step does not fail loudly when jq is missing (`{JQ_PRESENT}`)"));
             }
             for (what, i) in [("classify", c), ("validation", v)] {
                 if guarded(&st[i]) {
@@ -474,6 +508,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-sieve
       - name: Pinned sieve is the one on PATH
         run: |
@@ -483,10 +519,22 @@ jobs:
             exit 1
           fi
       - name: Classify this change (JSON record)
-        run: sieve classify --config sieve.toml --base "$BASE_SHA" --event "$EVENT_NAME" --format json --explain > "$RUNNER_TEMP/sieve-verdict.json"
+        run: |
+          set -euo pipefail
+          ev="$EVENT_NAME"
+          base="$BASE_SHA"
+          if [ "$EVENT_NAME" = push ]; then
+            ev=pull_request
+            base="$(git rev-parse --verify --quiet 'HEAD~1^{commit}')" || {
+              echo "::error::no HEAD~1"
+              exit 1
+            }
+          fi
+          sieve classify --config sieve.toml --base "$base" --head HEAD --event "$ev" --format json --explain > "$RUNNER_TEMP/sieve-verdict.json"
       - name: The verdict is a complete sieve.classify.v1 record
         run: |
           set -euo pipefail
+          command -v jq >/dev/null || { echo "::error::no jq"; exit 1; }
           sieve graph --config sieve.toml --format json > "$RUNNER_TEMP/sieve-graph.json"
           jq -e --slurpfile g "$RUNNER_TEMP/sieve-graph.json" -f tools/ci/sieve-verdict.jq "$RUNNER_TEMP/sieve-verdict.json"
       - name: Upload the verdict
@@ -578,6 +626,15 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
        bad(&vwf.replacen("--explain > \"$RUNNER_TEMP/sieve-verdict.json\"", "--explain > out.json", 1)));
     ck("PLANT 4: a job-level `if:` on the verdict job fails",
        bad(&vwf.replacen("    timeout-minutes: 10\n", "    timeout-minutes: 10\n    if: github.event_name == 'push'\n", 1)));
+    ck("a push record without the observe form fails", bad(&vwf.replacen("            ev=pull_request\n", "", 1)));
+    ck("a push branch that does not fail without HEAD~1 fails",
+       bad(&vwf.replacen("base=\"$(git rev-parse --verify --quiet 'HEAD~1^{commit}')\" || {", "base=\"$(git rev-parse HEAD~1 || true)\"; {", 1)));
+    ck("a classify call without --head HEAD fails", bad(&vwf.replacen(" --head HEAD", "", 1)));
+    ck("a shallow (depth 1) checkout fails", bad(&vwf.replacen("fetch-depth: 0", "fetch-depth: 1", 1)));
+    ck("a checkout with no fetch-depth fails", bad(&vwf.replacen("        with:\n          fetch-depth: 0\n", "", 1)));
+    ck("fetch-depth: 2 passes", ok(&vwf.replacen("fetch-depth: 0", "fetch-depth: 2", 1)));
+    ck("a validation without the jq presence check fails",
+       bad(&vwf.replacen("          command -v jq >/dev/null || { echo \"::error::no jq\"; exit 1; }\n", "", 1)));
     ck("a missing workflow fails", !verdict_problems(None, Some(&jq_good)).is_empty());
     ck("a missing jq filter fails", !verdict_problems(Some(&vwf), None).is_empty());
     for l in JQ_LINES {

@@ -50,22 +50,37 @@ jobs:
             echo "::error::sieve on PATH is '${got:-<none>}', not the pinned $SIEVE_PINNED_DIR/sieve"
             exit 1
           fi
-      # The base for the event: the PR base, the queue base, or the commit
-      # before the push. On any event but pull_request sieve selects every
-      # class (fail open) and the record says so in `reason`. A crash inside
-      # sieve is also a run_all verdict; whatever it wrote is validated and
-      # uploaded below.
+      # pull_request and merge_group: classify the event as it is (the PR base;
+      # on merge_group sieve selects every class, fail open, and says so in
+      # `reason`). Push to main: sieve's documented observe form, the pushed
+      # commit's own diff classified as a pull request against HEAD~1 (main
+      # merges by squash, so HEAD~1 is the previous main). A checkout without
+      # HEAD~1 fails this step loudly; nothing is recorded and the upload's
+      # if-no-files-found: error fails too. A crash inside sieve is a run_all
+      # verdict; whatever sieve wrote is validated and uploaded below.
       - name: Classify this change (JSON record)
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
-        run: sieve classify --config sieve.toml --base "$BASE_SHA" --event "$EVENT_NAME" --format json --explain > "$RUNNER_TEMP/sieve-verdict.json"
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          set -euo pipefail
+          ev="$EVENT_NAME"
+          base="$BASE_SHA"
+          if [ "$EVENT_NAME" = push ]; then
+            ev=pull_request
+            base="$(git rev-parse --verify --quiet 'HEAD~1^{commit}')" || {
+              echo "::error::HEAD~1 is not in this checkout (shallow?): cannot classify the pushed commit's own diff"
+              exit 1
+            }
+          fi
+          sieve classify --config sieve.toml --base "$base" --head HEAD --event "$ev" --format json --explain > "$RUNNER_TEMP/sieve-verdict.json"
       # The record must parse, name the classify schema, and carry a boolean
       # for every class sieve.toml declares (read back through `sieve graph`,
       # sieve's own parse of the config, so no class list is kept here).
       - name: The verdict is a complete sieve.classify.v1 record
         run: |
           set -euo pipefail
+          command -v jq >/dev/null || { echo "::error::jq is not installed on this runner; the verdict cannot be validated"; exit 1; }
           sieve graph --config sieve.toml --format json > "$RUNNER_TEMP/sieve-graph.json"
           jq -e --slurpfile g "$RUNNER_TEMP/sieve-graph.json" -f tools/ci/sieve-verdict.jq "$RUNNER_TEMP/sieve-verdict.json"
       - name: Upload the verdict

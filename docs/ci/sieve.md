@@ -67,9 +67,14 @@ the jobs' results later.
 
 It is a separate job because a classifier job may run `sieve classify` only
 once (check-workflows gate b) and sieve 0.3.0's github-output mode writes no
-JSON. Moving the record into that single call is tracked in sieve#25. On push
-and merge_group the record is a run_all verdict, since the event is not a
-pull request.
+JSON. Moving the record into that single call is tracked in sieve#25. On a pull
+request it classifies the PR against its base. On merge_group it is a run_all
+verdict (the event is not a pull request). On push to main it uses sieve's
+observe form, `--event pull_request --base HEAD~1 --head HEAD`: the pushed
+commit's own diff (main merges by squash, so HEAD~1 is the previous main).
+The checkout fetches full history; a checkout without HEAD~1 fails the step
+loudly rather than recording nothing quietly. The validation step fails with a
+clear message when jq is missing.
 
 The job is not a required context. It is on `never_skip_jobs`, so a
 job-level `if:` fails check-workflows, and `cargo xtask check sieve-pin`
