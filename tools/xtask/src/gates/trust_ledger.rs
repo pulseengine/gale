@@ -1616,7 +1616,7 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
             Ok(match args {
                 ["tag", "--points-at", ..] => (true, String::new()),
                 ["tag", "--merged", ..] => (true, merged.into()),
-                ["rev-list", "-n", "1", t] => (true, format!("{}\n", t.chars().filter(|c| c.is_ascii_digit()).collect::<String>().repeat(40)[..40].to_string())),
+                ["rev-list", "-n", "1", t] => (true, format!("{}\n", &t.chars().filter(|c| c.is_ascii_digit()).collect::<String>().repeat(40)[..40])),
                 _ => (false, String::new()),
             })
         }

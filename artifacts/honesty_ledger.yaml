@@ -1,63 +1,9 @@
 # v0.11.0 bet 3, lane L11: the trust ledger and Kani coverage of the driver
-# crates. The axiom audit (REQ-HONESTY-AXIOMS-001) is NOT in this lane: no
-# gate exists yet; a follow-up lane owns it (docs/design/axioms-trusted-audit.md).
-#
-# REQ-HONESTY-LEDGER-001 and REQ-HONESTY-AXIOMS-001 are copied VERBATIM from
-# the release-plan branch (plan/v0.11.0-behind-the-line,
-# artifacts/release_v0_11_0.yaml at 0a1dcd7e), because main does not carry them
-# yet and a verification record must verify a requirement. When the plan branch
-# lands, delete the two copies here: rivet validate reports the duplicate IDs.
+# crates. REQ-HONESTY-LEDGER-001, VER-HONESTY-LEDGER-001 and
+# REQ-HONESTY-AXIOMS-001 live in artifacts/release_v0_11_0.yaml. The axiom
+# audit (REQ-HONESTY-AXIOMS-001) is NOT in this lane: no axioms gate exists;
+# a follow-up lane owns it (docs/design/axioms-trusted-audit.md).
 artifacts:
-  # ---- copied from the plan branch (delete when it lands) ----
-  - id: REQ-HONESTY-LEDGER-001
-    type: sw-req
-    title: The trust ledger counts the assumption spellings it can see, is a required check, and after its baseline may only shrink
-    status: proposed
-    release: v0.11.0
-    description: "Serves O3 (eligibility: makes gale eligible to be counted by an O3 indicator script; O3 stays unmeasured and whether gale counts is the script's decision). Bet 3 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). SHALL: cargo xtask check trust-ledger is a required context counting, per class: external_body (135 today), assume_specification (2), Rocq Admitted (74), Lean sorry (0), kani::assume (grep baseline 422 lines in 22 files) and #[kani::unwind] (74), against 496 kani::proof lines. It counts SPELLINGS: it cannot see assumptions written as narrowed types, requires clauses or bounded generators, and says so in its output. RATCHET: until the baseline is set the gate is an equality ledger (any change in any class fails unless the same change updates the ledger with the justifying artifact ID); the baseline is set once, in the first commit after the v0.11.0 tag, after the unprivileged-tenant seam's growth has landed (at most 1 trusted atom), with the admitted growth recorded; from then on the gate is shrink-only and growth needs an `admit` row in the ledger (the item, exactly the growth, the baseline it is written against, a GitHub issue reference and a reason), folded into the baseline in the first commit after the next release tag (an admit left in place when the baseline moves fails); the gate shows an admit is recorded against the current baseline, not that anyone reviewed or approved it. The ratchet is the planner's proposal and the owner can overrule it. Kill criteria: 3(a) the stability test cannot pass by 2026-12-03, so the gate stays advisory and is not made required; 3(c) not required by the 2026.12 layer, so dropped from v0.11.0 and carried to v0.12.0 by name."
-    tags: [release, v0.11.0, honesty, tcb, ledger, kani, gate]
-    fields:
-      priority: must
-      req-type: constraint
-      verification-criteria: cargo xtask check trust-ledger is a required context; its self-test fails on an added kani::assume, a lowered unwind bound, an added Admitted. and an unrecorded removal; the same tree after reformatting and after a comment-only edit gives the same counts; the output prints the forms it cannot see.
-    links:
-      - type: derives-from
-        target: SYSREQ-COV-001
-      - type: related-to
-        target: REQ-HONESTY-TCB-001
-      - type: related-to
-        target: REQ-COV-002
-      - type: related-to
-        target: REQ-OS-TRITRACK-001
-    provenance:
-      created-by: ai-assisted
-      model: claude-opus-5-5
-      timestamp: 2026-11-19T22:21:30Z
-
-  - id: REQ-HONESTY-AXIOMS-001
-    type: sw-req
-    title: Every closed Rocq and Lean theorem's assumptions are compared with an allowlist in a required check
-    status: proposed
-    release: v0.11.0
-    description: "Serves O3 (eligibility: the kernel axiom audit is one of the three parts the O3 indicator names; O3 stays unmeasured). Bet 3 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). Today 1 of 13 Rocq files prints its assumptions, no checker of that output was found (the Bazel rule was not read), and Lean has none. SHALL: a required check prints and compares the assumptions of every closed Rocq and Lean theorem against a committed allowlist and fails on any assumption not on it. STATUS (L11 round 10): NO GATE EXISTS YET. An audit that lexes the audited file (Rocq or Lean) can be forged by that file, so the axioms gate was taken out of L11; a follow-up lane owns this requirement and takes the theorem list from outside the file (coqchk per library for Rocq, importModules and kernel replay for Lean): docs/design/axioms-trusted-audit.md. Ready work for someone other than the maintainer: needs no bench and no pin move."
-    tags: [release, v0.11.0, honesty, axioms, rocq, lean, gate]
-    fields:
-      priority: must
-      req-type: constraint
-      verification-criteria: The axiom audit prints every closed theorem's assumptions for Rocq and Lean, compares them with a committed allowlist, and is red on any assumption not on the list; a planted added axiom turns it red; it is a required context.
-    links:
-      - type: derives-from
-        target: SYSREQ-COV-001
-      - type: related-to
-        target: REQ-HONESTY-LEDGER-001
-      - type: related-to
-        target: REQ-OS-TRITRACK-001
-    provenance:
-      created-by: ai-assisted
-      model: claude-opus-5-5
-      timestamp: 2026-11-19T22:21:30Z
-
-  # ---- this lane ----
   - id: REQ-HONESTY-KANI-COVERAGE-001
     type: sw-req
     title: Every crate with a Kani harness is run by a CI cargo kani invocation that can fail
@@ -94,7 +40,7 @@ artifacts:
     fields:
       priority: must
       req-type: constraint
-      verification-criteria: "`cargo xtask check kani-coverage --self-test` passes (a crate dropped from the job, a new crate with no job, a crate with no harness in a compiled root, root tests/ harnesses without --tests, and each form outside the allowlist above -- at step and job level where both exist, including the reviews' planted bypasses: `continue-on-error` in any spelling, `if: true` / `if: false` / an undeclared guard output on the job, `env: BASH_ENV`, `shell:`, `builtin`/`eval` `set +e`, sourcing a script, `&&`/`;`/`||`, `set -- -o pipefail`, a pipe without pipefail, `|&`, `--harness`/`-p`, a wide-dash `-   run:` step, a CR-hidden key, a guard job with env/defaults/container/needs, `branches: [main, '!main']`, `schedule: []` -- are each caught); `cargo xtask check kani-coverage` passes on the branch and fails on e85b7620 (14 driver crates uncovered)."false\"`, `if: false && true`, `continue-on-error: ${{ true }}`/`True`/`true # comment`, `set +e`, `set +o pipefail`, `trap ... ERR`, `shell: bash {0}`, `cargo kani &`, folded `run: >-`, `echo cargo kani`, `--harness`, `-p`, `pushd` -- are each caught); `cargo xtask check kani-coverage` passes on the branch and fails on e85b7620 (14 driver crates uncovered)."
+      verification-criteria: "`cargo xtask check kani-coverage --self-test` passes (a crate dropped from the job, a new crate with no job, a crate with no harness in a compiled root, root tests/ harnesses without --tests, and each form outside the allowlist above -- at step and job level where both exist, including the reviews' planted bypasses: `continue-on-error` in any spelling, `if: true` / `if: false` / an undeclared guard output on the job, `env: BASH_ENV`, `shell:`, `builtin`/`eval` `set +e`, sourcing a script, `&&`/`;`/`||`, `set -- -o pipefail`, a pipe without pipefail, `|&`, `--harness`/`-p`, a wide-dash `-   run:` step, a CR-hidden key, a guard job with env/defaults/container/needs, `branches: [main, '!main']`, `schedule: []` -- are each caught); `cargo xtask check kani-coverage` passes on the branch and fails on e85b7620 (14 driver crates uncovered)."
     links:
       - type: derives-from
         target: SYSREQ-COV-001
@@ -132,7 +78,7 @@ artifacts:
     status: proposed
     release: v0.11.0
     description: >
-      Implements the oracle planned as VER-HONESTY-LEDGER-001 (plan branch). `cargo xtask check trust-ledger`
+      Implements the oracle planned as VER-HONESTY-LEDGER-001 (artifacts/release_v0_11_0.yaml). `cargo xtask check trust-ledger`
       counts, per tracked .rs/.v/.lean file, kani::assume, #[kani::unwind(N)]
       with its bound, Verus external_body / assume_specification / bare assume
       and admit, Rocq Admitted / admit / Axiom / Parameter, and Lean sorry /
@@ -169,3 +115,5 @@ artifacts:
         target: REQ-HONESTY-LEDGER-001
       - type: related-to
         target: REQ-HONESTY-TCB-001
+      - type: related-to
+        target: VER-HONESTY-LEDGER-001

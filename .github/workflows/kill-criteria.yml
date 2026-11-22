@@ -403,9 +403,9 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
       # Self-hosted `light` runners do not promise a preinstalled toolchain.
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # installs 1.100.0 (stable-branch SHA)
         with:
-          toolchain: stable
+          toolchain: 1.100.0
 
       # trusted-base keeps the doc's figures equal to src/; it cannot see the
       # assumptions a Kani harness narrows its inputs with, and does not judge
@@ -431,9 +431,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Self-hosted `light` runners do not promise a preinstalled toolchain.
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # installs 1.100.0 (stable-branch SHA)
         with:
-          toolchain: stable
+          toolchain: 1.100.0
 
       # Found 2026-11-19: no CI job ran `cargo kani` in drivers/*, so 14 crates'
       # harnesses were checked by nothing (renode-targets' shape, for Kani).
