@@ -71,7 +71,7 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
     for c in &crates {
         let out = Command::new("cargo")
             .current_dir(here.join(c))
-            .args(["build", "--release", "--target", "wasm32-unknown-unknown"])
+            .args(["build", "--locked", "--release", "--target", "wasm32-unknown-unknown"])
             .output();
         match out {
             Ok(o) if o.status.success() => lines.push(format!("{c:<16} ok")),

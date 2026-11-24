@@ -4,6 +4,7 @@
 //! `xtask <semver>` and exit 0, `--help` exits 0, an unknown flag or command
 //! exits 2 with usage on stderr, and structured output is `--format json`.
 
+mod cargo_locked;
 mod gates;
 mod renode_elfs;
 mod sha256;

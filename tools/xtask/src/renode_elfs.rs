@@ -83,7 +83,7 @@ pub fn run(repo: &Path) -> i32 {
     // Own target dir: GUST_RENODE_LINK_SCRIPT changes how the `gust` bin links, and
     // must never leak into a normal build's cache.
     cmd.current_dir(repo.join(BENCH))
-        .args(["build", "--release", "--target-dir", TARGET_DIR])
+        .args(["build", "--locked", "--release", "--target-dir", TARGET_DIR])
         .env("GUST_RENODE_LINK_SCRIPT", repo.join(RENODE).join(STACK_SCRIPT_8K));
     for s in &stems {
         cmd.args(["--bin", bin_for(s)]);
