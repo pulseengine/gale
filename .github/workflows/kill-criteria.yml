@@ -498,7 +498,9 @@ jobs:
           toolchain: 1.100.0
 
       - name: Install wasm-tools
-        run: cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
+        run: |
+          cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked --root "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"
+          echo "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"/bin >> "$GITHUB_PATH"
 
       # This gate exists BECAUSE a silent failure got through: meld exits 0 and
       # prints "Fusion complete!" while three components' .rodata stack on the same
@@ -747,7 +749,9 @@ jobs:
           toolchain: 1.100.0
 
       - name: Install wasm-tools
-        run: cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
+        run: |
+          cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked --root "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"
+          echo "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"/bin >> "$GITHUB_PATH"
 
       - name: Negative control -- a raw env import must be caught
         run: python3 drivers/check-graph-env.py --self-test
