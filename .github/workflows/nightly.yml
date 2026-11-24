@@ -4,8 +4,9 @@
 # longer than in the PR lanes so regressions can be bisected.
 #
 # Jobs:
-#   - kani-extended: re-runs Kani with higher unwind/object bits for
-#     deeper bounded model checking.
+#   - kani-extended: re-runs Kani with a higher default unwind (16) for
+#                  deeper bounded model checking. Kani 0.68.0 passes
+#                  --object-bits 16 to CBMC itself and no longer takes the flag.
 #   - fuzz-long:     each cargo-fuzz target for 1h (3600s).
 #   - zephyr-qemu-matrix: Cortex-M33 (mps2/an521/cpu0) and R5 (qemu_cortex_r5).
 #     M3 is covered on every PR via zephyr-tests.yml; M4F is Renode-only
@@ -59,13 +60,13 @@ jobs:
       - name: Kani with extended bounds (main crate)
         run: |
           set -o pipefail
-          cargo kani --tests --default-unwind 16 --object-bits 12 2>&1 | tee kani-reports/main.log
+          cargo kani --tests --default-unwind 16 2>&1 | tee kani-reports/main.log
 
       - name: Kani with extended bounds (ffi crate)
         working-directory: ffi
         run: |
           set -o pipefail
-          cargo kani --tests --all-features --default-unwind 16 --object-bits 12 2>&1 | tee ../kani-reports/ffi.log
+          cargo kani --tests --all-features --default-unwind 16 2>&1 | tee ../kani-reports/ffi.log
 
       - name: Upload Kani reports
         if: always()

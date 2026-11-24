@@ -144,7 +144,7 @@ const ENV_ALLOW: &[&str] = &["GITHUB_TOKEN", "GH_TOKEN", "CARGO_TERM_COLOR", "CA
 /// (`--harness`, `-p`, `--exclude`, `--only-codegen`, `--dry-run`, `--help`,
 /// a `$VARIABLE`, ...) voids the invocation.
 const KANI_FLAGS: &[&str] = &["--tests", "--all-features", "--no-default-features", "--verbose", "-v", "--quiet", "-q"];
-const KANI_VALUE_FLAGS: &[&str] = &["--features", "-F", "--manifest-path", "--default-unwind", "--object-bits", "--jobs", "-j", "--output-format"];
+const KANI_VALUE_FLAGS: &[&str] = &["--features", "-F", "--manifest-path", "--default-unwind", "--jobs", "-j", "--output-format"];
 
 /// Lines that name `cargo kani` but run no harness.
 const NOT_INVOCATIONS: &[&str] = &["cargo kani setup", "cargo kani list", "cargo kani --version", "cargo kani -V", "cargo kani --help", "cargo kani -h"];
@@ -1311,7 +1311,7 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
 
     // nightly.yml's kani-extended shape: the reports directory is made by its
     // own step; the Kani step is `set -o pipefail` + one tee'd line.
-    let nightly = "name: n\non:\n  schedule:\n    - cron: '0 3 * * *'\njobs:\n  kani-extended:\n    steps:\n      - name: reports dir\n        run: mkdir -p kani-reports\n      - name: ffi\n        working-directory: ffi\n        run: |\n          set -o pipefail\n          cargo kani --tests --all-features --default-unwind 16 --object-bits 12 2>&1 | tee ../kani-reports/ffi.log\n";
+    let nightly = "name: n\non:\n  schedule:\n    - cron: '0 3 * * *'\njobs:\n  kani-extended:\n    steps:\n      - name: reports dir\n        run: mkdir -p kani-reports\n      - name: ffi\n        working-directory: ffi\n        run: |\n          set -o pipefail\n          cargo kani --tests --all-features --default-unwind 16 2>&1 | tee ../kani-reports/ffi.log\n";
     let ni = workflow_invocations("nightly.yml", nightly);
     ck("a tee pipe after `set -o pipefail` counts (nightly shape, in ffi)",
         ni.len() == 1 && ni[0].dir == "ffi" && ni[0].tests && ni[0].void.is_none());
@@ -1319,8 +1319,12 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     ck("the same nightly step without pipefail does not count", ni_old.len() == 1 && ni_old[0].void.is_some());
     let ni_mk = workflow_invocations("nightly.yml", &nightly.replace("          set -o pipefail\n", "          set -o pipefail\n          mkdir -p ../kani-reports\n"));
     ck("VOID the old nightly shape (a `mkdir` line in the Kani step)", ni_mk.len() == 1 && ni_mk[0].void.is_some());
-    let ni_var = workflow_invocations("nightly.yml", &nightly.replace("--default-unwind 16 --object-bits 12", "$KANI_FLAGS"));
+    let ni_var = workflow_invocations("nightly.yml", &nightly.replace("--default-unwind 16", "$KANI_FLAGS"));
     ck("VOID arguments from a variable (`$KANI_FLAGS` could carry `--harness`)", ni_var.len() == 1 && ni_var[0].void.is_some());
+    // Kani 0.68.0 rejects `--object-bits` (exit 2 before any harness runs); the
+    // nightly carried it, green only while its pipe had no pipefail.
+    let ni_ob = workflow_invocations("nightly.yml", &nightly.replace("--default-unwind 16", "--default-unwind 16 --object-bits 12"));
+    ck("PLANTED VOID `--object-bits` (Kani 0.68.0 exits 2 on it)", ni_ob.len() == 1 && ni_ob[0].void.is_some());
     let mp = "name: m\non: [push]\njobs:\n  k:\n    steps:\n      - run: cargo kani --manifest-path drivers/dma-own/Cargo.toml\n";
     ck("--manifest-path sets the directory", workflow_invocations("m.yml", mp).first().is_some_and(|i| i.dir == "drivers/dma-own" && i.void.is_none()));
     ck("an empty harness scan fails", check(&BTreeMap::new(), &invs).is_err());
