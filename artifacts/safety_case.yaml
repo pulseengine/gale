@@ -242,8 +242,9 @@ artifacts:
       arithmetic), FV-SK-001 (stack index arithmetic).  All proofs check via
       Z3 as part of the CI pipeline.  The scheduler (FV-SC-001) is NOT
       evidence here: that artifact is draft and not passing, RunQueue::add is
-      external_body, and sched_proofs.v is all Admitted (gale#509).  NB: Z3 is an UNCHECKED oracle here — its verdict is
-      trusted, not certificate-backed.  The by(bit_vector) LEAF obligations are
+      external_body, and the Rocq proofs for the abstract ready queue cover
+      ordering and length (gale#509).  NB: Z3 is an UNCHECKED oracle here — its
+      verdict is trusted, not certificate-backed.  The by(bit_vector) LEAF obligations are
       being re-discharged with certificate-checked evidence (see Sn-5): the
       cpu_mask + mpu leaves are now obligation-proof via ordeal LRAT certs;
       the remaining by(bit_vector) leaves stay on unchecked Z3 for now.

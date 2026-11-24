@@ -103,8 +103,8 @@ verus:external_body src/thread_lifecycle.rs 5 VER-HONESTY-LEDGER-GATE-001
 verus:external_body src/usage.rs 18 VER-HONESTY-LEDGER-GATE-001
 verus:assume_specification src/sched.rs 2 VER-HONESTY-LEDGER-GATE-001
 rocq:Admitted proofs/poll_proofs.v 22 VER-HONESTY-LEDGER-GATE-001
-rocq:Admitted proofs/sched_proofs.v 23 VER-HONESTY-LEDGER-GATE-001
+rocq:Admitted proofs/sched_proofs.v 13 VER-HONESTY-LEDGER-GATE-001
 rocq:Admitted proofs/thread_lifecycle_proofs.v 29 VER-HONESTY-LEDGER-GATE-001
 rocq:impredicative-set bzl/private/verus_to_rocq.bzl 1 VER-HONESTY-LEDGER-GATE-001
 rocq:impredicative-set plain/BUILD.bazel 11 VER-HONESTY-LEDGER-GATE-001
-rocq:impredicative-set proofs/BUILD.bazel 12 VER-HONESTY-LEDGER-GATE-001
+rocq:impredicative-set proofs/BUILD.bazel 11 VER-HONESTY-LEDGER-GATE-001

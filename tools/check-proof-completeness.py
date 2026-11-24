@@ -4,7 +4,7 @@
 `coqc` SUCCEEDS on a file whose every theorem ends in `Admitted.` -- an admit is
 not an error, it is a deferral. So `bazel test //proofs:..._test` is green whether
 a theorem is proven or merely stated, and the "Rocq Proofs (14 files)" job cannot
-tell the two apart. Measured on main:
+tell the two apart. At the original audit:
 
     10 files fully discharged
      3 files ENTIRELY admitted -- 74 theorems, zero Qed
@@ -48,7 +48,7 @@ SORRY = re.compile(r"\bsorry\b")
 # the gate rather than only from reading 800 lines of Rocq.
 ADMITTED_LEDGER = {
     "poll_proofs.v": 22,
-    "sched_proofs.v": 23,
+    "sched_proofs.v": 13,
     "thread_lifecycle_proofs.v": 29,
 }
 
