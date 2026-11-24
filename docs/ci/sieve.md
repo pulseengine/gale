@@ -131,9 +131,10 @@ while the PR was open, that is a different verdict from the one that gated.
 `sieve equivalence` replays gale's last 400 first-parent commits (to a0e9d47c)
 through each old detector in `GATE_PROBE_FILES` mode and through sieve, class
 by class. A narrowing (sieve selecting less than the old detector) fails it.
-Numbers with sieve 0.4.0 (rerun with 0.4.2 and leaf scoping on in lane L18, to
-f0ac6e3e: `detect-changes.sh` 400/400, 0 narrower, 400 identical; the Python
-reference union 400/400, 0 narrower, 371 identical, 29 wider; both exit 0):
+Numbers with sieve 0.4.0 (rerun in lane L18 with leaf scoping on, to f0ac6e3e,
+with 0.4.2 and again with 0.4.3, the same each time: `detect-changes.sh`
+400/400, 0 narrower, 400 identical; the Python reference union 400/400,
+0 narrower, 371 identical, 29 wider; both exit 0):
 
 | old detector | compared | narrower | identical / wider | exit |
 |---|---|---|---|---|
@@ -175,7 +176,7 @@ sieve equivalence --config sieve.toml --ref a0e9d47c --commits 400 \
   --map proofs=code --map gust_renode=code
 rm tools/ci/inputs-bazel.json
 ```
-## Scoped leaf-workflow edits (sieve 0.4.2, lane L18)
+## Scoped leaf-workflow edits (sieve 0.4.3, lane L18)
 
 `[workflows] scope_leaf_edits = true` lets an edit to one file directly under
 `.github/workflows/` select less than everything (sieve README, "Scoped
@@ -185,8 +186,11 @@ leaf-workflow edits"). The README is authoritative. In short:
   changed jobs, the jobs that need them and the jobs those need (REQ-030).
 - A workflow that hosts no classifier selects no class, because its jobs all
   run anyway (REQ-035).
-- `.github/dependabot.yml`, `CODEOWNERS` and the templates select nothing unless
-  something names them (REQ-036).
+- The files GitHub's own services read (the Dependabot config, a code-owners
+  file, the issue and pull-request templates) select nothing unless another
+  tracked file spells out their file name (REQ-036). A doc counts: this page
+  once spelled the Dependabot file's name, and that alone made a
+  Dependabot-only edit run everything, so it describes them instead.
 - Everything else under `.github/` still runs everything: composite actions,
   `.github/zephyr-fork-pin` (which `code` jobs read), `required-contexts.txt`
   and `gate-probe.json`. So do these workflow edits:
@@ -205,35 +209,84 @@ workflows keep these rules (L18 made them true):
 - no step `if:` reads a context other than `github` or `runner`. The Codecov
   uploads test `github.event.pull_request.head.repo.fork` and `github.actor`,
   and the TSan sysctl tests its matrix value inside the script;
-- no job reads `needs` outside its `if:`. sieve 0.4.2 also counts the bare
-  word "needs" in `run:` script text, comments included, so scripts avoid it.
+- no job reads `needs` outside its `if:`. sieve 0.4.2 also counted the bare
+  word "needs" in `run:` script text, comments included, so L18 reworded those
+  comments. That rule was a workaround for sieve#37: 0.4.3 reads `needs` only
+  inside `${{ }}` or an `if:` value, so the rule is no longer required. The
+  rewording stays (it costs nothing and keeps 0.4.2-era replays comparable).
 
 `cargo xtask check sieve-pin` fails if the `scope_leaf_edits = true` line is
 dropped. Turning scoping off is safe (everything runs again) but gives the
 saving back, so it has to be a visible change to the gate.
 
-### Blocker: `uses: ./gale/.github/actions/setup-renode`
+### Blocker: `uses: ./gale/.github/actions/setup-renode` (still open under 0.4.3)
 
 Five Renode workflows check gale out under `path: gale` and call
-`uses: ./gale/.github/actions/setup-renode`. sieve 0.4.2 scans every workflow
-for whole-repository linters on every scoped edit, and it cannot resolve that
-path to the tracked `.github/actions/setup-renode`. **Every scoped edit
-therefore still runs everything on this branch.** The probe below measures it.
-The fix belongs in sieve: resolve `./<p>/` through the job's same-repository
-`actions/checkout` `path: <p>`. The alternative is moving those five jobs'
-checkout to the workspace root, which is an owner decision. Until one of them
-lands, the shaping above is ready but saves nothing.
+`uses: ./gale/.github/actions/setup-renode`. sieve scans every workflow for
+whole-repository linters on every scoped edit (and on every scoped
+GitHub-service file edit), so one job it cannot resolve makes every scoped edit
+run everything.
+
+- **sieve 0.4.2** could not resolve `./gale/` at all.
+- **sieve 0.4.3** (sieve#36) resolves `./<p>/` through an earlier same-repository
+  `actions/checkout` with a plain `path: <p>`, no `ref:`, no other repository,
+  and no later step that rewrites `<p>`. On gale it still refuses all five
+  jobs, with the reason "`uses: ./gale/.github/actions/setup-renode` is under
+  `gale`, which a step checked out from another repository or ref, or
+  rewrote". None of the five rewrites `gale/`. Measured on the flight job by
+  deleting steps from a scratch copy: the rewrite check fires on the bare word
+  `gale` in `run:` script text. A shell comment `(gale#289)` is enough by
+  itself; so are a read-only `grep` of
+  `${GITHUB_WORKSPACE}/gale/.github/zephyr-fork-pin` and the
+  `GALE_ROOT: ${{ github.workspace }}/gale` builds. Only deleting every step
+  between the checkout and the `uses:` cleared it, and then the next Renode
+  workflow refused for the same reason.
+
+**On this branch every scoped edit therefore still runs everything** (safe; no
+saving). The same false-positive class as sieve#37, now in the #36 rewrite
+check: it should count only write-like commands whose path argument is `<p>` or
+under it, and ignore comments and reads. That fix belongs in sieve. Rewording
+gale's scripts cannot reach it: the jobs have to name their own checkout to
+build from it. The alternative is still moving those five jobs' checkout to the
+workspace root, which is an owner decision.
 
 ### Measurements
 
 Scripts and raw JSONL live in the lane's scratch area. The method follows jig's
-replay: for each of the last 80 first-parent commits M on main, one
-`sieve classify --event pull_request --base M^ --head M` in git mode. It uses
-today's `sieve.toml` and tree for old diffs, and models no merge_group or push
-run. Leaf scoping reads each workflow as it was at M^ and M, so this replay
-mostly measures the workflow shapes of that time. The per-job probe measures
-today's shapes: one harmless step is inserted into each of the 82 jobs, and the
-edit is classified against the tree.
+replay: for each of the last 80 first-parent commits M on main (to f0ac6e3e),
+one `sieve classify --event pull_request --base M^ --head M` in git mode. It
+uses the tree's `sieve.toml` and files for old diffs, and models no merge_group
+or push run. Leaf scoping reads each workflow as it was at M^ and M, so this
+replay mostly measures the workflow shapes of that time. The per-job probe
+measures today's shapes: one harmless step is inserted into each of the 82
+jobs, and the edit is classified against the tree. "Simulated" means the five
+`uses: ./gale/.github/actions/setup-renode` lines rewritten to
+`./.github/actions/setup-renode` in a scratch commit: what sieve would see if
+it resolved them. It is not a proposed gale change (at runtime `./.github/` does
+not hold gale in those jobs).
+
+Measured with sieve 0.4.3 (current):
+
+| replay (80 PRs), sieve 0.4.3 | run_all | est. min/PR saved |
+|---|---|---|
+| f0ac6e3e, scoping off | 75 | 0.2 |
+| f0ac6e3e, scoping on | 75 | 0.2 |
+| this branch | 75 | 0.2 |
+| this branch, `./gale/` simulated resolvable | 71 | 29.5 |
+
+| per-job probe (82 jobs), sieve 0.4.3 | scoped | run_all |
+|---|---|---|
+| this branch | 0 | 82 (6 classifier jobs; gustos-publish's tag/dispatch `if:`, 2 jobs; the other 74: the `./gale/` rewrite check above) |
+| this branch, `./gale/` simulated resolvable | 74 | 8 (6 classifier jobs; gustos-publish's tag/dispatch `if:`, 2 jobs) |
+
+In the simulated replay, #456 and #447 (one-line compliance.yml edits) scope
+again under 0.4.3: 0.4.2 refused them for the word "needs" in a script comment
+(sieve#37). #537 (a Dependabot-config-only edit) scopes too, but only after this
+page stopped spelling that file's name: measured on the tree before that
+rewording, the simulated replay gave 72 run_all and an estimated 22.2 min/PR.
+
+History (sieve 0.4.0 and 0.4.2, the same method, tree b6179e01 for "this
+branch"):
 
 | replay (80 PRs) | run_all | est. min/PR saved |
 |---|---|---|
@@ -242,35 +295,38 @@ edit is classified against the tree.
 | f0ac6e3e, sieve 0.4.2, scoping off | 75 | 0.2 |
 | f0ac6e3e, sieve 0.4.2, scoping on | 75 | 0.2 |
 | this branch, sieve 0.4.2 | 75 | 0.2 |
-| this branch, `./gale/` simulated resolvable | 73 | 14.9 |
+| this branch, sieve 0.4.2, `./gale/` simulated resolvable | 73 | 14.9 |
 
 | per-job probe (82 jobs, sieve 0.4.2) | scoped | run_all |
 |---|---|---|
 | this branch | 0 | 82 (all: `./gale/` resolution) |
 | this branch, `./gale/` simulated resolvable | 74 | 8 (6 classifier jobs; gustos-publish's tag/dispatch `if:`, 2 jobs) |
 
-Minutes are an **estimate**. Each skipped job costs its median measured duration
-over 8 successful push runs on main, with matrix legs counted one by one:
-`code` 581.5 min, `cross_arch` 5.0, `v_closure` 0.2. The classifier jobs' own
-cost (about 0.2 min each) is not subtracted.
+Minutes are an **estimate**, not a measurement of any run. Each skipped job
+costs its median measured duration over 8 successful push runs on main, with
+matrix legs counted one by one: `code` 581.5 min, `cross_arch` 5.0,
+`v_closure` 0.2. The classifier jobs' own cost (about 0.2 min each) is not
+subtracted. The replay cannot see queueing, cache effects, retries, or what a
+PR's author would have done differently.
 
-Under 0.4.0, scoping also passed #456 and #447, which were one-line
-compliance.yml edits. 0.4.2 refuses them because of the word "needs" in a
-script comment. On today's tree that word is gone.
+Safety plants (git mode, scratch commits). With sieve 0.4.3 on the real branch
+every row runs everything; the rows that expect a class therefore run
+everything too, for the `./gale/` reason, so on the real tree they show only
+that nothing narrows. On the branch with `./gale/` simulated resolvable:
 
-Safety plants (sieve 0.4.2, on the branch with `./gale/` simulated resolvable;
-on the real branch every row runs everything):
-
-| plant | expected | observed |
+| plant | expected | observed (0.4.3, simulated) |
 |---|---|---|
 | a step added to rust-coverage / cross-arch / v-closure / zephyr-test | its class | `code` / `cross_arch` / `v_closure` / `code` |
 | a step added to a proof job (verus) | no class (proofs never skip) | none |
 | rust-coverage `if:`, `needs:`, `outputs:`, a step `if:` changed | everything | everything |
-| coverage.yml `concurrency`, drv-cross-arch.yml top-level `env` | everything | everything |
+| coverage.yml `concurrency`, drv-cross-arch.yml top-level `env` | everything | everything ("changed outside `jobs:`"; the `env` plant makes the file unparseable, so it runs everything for that reason) |
 | a step added to a classifier job (coverage, rivet-v-closure) | everything | everything |
 | a depth-1 checkout | everything | everything ("git diff failed against <base>") |
-| a blobless clone with no reachable promisor | everything | everything ("cannot read ... at the merge base") |
+| a depth-2 checkout (base = HEAD^) | its class | `code` |
+| a `blob:none` clone, full history | everything or its class | everything ("cannot read ... at the merge base") |
 | `scope_leaf_edits` removed or `false` | everything | everything |
+
+The 0.4.2 plants (simulated) gave the same verdict on every row but the `blob:none` one, which scoped to `code` there. Both verdicts are safe.
 
 A shallow or blobless checkout fails safe and silently. Nothing goes red: the
 saving disappears, and the only trace is the verdict of record's `reason`. sieve-pin

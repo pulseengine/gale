@@ -15,12 +15,12 @@ description: >
 runs:
   using: composite
   steps:
-    - name: Install sieve 0.4.2 (pinned by sha256)
+    - name: Install sieve 0.4.3 (pinned by sha256)
       shell: bash
       env:
-        SIEVE_VERSION: "0.4.2"
-        SIEVE_SHA256_X86_64: "51ef59f5cf8b542d142c073446d5773147a5806c84be56c5c4e30783e6cd6647"
-        SIEVE_SHA256_AARCH64: "509f6da904afdae5dc16be75c02a75a90a4b65f13f6529d15b61f0f621d62911"
+        SIEVE_VERSION: "0.4.3"
+        SIEVE_SHA256_X86_64: "df78e09ea2c712e58b2d35b7948040ea1c590536e7a456d0f794a7306eeeda4f"
+        SIEVE_SHA256_AARCH64: "7da038fcdb9ce17bcc9bad77f99032a58d7afc3f60f8288e0bac4f2fb33f18bb"
         PREFIX: ${{ runner.temp }}
       run: |
         set -euo pipefail
