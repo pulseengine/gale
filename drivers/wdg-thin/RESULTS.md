@@ -79,6 +79,16 @@ it. Both objects below were dissolved with the SAME toolchain (loom 1.2.0 + synt
 | undefined | `mmio_read32`, `mmio_write32` | **`read32`, `write32`** |
 | defined | `wdg_{unlock,configure,lock,start,refresh,is_running}` | the same six, **plus** `gust:hal/wdg@0.1.0#{unlock,configure,lock,start,refresh,is-running}` and `cabi_realloc{,_wit_bindgen_0_52_0}` |
 
+**The committed object no longer matches the "defined" row (2026-11-24).** The
+table records the componentization change as measured then. `drivers/wdg-thin/wdg-thin-cm3.o`
+on main was rebuilt on the covalent 2026.11.7 pin (#532) and then by #541. Today it
+defines the six `wdg_*` symbols, `cabi_realloc{,_wit_bindgen_0_52_0}` and only **two**
+of the six aliases: `gust:hal/wdg@0.1.0#unlock` and `#configure`. This is from `nm` on
+the committed object. The other four alias names point at the same functions, but no
+symbol is emitted for them (synth#1746, see drivers/CROSS-ARCH.md). gust links
+`wdg_*` only, so nothing native depends on the missing aliases. The rule tightens at
+the first pin move that carries the #1746 fix.
+
 The +1080 B is canonical-ABI export glue (six wrappers, 24–148 B each) plus **two
 identical 166 B copies of `cabi_realloc`** (332 B) that nothing can reach — this
 world is scalar-only, so no lowering ever allocates. The native path never enters
