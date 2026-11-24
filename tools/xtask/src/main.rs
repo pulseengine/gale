@@ -6,6 +6,7 @@
 
 mod cargo_locked;
 mod gates;
+mod observe;
 mod renode_elfs;
 mod sha256;
 mod silicon;
@@ -29,7 +30,9 @@ fn usage() -> String {
                                         the trusted-base inventory as JSON (gale#467)\n  \
            cargo xtask freshness-record         the measured sha256/inputs/toolchain of each gated object (gale#506)\n  \
            cargo xtask trust-ledger [--write --id ID]\n  \
-                                        print (or rewrite) the trust-ledger rows (v0.11.0 bet 3)\n\n\
+                                        print (or rewrite) the trust-ledger rows (v0.11.0 bet 3)\n  \
+           cargo xtask observe [--since-days N | --commits N] [--format text|json] [--self-test]\n  \
+                                        sieve observed-miss counter: PR verdict of record vs the push run on main\n\n\
          EXIT CODES:\n  \
            0  the property holds\n  \
            1  the property does NOT hold\n  \
@@ -112,6 +115,13 @@ fn main() {
                 exit(verdict::EXIT_REFUSED);
             }
         }
+    }
+    if args[0] == "observe" {
+        let Some(root) = repo_root() else {
+            eprintln!("xtask: not a git repository");
+            exit(EXIT_USAGE);
+        };
+        exit(observe::cmd(&root, &args[1..]));
     }
     if args[0] == "trust-ledger" {
         let Some(root) = repo_root() else {

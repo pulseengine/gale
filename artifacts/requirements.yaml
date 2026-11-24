@@ -5958,3 +5958,39 @@ artifacts:
       created-by: ai-assisted
       model: claude-opus-5-5
       timestamp: 2026-11-22T22:00:00Z
+
+  - id: REQ-CI-SIEVE-OBSERVE-001
+    type: sw-req
+    title: Every sieve skip is checked against main after the merge, and what cannot be compared is reported as uncompared
+    status: implemented
+    description: "Follow-up to REQ-CI-SIEVE-001 clause (8). A pull request's verdict of record skips jobs; gale has no merge queue, so the push run on main after the merge runs every job. SHALL: (1) `cargo xtask observe [--since-days N | --commits N] [--format text|json]` judges the first-parent commits of origin/main; for each it takes the pull request merged as that commit (a PR that only lists the commit does not count), for each workflow running `sieve classify` that PR's LAST record per classifier job (the latest pull_request run of the workflow on the PR head SHA, and in it the sieve-verdict-<workflow>-<job>-<run_attempt> artifact with the highest attempt; an older attempt is never a fallback, even when the newest record has expired), and the latest push run of the same workflow on the merge commit with its job conclusions over every attempt (a failure in any attempt counts as failed); (2) it runs `sieve observe --config sieve.toml --verdict <record> --results <jobs.json> --format json` and counts each listed job as a miss, and it trusts the output only when sieve's exit code (0 or 1) agrees with the listed misses; (3) a pair it cannot compare (no PR merged as the commit, no PR run, no record, an expired record, no push run yet, a push run or job not completed, a failed GitHub call or download, sieve refusing) is UNCOMPARED with its reason, never \"no miss\"; the report reads `m miss(es) of N compared, U uncompared` and also counts the skipped jobs sieve judged; (4) exit 0 no miss among at least one compared pair, 1 a miss, 2 usage, 3 refused, and zero compared pairs is a refusal, not a pass; (5) GitHub is read through `gh` behind a trait, so the planted cases run on fixtures; (6) .github/workflows/sieve-observe.yml runs it daily (schedule) and on workflow_dispatch only, with no pull_request trigger, not as a required context, with the read-only token (contents, actions and pull-requests read), the pinned sieve from .github/actions/setup-sieve, `cargo xtask observe --self-test` before judging, and the text report in the job summary; a miss or a refusal fails the job. What it cannot see: a job that passed on main reveals nothing; a skipped job that would have passed is invisible by design; a failure on main caused only by commits merged while the PR was open still counts against the PR's verdict; a PR with no run on its last head SHA has no record; and only workflows that run `sieve classify` today are judged. Kill criterion: a job fails on main after its PR's last verdict of record skipped it and the counter does not report a miss, or an uncompared pair (no PR, no record, an expired record, a run in progress) is counted as compared or as no miss, or zero compared pairs exits 0."
+    tags: [ci, sieve, gate, gale#294]
+    fields:
+      priority: should
+      req-type: constraint
+      verification-criteria: "`cargo xtask observe --self-test` with the pinned sieve passes all planted cases and their positive controls: (a) record code=false, the code-gated job failed on main -> 1 miss, exit 1 (control: the job passed -> 0 misses); (b) code=true, the job failed -> 0 misses; (c) no PR for the commit -> uncompared (control: with a PR -> compared); (d) PR runs exist but the record expired -> uncompared (control: not expired -> compared, 1 miss); (e) attempt 1 false and attempt 2 true, the job failed on main -> 0 misses, swapped -> 1 miss; (f) zero compared -> exit 3 (control: one compared -> exit 0); (g) the push run, or one of its jobs, in progress -> uncompared (control: completed -> compared, 1 miss). The same cases pass as unit tests in `cargo test --manifest-path tools/xtask/Cargo.toml`."
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: traces-to
+        target: REQ-CI-SIEVE-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-24T12:00:00Z
+
+  - id: VER-CI-SIEVE-OBSERVE-001
+    type: sw-verification
+    title: "The observed-miss counter gives each planted verdict through the real sieve, and leaves what it cannot compare uncompared"
+    status: implemented
+    description: "Implementation: tools/xtask/src/observe.rs (`cargo xtask observe`), GitHub reads through `gh api --paginate` and `gh run download` behind the Forge trait, the sieve call behind the Observer trait; .github/workflows/sieve-observe.yml (schedule 05:37 UTC daily and workflow_dispatch, read-only token, ubuntu-24.04, 30-minute timeout, SHA-pinned actions, Rust 1.100.0, pinned sieve via setup-sieve plus the PATH check, `--self-test` before judging, text report in the job summary). sieve 0.4.0, the version CI pins, has `observe` (checked on the cosign-verified 0.4.0 aarch64-apple-darwin binary: it is in --help and in the sieve.observe.v1 schema list). Planted cases, `cargo xtask observe --self-test`, through the real sieve: 14/14 held with sieve 0.4.0 and 14/14 with sieve 0.4.3: (a) code=false, the code-gated job failed on main -> 1 miss, exit 1; (a+) the job passed -> 0 misses, exit 0; (b) code=true, the job failed -> 0 misses; (c) no PR -> uncompared, (c+) with a PR -> compared; (d) expired record -> uncompared, (d+) not expired -> 1 miss; (e) attempt 1 false, attempt 2 true, the job failed -> 0 misses, (e+) swapped -> 1 miss; (f) zero compared -> exit 3, (f+) one compared -> exit 0; (g) push run in_progress -> uncompared, (g2) one push job in_progress -> uncompared, (g+) completed -> 1 miss. The same cases are unit tests (23 observe tests in `cargo test --manifest-path tools/xtask/Cargo.toml`, with a stand-in for sieve's rule), plus: no PR run, no push run and no record artifact each uncompared; a PR that lists the commit but was not merged as it does not count; a failure in push attempt 1 still counts when attempt 2 is green; a sieve refusal is uncompared; sieve output whose exit code disagrees with its listed misses is not trusted. Mutations: picking the lowest attempt instead of the highest fails 3 unit tests; judging a push run that is not completed fails (g) in the self-test (13/14, exit 1); a sieve path that cannot run refuses (exit 3). The workflow's sieve wiring is covered by `cargo xtask check sieve-pin` (the `sieve --version` step makes it a sieve-running job): without setup-sieve the gate exits 1; `toolchain: stable` makes toolchain-pin exit 1. First real run (2026-11-24, `--commits 10`, origin/main at f0ac6e3e, sieve 0.4.0): 0 misses of 6 compared, 54 uncompared, 0 skipped jobs judged. The 6 compared pairs are #543's six classifier workflows; #543 changed .github/** so its PR ran everything, and the report says no compared pair could have shown a miss. Uncompared: 49 pairs of #532..#542 whose PR runs carry no sieve-verdict artifact (before the --record wiring), and 5 rivet-v-closure pairs with no push run (that workflow had a push `paths:` filter then). An earlier run hit a transient HTTP 401 from the API on one commit; its six pairs were reported uncompared with that reason, not as no miss. Not verified here: the workflow on an Actions runner (it has not run yet), a real miss (none has occurred among the compared pairs), and artifact expiry on real data (the oldest record is from 2026-11-22)."
+    tags: [ci, sieve, gate, verification, gale#294]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-CI-SIEVE-OBSERVE-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-24T12:00:00Z
