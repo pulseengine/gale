@@ -22,3 +22,6 @@ no raw env import survives in the composed graph
 a denied write really faults (REQ-OS-MPU-001 kill-criterion)
 cargo-deny (advisories, bans, licenses, sources)
 every lock committed and current (Cargo + Bazel)
+Kani BMC (driver crates)
+every crate with a Kani harness is run by a CI cargo kani that can fail
+the trust ledger counts every assumption spelling it can see (v0.11.0 bet 3)
