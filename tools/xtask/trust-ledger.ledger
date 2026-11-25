@@ -78,7 +78,7 @@ kani::assume tests/kani_harnesses.rs 78 VER-HONESTY-LEDGER-GATE-001
 kani::unwind drivers/i2c-v2-thin/src/lib.rs 1 257 VER-HONESTY-LEDGER-GATE-001
 kani::unwind drivers/sen66-thin/src/lib.rs 3 6,28,30 VER-HONESTY-LEDGER-GATE-001
 kani::unwind drivers/wdg-thin/src/lib.rs 2 3,3 VER-HONESTY-LEDGER-GATE-001
-kani::unwind ffi/src/lib.rs 1 4 VER-HONESTY-LEDGER-GATE-001
+kani::unwind ffi/src/lib.rs 4 4,17,17,17 VER-HONESTY-LEDGER-GATE-001
 kani::unwind plain/src/executor.rs 3 9,9,9 VER-HONESTY-LEDGER-GATE-001
 kani::unwind plain/src/health_monitor.rs 4 7,8,8,8 VER-HONESTY-LEDGER-GATE-001
 kani::unwind plain/src/mpu_switch.rs 9 33,33,33,33,33,33,33,33,33 VER-HONESTY-LEDGER-GATE-001
