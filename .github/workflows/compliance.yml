@@ -116,7 +116,7 @@ jobs:
 
       - name: Generate compliance report
         id: report
-        uses: pulseengine/rivet/.github/actions/compliance@29ca43828c8060af135fcd47ecff4c48662d1567 # v0.41.1
+        uses: pulseengine/rivet/.github/actions/compliance@3422f42e8461b17ec08dcfb6be215535cc9ede38 # v0.43.3
         with:
           theme: dark
           rivet-version: v0.28.0

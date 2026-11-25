@@ -97,7 +97,7 @@ jobs:
       # The images are built from the current source, not committed: on
       # 2026-11-11 only 1 of 17 committed ELFs matched what main builds, so the
       # gates were running binaries the source no longer produced.
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # installs 1.100.0 (stable-branch SHA)
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
         with:
           toolchain: 1.100.0
           targets: thumbv7m-none-eabi

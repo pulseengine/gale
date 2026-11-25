@@ -68,7 +68,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install nightly Rust + rust-src
-        uses: dtolnay/rust-toolchain@6a52aad76a94a5fbc50d567bb5be24419801c1fb # installs nightly-2026-09-17 (nightly-branch SHA)
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs nightly-2026-09-17 (nightly-branch SHA)
         with:
           toolchain: nightly-2026-09-17
           components: rust-src
