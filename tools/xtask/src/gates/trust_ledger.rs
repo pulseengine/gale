@@ -916,20 +916,32 @@ pub fn compare(ledger: &Ledger, c: &Census, ids: &BTreeSet<String>, baseline: Op
 /// not have -- fails unless an `admit` row that is new in this change covers
 /// it exactly.
 ///
-/// The amount an admit grants here is its `+N` minus the `+N` of the base
-/// ledger's admit for the same item written against the same `@baseline`
-/// (0 if none): an admit carried over unchanged grants nothing, and a
-/// shrink-only admit raised from +1 to +2 grants 1. A granting admit must name
+/// With a release ceiling (`ceiling`), the reference for an item is the larger
+/// of its merge-base row and its ceiling row: growth back up to the ceiling
+/// needs no admit here (`compare` holds the ceiling and its admits).
+///
+/// The amount an admit grants here is its `+N` minus the `+N` the merge-base
+/// ledger admitted for the same item, whatever its `@` (0 if none): an admit
+/// carried over unchanged, or only re-pointed, grants nothing, and an admit
+/// raised from +1 to +2 grants 1. A granting admit must name
 /// a commit in the base branch's history (`bound`: the merge-base or an
 /// ancestor, by sha or v* tag), must equal the growth exactly in the ledger
 /// AND the tree, and on kani::unwind must keep every base bound unchanged.
 /// The mode, the baseline and the release ceiling (`compare`) are untouched.
-pub fn compare_pr(head: &Ledger, c: &Census, base: &Ledger, bound: &dyn Fn(&str) -> bool) -> Result<Vec<String>, Vec<String>> {
+pub fn compare_pr(
+    head: &Ledger,
+    c: &Census,
+    base: &Ledger,
+    ceiling: Option<&Ledger>,
+    bound: &dyn Fn(&str) -> bool,
+) -> Result<Vec<String>, Vec<String>> {
     let mut fails = Vec::new();
     let mut notes = Vec::new();
     let fig = |r: &Row| -> Figure { (r.count, r.bounds.clone()) };
     let then_rows: BTreeMap<(String, String), Figure> = base.rows.iter().map(|r| ((r.class.clone(), r.path.clone()), fig(r))).collect();
     let now_rows: BTreeMap<(String, String), Figure> = head.rows.iter().map(|r| ((r.class.clone(), r.path.clone()), fig(r))).collect();
+    let ceil_rows: Option<BTreeMap<(String, String), Figure>> =
+        ceiling.map(|l| l.rows.iter().map(|r| ((r.class.clone(), r.path.clone()), fig(r))).collect());
     let mut tree: BTreeMap<(String, String), Figure> = BTreeMap::new();
     for (path, fc) in &c.files {
         for (class, n) in &fc.counts {
@@ -943,27 +955,34 @@ pub fn compare_pr(head: &Ledger, c: &Census, base: &Ledger, bound: &dyn Fn(&str)
     let none: Figure = (0, Vec::new());
     for k in keys {
         let (class, path) = (&k.0, &k.1);
-        let then = then_rows.get(&k).unwrap_or(&none);
+        // The reference: the merge-base row, or the release ceiling's row when
+        // that is larger -- growth back up to the ceiling needs no admit here
+        // (`compare` holds the ceiling, and its admits keep their @baseline
+        // meaning); only growth past both needs one.
+        let mb = then_rows.get(&k).unwrap_or(&none);
+        let then = match ceil_rows.as_ref().and_then(|m| m.get(&k)) {
+            Some(cr) if cr.0 >= mb.0 => cr,
+            _ => mb,
+        };
         let now = now_rows.get(&k).unwrap_or(&none);
         let tr = tree.get(&k).unwrap_or(&none);
         let ha = head_adm.get(&k).copied();
-        let carried = match (ha, base_adm.get(&k)) {
-            (Some(h), Some(b)) if h.base == b.base => b.n,
-            _ => 0,
-        };
+        // What the merge-base ledger already admitted for this item, whatever
+        // its @: re-pointing a spent admit at another commit grants nothing.
+        let carried = base_adm.get(&k).map_or(0, |b| b.n);
         let granted = ha.map_or(0, |h| h.n.saturating_sub(carried));
         let grew = figure_grew(class, now, then) || figure_grew(class, tr, then);
         let desc = format!(
-            "{class} {path}: merge-base {} [{}], head ledger {} [{}], tree {} [{}]",
-            then.0, fmt_bounds(&then.1), now.0, fmt_bounds(&now.1), tr.0, fmt_bounds(&tr.1)
+            "{class} {path}: reference {} [{}] (merge-base {}), head ledger {} [{}], tree {} [{}]",
+            then.0, fmt_bounds(&then.1), mb.0, now.0, fmt_bounds(&now.1), tr.0, fmt_bounds(&tr.1)
         );
         let Some(h) = ha.filter(|_| granted > 0) else {
             if grew {
                 fails.push(format!(
-                    "{desc} -- growth over the ledger at the merge-base, and no admit new in this change covers it; \
+                    "{desc} -- growth over the ledger at the merge-base (and over the release ceiling's row, if any), and no increase of an admit covers it; \
                      add `admit {class} {path} +<N> @<a commit in the base branch's history> <#issue> <reason>`"
                 ));
-            } else if now.0 < then.0 {
+            } else if now.0 < mb.0 {
                 notes.push(format!("{desc} -- shrink against the merge-base"));
             }
             continue;
@@ -978,7 +997,7 @@ pub fn compare_pr(head: &Ledger, c: &Census, base: &Ledger, bound: &dyn Fn(&str)
         let want = then.0 + granted;
         if now.0 != want || tr.0 != want {
             fails.push(format!(
-                "{desc} -- the admit grants {granted} in this change (+{} minus the +{carried} the merge-base ledger already admitted), so ledger and tree must both be {want}: an admit matches the growth exactly",
+                "{desc} -- the admit grants {granted} in this change (+{} minus the +{carried} the merge-base ledger already admitted for this item), so ledger and tree must both be {want}: an admit matches the growth exactly",
                 h.n
             ));
         }
@@ -1217,6 +1236,12 @@ fn follow_renames(g: GitQuery, sha: &str, mut l: Ledger) -> Result<Ledger, Strin
     if map.is_empty() {
         return Ok(l);
     }
+    // Admits move with their rows: after a pure `git mv` the item is the same.
+    for a in l.admits.iter_mut() {
+        if let Some(n) = map.get(&a.path) {
+            a.path = n.clone();
+        }
+    }
     let mut merged: BTreeMap<(String, String), Row> = BTreeMap::new();
     for mut r in l.rows.drain(..) {
         if let Some(n) = map.get(&r.path) {
@@ -1353,11 +1378,16 @@ fn run_with(repo: &Path, census: Result<Census, String>, pr_base: Option<&str>) 
         Ok(i) => i,
         Err(e) => return Verdict::Refused(e),
     };
-    let g = real_git(repo);
-    if let Err(e) = full_history_with(&g) {
+    judge(&ledger, &c, &ids, &real_git(repo), pr_base)
+}
+
+/// The verdict from the parsed inputs, with git injected so the self-test can
+/// drive the whole run (ceiling, `--base`, the combined verdict) end to end.
+fn judge(ledger: &Ledger, c: &Census, ids: &BTreeSet<String>, g: GitQuery, pr_base: Option<&str>) -> Verdict {
+    if let Err(e) = full_history_with(g) {
         return Verdict::Refused(e);
     }
-    let ceiling = match ceiling_with(&g, &ledger) {
+    let ceiling = match ceiling_with(g, ledger) {
         Ok(c) => c,
         Err(e) => return Verdict::Fail(vec![format!("{LEDGER}: {e}")]),
     };
@@ -1369,19 +1399,19 @@ fn run_with(repo: &Path, census: Result<Census, String>, pr_base: Option<&str>) 
             ", ceiling = the ledger at the tagged baseline {b}"
         ))
     )];
-    lines.extend(summary(&c));
+    lines.extend(summary(c));
     let pr = match pr_base {
         None => None,
-        Some(rev) => match pr_base_with(&g, rev) {
+        Some(rev) => match pr_base_with(g, rev) {
             Ok((sha, bl)) => {
                 lines.push(format!("pull request: every row held to the ledger at the merge-base {sha} (growth only through a new admit)"));
-                Some(compare_pr(&ledger, &c, &bl, &|f: &str| in_base_history_with(&g, &sha, f)))
+                Some(compare_pr(ledger, c, &bl, base, &|f: &str| in_base_history_with(g, &sha, f)))
             }
             Err(e) => return Verdict::Fail(vec![format!("{LEDGER}: {e}")]),
         },
     };
     let mut failed = false;
-    match compare(&ledger, &c, &ids, base) {
+    match compare(ledger, c, ids, base) {
         Ok(notes) => {
             lines.extend(notes);
             lines.push(format!("the tree matches {LEDGER} ({} rows)", ledger.rows.len()));
@@ -1708,7 +1738,7 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     let grown_eq = |admit: &str, rs: &str| {
         parse_ledger(&format!("mode = equality\nbaseline = none\n{admit}{}", render_rows(&tree(rs, base_v), None, "VER-X-001"))).expect("parses")
     };
-    let pr = |head: &Ledger, rs: &str| compare_pr(head, &tree(rs, base_v), &eq, &inb);
+    let pr = |head: &Ledger, rs: &str| compare_pr(head, &tree(rs, base_v), &eq, None, &inb);
     let n1 = grown_eq("", &added);
     ck("PR hole: equality alone PASSES a row grown together with its code (assume 2 -> 3)", compare(&n1, &tree(&added, base_v), &ids, None).is_ok());
     ck("PLANTED PR: base row 2, head row 3 and tree 3, no admit -> fails", pr(&n1, &added).is_err());
@@ -1727,9 +1757,9 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
         ("proofs/BUILD.bazel", "x = 1\n"),
     ]);
     let nf = |admit: &str| parse_ledger(&format!("mode = equality\nbaseline = none\n{admit}{}", render_rows(&nf_tree, None, "VER-X-001"))).expect("parses");
-    ck("PLANTED PR: a new row (b/src/lib.rs, absent at the merge-base) without an admit fails", compare_pr(&nf(""), &nf_tree, &eq, &inb).is_err());
+    ck("PLANTED PR: a new row (b/src/lib.rs, absent at the merge-base) without an admit fails", compare_pr(&nf(""), &nf_tree, &eq, None, &inb).is_err());
     ck("PR: the new row with a matching admit passes",
-        compare_pr(&nf(&format!("admit kani::assume b/src/lib.rs +1 @{sha} #467 a new driver\n")), &nf_tree, &eq, &inb).is_ok());
+        compare_pr(&nf(&format!("admit kani::assume b/src/lib.rs +1 @{sha} #467 a new driver\n")), &nf_tree, &eq, None, &inb).is_ok());
     ck("PLANTED PR: an admit whose @ is not in the base branch's history (the PR's own commit) fails",
         pr(&grown_eq(&format!("admit kani::assume a/src/lib.rs +1 @{} #467 r\n", "e".repeat(40)), &added), &added).is_err());
     ck("PLANTED PR: an oversized admit (+2 for growth of 1) fails",
@@ -1743,8 +1773,8 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     };
     let twice = base_rs.replace("kani::assume(true);", "kani::assume(true); kani::assume(false); kani::assume(1 < 2);");
     ck("PLANTED PR: an admit carried over unchanged from the merge-base, row 3 -> 4, fails (it was spent)",
-        compare_pr(&grown_eq(&adm1, &twice), &tree(&twice, base_v), &base_adm, &inb).is_err());
-    ck("PR control: the carried admit with no growth passes", compare_pr(&grown_eq(&adm1, &added), &tree(&added, base_v), &base_adm, &inb).is_ok());
+        compare_pr(&grown_eq(&adm1, &twice), &tree(&twice, base_v), &base_adm, None, &inb).is_err());
+    ck("PR control: the carried admit with no growth passes", compare_pr(&grown_eq(&adm1, &added), &tree(&added, base_v), &base_adm, None, &inb).is_ok());
     ck("PR: a release-bound admit raised +1 -> +2 @v0.11.0 grants 1 (row 3 -> 4) and passes",
         compare_pr(
             &grown_eq("admit kani::assume a/src/lib.rs +2 @v0.11.0 #470 one more\n", &twice),
@@ -1754,13 +1784,14 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
                 l.rows.iter_mut().filter(|r| r.class == "kani::assume").for_each(|r| r.count = 3);
                 l
             },
+            None,
             &inb
         )
         .is_ok());
     ck("PLANTED PR: the tree grown while the head ledger is not (2 / tree 3) fails here too", pr(&eq, &added).is_err());
     let lowered_pr = grown_eq(&format!("admit kani::unwind a/src/lib.rs +1 @{sha} #467 r\n"), &format!("{}#[kani::proof]\n#[kani::unwind(9)]\nfn h3() {{}}\n", base_rs.replace("unwind(8)", "unwind(3)")));
     ck("PLANTED PR: an unwind admit that also lowers a merge-base bound (8 -> 3, plus a new 9) fails",
-        compare_pr(&lowered_pr, &tree(&format!("{}#[kani::proof]\n#[kani::unwind(9)]\nfn h3() {{}}\n", base_rs.replace("unwind(8)", "unwind(3)")), base_v), &eq, &inb).is_err());
+        compare_pr(&lowered_pr, &tree(&format!("{}#[kani::proof]\n#[kani::unwind(9)]\nfn h3() {{}}\n", base_rs.replace("unwind(8)", "unwind(3)")), base_v), &eq, None, &inb).is_err());
     ck("PLANTED PR: a lowered bound with no count change (8 -> 3) fails without an admit",
         pr(&grown_eq("", &base_rs.replace("unwind(8)", "unwind(3)")), &base_rs.replace("unwind(8)", "unwind(3)")).is_err());
     // The merge-base is resolved and checked before any comparison.
@@ -1795,6 +1826,82 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     ck("PR: @v0.11.0 resolving to an ancestor of the merge-base is in the base history", in_base_history_with(&hist_git, &mb, "v0.11.0"));
     ck("PLANTED PR: @<a commit that is not an ancestor of the merge-base> is not", !in_base_history_with(&hist_git, &mb, &"2".repeat(40)));
     ck("PLANTED PR: @<not a commit> is not", !in_base_history_with(&hist_git, &mb, &"3".repeat(40)));
+    // Review 1: after the tag (ceiling `eq_at`: assume 2), a PR shrank the row to
+    // 1; a later PR regrowing it to 2 stays within the ceiling and needs no admit.
+    let sh_rows = |rs: &str, admit: &str| {
+        parse_ledger(&format!("mode = shrink-only\nbaseline = {sha}\n{admit}{}", render_rows(&tree(rs, base_v), None, "VER-X-001"))).expect("parses")
+    };
+    let mb_shrunk = sh_rows(&shrunk, "");
+    let regrow = sh_rows(base_rs, "");
+    ck("CEILING regrowth within the ceiling (merge-base 1, ceiling 2, head 2), no admit: both the PR and the ceiling comparison pass",
+        compare_pr(&regrow, &tree(base_rs, base_v), &mb_shrunk, Some(&eq_at), &inb).is_ok()
+            && compare(&regrow, &tree(base_rs, base_v), &ids, Some(&eq_at)).is_ok());
+    ck("CEILING control: the same regrowth judged with no ceiling needs an admit (fails)",
+        compare_pr(&regrow, &tree(base_rs, base_v), &mb_shrunk, None, &inb).is_err());
+    ck("PLANTED CEILING growth past the ceiling (merge-base 1, ceiling 2, head 3) with no admit fails",
+        compare_pr(&sh_rows(&added, ""), &tree(&added, base_v), &mb_shrunk, Some(&eq_at), &inb).is_err());
+    let past = sh_rows(&added, &format!("admit kani::assume a/src/lib.rs +1 @{sha} #467 past the ceiling\n"));
+    ck("CEILING growth past the ceiling with the exact admit (+1 @baseline): both comparisons pass",
+        compare_pr(&past, &tree(&added, base_v), &mb_shrunk, Some(&eq_at), &inb).is_ok() && compare(&past, &tree(&added, base_v), &ids, Some(&eq_at)).is_ok());
+    ck("PLANTED CEILING ... an admit sized against the merge-base (+2 for 1 -> 3) fails",
+        compare_pr(&sh_rows(&added, &format!("admit kani::assume a/src/lib.rs +2 @{sha} #467 r\n")), &tree(&added, base_v), &mb_shrunk, Some(&eq_at), &inb).is_err());
+    // Review 2: a spent admit re-pointed at another commit in the base history.
+    ck("PLANTED PR: base `admit +1 @<sha>` with row 3; the PR changes only the @ (to v0.11.0) and the row to 4 -> fails",
+        compare_pr(&grown_eq("admit kani::assume a/src/lib.rs +1 @v0.11.0 #467 r\n", &twice), &tree(&twice, base_v), &base_adm, None, &inb).is_err());
+    // Review 3b/3c: exactness against the ledger AND the tree, and growth of
+    // the ledger alone.
+    ck("PLANTED PR: admit +1, ledger 3 = base + 1 but tree 2 fails (tree half of the exactness check)",
+        pr(&grown_eq(&adm1, &added), base_rs).is_err());
+    ck("PLANTED PR: admit +1, tree 3 = base + 1 but ledger 2 fails (ledger half of the exactness check)",
+        pr(&parse_ledger(&format!("{eq_text}{adm1}")).expect("parses"), &added).is_err());
+    ck("PLANTED PR: the head ledger grown (2 -> 3) while the tree is not, no admit, fails", pr(&grown_eq("", &added), base_rs).is_err());
+    // Review 3a: the whole run (`judge`) with --base, through a fake git:
+    // equality passes the grown row, the PR comparison must turn it red.
+    let (eq_j, mb_j) = (eq_text.clone(), mb.clone());
+    let judge_git = move |args: &[&str]| -> Result<(bool, String), String> {
+        Ok(match args {
+            ["rev-parse", "--is-shallow-repository"] => (true, "false\n".into()),
+            ["rev-parse", "--verify", "--quiet", _] => (true, format!("{mb_j}\n")),
+            ["log", ..] => (true, String::new()),
+            ["cat-file", "-e", _] => (true, String::new()),
+            ["merge-base", "--is-ancestor", ..] => (true, String::new()),
+            ["show", _] => (true, eq_j.clone()),
+            ["diff", ..] => (true, String::new()),
+            _ => (false, String::new()),
+        })
+    };
+    let n1t = tree(&added, base_v);
+    ck("RUN control: without --base the grown row passes (equality)", matches!(judge(&n1, &n1t, &ids, &judge_git, None), Verdict::Pass(_)));
+    ck("PLANTED RUN: with --base the grown row (merge-base 2, head 3, no admit) FAILS the run",
+        matches!(judge(&n1, &n1t, &ids, &judge_git, Some("good")), Verdict::Fail(_)));
+    ck("RUN: with --base and the matching admit the run passes",
+        matches!(judge(&grown_eq(&adm1, &added), &n1t, &ids, &judge_git, Some("good")), Verdict::Pass(_)));
+    // Review 4: base admits move with exact renames.
+    let rn_git = |args: &[&str]| -> Result<(bool, String), String> {
+        Ok(match args {
+            ["diff", ..] => (true, "R100\ta/src/lib.rs\tb/src/lib.rs\n".into()),
+            _ => (false, String::new()),
+        })
+    };
+    let rn_base = follow_renames(&rn_git, sha, {
+        let mut l = parse_ledger(&format!("{eq_text}{adm1}")).expect("parses");
+        l.rows.iter_mut().filter(|r| r.class == "kani::assume").for_each(|r| r.count = 3);
+        l
+    }).expect("follows");
+    ck("RENAME a base admit moves with its row under `git mv` (R100)", rn_base.admits.iter().all(|a| a.path == "b/src/lib.rs"));
+    let rn_tree = census_of([
+        ("b/src/lib.rs", twice.as_str()),
+        ("proofs/p.v", base_v),
+        ("proofs/L.lean", "theorem x : True := trivial\n"),
+        ("proofs/BUILD.bazel", "x = 1\n"),
+    ]);
+    let rn_head = parse_ledger(&format!(
+        "mode = equality\nbaseline = none\nadmit kani::assume b/src/lib.rs +1 @{sha} #467 r\n{}",
+        render_rows(&rn_tree, None, "VER-X-001")
+    ))
+    .expect("parses");
+    ck("PLANTED RENAME the moved admit is spent: same +1 at the new path, row 3 -> 4, fails",
+        compare_pr(&rn_head, &rn_tree, &rn_base, None, &inb).is_err());
     // Security review: an admit on kani::unwind must not license narrowing.
     let unwind_admit = |rs: &str| {
         let t = tree(rs, base_v);
