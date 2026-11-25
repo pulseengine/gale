@@ -32,7 +32,7 @@ context, but it is on the list too; it has no path guard, and
 
 Everything runs when sieve is unsure: any event but `pull_request` (push,
 merge_group, schedule), no base, a failed or empty diff, a path no class
-claims, a change to `.github/**` (except a scoped leaf-workflow edit, below),
+claims, a change to `.github/**` (except the scoped edits described below),
 `tools/**`, `bzl/**`, `sieve.toml`, any `Cargo.lock` or a toolchain or Bazel
 file, and a classifier job that failed, was cancelled or wrote nothing.
 
@@ -208,7 +208,8 @@ leaf-workflow edits"). The README is authoritative. In short:
 - A job-body edit selects the classes that the classifier `if:` reads, for the
   changed jobs, the jobs that need them and the jobs those need (REQ-030).
 - A workflow that hosts no classifier selects no class, because its jobs all
-  run anyway (REQ-035).
+  run anyway (REQ-035). That includes a newly added workflow with no
+  classifier (measured on 0.4.4).
 - The files GitHub's own services read (the Dependabot config, a code-owners
   file, the issue and pull-request templates) select nothing unless another
   tracked file spells out their file name (REQ-036). A doc counts: this page
@@ -217,11 +218,15 @@ leaf-workflow edits"). The README is authoritative. In short:
 - Everything else under `.github/` still runs everything: composite actions,
   `.github/zephyr-fork-pin` (which `code` jobs read), `required-contexts.txt`
   and `gate-probe.json`. So do these workflow edits:
-  - a change outside `jobs:`;
+  - a change outside `jobs:` in a workflow that hosts a classifier (in one
+    that hosts none, a `permissions:` or top-level `env:` change selected no
+    class, measured on compliance.yml with 0.4.4);
   - a change to a job's `if:`, `needs:`, `outputs:`, `strategy:` or
     `continue-on-error:`, or to a step's `if:`;
   - any edit to a job that runs `sieve classify`;
-  - an edit made with no workflow blob at the merge base.
+  - an added workflow that hosts a classifier (measured: "is added");
+  - a workflow whose merge-base blob exists but cannot be read (a shallow or
+    blobless checkout, plants (e) below).
 
 Scoping only works if the workflows have the shape sieve can read. gale's
 workflows keep these rules (L18 made them true):
@@ -287,18 +292,32 @@ Measured with sieve 0.4.4 (current):
 | replay (80 PRs) | run_all | est. min/PR saved |
 |---|---|---|
 | this branch, sieve 0.4.4 | 71 | 29.5 |
+| this branch, sieve 0.4.4, scoping off | 75 | 0.2 |
 
 | per-job probe (82 jobs) | scoped | run_all |
 |---|---|---|
 | this branch, sieve 0.4.4 | 74 | 8 (6 classifier jobs; gustos-publish's tag/dispatch `if:`, 2 jobs) |
 
-The 9 replayed PRs that scope: #537, #456, #447 and #448 select no class;
-#519 and #520 select `code` and `cross_arch`; #496, #483 and #435 select `code`
-and `v_closure`. #456 and #447 (one-line compliance.yml edits) were refused by
-0.4.2 for the word "needs" in a script comment (sieve#37). #537 (a
-Dependabot-config-only edit) scopes only since this page stopped spelling that
-file's name. A step-name edit in each of the five Renode workflows selects no
-class, on this branch and on f0ac6e3e with scoping turned on.
+**What the saving rests on.** With scoping off, the same tree and binary give
+75 run_all and an estimated 0.2 min/PR, and 5 PRs already avoid running
+everything: #519 and #520 select `code` and `cross_arch`, and #496, #483 and
+#435 select `code` and `v_closure`. None of them touches `.github/`. Leaf
+scoping adds exactly 4 PRs, and all 4 select no class:
+- #537, a Dependabot-config-only edit (REQ-036). It scopes only since this page
+  stopped spelling that file's name.
+- #456 and #447, one-line compliance.yml edits. compliance.yml hosts no
+  classifier (REQ-035). 0.4.2 refused both for the word "needs" in a script
+  comment (sieve#37).
+- #448, a gustos-dissolve.yml edit. That workflow hosts no classifier either
+  (REQ-035).
+
+So the whole estimated rise from 0.2 to 29.5 min/PR rests on 4 of 80 PRs,
+about 4 × 586.6 / 80 ≈ 29.3 min/PR (586.6 min is the summed median cost of
+every class), and all of it comes through REQ-035 and REQ-036. None of it
+comes from a scoped edit to a workflow that hosts a classifier: no PR in the
+replay window is one. The per-job probe shows that such edits can scope today
+(74/82), but no replayed PR exercises that. A step-name edit in each of the five Renode workflows selects no class, on
+this branch and on f0ac6e3e with scoping turned on.
 
 History (the same method; "simulated" meant the five
 `uses: ./gale/.github/actions/setup-renode` lines rewritten to
