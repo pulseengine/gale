@@ -856,6 +856,22 @@ fn summary(o: &Observed) -> Vec<String> {
     v
 }
 
+/// Every ledger row against the rows the run observed (IDs left out), as a
+/// diff: `- ` only in the ledger, `+ ` only observed. Printed on every failure
+/// in full, so a run on another platform (CI is Linux, the ledger was seeded
+/// on darwin) shows the whole difference in one log.
+pub fn row_diff(ledger: &Ledger, o: &Observed) -> Vec<String> {
+    let want: BTreeSet<String> = ledger.rows.iter().map(|(f, _)| f.render()).collect();
+    let seen: BTreeSet<String> = facts_of(o).iter().map(Fact::render).collect();
+    let mut v = vec![format!("--- {LEDGER} (rows, IDs omitted)"), "+++ observed by this run".to_string()];
+    v.extend(want.difference(&seen).map(|r| format!("- {r}")));
+    v.extend(seen.difference(&want).map(|r| format!("+ {r}")));
+    if o.lean_rejected {
+        v.push("(the Lean replay was rejected: no Lean rows were observed, so every Lean row shows as `-`)".into());
+    }
+    v
+}
+
 pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
     let tracked = match tracked(repo) {
         Ok(t) => t,
@@ -885,6 +901,7 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
         Verdict::Pass(lines)
     } else {
         lines.extend(fails);
+        lines.extend(row_diff(&ledger, &o));
         lines.push("regenerate rows with `cargo xtask axioms-audit --write --id <ARTIFACT-ID>`".into());
         Verdict::Fail(lines)
     }
@@ -1122,6 +1139,13 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
         })
         .iter()
         .all(|f| !f.starts_with("lean ")));
+    ck("the failure diff names exactly the planted row (+ classic on proofs.e) and nothing else",
+        {
+            let mut p = o.clone();
+            p.rocq.get_mut("proofs.e").map(|r| r.axioms.insert("Stdlib.Logic.Classical_Prop.classic".into()));
+            let d = row_diff(&ledger, &p);
+            d.len() == 3 && d[2] == "+ rocq-lib proofs.e axiom Stdlib.Logic.Classical_Prop.classic"
+        });
     ck("PLANTED a library the audit lost fails (the ledger has rows for it)", !planted(&|p| { p.rocq.remove("proofs.b"); }).is_empty());
     ck("PLANTED a new audited library with no ledger row fails",
         !planted(&|p| {

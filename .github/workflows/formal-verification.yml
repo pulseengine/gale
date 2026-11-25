@@ -260,3 +260,42 @@ jobs:
         run: |
           bazel test //proofs/lean:all --test_output=errors
         timeout-minutes: 45
+
+  # The axiom audit (REQ-HONESTY-AXIOMS-001, VER-HONESTY-AXIOMS-GATE-001,
+  # docs/design/axioms-trusted-audit.md). Reads the COMPILED objects, never
+  # the source: rocqchk -o per Rocq library (13), and the trusted program
+  # tools/xtask/axioms/AxiomAudit.lean (imports only Lean; kernel replay +
+  # collectAxioms) per Lean module (8), against tools/xtask/axioms-audit.ledger.
+  # Its own job (owner, 2026-11-25), NOT a required context: making it one is
+  # the owner's call (.github/required-contexts.txt is unchanged). Proofs never
+  # skip: listed in sieve.toml never_skip_jobs, no `if:`, no `needs:`.
+  # The ledger was seeded on darwin arm64; this Linux job is its second
+  # platform. On a difference the gate prints every differing row (`- ` ledger
+  # only, `+ ` observed only) in the log.
+  # Same setup as the Rocq and Lean jobs above (nix for the Rocq toolchain,
+  # rules_lean's Lean + Mathlib). It rebuilds the libraries itself (cold: the
+  # RocqOfRust build plus the Mathlib download), then runs the checkers.
+  # Expected wall time about 10-15 min (the Rocq job takes ~2 min and the Lean
+  # job ~4 min on this runner; rocqchk over 13 libraries took 2-3 min and the
+  # Lean program 1 min on a laptop): an estimate until the first run measures it.
+  axioms-audit:
+    name: "axiom audit reads the compiled objects (Rocq + Lean)"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
+
+      - name: Negative control -- planted axioms, a vacuous or truncated run and a reshaped checker output must fail
+        run: cargo xtask check axioms-audit --self-test
+        timeout-minutes: 10
+
+      - name: Every compiled library's axioms equal the ledger
+        run: cargo xtask check axioms-audit
+        timeout-minutes: 35
