@@ -82,6 +82,7 @@ jobs:
           cd drivers
           python3 check-wcet-evt.py ../os/gust/silicon/RESULTS-wcet-evt-f100.txt
 
+  # Required context (.github/required-contexts.txt).
   proof-completeness:
     name: "a Rocq proof that is merely STATED cannot pass as proven"
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","rust-cpu"]') || 'ubuntu-24.04' }}
@@ -346,6 +347,7 @@ jobs:
       - name: The archive builds twice identically, and alone
         run: cargo xtask check zephyr-module-archive
 
+  # Required context (.github/required-contexts.txt).
   vacuous-lemmas:
     name: "no proof fn proves nothing, and no new contract is assumed"
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-24.04' }}
@@ -369,6 +371,7 @@ jobs:
       - name: Vacuous and assumed proofs only ever decrease
         run: cargo xtask check vacuous-lemmas
 
+  # Required context (.github/required-contexts.txt).
   trusted-base:
     name: "the honesty doc states the measured trusted base (gale#467)"
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-24.04' }}
