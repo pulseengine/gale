@@ -7763,6 +7763,7 @@ mod kani_mem_domain_proofs {
 
     /// MD1: check_partition accepts non-overlapping partition.
     #[kani::proof]
+    #[kani::unwind(17)] // loops scan MAX_PARTITIONS = 16 slots
     fn mem_domain_check_accepts_valid() {
         let starts = [0x1000u32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         let sizes = [0x100u32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -7775,6 +7776,7 @@ mod kani_mem_domain_proofs {
 
     /// Add decision finds free slot and increments count.
     #[kani::proof]
+    #[kani::unwind(17)] // loops scan MAX_PARTITIONS = 16 slots
     fn mem_domain_add_finds_slot() {
         let starts = [0x1000u32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         let sizes = [0x100u32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -7803,6 +7805,7 @@ mod kani_mem_domain_proofs {
 
     /// Remove decision returns ENOENT when no match.
     #[kani::proof]
+    #[kani::unwind(17)] // loops scan MAX_PARTITIONS = 16 slots
     fn mem_domain_remove_no_match() {
         let starts = [0x1000u32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         let sizes = [0x100u32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
