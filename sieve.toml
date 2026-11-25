@@ -110,7 +110,7 @@ never_skip_jobs = [
   "proofs needed?",
   "Verus SMT (39 modules)",
   "Kani BMC (185 harnesses)",
-  "Rocq Proofs (14 files)",
+  "Rocq Proofs",
   "Lean Proofs",
   # Not a required context (owner's call), but a proof job: it never skips either.
   "Kani BMC (driver crates)",

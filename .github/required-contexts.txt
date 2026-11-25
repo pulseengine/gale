@@ -13,7 +13,7 @@ Binary size comparison
 proofs needed?
 Verus SMT (39 modules)
 Kani BMC (185 harnesses)
-Rocq Proofs (14 files)
+Rocq Proofs
 Lean Proofs
 V-closure needed?
 no requirement lags its closed V

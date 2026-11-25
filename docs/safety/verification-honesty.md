@@ -223,7 +223,7 @@ The **"The Gap" / "does NOT run in CI (local only)"** statements earlier in this
 (dated 2026-03-22) are **superseded**: `.github/workflows/formal-verification.yml` now
 runs all three tracks on **push + pull_request + weekly cron** — Verus (`bazel test
 //:verus_test`), Kani (185 harnesses: `cargo kani --tests` + `--all-features`), and Rocq
-(14 files via `coq-of-rust` + Bazel). So formal verification **is** CI-enforced today.
+(13 files via `coq-of-rust` + Bazel). So formal verification **is** CI-enforced today.
 Two honest caveats remain, and they are sharper than "not in CI":
 
 - **A green Rocq job does not mean the theorems are proven.** Coq *accepts* `Admitted.`

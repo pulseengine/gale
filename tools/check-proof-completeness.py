@@ -3,7 +3,7 @@
 
 `coqc` SUCCEEDS on a file whose every theorem ends in `Admitted.` -- an admit is
 not an error, it is a deferral. So `bazel test //proofs:..._test` is green whether
-a theorem is proven or merely stated, and the "Rocq Proofs (14 files)" job cannot
+a theorem is proven or merely stated, and the "Rocq Proofs" job cannot
 tell the two apart. At the original audit:
 
     10 files fully discharged

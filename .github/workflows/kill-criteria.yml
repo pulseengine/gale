@@ -96,7 +96,7 @@ jobs:
           toolchain: 1.100.0
 
       # `coqc` succeeds on a file whose every theorem ends in `Admitted.` — an
-      # admit is a deferral, not an error. So the "Rocq Proofs (14 files)" job is
+      # admit is a deferral, not an error. So the "Rocq Proofs" job is
       # green whether a theorem is proven or merely stated. Prove this check can
       # tell the difference before trusting its green.
       - name: Negative control — an admitted proof must be distinguishable
