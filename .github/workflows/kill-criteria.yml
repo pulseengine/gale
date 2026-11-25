@@ -417,7 +417,7 @@ jobs:
       # through `admit` rows (item, exact amount, the baseline it is written
       # against, issue, reason) -- recorded, not proof of review or approval. The self-test carries the
       # plan's planted inputs and the reformat that must stay stable.
-      # NOT a required context yet (the owner's call, after the baseline).
+      # A required context since gale#546 (owner, 2026-11-24): .github/required-contexts.txt.
       - name: Negative control -- an added assume, a lowered bound, an added Admitted and an unrecorded shrink must fail
         run: cargo xtask check trust-ledger --self-test
 
