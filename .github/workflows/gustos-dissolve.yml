@@ -66,7 +66,8 @@ jobs:
 
       - name: Install wasm-tools + wac
         run: |
-          cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
+          cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked --root "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"
+          echo "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"/bin >> "$GITHUB_PATH"
           cargo install wac-cli --version 0.10.1 --locked
 
       - name: Install pinned meld + loom + synth

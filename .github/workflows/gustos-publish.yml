@@ -68,7 +68,8 @@ jobs:
           targets: wasm32-unknown-unknown
       - name: Install wasm-tools + wac
         run: |
-          cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
+          cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked --root "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"
+          echo "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"/bin >> "$GITHUB_PATH"
           cargo install wac-cli --version 0.10.1 --locked
       - name: Build + verify the gust:os provider components
         run: bash drivers/build-gustos-components.sh
@@ -133,7 +134,8 @@ jobs:
           targets: wasm32-unknown-unknown
       - name: Install wasm-tools + wkg
         run: |
-          cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
+          cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked --root "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"
+          echo "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"/bin >> "$GITHUB_PATH"
           cargo install wac-cli --version 0.10.1 --locked
           cargo install wkg --locked
       - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3

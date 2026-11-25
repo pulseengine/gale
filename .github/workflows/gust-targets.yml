@@ -93,7 +93,9 @@ jobs:
         run: cargo xtask check target-reference
 
       - name: Install wasm-tools
-        run: cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
+        run: |
+          cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked --root "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"
+          echo "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"/bin >> "$GITHUB_PATH"
 
       # SHADOW PERIOD (gale#368). The gates are moving to one compiled language.
       # A port is not retired on review: the failure mode of this migration is

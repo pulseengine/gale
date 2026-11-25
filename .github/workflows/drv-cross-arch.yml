@@ -163,7 +163,9 @@ jobs:
         # the wasm's import section, so it needs wasm-tools -- the old shell gate
         # only ran nm and did not. Pinned to the same version drv-components.yml
         # uses, so the two gates read imports through identical tooling.
-        run: cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
+        run: |
+          cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked --root "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"
+          echo "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"/bin >> "$GITHUB_PATH"
 
       - name: Install binutils (nm) + clang (assembles the self-test's planted RV32 objects)
         run: |

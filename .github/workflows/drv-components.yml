@@ -52,7 +52,9 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-tools
-        run: cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked
+        run: |
+          cargo install wasm-tools --version "$WASM_TOOLS_VERSION" --locked --root "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"
+          echo "${CARGO_HOME:-$HOME/.cargo}/gale-tools/wasm-tools-$WASM_TOOLS_VERSION"/bin >> "$GITHUB_PATH"
 
       # nm, for reading the committed Cortex-M objects. The object-axis check
       # compares each committed .o's undefined symbols against the field names
