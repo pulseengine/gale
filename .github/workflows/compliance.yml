@@ -150,7 +150,7 @@ jobs:
           # WAIT FOR THE THING WE DEPEND ON, NOT FOR A CLOCK.
           #
           # This used to wait ~5 minutes for the release object. It failed on
-          # v0.10.0 because release.yml took 74 minutes: `create-release` needs
+          # v0.10.0 because release.yml took 74 minutes: `create-release` waits on
           # `build-wasm-dist`, which is a `container:` job on the contended
           # hosted pool (gale#419), so the release cannot exist until that has
           # queued, built and signed. Five minutes was never a property of

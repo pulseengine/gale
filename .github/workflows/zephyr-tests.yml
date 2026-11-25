@@ -16,7 +16,9 @@ on:
   # run on merge_group or a queued PR waits on checks nothing reports
   # (tools/check-required-contexts.py fails a PR that drops this).
   # Required: Binary size comparison (skips on docs-only). The primitive
-  # matrices are not required: skipped in the queue and on docs-only.
+  # matrices are not required: skipped on docs-only, through the exact
+  # classifier `if:` only. gale has no merge queue today; if one is turned on,
+  # they run there too.
   merge_group:
 
 permissions:
@@ -98,7 +100,7 @@ jobs:
 
   zephyr-test:
     needs: changes
-    if: ${{ !cancelled() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}
     name: "${{ matrix.primitive }} (qemu_cortex_m3)"
     runs-on: ubuntu-22.04
     timeout-minutes: 90
@@ -227,7 +229,7 @@ jobs:
           # command is checked), so a failed apt-get update once skipped the curl
           # install silently and the job died 5 min later as "rustup download failed"
           # with `curl: not found` (#450 CI, 2026-10-21). Retry the transient mirror
-          # failure, then fail LOUDLY; and prove curl exists before anything needs it.
+          # failure, then fail LOUDLY; and prove curl exists before anything uses it.
           _u=0; for _a in 1 2 3; do if apt-get update -qq; then _u=1; break; fi; sleep 10; done
           [ "$_u" = 1 ] || { echo "::error::apt-get update failed after 3 attempts" >&2; exit 1; }
           apt-get install -y -qq curl > /dev/null
@@ -243,7 +245,7 @@ jobs:
           # jobs run in containers, and GitHub picks `sh -e {0}` when the image
           # has no bash — dash rejects pipefail outright:
           #     set: Illegal option -o pipefail
-          # Downloading to a file and running it needs no pipefail, works under
+          # Downloading to a file and running it requires no pipefail, works under
           # both sh and bash, and removes the truncation ambiguity entirely:
           # curl -f fails on HTTP errors, and the installer runs as a plain
           # command whose status `set -e` already honours.
@@ -320,7 +322,7 @@ jobs:
   # =========================================================================
   zephyr-mpu-test:
     needs: changes
-    if: ${{ !cancelled() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}
     name: "${{ matrix.primitive }} (mps2/an385)"
     runs-on: ubuntu-22.04
     timeout-minutes: 90
@@ -366,7 +368,7 @@ jobs:
           # command is checked), so a failed apt-get update once skipped the curl
           # install silently and the job died 5 min later as "rustup download failed"
           # with `curl: not found` (#450 CI, 2026-10-21). Retry the transient mirror
-          # failure, then fail LOUDLY; and prove curl exists before anything needs it.
+          # failure, then fail LOUDLY; and prove curl exists before anything uses it.
           _u=0; for _a in 1 2 3; do if apt-get update -qq; then _u=1; break; fi; sleep 10; done
           [ "$_u" = 1 ] || { echo "::error::apt-get update failed after 3 attempts" >&2; exit 1; }
           apt-get install -y -qq curl > /dev/null
@@ -382,7 +384,7 @@ jobs:
           # jobs run in containers, and GitHub picks `sh -e {0}` when the image
           # has no bash — dash rejects pipefail outright:
           #     set: Illegal option -o pipefail
-          # Downloading to a file and running it needs no pipefail, works under
+          # Downloading to a file and running it requires no pipefail, works under
           # both sh and bash, and removes the truncation ambiguity entirely:
           # curl -f fails on HTTP errors, and the installer runs as a plain
           # command whose status `set -e` already honours.
@@ -471,7 +473,7 @@ jobs:
   # =========================================================================
   zephyr-smp-test:
     needs: changes
-    if: ${{ !cancelled() && github.event_name != 'merge_group' && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}
     # Known issue: x86_64 SMP tests hang at boot (Gale shim interaction
     # with x86_64 SMP init). ARM Cortex-M tests pass. Tracked for investigation.
     continue-on-error: true
@@ -520,7 +522,7 @@ jobs:
           # command is checked), so a failed apt-get update once skipped the curl
           # install silently and the job died 5 min later as "rustup download failed"
           # with `curl: not found` (#450 CI, 2026-10-21). Retry the transient mirror
-          # failure, then fail LOUDLY; and prove curl exists before anything needs it.
+          # failure, then fail LOUDLY; and prove curl exists before anything uses it.
           _u=0; for _a in 1 2 3; do if apt-get update -qq; then _u=1; break; fi; sleep 10; done
           [ "$_u" = 1 ] || { echo "::error::apt-get update failed after 3 attempts" >&2; exit 1; }
           apt-get install -y -qq curl > /dev/null
@@ -536,7 +538,7 @@ jobs:
           # jobs run in containers, and GitHub picks `sh -e {0}` when the image
           # has no bash — dash rejects pipefail outright:
           #     set: Illegal option -o pipefail
-          # Downloading to a file and running it needs no pipefail, works under
+          # Downloading to a file and running it requires no pipefail, works under
           # both sh and bash, and removes the truncation ambiguity entirely:
           # curl -f fails on HTTP errors, and the installer runs as a plain
           # command whose status `set -e` already honours.
@@ -640,7 +642,7 @@ jobs:
           # command is checked), so a failed apt-get update once skipped the curl
           # install silently and the job died 5 min later as "rustup download failed"
           # with `curl: not found` (#450 CI, 2026-10-21). Retry the transient mirror
-          # failure, then fail LOUDLY; and prove curl exists before anything needs it.
+          # failure, then fail LOUDLY; and prove curl exists before anything uses it.
           _u=0; for _a in 1 2 3; do if apt-get update -qq; then _u=1; break; fi; sleep 10; done
           [ "$_u" = 1 ] || { echo "::error::apt-get update failed after 3 attempts" >&2; exit 1; }
           apt-get install -y -qq curl > /dev/null
@@ -656,7 +658,7 @@ jobs:
           # jobs run in containers, and GitHub picks `sh -e {0}` when the image
           # has no bash — dash rejects pipefail outright:
           #     set: Illegal option -o pipefail
-          # Downloading to a file and running it needs no pipefail, works under
+          # Downloading to a file and running it requires no pipefail, works under
           # both sh and bash, and removes the truncation ambiguity entirely:
           # curl -f fails on HTTP errors, and the installer runs as a plain
           # command whose status `set -e` already honours.

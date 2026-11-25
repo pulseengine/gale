@@ -41,7 +41,7 @@ jobs:
           # jobs run in containers, and GitHub picks `sh -e {0}` when the image
           # has no bash — dash rejects pipefail outright:
           #     set: Illegal option -o pipefail
-          # Downloading to a file and running it needs no pipefail, works under
+          # Downloading to a file and running it requires no pipefail, works under
           # both sh and bash, and removes the truncation ambiguity entirely:
           # curl -f fails on HTTP errors, and the installer runs as a plain
           # command whose status `set -e` already honours.

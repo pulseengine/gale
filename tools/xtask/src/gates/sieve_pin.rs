@@ -536,6 +536,43 @@ fn required_job_problems(kc: Option<&str>) -> Vec<String> {
     }
     out
 }
+// ------------------------------------------ leaf-workflow scoping stays on
+
+const SIEVE_TOML: &str = "sieve.toml";
+const LEAF_LINE: &str = "scope_leaf_edits = true";
+
+/// Why sieve.toml no longer turns leaf-workflow scoping on (sieve REQ-030).
+/// Dropping the line is safe (every .github/ edit runs everything again) but
+/// silently gives the saving back, so it must be a visible decision: exactly one
+/// code line `scope_leaf_edits = true` (a trailing comment allowed), inside
+/// `[workflows]`, and no other `scope_leaf_edits` key anywhere.
+fn leaf_scope_problems(toml: Option<&str>) -> Vec<String> {
+    let Some(toml) = toml else { return vec![format!("{SIEVE_TOML} is missing")] };
+    let mut section = String::new();
+    let (mut good, mut other) = (0, Vec::new());
+    for line in toml.lines() {
+        let code = line.split('#').next().unwrap_or("").trim();
+        if code.starts_with('[') {
+            section = code.to_string();
+            continue;
+        }
+        let key = code.split('=').next().unwrap_or("").trim();
+        if key == "scope_leaf_edits" {
+            let norm: String = code.split_whitespace().collect::<Vec<_>>().join(" ");
+            if section == "[workflows]" && norm == LEAF_LINE {
+                good += 1;
+            } else {
+                other.push(format!("`{code}` under {}", if section.is_empty() { "the top level" } else { &section }));
+            }
+        }
+    }
+    let mut out: Vec<String> = other.into_iter().map(|o| format!("{SIEVE_TOML}: {o}: only `{LEAF_LINE}` under [workflows] is allowed")).collect();
+    if good != 1 {
+        out.push(format!("{SIEVE_TOML}: [workflows] has {good} `{LEAF_LINE}` line(s), want exactly 1 (turning leaf scoping off is an owner decision: change this gate in the same commit)"));
+    }
+    out
+}
+
 pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
     let Ok(action) = std::fs::read_to_string(repo.join(ACTION)) else {
         return Verdict::Refused(format!("cannot read {ACTION} -- no pinned install exists"));
@@ -554,10 +591,12 @@ pub fn run(repo: &Path, _t: Option<&str>) -> Verdict {
         vp.push("no classifier job runs `sieve classify --format github-output`: nothing records a verdict".into());
     }
     vp.extend(required_job_problems(kc.as_deref()));
+    vp.extend(leaf_scope_problems(std::fs::read_to_string(repo.join(SIEVE_TOML)).ok().as_deref()));
     match check(&action, &fs) {
         Verdict::Pass(mut l) if vp.is_empty() => {
             l.push(format!("{ACTION} equals its canonical text; {recorders} classifier job(s) record and upload their verdict"));
             l.push(format!("{KILL_CRITERIA}: \"{REQUIRED_JOB}\" runs sieve check-workflows, check-graph and sieve-pin (self-test + real), unguarded"));
+            l.push(format!("{SIEVE_TOML}: [workflows] keeps `{LEAF_LINE}`"));
             Verdict::Pass(l)
         }
         Verdict::Pass(mut l) | Verdict::Fail(mut l) => {
@@ -719,5 +758,18 @@ pub fn self_test(_repo: &Path, _t: Option<&str>) -> Verdict {
     ck("K4: the check-workflows step removed fails", !kc_ok(&kc.replacen("      - name: a\n        run: sieve check-workflows --config sieve.toml\n", "", 1)));
     ck("`continue-on-error:` on a sieve step fails", !kc_ok(&kc.replacen("      - name: c\n", "      - name: c\n        continue-on-error: true\n", 1)));
     ck("the steps in another job do not count", !kc_ok(&kc.replacen("every required context can actually report", "something else", 1)));
+
+    // Leaf-workflow scoping stays on (sieve REQ-030).
+    let toml = "schema = \"sieve.config.v1\"\n\n[workflows]\nrequired_contexts = \"x\"\n# comment\nscope_leaf_edits = true\n\n[workflows.coe_exempt]\n\"a\" = \"b\"\n";
+    let leaf_ok = |t: &str| leaf_scope_problems(Some(t)).is_empty();
+    ck("[workflows] with scope_leaf_edits = true passes", leaf_ok(toml));
+    ck("a trailing comment on the line passes", leaf_ok(&toml.replacen("scope_leaf_edits = true\n", "scope_leaf_edits = true  # REQ-030\n", 1)));
+    ck("PLANT L1: the line dropped fails", !leaf_ok(&toml.replacen("scope_leaf_edits = true\n", "", 1)));
+    ck("PLANT L2: scope_leaf_edits = false fails", !leaf_ok(&toml.replacen("= true\n", "= false\n", 1)));
+    ck("PLANT L3: the line commented out fails", !leaf_ok(&toml.replacen("scope_leaf_edits = true\n", "# scope_leaf_edits = true\n", 1)));
+    ck("PLANT L4: the line moved under [workflows.coe_exempt] fails",
+       !leaf_ok(&format!("{}scope_leaf_edits = true\n", toml.replacen("scope_leaf_edits = true\n", "", 1))));
+    ck("PLANT L5: a second key overriding it later fails", !leaf_ok(&toml.replacen("scope_leaf_edits = true\n", "scope_leaf_edits = true\nscope_leaf_edits = false\n", 1)));
+    ck("a missing sieve.toml fails", !leaf_scope_problems(None).is_empty());
     if broken { Verdict::Fail(lines) } else { Verdict::Pass(lines) }
 }
