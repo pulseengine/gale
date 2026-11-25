@@ -126,3 +126,21 @@ artifacts:
         target: REQ-HONESTY-TCB-001
       - type: related-to
         target: VER-HONESTY-LEDGER-001
+
+  - id: FIND-HONESTY-AXIOMS-001
+    type: finding
+    title: The "axiom-free per Print Assumptions" claim for executor_proofs.v rested on output no gate reads
+    status: active
+    description: "Found 2026-11-24 while planning the axiom audit. README.md and docs/safety/verification-honesty.md said proofs/executor_proofs.v is axiom-free 'per its Print Assumptions'. The file does end with three Print Assumptions lines, and a hand-read compile log printed 'Closed under the global context'. But the CI Rocq job only checks that the .vo exists (rocq_proof_test runs test -f), so nothing fails if that output changes. An in-file Print Assumptions can also be forged by the file it audits (L11 review rounds). Both texts now say the claim is not gated. Owner decision 2026-11-25: soften now; the axiom audit (REQ-HONESTY-AXIOMS-001, its own CI job) restores a gated claim."
+    tags: [honesty, rocq, axioms]
+    fields:
+      action-required: true
+      relevance: high
+      source: axiom-audit lane plan 2026-11-24; owner option dialogue 2026-11-25
+    links:
+      - type: related-to
+        target: REQ-HONESTY-AXIOMS-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-25T07:30:00Z

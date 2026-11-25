@@ -172,9 +172,12 @@ on all three verification tracks:
 | Rocq | `proofs/executor_proofs.v` (`no_lost_wakeups`, `delivered_wake_survives`) | the property on a hand-written model of the same state machine, over arbitrary finite operation traces | Rocq kernel (type theory, no SMT) |
 | Kani | `src/executor.rs` `#[cfg(kani)]` harnesses | the executable scheduler loop (drain + bounded-poll) on the shipped code path | BMC (CBMC/SAT) |
 
-**What the Rocq proof is:** a fully-`Qed` theorem (0 `Admitted`, no axioms —
-the file ends with `Print Assumptions`, and the compile log shows "Closed under
-the global context") about an abstract state machine that mirrors
+**What the Rocq proof is:** a fully-`Qed` theorem (0 `Admitted`; the file ends
+with `Print Assumptions`, and its compile log printed "Closed under the global
+context" when read by hand. No CI gate reads that output yet, and an in-file
+`Print Assumptions` can be forged by the file it audits, so "no axioms" is not
+a gated claim until the axiom audit (docs/design/axioms-trusted-audit.md)
+lands) about an abstract state machine that mirrors
 `src/executor.rs` field-by-field and operation-by-operation, with the
 correspondence documented inline. It quantifies over *all finite interleavings*
 of the modeled operations — something neither the per-function Verus contracts

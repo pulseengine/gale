@@ -148,8 +148,9 @@ across the wasm→native boundary is **not currently supported** and must not be
 `proofs/*.v` is **not uniformly proven**. Ground truth (counts of `Qed.` vs `Admitted.`):
 
 - **10 files fully proven (0 `Admitted`):** sem (82 `Qed`), executor (15 — added
-  2026-07-16: gust executor no-lost-wakeups over an N-bitmask model, axiom-free per
-  its `Print Assumptions` closure audit), pipe (10), stack (10), mutex (9), msgq (9),
+  2026-07-16: gust executor no-lost-wakeups over an N-bitmask model, its in-file `Print Assumptions`
+  printed "Closed" when read by hand; no gate reads it yet, so "axiom-free" is
+  not gated until the axiom audit lands), pipe (10), stack (10), mutex (9), msgq (9),
   condvar (8), event (7), mem_slab (7), timer (7). These are the
   "10 abstract invariant proofs" the README counts, and the count is accurate.
 - **3 files are 100% `Admitted` stubs (0 `Qed`):** `poll_proofs.v` (22), `sched_proofs.v`
