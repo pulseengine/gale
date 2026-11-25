@@ -172,15 +172,15 @@ artifacts:
 
   - id: REQ-HONESTY-AXIOMS-001
     type: sw-req
-    title: Every closed Rocq and Lean theorem's assumptions are compared with an allowlist in a required check
+    title: The axioms of every compiled Rocq library and Lean constant are read from the compiled objects and compared with a committed ledger in a requireable check
     status: proposed
     release: v0.11.0
-    description: "Serves O3 (eligibility: the kernel axiom audit is one of the three parts the O3 indicator names; O3 stays unmeasured). Bet 3 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). Today 1 of 13 Rocq files prints its assumptions, no checker of that output was found (the Bazel rule was not read), and Lean has none. SHALL: a required check prints and compares the assumptions of every closed Rocq and Lean theorem against a committed allowlist and fails on any assumption not on it. Ready work for someone other than the maintainer: needs no bench and no pin move."
+    description: "Serves O3 (eligibility: the kernel axiom audit is one of the three parts the O3 indicator names; O3 stays unmeasured). Bet 3 of the v0.11.0 plan (docs/releases/v0.11.0-plan.md). Amended 2026-11-25 (owner decisions: its own CI job, requireable later, targets v0.11.0; design docs/design/axioms-trusted-audit.md). The audit runs OUTSIDE the audited files, because L11 rounds 1-10 forged every in-file `Print Assumptions` and `#print axioms`. SHALL: for every tracked Rocq proof file, `rocqchk -o` of the pinned toolchain reports the axioms, theory flags (impredicative Set, rewrite rules) and kernel-check bypasses (type-in-type, unsafe fixpoints, assumed positivity) of the compiled library and everything it loads -- per LIBRARY, an over-approximation of any one theorem; for every tracked Lean module, a trusted program that imports only Lean replays the module's constants through the kernel and collects the axioms of each constant. Both are compared with a committed ledger (tools/xtask/axioms-audit.ledger), and any difference -- a new axiom or one that went away -- fails. The check is its own CI job, requireable but not required at landing; making it required is the owner's call. NOT covered: a per-theorem Rocq breakdown (a generated Print Assumptions driver, planned), discharged Section hypotheses (premises, not axioms; trust-ledger counts their spelling), Lean `example` declarations, vstd's axioms."
     tags: [release, v0.11.0, honesty, axioms, rocq, lean, gate]
     fields:
       priority: must
       req-type: constraint
-      verification-criteria: The axiom audit prints every closed theorem's assumptions for Rocq and Lean, compares them with a committed allowlist, and is red on any assumption not on the list; a planted added axiom turns it red; it is a required context.
+      verification-criteria: "`cargo xtask check axioms-audit` prints the axioms of every tracked Rocq library (rocqchk -o) and Lean constant (kernel replay + collectAxioms), compares them with tools/xtask/axioms-audit.ledger, and is red on any difference; a planted classical axiom (Rocq) and a planted native_decide (Lean) turn it red while their constructive controls stay green; an empty or truncated run is refused (exit 3), never green; it runs as its own CI job that can be made a required context."
     links:
       - type: derives-from
         target: SYSREQ-COV-001
