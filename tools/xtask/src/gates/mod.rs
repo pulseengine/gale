@@ -4,6 +4,7 @@
 
 pub mod aadl_parse;
 pub mod armv6m_isa;
+pub mod axioms_audit;
 pub mod binary_ledger;
 pub mod criticality_axis;
 pub mod data_overlap;
@@ -57,6 +58,12 @@ pub const GATES: &[Gate] = &[
         about: "no image built for an ARMv6-M board carries code ARMv6-M cannot execute",
         run: armv6m_isa::run,
         self_test: armv6m_isa::self_test,
+    },
+    Gate {
+        name: axioms_audit::NAME,
+        about: "Rocq and Lean axioms, read from the compiled objects, equal the committed ledger (REQ-HONESTY-AXIOMS-001)",
+        run: axioms_audit::run,
+        self_test: axioms_audit::self_test,
     },
     Gate {
         name: binary_ledger::NAME,

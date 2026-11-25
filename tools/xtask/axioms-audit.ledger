@@ -1,0 +1,354 @@
+# The axiom-audit ledger (REQ-HONESTY-AXIOMS-001; `cargo xtask check axioms-audit`).
+#
+# What the CHECKERS say, read from the compiled objects -- not from the source:
+#
+#   rocq-set <set> <axiom> <ID>          a named axiom set, listed once
+#   rocq-lib <module> theory <item> <ID> set-predicative | set-impredicative,
+#                                        rewrite-rules-disallowed | -allowed
+#   rocq-lib <module> uses <set> <ID>    the library's axioms include the set
+#   rocq-lib <module> axiom <name> <ID>  one more axiom (an Admitted lemma is one)
+#   rocq-lib <module> bypass <kind> <name> <ID>
+#                                        type-in-type | unsafe-fixpoint | positivity
+#   lean-mod <module> constants N theorems M unreplayed K <ID>
+#   lean-axiom <module> <axiom> <N> <ID> N of the module's constants depend on it
+#
+# Rocq rows are per LIBRARY (`rocqchk -o`: everything the library loads), an
+# over-approximation of what any one theorem uses. A library's axioms must
+# equal the union of the sets it uses and its own axiom rows, exactly.
+#
+# mode = equality: any difference fails -- a new axiom AND one that went away.
+# The ratchet (shrink-only after the v0.11.0 tag, as trust-ledger) is not
+# implemented in this gate yet; `mode = shrink-only` and `admit` rows are
+# refused until it is.
+#
+# Regenerate rows with `cargo xtask axioms-audit --write --id <ARTIFACT-ID>`
+# (unchanged rows keep their ID).
+
+mode = equality
+baseline = none
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.add VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.addc VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.addcarryc VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.addmuldiv VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.asr VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.compare VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.compares VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.div VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.diveucl VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.diveucl_21 VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.divs VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.eqb VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.head0 VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.int VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.land VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.leb VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.lesb VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.lor VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.lsl VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.lsr VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.ltb VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.ltsb VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.lxor VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.mod VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.mods VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.mul VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.mulc VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.sub VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.subc VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.subcarryc VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.PrimInt63.tail0 VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.add_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.addc_def_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.addcarryc_def_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.addmuldiv_def_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.compare_def_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.div_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.diveucl_21_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.diveucl_def_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.eqb_correct VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.eqb_refl VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.head0_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.land_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.leb_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.lor_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.lsl_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.lsr_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.ltb_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.lxor_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.mod_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.mul_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.mulc_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.of_to_Z VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.sub_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.subc_def_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.subcarryc_def_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Numbers.Cyclic.Int63.Uint63Axioms.tail0_spec VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Strings.PrimString.cat VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Strings.PrimString.compare VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Strings.PrimString.get VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Strings.PrimString.length VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Strings.PrimString.make VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Strings.PrimString.string VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Corelib.Strings.PrimString.sub VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.IsAssociatedFunction.t VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.IsDiscriminant VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.IsFunction.t VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.IsProvidedMethod VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.IsTraitInstance VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.SubPointer.get_slice_rest VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.SubPointer.get_slice_rev_index VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.Ty.function VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.Ty.path VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.Ty.t VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.Ty.tuple VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.cast VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.pointer_coercion_intrinsic VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.run VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.struct_record_update VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.unevaluated_const VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.M.yield VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.RocqOfRust.InlineAssembly VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.RocqOfRust.UnsupportedLiteral VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.RocqOfRust.pointer_coercion VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.lib.lib.FunctionTraitAutomaticImpl.FunctionImplementsFn VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.lib.lib.FunctionTraitAutomaticImpl.FunctionImplementsFnMut VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.lib.lib.FunctionTraitAutomaticImpl.FunctionImplementsFnOnce VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.lib.lib.Ty.apply VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.lib.lib.Ty.associated_in_trait VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.lib.lib.Ty.associated_unknown VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base RocqOfRust.lib.lib.Ty.dyn VER-HONESTY-AXIOMS-GATE-001
+rocq-set rocqofrust-base Stdlib.Logic.Eqdep.Eq_rect_eq.eq_rect_eq VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.condvar_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.condvar_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.event_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.event_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.executor_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.executor_proofs theory set-predicative VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.mem_slab_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.mem_slab_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.msgq_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.msgq_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.mutex_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.mutex_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.pipe_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.pipe_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.stack_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.stack_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.timer_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.timer_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.condvar_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.event_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.mem_slab_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.msgq_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.mutex_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.pipe_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.stack_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.timer_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.init_produces_not_ready VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po1_init_is_inactive VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po1_only_0_or_1 VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po1_raise_sets_signaled VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po1_reset_clears_signaled VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po2_double_raise_same_signaled VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po2_double_reset VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po2_raise_idempotent VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po2_reset_idempotent VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po3_check_inactive VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po3_check_raised VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po3_is_signaled_after_raise VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po3_not_signaled_after_reset VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po3_raise_preserves_result VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po4_all_not_ready_none_ready VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po4_cancel_sets_cancelled_bit VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po4_one_ready_implies_any_ready VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po4_reset_clears VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.po4_set_ready_monotone VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.raise_then_check VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.reset_then_raise VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.state_constants_distinct VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.empty_runq_inv VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.insert_sorted_preserves VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.prio_cmp_negative_iff_higher VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc1_best_is_minimum VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc1_best_none_empty VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc1_best_some_nonempty VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc2_add_increases_length VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc2_add_preserves_inv VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc3_remove_best_decreases_length VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc3_remove_best_preserves_inv VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc5_next_up_empty_is_idle VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc5_next_up_is_optimal VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc5_next_up_returns_best VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc7_idle_only_when_empty VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc7_nonempty_not_idle VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sched_dead_terminal VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sched_running_to_ready VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.should_preempt_coop_metairq VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.should_preempt_coop_no_metairq VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.should_preempt_noncoop VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.should_preempt_swap_ok VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sorted_head_le_all VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sorted_tail VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_clone_Clone_for_sem_Priority.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_clone_Clone_for_sem_Thread.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_clone_Clone_for_sem_ThreadId.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_clone_Clone_for_sem_ThreadState.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_cmp_Eq_for_sem_GiveDecision.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_cmp_Eq_for_sem_Priority.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_cmp_Eq_for_sem_TakeDecision.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_cmp_Eq_for_sem_TakeResult.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_cmp_Eq_for_sem_ThreadId.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_cmp_Eq_for_sem_ThreadState.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_cmp_PartialEq_sem_GiveDecision_for_sem_GiveDecision.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_cmp_PartialEq_sem_Priority_for_sem_Priority.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_cmp_PartialEq_sem_TakeDecision_for_sem_TakeDecision.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_cmp_PartialEq_sem_TakeResult_for_sem_TakeResult.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_cmp_PartialEq_sem_ThreadId_for_sem_ThreadId.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_cmp_PartialEq_sem_ThreadState_for_sem_ThreadState.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_fmt_Debug_for_sem_GiveDecision.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_fmt_Debug_for_sem_GiveResult.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_fmt_Debug_for_sem_Priority.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_fmt_Debug_for_sem_TakeDecision.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_fmt_Debug_for_sem_TakeResult.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_fmt_Debug_for_sem_Thread.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_fmt_Debug_for_sem_ThreadId.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_fmt_Debug_for_sem_ThreadState.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_fmt_Debug_for_sem_WaitQueue.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_marker_Copy_for_sem_Priority.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_marker_Copy_for_sem_Thread.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_marker_Copy_for_sem_ThreadId.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_marker_Copy_for_sem_ThreadState.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_marker_StructuralPartialEq_for_sem_GiveDecision.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_marker_StructuralPartialEq_for_sem_Priority.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_marker_StructuralPartialEq_for_sem_TakeDecision.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_marker_StructuralPartialEq_for_sem_TakeResult.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_marker_StructuralPartialEq_for_sem_ThreadId.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_marker_StructuralPartialEq_for_sem_ThreadState.Implements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_Priority.AssociatedFunction_get VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_Priority.AssociatedFunction_new VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_Semaphore.AssociatedFunction_count_get VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_Semaphore.AssociatedFunction_give VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_Semaphore.AssociatedFunction_init VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_Semaphore.AssociatedFunction_limit_get VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_Semaphore.AssociatedFunction_num_waiters VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_Semaphore.AssociatedFunction_reset VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_Semaphore.AssociatedFunction_take_blocking VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_Semaphore.AssociatedFunction_try_take VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_Thread.AssociatedFunction_block VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_Thread.AssociatedFunction_dispatch VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_Thread.AssociatedFunction_is_blocked VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_Thread.AssociatedFunction_new VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_Thread.AssociatedFunction_wake VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_WaitQueue.AssociatedFunction_is_empty VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_WaitQueue.AssociatedFunction_len VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_WaitQueue.AssociatedFunction_new VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_WaitQueue.AssociatedFunction_pend VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_WaitQueue.AssociatedFunction_unpend_all VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Impl_sem_WaitQueue.AssociatedFunction_unpend_first VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_EADDRINUSE VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_EAGAIN VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_EBADF VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_EBUSY VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_ECANCELED VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_EINVAL VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_ENOENT VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_ENOMEM VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_ENOMSG VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_ENOSPC VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_EOVERFLOW VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_EPERM VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_EPIPE VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_ETIMEDOUT VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_MAX_PRIORITY VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_MAX_WAITERS VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsConstant_value_OK VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsFunction_give_decide VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.Instance_IsFunction_take_decide VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_GiveDecision_Increment VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_GiveDecision_Saturated VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_GiveDecision_WakeThread VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_GiveResult_Incremented VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_GiveResult_Saturated VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_GiveResult_WokeThread VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_TakeDecision_Acquired VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_TakeDecision_Pend VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_TakeDecision_WouldBlock VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_TakeResult_Acquired VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_TakeResult_Blocked VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_TakeResult_WouldBlock VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_ThreadState_Blocked VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_ThreadState_Ready VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_ThreadState_Running VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sem_proofs axiom plain.sem.IsDiscriminant_ThreadState_Suspended VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.priority_set_preserves_inv VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.priority_set_rejects_invalid VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.stack_record_usage_bounds VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.stack_record_usage_monotone VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.stack_unused_nonneg VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl1_blocked_to_ready VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl1_dead_terminal VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl1_ready_to_running VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl1_running_to_blocked VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl1_running_to_dead VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl2_create_establishes_inv VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl2_initial_usage_zero VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl2_invalid_priority_rejected VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl2_zero_stack_rejected VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl3_abort_blocked_succeeds VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl3_abort_dead_fails VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl3_abort_ready_succeeds VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl3_abort_running_succeeds VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl4_create_at_capacity_rejected VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl4_create_increments VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl4_exit_decrements VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl4_exit_zero_rejected VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl4_peak_non_decreasing VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl5_dead_no_successor VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tl5_tracker_create_exit_balance VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tracker_count_bounded VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tracker_count_nonneg VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tracker_create_exit_roundtrip VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.thread_lifecycle_proofs axiom proofs.thread_lifecycle_proofs.tracker_new_establishes_inv VER-HONESTY-AXIOMS-GATE-001
+lean-mod Atomic constants 52 theorems 45 unreplayed 0 VER-HONESTY-AXIOMS-GATE-001
+lean-mod MpuRegion constants 67 theorems 31 unreplayed 0 VER-HONESTY-AXIOMS-GATE-001
+lean-mod PartitionSupply constants 47 theorems 42 unreplayed 0 VER-HONESTY-AXIOMS-GATE-001
+lean-mod PriorityCeiling constants 173 theorems 41 unreplayed 0 VER-HONESTY-AXIOMS-GATE-001
+lean-mod PriorityQueue constants 98 theorems 61 unreplayed 4 VER-HONESTY-AXIOMS-GATE-001
+lean-mod RingBuf constants 96 theorems 51 unreplayed 0 VER-HONESTY-AXIOMS-GATE-001
+lean-mod Scheduling constants 80 theorems 44 unreplayed 2 VER-HONESTY-AXIOMS-GATE-001
+lean-mod SysTick constants 29 theorems 25 unreplayed 0 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom Atomic Classical.choice 5 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom Atomic Quot.sound 36 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom Atomic propext 46 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom MpuRegion Classical.choice 1 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom MpuRegion Quot.sound 20 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom MpuRegion propext 34 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom PartitionSupply Classical.choice 33 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom PartitionSupply Quot.sound 44 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom PartitionSupply propext 44 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom PriorityCeiling Quot.sound 4 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom PriorityCeiling propext 21 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom PriorityQueue Classical.choice 18 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom PriorityQueue Quot.sound 27 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom PriorityQueue propext 34 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom RingBuf Classical.choice 3 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom RingBuf Quot.sound 30 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom RingBuf propext 39 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom Scheduling Classical.choice 25 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom Scheduling Quot.sound 69 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom Scheduling propext 69 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom SysTick Classical.choice 2 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom SysTick Quot.sound 9 VER-HONESTY-AXIOMS-GATE-001
+lean-axiom SysTick propext 22 VER-HONESTY-AXIOMS-GATE-001
