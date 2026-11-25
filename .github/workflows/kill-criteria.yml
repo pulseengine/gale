@@ -420,12 +420,28 @@ jobs:
       # through `admit` rows (item, exact amount, the baseline it is written
       # against, issue, reason) -- recorded, not proof of review or approval. The self-test carries the
       # plan's planted inputs and the reformat that must stay stable.
-      # A required context since gale#546 (owner, 2026-11-24): .github/required-contexts.txt.
+      # Equality alone passes a change that grows a row and its code together,
+      # so on a pull request the last step also holds every row (and the tree)
+      # to the ledger at the merge-base with the base branch: a row may shrink;
+      # growth, a narrowed bound or a new row fails unless an `admit` row new in
+      # the change covers it exactly. Push and merge_group runs skip that step
+      # (with no ceiling an admit row grants nothing there; it is listed). A required context
+      # since gale#546 (owner, 2026-11-24): .github/required-contexts.txt.
       - name: Negative control -- an added assume, a lowered bound, an added Admitted and an unrecorded shrink must fail
         run: cargo xtask check trust-ledger --self-test
 
       - name: Every assumption spelling equals its ledger row
         run: cargo xtask check trust-ledger
+
+      - name: On a pull request, no row grows over the merge-base ledger without an admit
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          base="$(git merge-base HEAD "origin/$BASE_REF")"
+          echo "merge-base with origin/$BASE_REF: $base"
+          cargo xtask check trust-ledger --base "$base"
 
   kani-coverage:
     name: "every crate with a Kani harness is run by a CI cargo kani that can fail"

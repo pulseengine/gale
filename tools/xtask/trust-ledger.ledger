@@ -35,6 +35,20 @@
 # admits fail. The gate checks the row is recorded against that baseline; it
 # does not fetch the issue and cannot show that anyone reviewed or approved it.
 #
+# Pull requests (either mode; `cargo xtask check trust-ledger --base <rev>`,
+# which the CI job runs with the merge-base on a pull_request): every row AND
+# the tree are also held to the ledger AT the merge-base with the base branch
+# (paths carried through exact renames). A row may shrink; a larger count, a
+# narrowed unwind bound or a row the merge-base lacks fails unless an admit row
+# NEW in the change covers it: its +N, minus the +N of the merge-base ledger's
+# admit for the same item and the same @baseline, equals the growth exactly,
+# and its @ names a commit in the base branch's history (the merge-base or an
+# ancestor: in equality mode the commit the change was written against; in
+# shrink-only mode the release, as above). An admit carried over unchanged
+# grants nothing again. In equality mode with no ceiling an admit row grants
+# nothing on push and is listed; the commit that sets the baseline deletes
+# them with the fold. The `mode` and `baseline` lines are not involved.
+#
 # Rows: `<class> <path> <count> <ARTIFACT-ID>`; kani::unwind rows carry the
 # sorted bounds before the ID, so a lowered bound is a change.
 # Regenerate: `cargo xtask trust-ledger --write --id <ARTIFACT-ID>` (rows whose

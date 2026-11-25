@@ -25,6 +25,8 @@ fn usage() -> String {
            cargo xtask check <gate> [--self-test] [--module PATH] [--format json]\n  \
            cargo xtask check verus-strip-wasm --native BIN --wasm COMPONENT --runtime WASMTIME [--self-test]\n  \
            cargo xtask check gust-target-gen-wasm --native BIN --wasm COMPONENT --runtime WASMTIME [--self-test]\n  \
+           cargo xtask check trust-ledger --base REV\n  \
+                                        also hold every row to the ledger at REV (a PR's merge-base)\n  \
            cargo xtask check            list the gates\n  \
            cargo xtask silicon ...      gust firmware on physical boards (see `xtask silicon`)\n  \
            cargo xtask renode-elfs              build the Renode test images from source (os/gust/renode-test)\n  \
@@ -143,6 +145,7 @@ fn main() {
     let mut target: Option<String> = None;
     // the WASI-component gates' three paths; all or none.
     let mut vs: [Option<PathBuf>; 3] = [None, None, None];
+    let mut pr_base: Option<String> = None;
     let mut rest = args[1..].iter();
     while let Some(a) = rest.next() {
         match a.as_str() {
@@ -157,6 +160,13 @@ fn main() {
                     }
                 }
             }
+            "--base" => match rest.next() {
+                Some(v) => pr_base = Some(v.clone()),
+                None => {
+                    eprintln!("xtask: --base needs a revision (the merge-base with the base branch)");
+                    exit(EXIT_USAGE);
+                }
+            },
             "--module" => match rest.next() {
                 Some(v) => target = Some(v.clone()),
                 None => {
@@ -206,8 +216,14 @@ fn main() {
         }
     }
 
+    if pr_base.is_some() && (gate.name != gates::trust_ledger::NAME || self_test) {
+        eprintln!("xtask: --base applies to `check trust-ledger` only (not to a self-test)");
+        exit(EXIT_USAGE);
+    }
     let v: Verdict = if self_test {
         (gate.self_test)(&root, target.as_deref())
+    } else if let Some(b) = pr_base.as_deref() {
+        gates::trust_ledger::run_pr(&root, b)
     } else {
         (gate.run)(&root, target.as_deref())
     };
