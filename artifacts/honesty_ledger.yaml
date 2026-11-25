@@ -99,7 +99,16 @@ artifacts:
       spelling count; 471 are compiled). Also counted, all 0 today:
       kani::any_where, `axiom fn`, Rocq top-level Variable/Hypothesis and Admit
       Obligations, Lean sorryAx, and the cfg_attr forms of kani::proof,
-      kani::unwind and external_body. Shrink-only mode reads the ledger at the
+      kani::unwind and external_body. Added 2026-11-25 for the axiom audit
+      (lane/axioms-audit), all 0 today and all forgeable source spellings:
+      rocq:Section-Variable (Variable/Hypothesis/Context INSIDE a Section -- a
+      discharged premise no compiled-object audit reports), rocq:unset-guard
+      (`Unset Guard|Positivity|Universe Checking`, `bypass_check`),
+      lean:native_decide (`native_decide`, `decide +native`, `ofReduceBool`
+      written out), lean:implemented_by (`implemented_by`, `extern`) and
+      lean:unsafe; the self-test plants a Section `Hypothesis bad : False`
+      and a `native_decide` and controls a Section with only `Let` and a
+      `decide`. Shrink-only mode reads the ledger at the
       baseline commit (one a v* tag points at, an ancestor of HEAD) as the
       ceiling (the newest v* release by version, not counting a tag on HEAD),
       plus `admit` rows (one per item, exactly the growth, a #NNN or
