@@ -22,19 +22,24 @@ and a predicative Set for `proofs.executor_proofs`.
 
 Built through Bazel as `formal-verification.yml` does (`bazel test` of the 13
 `//proofs:*_test` targets and `//proofs/lean:all`), with nix 2.33.1 on PATH
-and the output base under /Volumes/Home. Every figure below is from that
+and the output base on a non-system volume. Every figure below is from that
 machine; CI will differ in wall time.
 
 **Local build caveat (rules_rocq_rust).** With a warm disk cache, the first
 `bazel test` failed: `Cannot find library RocqOfRust.RecordUpdate in
-loadpath` for `mutex_proofs` and `condvar_proofs`. `rocq_library` declares
-only its DIRECT dependencies' .vo files as action inputs, and runs unsandboxed,
+loadpath` for `mutex_proofs` and `condvar_proofs`. At gale's rules_rocq_rust pin (2cfb99ca), `rocq_library` declared
+only its DIRECT dependencies' .vo files as action inputs and ran unsandboxed,
 so a transitive .vo (RecordUpdate.vo) that came from the disk cache was never
 downloaded (Bazel's default `--remote_download_outputs=toplevel`). CI has no
 disk cache and builds them locally, so it does not hit this. Rebuilt with
 `--remote_download_outputs=all`: 13 of 13 pass. The audit targets below carry
 every transitive object as an output, and the gate builds with
 `--remote_download_outputs=all`, so the audit does not depend on that luck.
+The root cause is rules_rocq_rust#53, fixed upstream by #54 (cfbfcf3,
+2026-10-13: `RocqInfo.compiled` is transitive). Moving gale's pin past it is a
+separate lane, because the same range also moves nixpkgs, rocq-of-rust and
+the toolchain pin. Until then, and after it as defense in depth, the gate keeps
+its own transitive aspect and `--remote_download_outputs=all`.
 
 1. **The checker binary.** The pinned toolchain (`@rocq_toolchains`, Rocq
    9.0.1 from nixpkgs 88d3861a) ships both `bin/rocqchk` (a symlink to
