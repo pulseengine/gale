@@ -1,4 +1,4 @@
-# sieve: which heavy CI jobs does a pull request need? (pulseengine/sieve v0.4.3)
+# sieve: which heavy CI jobs does a pull request need? (pulseengine/sieve v0.4.4)
 #
 # This file replaces gale's hand-written change detectors:
 #   - tools/ci/detect-changes.sh ("docs-only change?") -> class `code`
