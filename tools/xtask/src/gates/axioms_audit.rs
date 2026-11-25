@@ -501,6 +501,10 @@ pub fn parse_ledger(text: &str) -> Result<Ledger, String> {
 pub struct Observed {
     pub rocq: BTreeMap<String, RocqReport>,
     pub lean: BTreeMap<String, LeanReport>,
+    /// The Lean replay was rejected by the kernel: no Lean figures exist, and
+    /// that one failure is the finding (the per-module comparison is skipped
+    /// rather than reporting every module as lost).
+    pub lean_rejected: bool,
 }
 
 fn theory_facts(lib: &str, r: &RocqReport) -> Vec<Fact> {
@@ -638,7 +642,7 @@ pub fn compare(ledger: &Ledger, o: &Observed, ids: &BTreeSet<String>) -> Vec<Str
             fails.push(format!("{lib}: the ledger lists a {k} bypass at {n}, rocqchk no longer reports it"));
         }
     }
-    let mods: BTreeSet<&String> = lean_want.keys().chain(o.lean.keys()).collect();
+    let mods: BTreeSet<&String> = if o.lean_rejected { BTreeSet::new() } else { lean_want.keys().chain(o.lean.keys()).collect() };
     for m in mods {
         let Some(r) = o.lean.get(m) else {
             fails.push(format!("lean {m}: in the ledger, not audited"));
@@ -802,7 +806,13 @@ fn observe(repo: &Path) -> Result<(RocqManifest, LeanManifest, Observed, Vec<Str
     let text = String::from_utf8_lossy(&out.stdout);
     match (out.status.code(), parse_lean_output(&text, &nonce, &mods)) {
         (Some(0), Ok(LeanRun::Ok(r))) => o.lean = r,
-        (Some(1), Ok(LeanRun::Rejected(m))) => fails.push(format!("lean: the kernel rejected a replayed constant: {m}")),
+        (Some(1), Ok(LeanRun::Rejected(m))) => {
+            // Measured: a `native_decide` auxiliary cannot be replayed (the kernel
+            // needs compiled code for `Lean.reduceBool` that replay does not
+            // load), so native_decide is rejected here, never ledgered.
+            o.lean_rejected = true;
+            fails.push(format!("lean: the kernel rejected a replayed constant (a `native_decide` auxiliary is rejected this way): {m}"))
+        }
         (_, Err(e)) => return Err(format!("{e} (exit {:?}; stderr: {})", out.status.code(), tail(&out.stderr, 6))),
         (c, _) => return Err(format!("the Lean audit exited {c:?} with output that does not match that exit; stderr: {}", tail(&out.stderr, 6))),
     }
@@ -1105,6 +1115,13 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
             });
         })
         .is_empty());
+    ck("a kernel-rejected Lean replay (native_decide, measured) is reported once, not as 8 lost modules",
+        planted(&|p| {
+            p.lean.clear();
+            p.lean_rejected = true;
+        })
+        .iter()
+        .all(|f| !f.starts_with("lean ")));
     ck("PLANTED a library the audit lost fails (the ledger has rows for it)", !planted(&|p| { p.rocq.remove("proofs.b"); }).is_empty());
     ck("PLANTED a new audited library with no ledger row fails",
         !planted(&|p| {

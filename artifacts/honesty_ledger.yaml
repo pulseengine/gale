@@ -186,8 +186,10 @@ artifacts:
       fail. `cargo xtask axioms-oracle --tree <checkout>` applies plants and
       controls to a real checkout: a classical import (axioms-audit 1, its
       `tauto` control 0), a Section `Hypothesis bad : False` (trust-ledger 1,
-      axioms-audit 0 by design), a native_decide (axioms-audit 1 and
-      trust-ledger 1, its `decide` control 0), an audit target with no
+      axioms-audit 0 by design), a native_decide (axioms-audit 1 --
+      measured: the kernel replay rejects the `_nativeDecide` auxiliary, so
+      native_decide can never be ledgered -- and trust-ledger 1, its
+      `decide` control 0), an audit target with no
       library (3); RED on origin/main, GREEN on the lane. Not a CI job yet
       (plan step 8); FIND-HONESTY-AXIOMS-001 (another branch) records the
       unsupported "axiom-free per its Print Assumptions" claim this audit

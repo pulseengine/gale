@@ -23,7 +23,10 @@
 //!                 blind spot). Control (a Section with only Let): both 0.
 //!   P4 native     Atomic.lean: a theorem `by native_decide` against a ledger
 //!                 seeded with the same theorem `by decide`: axioms-audit 1
-//!                 (names Lean.ofReduceBool), trust-ledger 1; control 0 / 0.
+//!                 (measured: the kernel replay REJECTS the `_nativeDecide`
+//!                 auxiliary -- replay has no compiled code for
+//!                 Lean.reduceBool -- so it is never ledgered), trust-ledger 1;
+//!                 control 0 / 0.
 //!   P6 vacuous    proofs/BUILD.bazel audits no library: axioms-audit 3 (refused).
 //!   C0 clean      the unmodified tree: axioms-audit 0, its self-test 0.
 //!
@@ -187,7 +190,11 @@ pub fn main(args: &[String]) -> i32 {
         replace(&tree, ATOMIC, P4_CONTROL, P4_PLANT)?;
         let g = gate(&tree, &["check", "axioms-audit"]);
         let t = gate(&tree, &["check", "trust-ledger"]);
-        row("P4 plant (native_decide): axioms-audit 1 naming Lean.ofReduceBool", g.code == 1 && g.out.contains("Lean.ofReduceBool"), ex(&g));
+        row(
+            "P4 plant (native_decide): axioms-audit 1, naming Lean.ofReduceBool or the rejected `_nativeDecide` auxiliary",
+            g.code == 1 && (g.out.contains("Lean.ofReduceBool") || g.out.contains("_nativeDecide")),
+            ex(&g),
+        );
         if lane {
             row("P4 plant: trust-ledger 1 (lean:native_decide)", t.code == 1 && t.out.contains("lean:native_decide"), ex(&t));
         } else {

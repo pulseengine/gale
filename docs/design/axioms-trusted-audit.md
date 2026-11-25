@@ -123,7 +123,10 @@ fired. K3 (an unstable R2 driver): not tested; R2 is not built in this lane.
    imports only `Lean`. For each module it reads the olean
    (`readModuleData`), imports the module's own imports, replays the
    module's constants through the kernel, and runs `collectAxioms` per
-   constant. It refuses a module-system olean (its private part is another
+   constant. A kernel rejection is a Fail (exit 1) and is reported once; a
+   `native_decide` lands here (measured: replay has no compiled code for
+   `Lean.reduceBool`), so it can never be admitted to the ledger. It refuses
+   a module-system olean (its private part is another
    file). It runs under the toolchain's own `lean --run`.
 3. **Output.** Hex-encoded UTF-8 names, tab-separated, one record per
    constant, a per-run nonce on `begin`/`end`, and a count trailer checked
@@ -205,7 +208,11 @@ control and holds the exit codes to a table: P1 a classical import +
 `classic` in executor_proofs.v (axioms-audit 1; control by `tauto` 0), P3 a
 Section `Hypothesis bad : False` in mutex_proofs.v (trust-ledger 1 via
 `rocq:Section-Variable`; axioms-audit 0 -- the stated blind spot; control 0),
-P4 `native_decide` in Atomic.lean (axioms-audit 1 naming `Lean.ofReduceBool`,
+P4 `native_decide` in Atomic.lean (axioms-audit 1: measured, the kernel
+replay REJECTS the `zz_plant_arith._nativeDecide_1_1` auxiliary --
+`(kernel) (interpreter) unknown declaration` -- because replay loads no
+compiled code for `Lean.reduceBool`; so a native_decide is never ledgered,
+not reported as `Lean.ofReduceBool` as the plan expected;
 trust-ledger 1; control by `decide` 0 / 0), P6 an audit target with no
 library (axioms-audit 3). On origin/main it is RED: the gate does not exist
 (exit 2), and the trust ledger there stays green on P1, P3 and P4.
