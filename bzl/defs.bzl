@@ -19,6 +19,10 @@ load("//bzl/private:precommit.bzl",
     _pre_commit_install = "pre_commit_install",
 )
 
+load("//bzl/private:axiom_audit.bzl",
+    _lean_axiom_audit = "lean_axiom_audit",
+    _rocq_axiom_audit = "rocq_axiom_audit",
+)
 load("//bzl/private:verus_to_rocq.bzl",
     _verus_strip = "verus_strip",
     _verus_strip_gate = "verus_strip_gate",
@@ -38,3 +42,8 @@ cargo_fuzz_test = _cargo_fuzz_test
 cargo_bench_test = _cargo_bench_test
 cargo_mutants_test = _cargo_mutants_test
 pre_commit_install = _pre_commit_install
+
+# Axiom-audit manifests: `cargo xtask check axioms-audit` reads them and runs
+# the checkers (docs/design/axioms-trusted-audit.md).
+rocq_axiom_audit = _rocq_axiom_audit
+lean_axiom_audit = _lean_axiom_audit

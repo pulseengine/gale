@@ -5,6 +5,7 @@
 # tactic language. They complement the SMT-backed Verus proofs.
 
 load("@rules_rocq_rust//rocq:defs.bzl", "rocq_library", "rocq_proof_test")
+load("//bzl:defs.bzl", "rocq_axiom_audit")
 
 # Compile the semaphore proofs
 rocq_library(
@@ -232,4 +233,31 @@ rocq_proof_test(
     name = "thread_lifecycle_proofs_test",
     srcs = ["thread_lifecycle_proofs.v"],
     deps = [":thread_lifecycle_proofs"],
+)
+
+# ── Axiom audit (REQ-HONESTY-AXIOMS-001) ─────────────────────────────────
+#
+# A manifest of the 13 compiled libraries above, their load paths and the
+# toolchain's rocqchk. `cargo xtask check axioms-audit` builds it, runs
+# `rocqchk -o` per library from outside the files, and compares the axioms and
+# theory flags with tools/xtask/axioms-audit.ledger. The gate holds this list
+# equal to `git ls-files 'proofs/*.v'`.
+
+rocq_axiom_audit(
+    name = "axioms_audit",
+    libs = [
+        ":condvar_proofs",
+        ":event_proofs",
+        ":executor_proofs",
+        ":mem_slab_proofs",
+        ":msgq_proofs",
+        ":mutex_proofs",
+        ":pipe_proofs",
+        ":poll_proofs",
+        ":sched_proofs",
+        ":sem_proofs",
+        ":stack_proofs",
+        ":thread_lifecycle_proofs",
+        ":timer_proofs",
+    ],
 )
