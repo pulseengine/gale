@@ -35,9 +35,8 @@ Rust replacement for Zephyr RTOS kernel primitives, ASIL-D targeted (not certifi
 > the proofs are on the Rust/wasm **source** — Verus SMT on 39 modules (subject to
 > 135 named `external_body` trust units; five modules -- ipc, net_buf, pm, mmu,
 > usage -- are wholly `external_body`, so nothing in them is checked), 10 Rocq abstract-model invariant proofs
-> (incl. the gust executor's no-lost-wakeups; poll/sched/thread_lifecycle are WIP
-> `Admitted` stubs, not yet proven), and Lean
-> scheduling theory. Two limits stated up front: **(1)** Rocq/Lean reason about
+> (incl. the gust executor's no-lost-wakeups), partial proofs for the abstract
+> scheduler model, and Lean scheduling theory. Two limits stated up front: **(1)** Rocq/Lean reason about
 > abstract models, not the Rust directly; **(2)** the *shipped* artifact for the
 > wasm-dissolve line is native code from `meld→loom→synth` and is **differentially
 > tested against a reference wasm semantics, not proven equivalent** — there is no
@@ -110,7 +109,7 @@ until it goes green again.
 
 | Module | Zephyr Source | Properties | Status |
 |--------|---------------|------------|--------|
-| sched | kernel/sched.c | SC01-SC16 | Partial: `RunQueue::add` and three helpers are `external_body`, `remove_best` does not ensure the invariant, `sched_proofs.v` is all `Admitted` (gale#509); Lean scheduling theory is separate |
+| sched | kernel/sched.c | SC01-SC16 | Partial: `RunQueue::add` and three helpers are `external_body`, `remove_best` does not ensure the invariant, Rocq proves SC1–SC3 on the abstract ready queue; Lean scheduling theory is separate |
 | thread | kernel/thread.c | TH01-TH06 | Verified |
 | thread_lifecycle | kernel/thread.c | TL01-TL06 | Verified |
 | priority | kernel/priority | - | Verified + Lean proofs |
@@ -155,7 +154,7 @@ src/*.rs          Verus-annotated Rust (39 modules, single source of truth)
 ### Formal verification (via Bazel + Nix, CI-gated on source changes):
 
 - **Verus (SMT/Z3):** 805 verified by Z3 (0 errors). That figure counts 72 vacuous proof fns, and 135 functions are `external_body` (assumed): all of ipc, net_buf, pm, mmu and usage, plus helpers in poll, sched and the hardware seams (gale#509).
-- **Rocq:** 10 fully-proven abstract invariant modules (0 Admitted): 9 over Z-valued math for the Zephyr primitives, plus `executor_proofs.v` — an N-bitmask model of the gust executor proving no-lost-wakeups (see below). NOT connected to the Rust code — proofs reason about hand-written mathematical models, not the rocq-of-rust translation. poll/sched/thread_lifecycle remain `Admitted` WIP stubs.
+- **Rocq:** 10 fully-proven abstract invariant modules (0 Admitted): 9 over Z-valued math for the Zephyr primitives, plus `executor_proofs.v` — an N-bitmask model of the gust executor proving no-lost-wakeups (see below). NOT connected to the Rust code — proofs reason about hand-written mathematical models, not the rocq-of-rust translation. The scheduler model has proofs for its ready queue and still contains admits. Poll and thread lifecycle remain `Admitted` stubs.
 - **Lean 4:** mathematical proofs — RMA bound, priority ceiling protocol, priority queue ordering. Pure scheduling theory, not implementation proofs.
 - **Kani BMC:** bounded model checking harnesses at the repo root and in `ffi/`, run by the Formal Verification workflow. The 67 harnesses under `drivers/` run in no CI workflow (gale#509).
 
