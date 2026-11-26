@@ -1,16 +1,18 @@
 # sieve's observed-miss counter (REQ-CI-SIEVE-OBSERVE-001, docs/ci/sieve-observe.md).
 #
 # On a pull request each classifier job uploads sieve's verdict of record
-# (sieve-verdict-<workflow>-<job>-<run_attempt>). gale has no merge queue, so
-# the push run on main after the merge runs every job. `cargo xtask observe`
+# (sieve-verdict-<workflow>-<job>-<run_attempt>). The counter reads no
+# merge_group run: the push run on main after the merge runs every gated job. `cargo xtask observe`
 # takes each recent merge's PR, that PR's LAST record per classifier job and the
 # push run of the same workflow on the merge commit, and runs `sieve observe`:
 # a job that failed on main although all its classes were false on the PR is a
 # miss.
 #
-# Exit: 0 no miss among >= 1 compared pair; 1 a miss; 3 refused (nothing was
-# compared -- that is not a pass). Uncompared pairs (no PR, no record, an expired
-# record, no push run yet, a run in progress) are listed with their reason.
+# Exit: 0 no miss, >= 1 skipped job compared and no failed call; 1 a miss; 3
+# refused, not a pass (no skipped job compared, or a GitHub call, download or
+# sieve failed). Benign uncompared pairs (no PR, no record, an expired record, no
+# push run yet, a run in progress, nothing skipped) are listed with their reason.
+# Only the last COMMITS first-parent commits are judged per run; see the doc.
 #
 # NOT a required context and no pull_request trigger: it judges main after the
 # fact and must not gate a PR. Read-only token.
@@ -59,7 +61,7 @@ jobs:
           fi
       - name: Pinned sieve reports its version
         run: sieve --version
-      # The planted cases (a)-(g) and their controls, through the real pinned
+      # The planted cases and their controls, through the real pinned
       # sieve. A sieve without `observe` fails here, loudly, before any judging.
       - name: Planted cases hold with the pinned sieve
         run: cargo xtask observe --self-test
@@ -83,7 +85,7 @@ jobs:
           case "$rc" in
             0) ;;
             1) echo "::error::sieve observe: a job failed on main that sieve skipped on its pull request (a miss)" ;;
-            3) echo "::error::sieve observe refused: nothing was compared, which is not a pass" ;;
+            3) echo "::error::sieve observe refused: no skipped job was compared, or a GitHub call, download or sieve failed; that is not a pass" ;;
             *) echo "::error::cargo xtask observe exited $rc (usage error or crash)" ;;
           esac
           exit "$rc"

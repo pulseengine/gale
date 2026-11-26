@@ -2,18 +2,24 @@
 //! detection (REQ-CI-SIEVE-OBSERVE-001, docs/ci/sieve-observe.md).
 //!
 //! On a pull request a classifier job writes sieve's verdict of record and
-//! uploads it as `sieve-verdict-<workflow>-<job>-<run_attempt>`. gale has no
-//! merge queue, so the push run on main after the merge runs every job. For
-//! each recent first-parent commit on main this command takes the merged PR's
-//! LAST record per classifier job (latest pull_request run of the workflow on
-//! the PR head, highest attempt), the push run of the same workflow on the
-//! commit, and hands both to `sieve observe`. sieve lists every job that failed
-//! on main although all its classes were false on the PR: a miss.
+//! uploads it as `sieve-verdict-<workflow>-<job>-<run_attempt>`. The classifier
+//! workflows carry `merge_group` triggers, but this command never reads a
+//! merge-group run: it compares the PR's record with the push run on main
+//! after the merge, where the classifier runs every gated job. For each recent
+//! first-parent commit on main it takes the merged PR's LAST record per
+//! classifier job (latest pull_request run of the workflow on the PR head,
+//! highest attempt), the push run of the same workflow on the commit, and hands
+//! both to `sieve observe`. sieve lists every job that failed on main although
+//! all its classes were false on the PR: a miss.
 //!
-//! Accounting is the point. A pair this command cannot compare (no PR, no PR
-//! run, no record, an expired record, no push run yet, a run still in progress,
-//! a failed download, sieve refusing) is UNCOMPARED with its reason, never "no
-//! miss". Zero compared pairs is a refusal (exit 3), not a pass.
+//! Accounting is the point. A pair this command cannot compare is UNCOMPARED
+//! with its reason, never "no miss": no PR, no PR run, no record, an expired
+//! record, no push run yet, a run still in progress, a skipped job sieve could
+//! not compare (it concluded cancelled, skipped, null, ... on main), a PR that
+//! skipped nothing, a failed GitHub call or download, sieve refusing or giving
+//! malformed output. Exit 1 any miss; exit 3 (refused, not a pass) when no
+//! skipped job was compared at all, or when any pair is uncompared because a
+//! GitHub call, a download or sieve failed; else exit 0.
 //!
 //! What it cannot see: a job that passed on main reveals nothing, and a job
 //! sieve skipped that would have passed is invisible by design. A miss needs a
@@ -83,9 +89,11 @@ pub trait Forge {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Observed {
-    /// sieve compared: these jobs (rendered) are misses, and it judged
-    /// `skipped` jobs that the verdict had skipped.
-    Compared { misses: Vec<String>, skipped: u64 },
+    /// sieve answered: these jobs (rendered) are misses, it compared
+    /// `skipped` jobs that the verdict had skipped, and `uncompared` lists the
+    /// skipped jobs it could not compare (their conclusion on main is neither a
+    /// pass nor a failure: cancelled, skipped, null, ...).
+    Compared { misses: Vec<String>, skipped: u64, uncompared: Vec<String> },
     /// sieve refused (exit 3) or could not be run.
     Refused(String),
 }
@@ -108,8 +116,14 @@ pub struct Pair {
     pub push_run: Option<u64>,
     /// None = compared.
     pub uncompared: Option<String>,
+    /// The pair is uncompared because a GitHub call, a download or sieve
+    /// failed (not for a benign reason such as a run still in progress). Any
+    /// such pair makes the whole run a refusal.
+    pub hard: bool,
     pub misses: Vec<String>,
     pub skipped: u64,
+    /// Skipped jobs sieve could not compare, on a pair that compared others.
+    pub uncompared_skipped: Vec<String>,
 }
 
 #[derive(Debug, Default)]
@@ -132,11 +146,16 @@ impl Report {
     pub fn skipped(&self) -> u64 {
         self.pairs.iter().filter(|p| p.uncompared.is_none()).map(|p| p.skipped).sum()
     }
-    /// 1 any miss; 3 nothing compared (not a pass); else 0.
+    /// Pairs uncompared because a GitHub call, a download or sieve failed.
+    pub fn hard(&self) -> usize {
+        self.pairs.iter().filter(|p| p.hard).count()
+    }
+    /// 1 any miss; 3 no skipped job compared at all, or any pair uncompared
+    /// because a call failed (not a pass); else 0.
     pub fn exit(&self) -> i32 {
         if self.misses() > 0 {
             EXIT_FAIL
-        } else if self.compared() == 0 {
+        } else if self.skipped() == 0 || self.hard() > 0 {
             EXIT_REFUSED
         } else {
             EXIT_PASS
@@ -152,10 +171,11 @@ impl Report {
 
     pub fn headline(&self) -> String {
         format!(
-            "sieve observe: {} miss(es) of {} compared, {} uncompared ({} commit(s) x {} classifier workflow(s); {} skipped job(s) judged)",
+            "sieve observe: {} miss(es) of {} compared, {} uncompared ({} by a failed call) ({} commit(s) x {} classifier workflow(s); {} skipped job(s) judged)",
             self.misses(),
             self.compared(),
             self.uncompared(),
+            self.hard(),
             self.commits,
             self.workflows,
             self.skipped()
@@ -168,10 +188,13 @@ impl Report {
             let pr = p.pr.map(|n| format!("#{n}")).unwrap_or_else(|| "no PR".into());
             let c = &p.commit[..p.commit.len().min(8)];
             match &p.uncompared {
-                Some(r) => s.push_str(&format!("  UNCOMPARED {c} {pr} {}: {r}\n", p.workflow)),
+                Some(r) => s.push_str(&format!("  UNCOMPARED {c} {pr} {}: {r}{}\n", p.workflow, if p.hard { " [failed call: refuses the run]" } else { "" })),
                 None => {
                     for m in &p.misses {
                         s.push_str(&format!("  MISS       {c} {pr} {}: {m}\n", p.workflow));
+                    }
+                    for u in &p.uncompared_skipped {
+                        s.push_str(&format!("  UNCOMPARED {c} {pr} {}: skipped job {u} not comparable on main\n", p.workflow));
                     }
                     s.push_str(&format!(
                         "  COMPARED   {c} {pr} {}: record {}, push run {}, {} miss(es), {} skipped job(s) judged\n",
@@ -186,12 +209,10 @@ impl Report {
         }
         s.push_str(match self.exit() {
             EXIT_FAIL => "verdict: MISS -- a job failed on main that sieve skipped on its PR (exit 1)\n",
-            EXIT_REFUSED => "verdict: REFUSED -- nothing was compared; that is not a pass (exit 3)\n",
+            EXIT_REFUSED if self.skipped() == 0 => "verdict: REFUSED -- no skipped job was compared, so this run judged nothing; that is not a pass (exit 3)\n",
+            EXIT_REFUSED => "verdict: REFUSED -- a GitHub call, a download or sieve failed for at least one pair; that is not a pass (exit 3)\n",
             _ => "verdict: no miss among the compared pairs (exit 0); uncompared pairs say nothing\n",
         });
-        if self.compared() > 0 && self.skipped() == 0 {
-            s.push_str("note: no compared pair skipped any gated job (every compared PR ran everything), so this run could not have seen a miss\n");
-        }
         s.push_str(
             "limits: a job that passed on main reveals nothing, and a skipped job that would have passed is invisible by design\n",
         );
@@ -208,28 +229,32 @@ impl Report {
                     None => "null".into(),
                 };
                 let misses: Vec<String> = p.misses.iter().map(|m| format!("\"{}\"", escape(m))).collect();
+                let unsk: Vec<String> = p.uncompared_skipped.iter().map(|m| format!("\"{}\"", escape(m))).collect();
                 format!(
-                    "{{\"commit\":\"{}\",\"subject\":\"{}\",\"pr\":{},\"workflow\":\"{}\",\"status\":\"{}\",\"record\":{},\"push_run\":{},\"reason\":{},\"misses\":[{}],\"skipped_judged\":{}}}",
+                    "{{\"commit\":\"{}\",\"subject\":\"{}\",\"pr\":{},\"workflow\":\"{}\",\"status\":\"{}\",\"failed_call\":{},\"record\":{},\"push_run\":{},\"reason\":{},\"misses\":[{}],\"skipped_judged\":{},\"skipped_uncompared\":[{}]}}",
                     escape(&p.commit),
                     escape(&p.subject),
                     p.pr.map(|n| n.to_string()).unwrap_or_else(|| "null".into()),
                     escape(&p.workflow),
                     if p.uncompared.is_some() { "uncompared" } else { "compared" },
+                    p.hard,
                     opt(&p.record),
                     p.push_run.map(|n| n.to_string()).unwrap_or_else(|| "null".into()),
                     opt(&p.uncompared),
                     misses.join(","),
-                    p.skipped
+                    p.skipped,
+                    unsk.join(",")
                 )
             })
             .collect();
         format!(
-            "{{\"schema\":\"gale.observe.v1\",\"verdict\":\"{}\",\"exit\":{},\"misses\":{},\"compared\":{},\"uncompared\":{},\"commits\":{},\"workflows\":{},\"skipped_judged\":{},\"pairs\":[{}]}}",
+            "{{\"schema\":\"gale.observe.v1\",\"verdict\":\"{}\",\"exit\":{},\"misses\":{},\"compared\":{},\"uncompared\":{},\"failed_calls\":{},\"commits\":{},\"workflows\":{},\"skipped_judged\":{},\"pairs\":[{}]}}",
             self.verdict(),
             self.exit(),
             self.misses(),
             self.compared(),
             self.uncompared(),
+            self.hard(),
             self.commits,
             self.workflows,
             self.skipped(),
@@ -262,36 +287,42 @@ fn failed(c: &str) -> bool {
 /// The push run's job conclusions as `[{name, conclusion}]`, over every attempt:
 /// a job that failed in any attempt counts as failed (a later green re-run does
 /// not erase the failure); otherwise the latest attempt's conclusion. Err when
-/// any job is not completed.
-fn push_results(forge: &dyn Forge, run: &Run) -> Result<String, String> {
-    let mut merged: BTreeMap<String, String> = BTreeMap::new();
+/// any job is not completed (benign: `false`) or a job list cannot be read
+/// (a failed call: `true`). A missing conclusion stays JSON null, so sieve
+/// reports the job as uncompared rather than reading a made-up value.
+fn push_results(forge: &dyn Forge, run: &Run) -> Result<String, (String, bool)> {
+    let mut merged: BTreeMap<String, Option<String>> = BTreeMap::new();
     for attempt in 1..=run.run_attempt.max(1) {
-        let jobs = forge.jobs(run.id, attempt).map_err(|e| format!("cannot list jobs of push run {} attempt {attempt}: {e}", run.id))?;
+        let jobs = forge.jobs(run.id, attempt).map_err(|e| (format!("cannot list jobs of push run {} attempt {attempt}: {e}", run.id), true))?;
         for j in jobs {
             if j.status != "completed" {
-                return Err(format!("push run {} attempt {attempt}: job `{}` is {}, not judged", run.id, j.name, j.status));
+                return Err((format!("push run {} attempt {attempt}: job `{}` is {}, not judged", run.id, j.name, j.status), false));
             }
-            let c = j.conclusion.unwrap_or_else(|| "none".into());
             match merged.get(&j.name) {
-                Some(prev) if failed(prev) => {}
+                Some(Some(prev)) if failed(prev) => {}
                 _ => {
-                    merged.insert(j.name, c);
+                    merged.insert(j.name, j.conclusion);
                 }
             }
         }
     }
     if merged.is_empty() {
-        return Err(format!("push run {} has no jobs", run.id));
+        return Err((format!("push run {} has no jobs", run.id), true));
     }
     let items: Vec<String> = merged
         .iter()
-        .map(|(n, c)| format!("{{\"name\":\"{}\",\"conclusion\":\"{}\"}}", escape(n), escape(c)))
+        .map(|(n, c)| {
+            let c = c.as_deref().map(|c| format!("\"{}\"", escape(c))).unwrap_or_else(|| "null".into());
+            format!("{{\"name\":\"{}\",\"conclusion\":{c}}}", escape(n))
+        })
         .collect();
     Ok(format!("[{}]", items.join(",")))
 }
 
 pub fn observe_commits(forge: &dyn Forge, sieve: &dyn Observer, commits: &[Commit], workflows: &[String]) -> Report {
     let mut rep = Report { commits: commits.len(), workflows: workflows.len(), pairs: Vec::new() };
+    // `hard` = a GitHub call, a download or sieve failed: it refuses the run.
+    let un = |p: &Pair, why: String, hard: bool| Pair { uncompared: Some(why), hard, ..p.clone() };
     for c in commits {
         let base = Pair {
             commit: c.sha.clone(),
@@ -301,14 +332,15 @@ pub fn observe_commits(forge: &dyn Forge, sieve: &dyn Observer, commits: &[Commi
             record: None,
             push_run: None,
             uncompared: None,
+            hard: false,
             misses: Vec::new(),
             skipped: 0,
+            uncompared_skipped: Vec::new(),
         };
-        let whole = |why: String| Pair { uncompared: Some(why), ..base.clone() };
         let pulls = match forge.pulls(&c.sha) {
             Ok(p) => p,
             Err(e) => {
-                rep.pairs.push(whole(format!("cannot list the commit's pull requests: {e}")));
+                rep.pairs.push(un(&base, format!("cannot list the commit's pull requests: {e}"), true));
                 continue;
             }
         };
@@ -319,7 +351,7 @@ pub fn observe_commits(forge: &dyn Forge, sieve: &dyn Observer, commits: &[Commi
                 let ns: Vec<String> = pulls.iter().map(|p| format!("#{}", p.number)).collect();
                 format!("pull request(s) {} list this commit, but none was merged as it", ns.join(", "))
             };
-            rep.pairs.push(whole(why));
+            rep.pairs.push(un(&base, why, false));
             continue;
         };
         let base = Pair { pr: Some(pr.number), ..base };
@@ -327,39 +359,37 @@ pub fn observe_commits(forge: &dyn Forge, sieve: &dyn Observer, commits: &[Commi
         let push_runs = forge.runs(&c.sha, "push");
         for wf in workflows {
             let pair = Pair { workflow: wf.clone(), ..base.clone() };
-            let un = |why: String| Pair { uncompared: Some(why), ..pair.clone() };
             let pr_runs = match &pr_runs {
                 Ok(r) => r,
                 Err(e) => {
-                    rep.pairs.push(un(format!("cannot list the PR head's runs: {e}")));
+                    rep.pairs.push(un(&pair, format!("cannot list the PR head's runs: {e}"), true));
                     continue;
                 }
             };
             let Some(pr_run) = latest(pr_runs, wf) else {
-                rep.pairs.push(un(format!("no pull_request run of this workflow on the PR head {}", &pr.head_sha[..pr.head_sha.len().min(8)])));
+                rep.pairs.push(un(&pair, format!("no pull_request run of this workflow on the PR head {}", &pr.head_sha[..pr.head_sha.len().min(8)]), false));
                 continue;
             };
             let push_runs = match &push_runs {
                 Ok(r) => r,
                 Err(e) => {
-                    rep.pairs.push(un(format!("cannot list the commit's push runs: {e}")));
+                    rep.pairs.push(un(&pair, format!("cannot list the commit's push runs: {e}"), true));
                     continue;
                 }
             };
             let Some(push_run) = latest(push_runs, wf) else {
-                rep.pairs.push(un("no push run of this workflow on the commit (not yet, or the push did not trigger it)".into()));
+                rep.pairs.push(un(&pair, "no push run of this workflow on the commit (not yet, or the push did not trigger it)".into(), false));
                 continue;
             };
             let pair = Pair { push_run: Some(push_run.id), ..pair };
-            let un = |why: String| Pair { uncompared: Some(why), ..pair.clone() };
             if push_run.status != "completed" {
-                rep.pairs.push(un(format!("push run {} is {}, not judged", push_run.id, push_run.status)));
+                rep.pairs.push(un(&pair, format!("push run {} is {}, not judged", push_run.id, push_run.status), false));
                 continue;
             }
             let arts = match forge.artifacts(pr_run.id) {
                 Ok(a) => a,
                 Err(e) => {
-                    rep.pairs.push(un(format!("cannot list artifacts of PR run {}: {e}", pr_run.id)));
+                    rep.pairs.push(un(&pair, format!("cannot list artifacts of PR run {}: {e}", pr_run.id), true));
                     continue;
                 }
             };
@@ -374,32 +404,42 @@ pub fn observe_commits(forge: &dyn Forge, sieve: &dyn Observer, commits: &[Commi
                 }
             }
             if last.is_empty() {
-                rep.pairs.push(un(format!("PR run {} has no {RECORD_PREFIX}* artifact (no record was made)", pr_run.id)));
+                rep.pairs.push(un(&pair, format!("PR run {} has no {RECORD_PREFIX}* artifact (no record was made)", pr_run.id), false));
                 continue;
             }
             let results = match push_results(forge, push_run) {
                 Ok(r) => r,
-                Err(e) => {
-                    rep.pairs.push(un(e));
+                Err((e, hard)) => {
+                    rep.pairs.push(un(&pair, e, hard));
                     continue;
                 }
             };
             for (_, (_, a)) in last {
                 let p = Pair { record: Some(a.name.clone()), ..pair.clone() };
                 if a.expired {
-                    rep.pairs.push(Pair { uncompared: Some(format!("record {} of PR run {} has expired", a.name, pr_run.id)), ..p });
+                    rep.pairs.push(un(&p, format!("record {} of PR run {} has expired", a.name, pr_run.id), false));
                     continue;
                 }
                 let text = match forge.record(pr_run.id, &a.name) {
                     Ok(t) => t,
                     Err(e) => {
-                        rep.pairs.push(Pair { uncompared: Some(format!("cannot download record {}: {e}", a.name)), ..p });
+                        rep.pairs.push(un(&p, format!("cannot download record {}: {e}", a.name), true));
                         continue;
                     }
                 };
                 match sieve.observe(&text, &results) {
-                    Observed::Compared { misses, skipped } => rep.pairs.push(Pair { misses, skipped, ..p }),
-                    Observed::Refused(r) => rep.pairs.push(Pair { uncompared: Some(format!("sieve observe refused: {r}")), ..p }),
+                    // sieve compared no skipped job: nothing was judged, so the pair is
+                    // uncompared (never "compared, 0 miss"), whatever the reason.
+                    Observed::Compared { misses, skipped: 0, uncompared } if misses.is_empty() => {
+                        let why = if uncompared.is_empty() {
+                            "the PR's verdict skipped no gated job of this run; nothing to judge".to_string()
+                        } else {
+                            format!("sieve compared no skipped job: {} skipped job(s) not comparable on main: {}", uncompared.len(), uncompared.join(", "))
+                        };
+                        rep.pairs.push(un(&p, why, false));
+                    }
+                    Observed::Compared { misses, skipped, uncompared } => rep.pairs.push(Pair { misses, skipped, uncompared_skipped: uncompared, ..p }),
+                    Observed::Refused(r) => rep.pairs.push(un(&p, format!("sieve observe refused: {r}"), true)),
                 }
             }
         }
@@ -433,10 +473,26 @@ pub fn parse_observe(code: Option<i32>, stdout: &str, stderr: &str) -> Observed 
     if v.get("refused") == Some(&Json::Bool(true)) {
         return Observed::Refused("sieve observe output says refused".into());
     }
-    let misses: Vec<String> = v
-        .get("misses")
-        .map(Json::arr)
-        .unwrap_or(&[])
+    // Every field the verdict reads must be there and well-formed: a missing or
+    // malformed field is a refusal, never a clean default.
+    let Some(Json::Arr(misses)) = v.get("misses") else {
+        return Observed::Refused("sieve observe output has no `misses` array".into());
+    };
+    let skipped = match v.get("compared_skipped_jobs") {
+        Some(Json::Num(n)) if *n >= 0.0 && n.fract() == 0.0 => *n as u64,
+        _ => return Observed::Refused("sieve observe output has no non-negative integer `compared_skipped_jobs`".into()),
+    };
+    let Some(Json::Arr(unc)) = v.get("uncompared_skipped_jobs") else {
+        return Observed::Refused("sieve observe output has no `uncompared_skipped_jobs` array".into());
+    };
+    let mut uncompared = Vec::new();
+    for u in unc {
+        let (Some(job), Some(concl)) = (u.get("job").and_then(Json::str), u.get("conclusion").and_then(Json::str)) else {
+            return Observed::Refused("an `uncompared_skipped_jobs` entry lacks `job` or `conclusion`".into());
+        };
+        uncompared.push(format!("{job} ({})", if concl.is_empty() { "no conclusion" } else { concl }));
+    }
+    let misses: Vec<String> = misses
         .iter()
         .map(|m| {
             let classes: Vec<&str> = m.get("classes").map(Json::arr).unwrap_or(&[]).iter().filter_map(Json::str).collect();
@@ -452,11 +508,11 @@ pub fn parse_observe(code: Option<i32>, stdout: &str, stderr: &str) -> Observed 
     if (code == Some(1)) != !misses.is_empty() {
         return Observed::Refused(format!("sieve observe exit {code:?} disagrees with its {} listed miss(es)", misses.len()));
     }
-    let skipped = match v.get("compared_skipped_jobs") {
-        Some(Json::Num(n)) if *n >= 0.0 => *n as u64,
-        _ => 0,
-    };
-    Observed::Compared { misses, skipped }
+    // A miss is a compared skipped job; more misses than compared jobs is not trusted.
+    if misses.len() as u64 > skipped {
+        return Observed::Refused(format!("sieve observe lists {} miss(es) but compared only {skipped} skipped job(s)", misses.len()));
+    }
+    Observed::Compared { misses, skipped, uncompared }
 }
 
 impl Observer for SieveCli {
@@ -504,51 +560,81 @@ fn gh_lines(path: &str, jq: &str) -> Result<Vec<Json>, String> {
     out.lines().filter(|l| !l.trim().is_empty()).map(|l| parse_json(l).map_err(|e| format!("bad gh output: {e}"))).collect()
 }
 
-fn s(v: &Json, k: &str) -> String {
-    v.get(k).and_then(Json::str).unwrap_or("").to_string()
+/// A required string field: missing or not a string is an error (a failed
+/// call), never "".
+fn s(v: &Json, k: &str) -> Result<String, String> {
+    v.get(k).and_then(Json::str).map(String::from).ok_or_else(|| format!("GitHub record lacks string `{k}`"))
 }
 
-fn n(v: &Json, k: &str) -> u64 {
+/// A required non-negative integer field: missing or malformed is an error,
+/// never 0.
+fn n(v: &Json, k: &str) -> Result<u64, String> {
     match v.get(k) {
-        Some(Json::Num(x)) if *x >= 0.0 => *x as u64,
-        _ => 0,
+        Some(Json::Num(x)) if *x >= 0.0 && x.fract() == 0.0 => Ok(*x as u64),
+        _ => Err(format!("GitHub record lacks non-negative integer `{k}`")),
     }
+}
+
+/// An optional string field: null or absent is None, any other non-string an error.
+fn opt_s(v: &Json, k: &str) -> Result<Option<String>, String> {
+    match v.get(k) {
+        None | Some(Json::Null) => Ok(None),
+        Some(Json::Str(x)) => Ok(Some(x.clone())),
+        Some(_) => Err(format!("GitHub record field `{k}` is neither a string nor null")),
+    }
+}
+
+pub fn parse_pulls(v: &[Json]) -> Result<Vec<Pull>, String> {
+    v.iter()
+        .map(|p| {
+            // Only a merged PR has a merge commit that counts.
+            let merged = opt_s(p, "merged_at")?.is_some();
+            let mc = opt_s(p, "merge_commit_sha")?;
+            Ok(Pull { number: n(p, "number")?, head_sha: s(p, "head")?, merge_commit_sha: if merged { mc } else { None } })
+        })
+        .collect()
+}
+
+pub fn parse_runs(v: &[Json]) -> Result<Vec<Run>, String> {
+    v.iter()
+        .map(|r| Ok(Run { id: n(r, "id")?, path: s(r, "path")?, status: s(r, "status")?, run_attempt: n(r, "run_attempt")?, run_number: n(r, "run_number")? }))
+        .collect()
+}
+
+pub fn parse_jobs(v: &[Json]) -> Result<Vec<Job>, String> {
+    v.iter().map(|j| Ok(Job { name: s(j, "name")?, status: s(j, "status")?, conclusion: opt_s(j, "conclusion")? })).collect()
+}
+
+pub fn parse_artifacts(v: &[Json]) -> Result<Vec<Artifact>, String> {
+    v.iter()
+        .map(|a| match a.get("expired") {
+            Some(Json::Bool(e)) => Ok(Artifact { name: s(a, "name")?, expired: *e }),
+            _ => Err("GitHub artifact lacks boolean `expired`".to_string()),
+        })
+        .collect()
 }
 
 impl Forge for GhForge {
     fn pulls(&self, sha: &str) -> Result<Vec<Pull>, String> {
-        let v = gh_lines(
+        parse_pulls(&gh_lines(
             &format!("repos/{}/commits/{sha}/pulls?per_page=100", self.repo),
             ".[] | {number, merge_commit_sha, merged_at, head: .head.sha}",
-        )?;
-        Ok(v.iter()
-            .map(|p| Pull {
-                number: n(p, "number"),
-                head_sha: s(p, "head"),
-                // Only a merged PR has a merge commit that counts.
-                merge_commit_sha: if p.get("merged_at").and_then(Json::str).is_some() { p.get("merge_commit_sha").and_then(Json::str).map(String::from) } else { None },
-            })
-            .collect())
+        )?)
     }
     fn runs(&self, sha: &str, event: &str) -> Result<Vec<Run>, String> {
-        let v = gh_lines(
+        parse_runs(&gh_lines(
             &format!("repos/{}/actions/runs?head_sha={sha}&event={event}&per_page=100", self.repo),
             ".workflow_runs[] | {id, path, status, run_attempt, run_number}",
-        )?;
-        Ok(v.iter()
-            .map(|r| Run { id: n(r, "id"), path: s(r, "path"), status: s(r, "status"), run_attempt: n(r, "run_attempt"), run_number: n(r, "run_number") })
-            .collect())
+        )?)
     }
     fn jobs(&self, run_id: u64, attempt: u64) -> Result<Vec<Job>, String> {
-        let v = gh_lines(
+        parse_jobs(&gh_lines(
             &format!("repos/{}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100", self.repo),
             ".jobs[] | {name, status, conclusion}",
-        )?;
-        Ok(v.iter().map(|j| Job { name: s(j, "name"), status: s(j, "status"), conclusion: j.get("conclusion").and_then(Json::str).map(String::from) }).collect())
+        )?)
     }
     fn artifacts(&self, run_id: u64) -> Result<Vec<Artifact>, String> {
-        let v = gh_lines(&format!("repos/{}/actions/runs/{run_id}/artifacts?per_page=100", self.repo), ".artifacts[] | {name, expired}")?;
-        Ok(v.iter().map(|a| Artifact { name: s(a, "name"), expired: a.get("expired") == Some(&Json::Bool(true)) }).collect())
+        parse_artifacts(&gh_lines(&format!("repos/{}/actions/runs/{run_id}/artifacts?per_page=100", self.repo), ".artifacts[] | {name, expired}")?)
     }
     fn record(&self, run_id: u64, artifact: &str) -> Result<String, String> {
         let dir = self.work.join(format!("{run_id}-{artifact}"));
@@ -594,12 +680,15 @@ pub fn classifier_workflows(root: &Path) -> Result<Vec<String>, String> {
     let dir = root.join(".github/workflows");
     let rd = std::fs::read_dir(&dir).map_err(|e| format!("cannot read {}: {e}", dir.display()))?;
     let mut out = Vec::new();
-    for e in rd.flatten() {
+    // An unreadable entry or workflow file is a refusal: skipping it would
+    // silently drop a classifier from the judged set.
+    for e in rd {
+        let e = e.map_err(|e| format!("cannot read an entry of {}: {e}", dir.display()))?;
         let name = e.file_name().to_string_lossy().to_string();
         if !(name.ends_with(".yml") || name.ends_with(".yaml")) {
             continue;
         }
-        let text = std::fs::read_to_string(e.path()).unwrap_or_default();
+        let text = std::fs::read_to_string(e.path()).map_err(|err| format!("cannot read .github/workflows/{name}: {err}"))?;
         if text.lines().any(|l| {
             let t = l.trim_start();
             !t.starts_with('#') && t.contains("sieve classify")
@@ -622,7 +711,8 @@ pub enum Select {
 const USAGE: &str = "usage: cargo xtask observe [--since-days N | --commits N] [--format text|json]\n\
                      \x20                        [--ref REF (origin/main)] [--repo OWNER/NAME] [--sieve PATH (sieve)]\n\
                      \x20      cargo xtask observe --self-test [--sieve PATH]\n\
-                     exit: 0 no miss among >= 1 compared pair, 1 a miss, 2 usage, 3 refused (nothing compared, or a tool is missing)";
+                     exit: 0 no miss, >= 1 skipped job compared and no failed call; 1 a miss; 2 usage;\n\
+                     \x20     3 refused, not a pass (no skipped job compared, a GitHub call, download or sieve failed, or a tool is missing)";
 
 fn work_dir() -> Result<PathBuf, String> {
     let base = std::env::var_os("RUNNER_TEMP").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
@@ -754,22 +844,40 @@ pub struct FakeForge {
     pub jobs: BTreeMap<(u64, u64), Vec<Job>>,
     pub artifacts: BTreeMap<u64, Vec<Artifact>>,
     pub records: BTreeMap<(u64, String), String>,
+    /// Calls that fail, keyed `pulls:<sha>`, `runs:<sha>:<event>`,
+    /// `jobs:<run>:<attempt>`, `artifacts:<run>`, `record:<run>:<name>`.
+    pub fail: Vec<String>,
+}
+
+impl FakeForge {
+    fn check(&self, key: String) -> Result<(), String> {
+        if self.fail.contains(&key) {
+            Err(format!("planted failure of {key} (HTTP 502)"))
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl Forge for FakeForge {
     fn pulls(&self, sha: &str) -> Result<Vec<Pull>, String> {
+        self.check(format!("pulls:{sha}"))?;
         Ok(self.pulls.get(sha).cloned().unwrap_or_default())
     }
     fn runs(&self, sha: &str, event: &str) -> Result<Vec<Run>, String> {
+        self.check(format!("runs:{sha}:{event}"))?;
         Ok(self.runs.get(&(sha.to_string(), event.to_string())).cloned().unwrap_or_default())
     }
     fn jobs(&self, run_id: u64, attempt: u64) -> Result<Vec<Job>, String> {
+        self.check(format!("jobs:{run_id}:{attempt}"))?;
         self.jobs.get(&(run_id, attempt)).cloned().ok_or_else(|| format!("no attempt {attempt} of run {run_id}"))
     }
     fn artifacts(&self, run_id: u64) -> Result<Vec<Artifact>, String> {
+        self.check(format!("artifacts:{run_id}"))?;
         Ok(self.artifacts.get(&run_id).cloned().unwrap_or_default())
     }
     fn record(&self, run_id: u64, artifact: &str) -> Result<String, String> {
+        self.check(format!("record:{run_id}:{artifact}"))?;
         self.records.get(&(run_id, artifact.to_string())).cloned().ok_or_else(|| "artifact not found".into())
     }
 }
@@ -811,13 +919,32 @@ pub struct Planted {
     pub commits: Vec<Commit>,
     /// (misses, compared, uncompared, exit)
     pub want: (usize, usize, usize, i32),
+    /// When set, sieve's answer is this canned (exit code, stdout) through
+    /// [`parse_observe`] instead of the real call: malformed-output plants.
+    pub canned: Option<(i32, &'static str)>,
 }
 
 fn case(name: &'static str, forge: FakeForge, commits: Vec<Commit>, want: (usize, usize, usize, i32)) -> Planted {
-    Planted { name, forge, commits, want }
+    Planted { name, forge, commits, want, canned: None }
 }
 
-/// The planted bad inputs (a)-(g), each with its positive control.
+/// A sieve whose output is fixed: it exercises [`parse_observe`] on bad output.
+pub struct Canned(pub i32, pub &'static str);
+impl Observer for Canned {
+    fn observe(&self, _record: &str, _results: &str) -> Observed {
+        parse_observe(Some(self.0), self.1, "")
+    }
+}
+
+const OUT_OK: &str = r#"{"schema":"sieve.observe.v1","refused":false,"compared_skipped_jobs":1,"misses":[],"uncompared_skipped_jobs":[]}"#;
+const OUT_NO_COUNT: &str = r#"{"schema":"sieve.observe.v1","refused":false,"misses":[],"uncompared_skipped_jobs":[]}"#;
+const OUT_STR_COUNT: &str = r#"{"schema":"sieve.observe.v1","refused":false,"compared_skipped_jobs":"1","misses":[],"uncompared_skipped_jobs":[]}"#;
+const OUT_FRAC_COUNT: &str = r#"{"schema":"sieve.observe.v1","refused":false,"compared_skipped_jobs":1.5,"misses":[],"uncompared_skipped_jobs":[]}"#;
+const OUT_NO_MISSES: &str = r#"{"schema":"sieve.observe.v1","refused":false,"compared_skipped_jobs":1,"uncompared_skipped_jobs":[]}"#;
+const OUT_STR_MISSES: &str = r#"{"schema":"sieve.observe.v1","refused":false,"compared_skipped_jobs":1,"misses":"none","uncompared_skipped_jobs":[]}"#;
+const OUT_NO_UNCOMPARED: &str = r#"{"schema":"sieve.observe.v1","refused":false,"compared_skipped_jobs":1,"misses":[]}"#;
+
+/// The planted bad inputs, each with its positive control.
 pub fn planted() -> Vec<Planted> {
     let mut v = Vec::new();
 
@@ -829,10 +956,12 @@ pub fn planted() -> Vec<Planted> {
     let c = plant_commit(&mut f, 1, false, "success");
     v.push(case("(a+) control: code=false, gated job passed on main -> 0 misses", f, vec![c], (0, 1, 0, EXIT_PASS)));
 
-    // (b) code=true: the job ran on the PR, so its failure on main is no miss.
+    // (b) code=true: the job ran on the PR, so its failure on main is no miss. Nothing
+    // was skipped, so that pair is uncompared; a clean second commit keeps the run from refusing.
     let mut f = FakeForge::default();
     let c = plant_commit(&mut f, 1, true, "failure");
-    v.push(case("(b) code=true, gated job failed on main -> 0 misses", f, vec![c], (0, 1, 0, EXIT_PASS)));
+    let c2 = plant_commit(&mut f, 2, false, "success");
+    v.push(case("(b) code=true, gated job failed on main -> 0 misses (nothing skipped: uncompared)", f, vec![c, c2], (0, 1, 1, EXIT_PASS)));
     // (b+) is (a): the same failure with code=false is a miss.
 
     // (c) a commit with no PR -> uncompared (never "no miss"); a clean second commit keeps it from refusing.
@@ -861,12 +990,13 @@ pub fn planted() -> Vec<Planted> {
         // Listed before attempt 1 on purpose: order must not matter.
         f.artifacts.get_mut(&104).unwrap().insert(0, Artifact { name: n2.clone(), expired: false });
         f.records.insert((104, n2), record_json(second));
-        (f, c)
+        let c2 = plant_commit(&mut f, 2, false, "success");
+        (f, vec![c, c2])
     };
     let (f, c) = two(false, true);
-    v.push(case("(e) attempt 1 false, attempt 2 true, job failed on main -> 0 misses", f, vec![c], (0, 1, 0, EXIT_PASS)));
+    v.push(case("(e) attempt 1 false, attempt 2 true, job failed on main -> 0 misses", f, c, (0, 1, 1, EXIT_PASS)));
     let (f, c) = two(true, false);
-    v.push(case("(e+) swapped: attempt 1 true, attempt 2 false -> 1 miss", f, vec![c], (1, 1, 0, EXIT_FAIL)));
+    v.push(case("(e+) swapped: attempt 1 true, attempt 2 false -> 1 miss", f, c, (1, 2, 0, EXIT_FAIL)));
 
     // (f) zero compared -> refusal (exit 3), distinct from a miss.
     let f = FakeForge::default();
@@ -889,7 +1019,133 @@ pub fn planted() -> Vec<Planted> {
     v.push(case("(g2) a push job in_progress -> uncompared", fj, vec![c.clone(), c2.clone()], (0, 1, 1, EXIT_PASS)));
     v.push(case("(g+) control: the push run completed -> compared, 1 miss", f, vec![c, c2], (1, 2, 0, EXIT_FAIL)));
 
+    // (h) the skipped gated job concluded neither pass nor failure on main: sieve
+    // compares no skipped job, so the pair is uncompared and, alone, the run refuses.
+    for (name, concl) in [
+        ("(h) gated job cancelled on main -> uncompared, refused", Some("cancelled")),
+        ("(h) gated job skipped on main -> uncompared, refused", Some("skipped")),
+        ("(h) gated job startup_failure on main -> uncompared, refused", Some("startup_failure")),
+        ("(h) gated job neutral on main -> uncompared, refused", Some("neutral")),
+        ("(h) gated job stale on main -> uncompared, refused", Some("stale")),
+        ("(h) gated job with a null conclusion on main -> uncompared, refused", None),
+    ] {
+        let mut f = FakeForge::default();
+        let c = plant_commit(&mut f, 7, false, "failure");
+        f.jobs.get_mut(&(207, 1)).unwrap()[1].conclusion = concl.map(String::from);
+        v.push(case(name, f, vec![c], (0, 0, 1, EXIT_REFUSED)));
+    }
+    let mut f = FakeForge::default();
+    let c = plant_commit(&mut f, 7, false, "cancelled");
+    let c2 = plant_commit(&mut f, 2, false, "success");
+    v.push(case("(h2) cancelled pair beside a compared pair -> uncompared, exit 0", f, vec![c, c2], (0, 1, 1, EXIT_PASS)));
+    let mut f = FakeForge::default();
+    let c = plant_commit(&mut f, 7, false, "failure");
+    v.push(case("(h+) control: the same job failed on main -> compared, 1 miss", f, vec![c], (1, 1, 0, EXIT_FAIL)));
+
+    // (i) the only commit with a skip has its jobs call fail; the other PR skipped
+    // nothing. Nothing was judged -> refused, never "0 miss, exit 0".
+    let mut f = FakeForge::default();
+    let c = plant_commit(&mut f, 8, false, "failure");
+    f.fail.push("jobs:208:1".into());
+    let c2 = plant_commit(&mut f, 2, true, "success");
+    v.push(case("(i) jobs call failed + a pair with nothing skipped -> refused", f, vec![c, c2], (0, 0, 2, EXIT_REFUSED)));
+    // (k) every PR ran everything: no skipped job was compared -> refused.
+    let mut f = FakeForge::default();
+    let c = plant_commit(&mut f, 2, true, "success");
+    v.push(case("(k) no compared pair skipped anything -> refused", f, vec![c], (0, 0, 1, EXIT_REFUSED)));
+    // (k+) control is (a+): one skipped job compared -> exit 0.
+
+    // (j) each GitHub call failing on one commit, beside a clean compared commit:
+    // the pair is uncompared AND the run refuses (a failed call is not benign).
+    for (name, key) in [
+        ("(j) pulls call failed -> uncompared, refused", "pulls:m8"),
+        ("(j) PR runs call failed -> uncompared, refused", "runs:h8:pull_request"),
+        ("(j) push runs call failed -> uncompared, refused", "runs:m8:push"),
+        ("(j) artifacts call failed -> uncompared, refused", "artifacts:108"),
+        ("(j) push jobs call failed -> uncompared, refused", "jobs:208:1"),
+        ("(j) record download failed -> uncompared, refused", "record:108:sieve-verdict-coverage-changes-1"),
+    ] {
+        let mut f = FakeForge::default();
+        let c = plant_commit(&mut f, 8, false, "failure");
+        let c2 = plant_commit(&mut f, 2, false, "success");
+        f.fail.push(key.into());
+        v.push(case(name, f, vec![c, c2], (0, 1, 1, EXIT_REFUSED)));
+    }
+    let mut f = FakeForge::default();
+    let c = plant_commit(&mut f, 8, false, "success");
+    let c2 = plant_commit(&mut f, 2, false, "success");
+    v.push(case("(j+) control: no call fails -> 2 compared, exit 0", f, vec![c, c2], (0, 2, 0, EXIT_PASS)));
+
+    // (m) malformed sieve output -> refusal, never a clean 0 / "no misses".
+    for (name, code, out) in [
+        ("(m) compared_skipped_jobs missing -> refused", 0, OUT_NO_COUNT),
+        ("(m) compared_skipped_jobs a string -> refused", 0, OUT_STR_COUNT),
+        ("(m) compared_skipped_jobs not an integer -> refused", 0, OUT_FRAC_COUNT),
+        ("(m) misses missing -> refused", 0, OUT_NO_MISSES),
+        ("(m) misses not an array -> refused", 0, OUT_STR_MISSES),
+        ("(m) uncompared_skipped_jobs missing -> refused", 0, OUT_NO_UNCOMPARED),
+        ("(m+) control: well-formed output -> compared, exit 0", 0, OUT_OK),
+    ] {
+        let mut f = FakeForge::default();
+        let c = plant_commit(&mut f, 1, false, "success");
+        let want = if out == OUT_OK { (0, 1, 0, EXIT_PASS) } else { (0, 0, 1, EXIT_REFUSED) };
+        v.push(Planted { canned: Some((code, out)), ..case(name, f, vec![c], want) });
+    }
+
     v
+}
+
+/// GitHub records with a missing or malformed field: each must be an error
+/// (a failed call), never a 0 or "" default. (name, parse result is Err, want Err)
+pub fn planted_gh() -> Vec<(&'static str, bool, bool)> {
+    let p = |s: &str| parse_json(s).expect("fixture JSON");
+    let run_ok = p(r#"{"id":5,"path":"x.yml","status":"completed","run_attempt":1,"run_number":3}"#);
+    let run_no_status = p(r#"{"id":5,"path":"x.yml","run_attempt":1,"run_number":3}"#);
+    let run_null_id = p(r#"{"id":null,"path":"x.yml","status":"completed","run_attempt":1,"run_number":3}"#);
+    let pull_ok = p(r#"{"number":4,"head":"abc","merged_at":"t","merge_commit_sha":"m"}"#);
+    let pull_no_head = p(r#"{"number":4,"merged_at":"t","merge_commit_sha":"m"}"#);
+    let job_ok = p(r#"{"name":"j","status":"completed","conclusion":null}"#);
+    let job_no_name = p(r#"{"status":"completed","conclusion":"success"}"#);
+    let art_ok = p(r#"{"name":"a","expired":false}"#);
+    let art_no_expired = p(r#"{"name":"a"}"#);
+    vec![
+        ("(n) run without `status` -> error", parse_runs(&[run_no_status]).is_err(), true),
+        ("(n) run with a null `id` -> error", parse_runs(&[run_null_id]).is_err(), true),
+        ("(n+) control: a well-formed run parses", parse_runs(&[run_ok]).is_err(), false),
+        ("(n) pull without `head` -> error", parse_pulls(&[pull_no_head]).is_err(), true),
+        ("(n+) control: a well-formed pull parses", parse_pulls(&[pull_ok]).is_err(), false),
+        ("(n) job without `name` -> error", parse_jobs(&[job_no_name]).is_err(), true),
+        ("(n+) control: a job with a null conclusion parses", parse_jobs(&[job_ok]).is_err(), false),
+        ("(n) artifact without `expired` -> error", parse_artifacts(&[art_no_expired]).is_err(), true),
+        ("(n+) control: a well-formed artifact parses", parse_artifacts(&[art_ok]).is_err(), false),
+    ]
+}
+
+/// An unreadable workflow file must refuse, not silently drop a classifier.
+/// (name, classifier_workflows is Err, want Err)
+pub fn planted_workflows() -> Vec<(&'static str, bool, bool)> {
+    let base = std::env::temp_dir().join(format!("gale-observe-wf-{}", std::process::id()));
+    let mk = |sub: &str, broken: bool| -> Result<PathBuf, String> {
+        let root = base.join(sub);
+        let wf = root.join(".github/workflows");
+        std::fs::create_dir_all(&wf).map_err(|e| e.to_string())?;
+        std::fs::write(wf.join("ok.yml"), "run: sieve classify --config sieve.toml\n").map_err(|e| e.to_string())?;
+        if broken {
+            // A directory named like a workflow: read_to_string fails on it.
+            std::fs::create_dir_all(wf.join("broken.yml")).map_err(|e| e.to_string())?;
+        }
+        Ok(root)
+    };
+    let mut out = Vec::new();
+    match (mk("broken", true), mk("ok", false)) {
+        (Ok(b), Ok(g)) => {
+            out.push(("(w) an unreadable workflow file -> refused", classifier_workflows(&b).is_err(), true));
+            out.push(("(w+) control: readable workflows -> listed", classifier_workflows(&g).map(|w| w.len() != 1).unwrap_or(true), false));
+        }
+        _ => out.push(("(w) fixture could not be built", false, true)),
+    }
+    let _ = std::fs::remove_dir_all(&base);
+    out
 }
 
 /// Run every planted case through `sieve`; the lines and whether all held.
@@ -897,7 +1153,10 @@ pub fn check_planted(sieve: &dyn Observer) -> (Vec<String>, bool) {
     let mut lines = Vec::new();
     let mut ok = true;
     for p in planted() {
-        let rep = observe_commits(&p.forge, sieve, &p.commits, &[WF.to_string()]);
+        let rep = match p.canned {
+            Some((code, out)) => observe_commits(&p.forge, &Canned(code, out), &p.commits, &[WF.to_string()]),
+            None => observe_commits(&p.forge, sieve, &p.commits, &[WF.to_string()]),
+        };
         let got = (rep.misses(), rep.compared(), rep.uncompared(), rep.exit());
         let held = got == p.want;
         ok &= held;
@@ -911,6 +1170,11 @@ pub fn check_planted(sieve: &dyn Observer) -> (Vec<String>, bool) {
             got.3,
             if held { String::new() } else { format!(" (want {:?})", p.want) }
         ));
+    }
+    for (name, got, want) in planted_gh().into_iter().chain(planted_workflows()) {
+        let held = got == want;
+        ok &= held;
+        lines.push(format!("{} {name}: error {got}{}", if held { "ok  " } else { "FAIL" }, if held { String::new() } else { format!(" (want error {want})") }));
     }
     (lines, ok)
 }
@@ -956,22 +1220,28 @@ mod tests {
             let mut gated = 0;
             let mut skipped = 0;
             let mut misses = Vec::new();
+            let mut uncompared = Vec::new();
             for job in j.arr() {
                 let name = job.get("name").and_then(Json::str).unwrap_or("");
                 let concl = job.get("conclusion").and_then(Json::str).unwrap_or("");
                 let Some((_, cls)) = map.iter().find(|(n, _)| *n == name) else { continue };
                 gated += 1;
                 if cls.iter().all(|c| !class(c)) {
-                    skipped += 1;
-                    if failed(concl) {
-                        misses.push(format!("{name} ({concl})"));
+                    // sieve compares only a pass or a failure; anything else is uncompared.
+                    if concl == "success" || failed(concl) {
+                        skipped += 1;
+                        if failed(concl) {
+                            misses.push(format!("{name} ({concl})"));
+                        }
+                    } else {
+                        uncompared.push(format!("{name} ({concl})"));
                     }
                 }
             }
             if gated == 0 {
                 return Observed::Refused("no job matches [workflows.job_outputs]".into());
             }
-            Observed::Compared { misses, skipped }
+            Observed::Compared { misses, skipped, uncompared }
         }
     }
 
@@ -1060,7 +1330,30 @@ mod tests {
     fn every_planted_case_holds() {
         let (lines, ok) = check_planted(&FakeSieve);
         assert!(ok, "{}", lines.join("\n"));
-        assert_eq!(lines.len(), 14);
+        assert_eq!(lines.len(), 49);
+    }
+
+    #[test]
+    fn h_a_cancelled_skipped_job_is_uncompared_with_its_reason() {
+        let rep = check("(h) gated job cancelled");
+        assert!(rep.text().contains("sieve compared no skipped job"), "{}", rep.text());
+        assert!(rep.text().contains("Rust Coverage (cancelled)"), "{}", rep.text());
+        assert_eq!(rep.hard(), 0);
+    }
+
+    #[test]
+    fn j_a_failed_call_is_hard_and_refuses() {
+        let rep = check("(j) pulls call failed");
+        assert_eq!(rep.hard(), 1);
+        assert!(rep.text().contains("failed call: refuses the run"), "{}", rep.text());
+        assert!(rep.json().contains("\"failed_calls\":1"), "{}", rep.json());
+        check("(j+)");
+    }
+
+    #[test]
+    fn i_nothing_judged_refuses() {
+        let rep = check("(i)");
+        assert!(rep.text().contains("no skipped job was compared"), "{}", rep.text());
     }
 
     #[test]
@@ -1135,16 +1428,16 @@ mod tests {
 
     #[test]
     fn parse_observe_reads_misses_and_refusals() {
-        let miss = r#"{"schema":"sieve.observe.v1","refused":false,"compared_skipped_jobs":3,"misses":[{"classes":["code"],"conclusion":"failure","job":"Rust Coverage"}]}"#;
+        let miss = r#"{"schema":"sieve.observe.v1","refused":false,"compared_skipped_jobs":3,"misses":[{"classes":["code"],"conclusion":"failure","job":"Rust Coverage"}],"uncompared_skipped_jobs":[]}"#;
         match parse_observe(Some(1), miss, "") {
-            Observed::Compared { misses, skipped } => {
+            Observed::Compared { misses, skipped, .. } => {
                 assert_eq!(skipped, 3);
                 assert!(misses[0].starts_with("Rust Coverage (failure)"));
             }
             o => panic!("{o:?}"),
         }
-        let none = r#"{"schema":"sieve.observe.v1","refused":false,"compared_skipped_jobs":0,"misses":[]}"#;
-        assert_eq!(parse_observe(Some(0), none, ""), Observed::Compared { misses: vec![], skipped: 0 });
+        let none = r#"{"schema":"sieve.observe.v1","refused":false,"compared_skipped_jobs":0,"misses":[],"uncompared_skipped_jobs":[]}"#;
+        assert_eq!(parse_observe(Some(0), none, ""), Observed::Compared { misses: vec![], skipped: 0, uncompared: vec![] });
         assert!(matches!(parse_observe(Some(3), "", "no gated job"), Observed::Refused(_)));
         assert!(matches!(parse_observe(Some(2), "", "usage"), Observed::Refused(_)));
         // Exit and list disagree: not trusted.
