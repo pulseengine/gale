@@ -1,0 +1,91 @@
+# sieve's observed-miss counter (REQ-CI-SIEVE-OBSERVE-001, docs/ci/sieve-observe.md).
+#
+# On a pull request each classifier job uploads sieve's verdict of record
+# (sieve-verdict-<workflow>-<job>-<run_attempt>). The counter reads no
+# merge_group run: the push run on main after the merge runs every gated job. `cargo xtask observe`
+# takes each recent merge's PR, that PR's LAST record per classifier job and the
+# push run of the same workflow on the merge commit, and runs `sieve observe`:
+# a job that failed on main although all its classes were false on the PR is a
+# miss.
+#
+# Exit: 0 no miss, >= 1 skipped job compared and no failed call; 1 a miss; 3
+# refused, not a pass (no skipped job compared, or a GitHub call, download or
+# sieve failed). Benign uncompared pairs (no PR, no record, an expired record, no
+# push run yet, a run in progress, nothing skipped) are listed with their reason.
+# Only the last COMMITS first-parent commits are judged per run; see the doc.
+#
+# NOT a required context and no pull_request trigger: it judges main after the
+# fact and must not gate a PR. Read-only token.
+name: sieve observe
+
+on:
+  schedule:
+    - cron: "37 5 * * *"
+  workflow_dispatch:
+    inputs:
+      commits:
+        description: "How many first-parent commits of main to judge"
+        required: false
+        default: "20"
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    name: sieve observed-miss counter
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      # Full history: the commits judged are `git log --first-parent origin/main`.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
+      - uses: ./.github/actions/setup-sieve
+      - name: Pinned sieve is the one on PATH
+        run: |
+          set -euo pipefail
+          got="$(command -v sieve || true)"
+          if [ "$got" != "$SIEVE_PINNED_DIR/sieve" ]; then
+            echo "::error::sieve on PATH is '${got:-<none>}', not the pinned $SIEVE_PINNED_DIR/sieve"
+            exit 1
+          fi
+      - name: Pinned sieve reports its version
+        run: sieve --version
+      # The planted cases and their controls, through the real pinned
+      # sieve. A sieve without `observe` fails here, loudly, before any judging.
+      - name: Planted cases hold with the pinned sieve
+        run: cargo xtask observe --self-test
+      - name: Count observed misses on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMITS: ${{ inputs.commits || '20' }}
+        run: |
+          set -u
+          report="$RUNNER_TEMP/sieve-observe.txt"
+          rc=0
+          cargo xtask observe --commits "$COMMITS" > "$report" || rc=$?
+          cat "$report"
+          {
+            echo "## sieve observed-miss counter (exit $rc)"
+            echo
+            echo '```'
+            cat "$report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "$rc" in
+            0) ;;
+            1) echo "::error::sieve observe: a job failed on main that sieve skipped on its pull request (a miss)" ;;
+            3) echo "::error::sieve observe refused: no skipped job was compared, or a GitHub call, download or sieve failed; that is not a pass" ;;
+            *) echo "::error::cargo xtask observe exited $rc (usage error or crash)" ;;
+          esac
+          exit "$rc"
