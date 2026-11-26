@@ -1,34 +1,22 @@
-(** * Zephyr Scheduler — invariant model (WIP STUB)
+(** * Zephyr scheduler invariant model
 
-    STATUS: WIP STUB — every theorem below is `Admitted` (0 Qed): statements
-    without proofs. Proof scaffolding, NOT proven results; do not cite as formal
-    verification. See docs/safety/verification-honesty.md (claims ledger,
-    2026-07-08). Fully-proven Rocq modules: sem/mutex/msgq/pipe/stack/condvar/
-    event/mem_slab/timer.
-
-    (Intended) properties about the priority run queue and scheduling decisions.
-    Complements Verus SMT proofs in plain/src/sched.rs.
+    SC1–SC3 prove properties of the abstract ready queue. The scheduling
+    decisions and state transitions below still contain admitted statements.
+    See docs/safety/verification-honesty.md for the scope of these proofs.
 
     Key abstractions:
     - Priority: lower numeric value = higher priority (Zephyr convention)
     - RunQueue: sorted list (index 0 = highest priority = lowest number)
     - next_up: returns highest-priority thread or idle
 
-    Invariants proved:
+    Ready-queue properties:
     - SC1: best() returns thread with minimum priority value
     - SC2: add preserves sorted ordering (by numeric priority ascending)
     - SC3: remove_best preserves sorted ordering for remaining threads
-    - SC5: next_up returns highest priority eligible thread
-    - SC7: idle is selected only when run queue is empty
 
     These proofs operate at the abstract Z level using lists. *)
 
-Require Import RocqOfRust.RocqOfRust.
-
-(* Close type_scope to prevent parsing conflicts with abstract proofs. *)
-Close Scope type_scope.
-Require Import Stdlib.Init.Logic.
-Require Import Stdlib.Lists.List.
+From Stdlib Require Import Lists.List ZArith.ZArith.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -86,21 +74,27 @@ Theorem sc1_best_some_nonempty :
     l <> [] ->
     exists p, best l = Some p.
 Proof.
-Admitted.
+  intros [| p rest] Hnonempty.
+  - contradiction.
+  - now exists p.
+Qed.
 
-(** SC1: best() returns None exactly when queue is empty. *)
+(** SC1: best() returns None on an empty queue. *)
 Theorem sc1_best_none_empty :
   best [] = None.
 Proof.
-Admitted.
+  reflexivity.
+Qed.
 
-(** SC1: In a sorted list, the head is <= all other elements. *)
+(** SC1: In a sorted pair, the first priority is no greater than the second. *)
 Theorem sc1_best_is_minimum :
   forall p l : Z,
     sorted_asc (p :: [l]) ->
     p <= l.
 Proof.
-Admitted.
+  intros p l [Hle _].
+  exact Hle.
+Qed.
 
 (** SC1: General: head of sorted list is <= every element. *)
 Lemma sorted_head_le_all :
@@ -109,7 +103,15 @@ Lemma sorted_head_le_all :
     sorted_asc (h :: t) ->
     forall x, In x t -> h <= x.
 Proof.
-Admitted.
+  intros h t. revert h.
+  induction t as [| a t IH].
+  - intros h _ x Hin. contradiction.
+  - intros h [Hha Hsorted] x [Heq | Hin].
+    + now subst x.
+    + apply Z.le_trans with (m := a).
+      * exact Hha.
+      * now apply IH.
+Qed.
 
 (* ========================================================================= *)
 (** * SC2: add_thread preserves sort invariant *)
@@ -122,7 +124,23 @@ Lemma insert_sorted_preserves :
     sorted_asc l ->
     sorted_asc (insert_sorted p l).
 Proof.
-Admitted. (* insert_sorted preserves sorted — proof needs Coq 9.0 tactic debugging *)
+  intros p l.
+  induction l as [| a l IH]; intro Hsorted.
+  - exact I.
+  - cbn [insert_sorted].
+    destruct (Z.leb p a) eqn:Hpa.
+    + apply Z.leb_le in Hpa.
+      exact (conj Hpa Hsorted).
+    + apply Z.leb_gt in Hpa.
+      destruct l as [| b l].
+      * split; [now apply Z.lt_le_incl | exact I].
+      * destruct Hsorted as [Hab Htail].
+        specialize (IH Htail).
+        cbn [insert_sorted] in IH |- *.
+        destruct (Z.leb p b).
+        -- exact (conj (Z.lt_le_incl _ _ Hpa) IH).
+        -- exact (conj Hab IH).
+Qed.
 
 (** SC2: add_thread preserves the run queue invariant. *)
 Theorem sc2_add_preserves_inv :
@@ -131,7 +149,8 @@ Theorem sc2_add_preserves_inv :
     runq_inv prios ->
     runq_inv (insert_sorted p prios).
 Proof.
-Admitted.
+  exact insert_sorted_preserves.
+Qed.
 
 (** SC2: add_thread increases queue length by 1. *)
 Theorem sc2_add_increases_length :
@@ -139,7 +158,12 @@ Theorem sc2_add_increases_length :
   forall prios : list Z,
     length (insert_sorted p prios) = S (length prios).
 Proof.
-Admitted.
+  intros p prios.
+  induction prios as [| a rest IH].
+  - reflexivity.
+  - cbn [insert_sorted].
+    destruct (Z.leb p a); simpl; [reflexivity | now rewrite IH].
+Qed.
 
 (* ========================================================================= *)
 (** * SC3: remove_thread preserves sort invariant *)
@@ -152,7 +176,10 @@ Lemma sorted_tail :
     sorted_asc (x :: l) ->
     sorted_asc l.
 Proof.
-Admitted.
+  intros x [| a rest] Hsorted.
+  - exact I.
+  - exact (proj2 Hsorted).
+Qed.
 
 (** SC3: remove_best preserves sorted ordering. *)
 Theorem sc3_remove_best_preserves_inv :
@@ -160,7 +187,10 @@ Theorem sc3_remove_best_preserves_inv :
     runq_inv prios ->
     runq_inv (remove_best prios).
 Proof.
-Admitted.
+  intros [| a rest] Hsorted.
+  - exact I.
+  - exact (sorted_tail a rest Hsorted).
+Qed.
 
 (** SC3: remove_best decreases length by 1 (when non-empty). *)
 Theorem sc3_remove_best_decreases_length :
@@ -168,7 +198,10 @@ Theorem sc3_remove_best_decreases_length :
     prios <> [] ->
     length (remove_best prios) = Nat.sub (length prios) 1.
 Proof.
-Admitted.
+  intros [| a rest] Hnonempty.
+  - contradiction.
+  - simpl. now rewrite Nat.sub_0_r.
+Qed.
 
 (* ========================================================================= *)
 (** * SC5: next_up returns highest priority thread *)
