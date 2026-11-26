@@ -861,7 +861,7 @@ pub fn run(repo: &Path, module: Option<&str>) -> Verdict {
             .current_dir(&crate_dir)
             .env("CARGO_TARGET_DIR", &vdir)
             .env_remove("CARGO_TERM_COLOR")
-            .args(["rustc", "--color", "never", "--release", "--target", TARGET, "--no-default-features", "--features"])
+            .args(["rustc", "--locked", "--color", "never", "--release", "--target", TARGET, "--no-default-features", "--features"])
             .arg(feats.join(","))
             .args(["--bin", bin, "--"])
             .arg(format!("-Clink-arg=-Map={}", map.display()))

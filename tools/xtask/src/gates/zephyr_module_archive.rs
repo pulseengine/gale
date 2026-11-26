@@ -100,7 +100,7 @@ fn builds_standalone(archive: &Path, into: &Path) -> Result<(), String> {
     let root = into.join(format!("gale-zephyr-module-{VERSION}"));
     run_cmd(
         Command::new("cargo")
-            .args(["check", "--quiet", "--manifest-path", "ffi/Cargo.toml", "--target-dir"])
+            .args(["check", "--locked", "--quiet", "--manifest-path", "ffi/Cargo.toml", "--target-dir"])
             .arg(into.join("target"))
             .current_dir(&root),
     )

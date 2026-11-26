@@ -516,6 +516,7 @@ fn cargo_build(gust: &Path, b: &Board, bin: &str, feats: &str, target_dir: &Path
     c.current_dir(gust)
         .args([
             "build",
+            "--locked",
             "--release",
             "--bin",
             bin,
