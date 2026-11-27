@@ -135,7 +135,7 @@ rocq-lib proofs.pipe_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.poll_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.poll_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.sched_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
-rocq-lib proofs.sched_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
+rocq-lib proofs.sched_proofs theory set-predicative VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.sem_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.sem_proofs theory set-impredicative VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.stack_proofs theory rewrite-rules-disallowed VER-HONESTY-AXIOMS-GATE-001
@@ -151,7 +151,6 @@ rocq-lib proofs.msgq_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.mutex_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.pipe_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.poll_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
-rocq-lib proofs.sched_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.sem_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.stack_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.thread_lifecycle_proofs uses rocqofrust-base VER-HONESTY-AXIOMS-GATE-001
@@ -179,15 +178,7 @@ rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.raise_then_check VER-HONEST
 rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.reset_then_raise VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.poll_proofs axiom proofs.poll_proofs.state_constants_distinct VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.empty_runq_inv VER-HONESTY-AXIOMS-GATE-001
-rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.insert_sorted_preserves VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.prio_cmp_negative_iff_higher VER-HONESTY-AXIOMS-GATE-001
-rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc1_best_is_minimum VER-HONESTY-AXIOMS-GATE-001
-rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc1_best_none_empty VER-HONESTY-AXIOMS-GATE-001
-rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc1_best_some_nonempty VER-HONESTY-AXIOMS-GATE-001
-rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc2_add_increases_length VER-HONESTY-AXIOMS-GATE-001
-rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc2_add_preserves_inv VER-HONESTY-AXIOMS-GATE-001
-rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc3_remove_best_decreases_length VER-HONESTY-AXIOMS-GATE-001
-rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc3_remove_best_preserves_inv VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc5_next_up_empty_is_idle VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc5_next_up_is_optimal VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sc5_next_up_returns_best VER-HONESTY-AXIOMS-GATE-001
@@ -199,8 +190,6 @@ rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.should_preempt_coop_metai
 rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.should_preempt_coop_no_metairq VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.should_preempt_noncoop VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.should_preempt_swap_ok VER-HONESTY-AXIOMS-GATE-001
-rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sorted_head_le_all VER-HONESTY-AXIOMS-GATE-001
-rocq-lib proofs.sched_proofs axiom proofs.sched_proofs.sorted_tail VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_clone_Clone_for_sem_Priority.Implements VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_clone_Clone_for_sem_Thread.Implements VER-HONESTY-AXIOMS-GATE-001
 rocq-lib proofs.sem_proofs axiom plain.sem.Impl_core_clone_Clone_for_sem_ThreadId.Implements VER-HONESTY-AXIOMS-GATE-001

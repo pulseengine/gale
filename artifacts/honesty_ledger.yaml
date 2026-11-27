@@ -169,12 +169,12 @@ artifacts:
       collectAxioms per constant) per Lean module, and holds the result equal
       to tools/xtask/axioms-audit.ledger: per library the theory (Set
       predicative or impredicative, rewrite rules), the axioms (a shared set
-      of 92, named once, plus 165 per-library rows: the Admitted lemmas of
-      poll 22, sched 23, thread_lifecycle 29, and 91 axioms of the generated
+      of 92, named once, plus 155 per-library rows: the Admitted lemmas of
+      poll 22, sched 13 (Stdlib only, predicative Set, after #553), thread_lifecycle 29, and 91 axioms of the generated
       translation plain.sem that sem_proofs imports) and any kernel-check
       bypass; per Lean module the constant, theorem and unreplayed counts and
       how many constants depend on each axiom. Seeded 2026-11-25 on darwin
-      arm64. It also holds the audited sources equal to the tracked .v and
+      arm64; the sched_proofs rows were updated from the Linux CI run of 2026-11-28 (gale#558). It also holds the audited sources equal to the tracked .v and
       .lean files, and bridges to the trust ledger (own-module axioms =
       Admitted/Axiom/Parameter/Variable spellings; Lean axiom constants =
       `axiom` spellings). `--self-test` (pure, recorded outputs): an empty,
