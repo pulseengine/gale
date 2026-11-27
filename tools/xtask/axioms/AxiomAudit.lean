@@ -10,7 +10,7 @@ parses or what it prints (L11 forged every in-file `#print axioms`; an
 audited module named `Lean` on LEAN_PATH shadowed this import, measured).
 
 Only at run time does `main` install the audit search path, toolchain first:
-`<sysroot>/lib/lean`, then each `--path=` directory in order. For each module
+`<sysroot>/lib/lean`, then each `--path=` directory in order. For THE module
 named on the command line as `<Module>=<olean>` it resolves the module with
 `findOLean` and refuses unless that is the given `.olean` (so a module that
 shares a root with the toolchain or Mathlib is never audited in another's
@@ -18,8 +18,13 @@ place), reads it, imports that module's own imports, REPLAYS every constant
 of the module through the kernel (`Lean.Environment.replay`), and then runs
 `collectAxioms` on each constant in the replayed environment.
 
-Usage: `lean --run AxiomAudit.lean <nonce> --path=<dir>... <Module>=<olean>...`
-with no LEAN_PATH. The sysroot is THIS binary's own prefix (`getBuildDir`),
+Usage: `lean --run AxiomAudit.lean <nonce> --path=<dir>... <Module>=<olean>`
+with no LEAN_PATH: exactly ONE module per process. `importModules` maps or
+reads the module's imports (all of Mathlib) afresh on every call and never
+frees them, so N modules in one process held N copies of Mathlib (measured on
+darwin: 2.0 GB peak footprint for one module, 18.5 GB for the 8 in one
+process; the hosted Linux runner was OOM-killed at 9 GiB RSS). The gate runs
+one process per module, sequentially, each with its own nonce. The sysroot is THIS binary's own prefix (`getBuildDir`),
 not a `lean` on PATH, so the oleans are read by the toolchain that wrote them.
 
 Output, one tab-separated record per line; every name and message is
@@ -106,8 +111,10 @@ def main (args : List String) : IO UInt32 := do
     -- only ever resolve there. Nothing reads LEAN_PATH: the stock helper that
     -- prepends it to the search path is deliberately not called.
     searchPathRef.set ((← getBuildDir) / "lib" / "lean" :: paths)
-    if mods.isEmpty then
-      IO.println (tab ["refuse", nonce, hex "no modules named"])
+    -- One module per process (see the header): a second `importModules` in
+    -- the same process would hold a second copy of Mathlib.
+    if mods.length != 1 then
+      IO.println (tab ["refuse", nonce, hex ("exactly one <Module>=<olean> per run, got " ++ toString mods.length)])
       return 3
     let mut total := 0
     for a in mods do

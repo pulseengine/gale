@@ -102,7 +102,8 @@ its own transitive aspect and `--remote_download_outputs=all`.
    Quot.sound 239, Classical.choice 87; no `sorryAx`, no `Lean.ofReduceBool`.
 6. **Wall time** (warm Bazel cache, laptop, other work running): rocqchk over
    all 13 libraries 159 s and 106 s in two runs; the Lean program over all 8
-   modules 72 s and 60 s. The Bazel build itself was 6.8 s warm; cold it is
+   modules 72 s and 60 s (in one process, before the per-module split; the 8
+   per-module runs took 63 s in total, each importing Mathlib anew). The Bazel build itself was 6.8 s warm; cold it is
    dominated by the 7,869-file Mathlib download (about 6 min here).
 7. **Determinism.** Two runs of each of the 13 rocqchk invocations are
    byte-identical (the axiom list order is not sorted, but it is stable); the
@@ -153,7 +154,16 @@ fired. K3 (an unstable R2 driver): not tested; R2 is not built in this lane.
    auxiliary and it was not ledgered. That is one measured case, not a proof
    that every `native_decide` use is rejected. It refuses
    a module-system olean (its private part is another
-   file). It runs under the toolchain's own `lean --run`.
+   file). It runs under the toolchain's own `lean --run`, ONE process per
+   module, sequentially, each with its own nonce (`<base>m<i>`), and refuses
+   (3) a command line naming any other number of modules. Measured: in one
+   process every module's `importModules` held a fresh copy of Mathlib
+   (darwin peak memory footprint 2.0 GB for one module, 18.5 GB for the 8;
+   the hosted Linux runner was OOM-killed at 9 GiB RSS); per process it is
+   2.0-2.1 GB, and the 650 `module`/`const` records (642 constants) the 8 runs print are
+   byte-identical to the single-process transcript's. A run killed by a
+   signal, or one whose transcript names another module or carries another
+   run's nonce, is refused (3).
 3. **Output.** Hex-encoded UTF-8 names, tab-separated, one record per
    constant, a per-run nonce on `begin`/`end`, and a count trailer checked
    against both the printed records and the olean's own constant count, so

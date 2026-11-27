@@ -21,9 +21,11 @@
 //!   provides, then runs the trusted program `tools/xtask/axioms/AxiomAudit.lean`
 //!   (it imports only `Lean`) with the toolchain's own `lean --run` and NO
 //!   `LEAN_*` variable, so the audited oleans cannot shadow its `import Lean`;
-//!   the search path and each module's manifest `.olean` are arguments. The
-//!   program checks each module resolves to that `.olean`, replays its
-//!   constants through the kernel and runs `collectAxioms` on every one.
+//!   the search path and the module's manifest `.olean` are arguments, one
+//!   `lean` process per module (in one process each module's imports were a
+//!   fresh copy of Mathlib: 18.5 GB for the 8, measured). The program checks
+//!   the module resolves to that `.olean`, replays its constants through the
+//!   kernel and runs `collectAxioms` on every one.
 //!
 //! The result is held equal to `tools/xtask/axioms-audit.ledger`. Two bridge
 //! checks tie it to the trust ledger's spelling counts: per Rocq file, the
@@ -433,6 +435,29 @@ pub fn parse_lean_output(text: &str, nonce: &str, mods: &[String]) -> Result<Lea
         }
     }
     Err("the Lean audit output has no `end <nonce>` line (truncated)".into())
+}
+
+/// The nonce of the `i`-th per-module run: the run's base nonce and the
+/// module's position, so one module's transcript cannot stand in for
+/// another's (nor a stale run's for this one).
+pub fn lean_module_nonce(base: &str, i: usize) -> String {
+    format!("{base}m{i}")
+}
+
+/// Judge ONE per-module run of the trusted program (one process per module:
+/// see the header of PROGRAM for the measured reason). `code` is the exit
+/// code (None = killed by a signal, e.g. the OOM killer), `text` its stdout.
+/// Ok(Ok) only for exit 0 with a complete transcript that carries this run's
+/// nonce and reports exactly `module`; Ok(Rejected) only for exit 1 with a
+/// `reject` record; anything else -- a killed or truncated run included -- is
+/// refused (Err).
+pub fn judge_lean_module(code: Option<i32>, text: &str, nonce: &str, module: &str) -> Result<LeanRun, String> {
+    match (code, parse_lean_output(text, nonce, &[module.to_string()])) {
+        (Some(0), Ok(LeanRun::Ok(r))) if r.len() == 1 && r.contains_key(module) => Ok(LeanRun::Ok(r)),
+        (Some(1), Ok(LeanRun::Rejected(m))) => Ok(LeanRun::Rejected(m)),
+        (c, Err(e)) => Err(format!("{module}: {e} (exit {c:?})")),
+        (c, _) => Err(format!("{module}: the Lean audit exited {c:?} with output that does not match that exit")),
+    }
 }
 
 // ── the ledger ─────────────────────────────────────────────────────────────
@@ -868,42 +893,59 @@ fn observe(repo: &Path) -> Result<(RocqManifest, LeanManifest, Observed, Vec<Str
     if !conflicts.is_empty() {
         return Err(conflicts.join("; "));
     }
-    let mods: Vec<String> = lm.mods.iter().map(|m| m.module.clone()).collect();
-    // F1: the trusted program is elaborated with NO `LEAN_*` variable, so its
-    // `import Lean` resolves in the toolchain's lib/lean only; the audit search
-    // path reaches it as arguments, installed at run time (toolchain first).
-    let mut cmd = Command::new(&lean_bin);
-    for (k, _) in std::env::vars_os() {
-        if k.to_string_lossy().starts_with("LEAN") {
-            cmd.env_remove(k);
+    // One `lean` process per module, sequentially: in one process every
+    // module's `importModules` kept its own copy of Mathlib (measured 18.5 GB
+    // peak footprint for the 8 vs 2.0 GB for one; the hosted runner was
+    // OOM-killed). Each run has its own nonce and must report exactly its
+    // module; a killed or truncated run is refused like any other bad shape.
+    let mut lean: BTreeMap<String, LeanReport> = BTreeMap::new();
+    for (i, m) in lm.mods.iter().enumerate() {
+        let mnonce = lean_module_nonce(&nonce, i);
+        // F1: the trusted program is elaborated with NO `LEAN_*` variable, so its
+        // `import Lean` resolves in the toolchain's lib/lean only; the audit search
+        // path reaches it as arguments, installed at run time (toolchain first).
+        let mut cmd = Command::new(&lean_bin);
+        for (k, _) in std::env::vars_os() {
+            if k.to_string_lossy().starts_with("LEAN") {
+                cmd.env_remove(k);
+            }
+        }
+        eprintln!("axioms-audit: lean --run {} {} ({}/{}) ...", PROGRAM, m.module, i + 1, lm.mods.len());
+        let t0 = std::time::Instant::now();
+        let out = cmd
+            .current_dir(&exec)
+            .arg("--run")
+            .arg(repo.join(PROGRAM))
+            .arg(&mnonce)
+            .args(lm.paths.iter().map(|p| format!("--path={}", exec.join(p).display())))
+            .arg(format!("{}={}", m.module, exec.join(&m.olean).display()))
+            .output()
+            .map_err(|e| format!("cannot run {}: {e}", lm.lean))?;
+        eprintln!("axioms-audit: lean {} done in {:.1}s ({})", m.module, t0.elapsed().as_secs_f64(), out.status);
+        let text = String::from_utf8_lossy(&out.stdout);
+        match judge_lean_module(out.status.code(), &text, &mnonce, &m.module) {
+            Ok(LeanRun::Ok(r)) => {
+                for (k, v) in r {
+                    if lean.insert(k.clone(), v).is_some() {
+                        return Err(format!("lean module {k} reported by two runs"));
+                    }
+                }
+            }
+            Ok(LeanRun::Rejected(msg)) => {
+                // Measured: a `native_decide` auxiliary cannot be replayed (the kernel
+                // needs compiled code for `Lean.reduceBool` that replay does not
+                // load), so the measured native_decide plant (oracle P4) was rejected here, not
+                // ledgered: the replay's kernel check is the mechanism. As before
+                // the split, the first rejection ends the Lean half with no figures.
+                o.lean_rejected = true;
+                lean.clear();
+                fails.push(format!("lean: the kernel rejected a replayed constant (a `native_decide` auxiliary is rejected this way): {msg}"));
+                break;
+            }
+            Err(e) => return Err(format!("{e}; stderr: {}", tail(&out.stderr, 6))),
         }
     }
-    eprintln!("axioms-audit: lean --run {} over {} modules ...", PROGRAM, lm.mods.len());
-    let t0 = std::time::Instant::now();
-    let out = cmd
-        .current_dir(&exec)
-        .arg("--run")
-        .arg(repo.join(PROGRAM))
-        .arg(&nonce)
-        .args(lm.paths.iter().map(|p| format!("--path={}", exec.join(p).display())))
-        .args(lm.mods.iter().map(|m| format!("{}={}", m.module, exec.join(&m.olean).display())))
-        .output()
-        .map_err(|e| format!("cannot run {}: {e}", lm.lean))?;
-    eprintln!("axioms-audit: lean done in {:.1}s ({})", t0.elapsed().as_secs_f64(), out.status);
-    let text = String::from_utf8_lossy(&out.stdout);
-    match (out.status.code(), parse_lean_output(&text, &nonce, &mods)) {
-        (Some(0), Ok(LeanRun::Ok(r))) => o.lean = r,
-        (Some(1), Ok(LeanRun::Rejected(m))) => {
-            // Measured: a `native_decide` auxiliary cannot be replayed (the kernel
-            // needs compiled code for `Lean.reduceBool` that replay does not
-            // load), so the measured native_decide plant (oracle P4) was rejected here, not
-            // ledgered: the replay's kernel check is the mechanism.
-            o.lean_rejected = true;
-            fails.push(format!("lean: the kernel rejected a replayed constant (a `native_decide` auxiliary is rejected this way): {m}"))
-        }
-        (_, Err(e)) => return Err(format!("{e} (exit {:?}; stderr: {})", out.status.code(), tail(&out.stderr, 6))),
-        (c, _) => return Err(format!("the Lean audit exited {c:?} with output that does not match that exit; stderr: {}", tail(&out.stderr, 6))),
-    }
+    o.lean = lean;
     Ok((rm, lm, o, fails))
 }
 
@@ -1169,6 +1211,35 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     ck("lean: a `reject` record (the kernel refused a constant) is a failure, not a refusal",
         matches!(parse_lean_output(&format!("begin\tN1\nreject\tN1\t{}\n", hexs("replay A: bad")), "N1", &mods), Ok(LeanRun::Rejected(_))));
     ck("lean: uppercase or odd hex is refused", parse_lean_output(&lean_out(good, Some(3)).replace(&hexs("t1"), "7"), "N1", &mods).is_err());
+
+    // -- one process per module: judging each run ---------------------------------
+    let n0 = lean_module_nonce("N", 0);
+    let n1 = lean_module_nonce("N", 1);
+    let one = |nonce: &str, module: &str| lean_out(good, Some(3)).replace("N1", nonce).replace(&hexs("A"), &hexs(module));
+    ck("per-module: exit 0 with this run's nonce and module passes",
+        matches!(judge_lean_module(Some(0), &one(&n0, "A"), &n0, "A"), Ok(LeanRun::Ok(m)) if m.len() == 1 && m.contains_key("A")));
+    ck("per-module: the nonces of two runs differ", n0 != n1);
+    ck("PLANTED per-module: another module's run (its nonce) as this module's transcript is refused",
+        judge_lean_module(Some(0), &one(&n1, "A"), &n0, "A").is_err());
+    ck("PLANTED per-module: a transcript reporting another module (B for A) is refused",
+        judge_lean_module(Some(0), &one(&n0, "B"), &n0, "A").is_err());
+    ck("PLANTED per-module: a transcript reporting this module AND another is refused",
+        judge_lean_module(Some(0), &format!("{}{}", one(&n0, "A").replace(&format!("end\t{n0}\t3\n"), ""), one(&n0, "B").replace(&format!("begin\t{n0}\n"), "").replace("\t3\n", "\t6\n")), &n0, "A").is_err());
+    {
+        let full = one(&n0, "A");
+        let cut = &full[..full.rfind("end\t").unwrap_or(0)];
+        ck("VACUOUS per-module: a run killed by a signal (OOM: no exit code, transcript cut) is refused",
+            judge_lean_module(None, cut, &n0, "A").is_err());
+        ck("VACUOUS per-module: a killed run whose transcript happens to be complete is still refused",
+            judge_lean_module(None, &full, &n0, "A").is_err());
+        ck("VACUOUS per-module: exit 0 with a truncated transcript is refused", judge_lean_module(Some(0), cut, &n0, "A").is_err());
+        ck("per-module: exit 3 with a complete transcript (shape and exit disagree) is refused", judge_lean_module(Some(3), &full, &n0, "A").is_err());
+    }
+    ck("per-module: exit 1 with a `reject` record is the kernel's rejection",
+        matches!(judge_lean_module(Some(1), &format!("begin\t{n0}\nreject\t{n0}\t{}\n", hexs("replay A: bad")), &n0, "A"), Ok(LeanRun::Rejected(_))));
+    ck("per-module: a `reject` record with exit 0 is refused", judge_lean_module(Some(0), &format!("begin\t{n0}\nreject\t{n0}\t{}\n", hexs("x")), &n0, "A").is_err());
+    ck(&format!("the trusted program {PROGRAM} refuses anything but exactly one module per run"),
+        std::fs::read_to_string(repo.join(PROGRAM)).is_ok_and(|t| t.contains("if mods.length != 1 then")));
     ck("lean: a private name loses its host-specific path",
         normalize_lean_name("_private.«bazel-out».«k8-fastbuild».bin.proofs.lean.x_src.M.0.foo") == "private:foo" && normalize_lean_name("propext") == "propext");
 
