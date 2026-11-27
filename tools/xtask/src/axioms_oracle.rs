@@ -25,13 +25,15 @@
 //!                 seeded with the same theorem `by decide`: axioms-audit 1
 //!                 (measured: the kernel replay REJECTS the `_nativeDecide`
 //!                 auxiliary -- replay has no compiled code for
-//!                 Lean.reduceBool -- so it is never ledgered), trust-ledger 1;
+//!                 Lean.reduceBool -- so this plant is not ledgered), trust-ledger 1;
 //!                 control 0 / 0.
 //!   P6 vacuous    proofs/BUILD.bazel audits no library: axioms-audit 3 (refused).
 //!   C0 clean      the unmodified tree: axioms-audit 0, its self-test 0.
 //!
 //! What it cannot see: whether the plants are the right plants (they are the
-//! plan's, section 3); runs of other commits; the CI job (not built yet).
+//! plan's, section 3); runs of other commits. The CI job runs
+//! the gate and its self-test on every PR (not required); it does not run
+//! this oracle.
 
 use std::path::Path;
 use std::process::Command;

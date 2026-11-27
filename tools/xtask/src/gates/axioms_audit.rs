@@ -16,9 +16,13 @@
 //!   fixpoints, and inductives whose positivity is assumed. It is per LIBRARY,
 //!   not per theorem: it over-approximates, which is the safe direction.
 //! - **Lean.** `bazel build //proofs/lean:axioms_audit` writes a manifest of
-//!   the 8 modules' `.olean` files and LEAN_PATH; the gate runs the trusted
-//!   program `tools/xtask/axioms/AxiomAudit.lean` (it imports only `Lean`)
-//!   with the toolchain's own `lean --run`. The program replays each module's
+//!   the 8 modules' `.olean` files and search path; the gate refuses a module
+//!   whose root name the toolchain, Mathlib or another search-path entry also
+//!   provides, then runs the trusted program `tools/xtask/axioms/AxiomAudit.lean`
+//!   (it imports only `Lean`) with the toolchain's own `lean --run` and NO
+//!   `LEAN_*` variable, so the audited oleans cannot shadow its `import Lean`;
+//!   the search path and each module's manifest `.olean` are arguments. The
+//!   program checks each module resolves to that `.olean`, replays its
 //!   constants through the kernel and runs `collectAxioms` on every one.
 //!
 //! The result is held equal to `tools/xtask/axioms-audit.ledger`. Two bridge
@@ -63,6 +67,7 @@ pub const CANNOT_SEE: &[&str] = &[
     "Verus: vstd's axioms are not read (trust-ledger counts Verus assumption spellings; nothing reads vstd)",
     "whether the theory flags passed to rocqchk are the ones the library NEEDS: they are the library's own Bazel `extra_flags`; rocqchk refuses an impredicative-Set library checked without the flag (exit 129), and prints the mode it ran in",
     "proof files not tracked by git, and libraries not built by the two Bazel audit targets (the gate holds the targets' sources equal to the tracked proof files)",
+    "which .vo rocqchk checked: it gets the logical name and -Q paths, not a .vo path, so a same-named .vo on an earlier -Q mapping would be checked instead (the Lean side compares the resolved olean with the manifest; the Rocq side does not)",
 ];
 
 // ── manifests ──────────────────────────────────────────────────────────────
@@ -166,6 +171,62 @@ pub fn parse_lean_manifest(text: &str) -> Result<LeanManifest, String> {
         return Err("lean manifest: no LEAN_PATH entry".into());
     }
     Ok(LeanManifest { lean, paths, mods })
+}
+
+/// Roots the Lean toolchain owns whatever its `lib/lean` lists.
+pub const RESERVED_LEAN_ROOTS: &[&str] = &["Lean", "Init", "Std", "Lake"];
+
+/// The top-level module roots a search-path directory provides, the way
+/// `findOLean` sees them: a subdirectory `R/` or a file `R.olean`.
+pub fn dir_roots(dir: &Path) -> Result<BTreeSet<String>, String> {
+    let rd = std::fs::read_dir(dir).map_err(|e| format!("cannot list the Lean search-path entry {}: {e}", dir.display()))?;
+    let mut roots = BTreeSet::new();
+    for e in rd {
+        let e = e.map_err(|e| format!("cannot list {}: {e}", dir.display()))?;
+        let name = e.file_name().to_string_lossy().into_owned();
+        if e.path().is_dir() {
+            roots.insert(name);
+        } else if let Some(stem) = name.strip_suffix(".olean") {
+            roots.insert(stem.to_string());
+        }
+    }
+    Ok(roots)
+}
+
+/// Every audited module must be the only provider of its root name: not a
+/// toolchain root (`toolchain` = the roots of the pinned `lib/lean`, plus
+/// RESERVED_LEAN_ROOTS), not a root any OTHER search-path entry provides
+/// (`path_roots[i]` = the roots of `lm.paths[i]`, Mathlib's lib dir among
+/// them), and its manifest `.olean` must be `<entry>/<A/B/C>.olean` for one
+/// entry. `findOLean` resolves by root, first entry wins: a shared root means
+/// another library's object would be audited in the module's place (F2), and
+/// a `Lean` module would shadow the trusted program's own import (F1). The
+/// trusted program re-checks the resolved path at run time. Any violation is
+/// an input the gate cannot audit soundly, so it is a refusal (exit 3), like
+/// an unmodelled Rocq theory flag.
+pub fn lean_root_conflicts(lm: &LeanManifest, toolchain: &BTreeSet<String>, path_roots: &[BTreeSet<String>]) -> Vec<String> {
+    let mut fails = Vec::new();
+    for m in &lm.mods {
+        let root = m.module.split('.').next().unwrap_or("");
+        if RESERVED_LEAN_ROOTS.contains(&root) || toolchain.contains(root) {
+            fails.push(format!("lean module {}: its root `{root}` belongs to the Lean toolchain -- refusing to audit it", m.module));
+            continue;
+        }
+        let rel: PathBuf = m.module.split('.').collect::<PathBuf>().with_extension("olean");
+        let Some(own) = lm.paths.iter().position(|p| Path::new(p).join(&rel) == Path::new(&m.olean)) else {
+            fails.push(format!("lean module {}: its olean {} is not <entry>/{} for any search-path entry", m.module, m.olean, rel.display()));
+            continue;
+        };
+        for (j, roots) in path_roots.iter().enumerate() {
+            if j != own && roots.contains(root) {
+                fails.push(format!(
+                    "lean module {}: its root `{root}` is also provided by search-path entry {} -- `findOLean` would resolve {} there or here by order, refusing",
+                    m.module, lm.paths.get(j).map(String::as_str).unwrap_or("?"), m.module
+                ));
+            }
+        }
+    }
+    fails
 }
 
 // ── checker outputs ────────────────────────────────────────────────────────
@@ -792,15 +853,33 @@ fn observe(repo: &Path) -> Result<(RocqManifest, LeanManifest, Observed, Vec<Str
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0),
         std::process::id()
     );
-    let lean_path = lm.paths.iter().map(|p| exec.join(p).to_string_lossy().into_owned()).collect::<Vec<_>>().join(":");
+    // Before running anything: no audited module may share a root with the
+    // toolchain, Mathlib, or another search-path entry.
+    let lean_bin = exec.join(&lm.lean);
+    let sysroot = lean_bin.parent().and_then(Path::parent).map(|p| p.join("lib").join("lean")).ok_or(format!("{}: no toolchain prefix", lm.lean))?;
+    let toolchain = dir_roots(&sysroot)?;
+    let path_roots = lm.paths.iter().map(|p| dir_roots(&exec.join(p))).collect::<Result<Vec<_>, _>>()?;
+    let conflicts = lean_root_conflicts(&lm, &toolchain, &path_roots);
+    if !conflicts.is_empty() {
+        return Err(conflicts.join("; "));
+    }
     let mods: Vec<String> = lm.mods.iter().map(|m| m.module.clone()).collect();
-    let out = Command::new(exec.join(&lm.lean))
+    // F1: the trusted program is elaborated with NO `LEAN_*` variable, so its
+    // `import Lean` resolves in the toolchain's lib/lean only; the audit search
+    // path reaches it as arguments, installed at run time (toolchain first).
+    let mut cmd = Command::new(&lean_bin);
+    for (k, _) in std::env::vars_os() {
+        if k.to_string_lossy().starts_with("LEAN") {
+            cmd.env_remove(k);
+        }
+    }
+    let out = cmd
         .current_dir(&exec)
-        .env("LEAN_PATH", &lean_path)
         .arg("--run")
         .arg(repo.join(PROGRAM))
         .arg(&nonce)
-        .args(&mods)
+        .args(lm.paths.iter().map(|p| format!("--path={}", exec.join(p).display())))
+        .args(lm.mods.iter().map(|m| format!("{}={}", m.module, exec.join(&m.olean).display())))
         .output()
         .map_err(|e| format!("cannot run {}: {e}", lm.lean))?;
     let text = String::from_utf8_lossy(&out.stdout);
@@ -809,7 +888,8 @@ fn observe(repo: &Path) -> Result<(RocqManifest, LeanManifest, Observed, Vec<Str
         (Some(1), Ok(LeanRun::Rejected(m))) => {
             // Measured: a `native_decide` auxiliary cannot be replayed (the kernel
             // needs compiled code for `Lean.reduceBool` that replay does not
-            // load), so native_decide is rejected here, never ledgered.
+            // load), so the measured native_decide plant (oracle P4) was rejected here, not
+            // ledgered: the replay's kernel check is the mechanism.
             o.lean_rejected = true;
             fails.push(format!("lean: the kernel rejected a replayed constant (a `native_decide` auxiliary is rejected this way): {m}"))
         }
@@ -1027,6 +1107,25 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     ck("VACUOUS manifest: a lean manifest with no module is refused", parse_lean_manifest("lean\tbin/lean\npath\tp\n").is_err());
     ck("VACUOUS manifest: a lean manifest with no LEAN_PATH is refused", parse_lean_manifest("lean\tbin/lean\nmod\tl\ts\tA\to\n").is_err());
 
+    // -- roots: what findOLean would resolve (F1 / F2) ---------------------------
+    let set = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<BTreeSet<String>>();
+    let tc = set(&["Init", "Lake", "LakeMain", "Lean", "Leanc", "Std"]);
+    let conflicts = |module: &str, olean: &str, own_roots: &[&str]| {
+        parse_lean_manifest(&format!("lean\tbin/lean\npath\tmathlib/lib\npath\tout/a/\nmod\t@@//proofs/lean:x\tproofs/lean/X.lean\t{module}\t{olean}\n"))
+            .map(|m| lean_root_conflicts(&m, &tc, &[set(&["Aesop", "Batteries", "Mathlib", "Qq"]), set(own_roots)]))
+    };
+    ck("roots: a module that alone provides its root (A in out/a/) passes", conflicts("A", "out/a/A.olean", &["A"]).is_ok_and(|f| f.is_empty()));
+    ck("roots: a nested module (A.B at out/a/A/B.olean) passes", conflicts("A.B", "out/a/A/B.olean", &["A"]).is_ok_and(|f| f.is_empty()));
+    ck("PLANTED F1 roots: an audited module named `Lean` (it would shadow the trusted program's `import Lean`) is refused",
+        conflicts("Lean", "out/a/Lean.olean", &["Lean"]).is_ok_and(|f| f.iter().any(|x| x.contains("toolchain"))));
+    ck("PLANTED F1 roots: a module under the `Init` root is refused", conflicts("Init.Fake", "out/a/Init/Fake.olean", &["Init"]).is_ok_and(|f| !f.is_empty()));
+    ck("PLANTED F1 roots: a root the pinned lib/lean lists (`LakeMain`) is refused", conflicts("LakeMain", "out/a/LakeMain.olean", &["LakeMain"]).is_ok_and(|f| !f.is_empty()));
+    ck("PLANTED F2 roots: an audited `Batteries` (a Mathlib root: Mathlib's olean would be audited in its place) is refused",
+        conflicts("Batteries", "out/a/Batteries.olean", &["Batteries"]).is_ok_and(|f| f.iter().any(|x| x.contains("mathlib/lib"))));
+    ck("PLANTED F2 roots: a manifest olean that is not <entry>/<module>.olean is refused", conflicts("A", "elsewhere/A.olean", &["A"]).is_ok_and(|f| !f.is_empty()));
+    ck(&format!("the trusted program {PROGRAM} sets its search path itself and never calls initSearchPath (which reads LEAN_PATH)"),
+        std::fs::read_to_string(repo.join(PROGRAM)).is_ok_and(|t| t.contains("searchPathRef.set") && !t.contains("initSearchPath") && t.contains("realPath")));
+
     // -- the Lean program's output ---------------------------------------------
     let mods = vec!["A".to_string()];
     let lean_out = |consts: &[(&str, &str, &[&str])], end: Option<usize>| {
@@ -1050,14 +1149,14 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
         la.as_ref().is_some_and(|r| r.constants == 3 && r.theorems == 2 && r.axioms.get("propext") == Some(&2) && r.axioms.get("Quot.sound") == Some(&1)));
     ck("VACUOUS lean: a truncated output (no `end`) is refused", parse_lean_output(&lean_out(good, None), "N1", &mods).is_err());
     ck("lean: `end` with the wrong count is refused", parse_lean_output(&lean_out(good, Some(4)), "N1", &mods).is_err());
-    ck("lean: another nonce (a forged or replayed transcript) is refused", parse_lean_output(&lean_out(good, Some(3)), "N2", &mods).is_err());
+    ck("lean: another nonce (a stale or mixed-up transcript) is refused", parse_lean_output(&lean_out(good, Some(3)), "N2", &mods).is_err());
     ck("VACUOUS lean: a module asked for but not reported is refused",
         parse_lean_output(&lean_out(good, Some(3)), "N1", &["A".to_string(), "B".to_string()]).is_err());
     ck("lean: a module-system olean (private part unread) is refused",
         parse_lean_output(&lean_out(good, Some(3)).replace("\tfalse\t3\t2", "\ttrue\t3\t2"), "N1", &mods).is_err());
     ck("lean: the olean's constant count disagreeing with the records is refused",
         parse_lean_output(&lean_out(good, Some(3)).replace("\tfalse\t3\t2", "\tfalse\t4\t2"), "N1", &mods).is_err());
-    ck("VACUOUS lean: a `refuse` record (wrong LEAN_PATH: olean not found) is refused",
+    ck("VACUOUS lean: a `refuse` record (wrong search path: olean not found) is refused",
         parse_lean_output(&format!("begin\tN1\nrefuse\tN1\t{}\n", hexs("findOLean A: unknown module prefix")), "N1", &mods).is_err());
     ck("lean: a `reject` record (the kernel refused a constant) is a failure, not a refusal",
         matches!(parse_lean_output(&format!("begin\tN1\nreject\tN1\t{}\n", hexs("replay A: bad")), "N1", &mods), Ok(LeanRun::Rejected(_))));

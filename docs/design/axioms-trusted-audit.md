@@ -2,8 +2,10 @@
 
 Status: R1 (Rocq per library) and the Lean audit are built as
 `cargo xtask check axioms-audit` on the lane `lane/axioms-audit`
-(REQ-HONESTY-AXIOMS-001, VER-HONESTY-AXIOMS-GATE-001). No CI job runs it
-yet; that is plan step 8. The per-theorem Rocq driver (R2) is not built.
+(REQ-HONESTY-AXIOMS-001, VER-HONESTY-AXIOMS-GATE-001). The `axioms-audit`
+job in `.github/workflows/formal-verification.yml` runs it and its self-test
+on every PR; it is not a required context (that is the owner's call). The
+per-theorem Rocq driver (R2) is not built.
 
 L11 (rounds 1-10) showed that any audit which derives the theorem list by
 lexing the audited file, or which runs inside it, can be forged by that file.
@@ -125,19 +127,42 @@ fired. K3 (an unstable R2 driver): not tested; R2 is not built in this lane.
    section, an unknown line, or any stdout text is Refused (3). A flag other
    than `-impredicative-set` is refused. A non-zero rocqchk exit is a Fail.
 2. **Lean: a trusted program.** `tools/xtask/axioms/AxiomAudit.lean`
-   imports only `Lean`. For each module it reads the olean
+   imports only `Lean`, and the gate runs it with every `LEAN_*` variable
+   removed, so `import Lean` resolves in the pinned toolchain's own
+   `lib/lean` while the program is elaborated; the audited oleans are not on
+   the search path then. (Review finding, measured on 4.27.0: with the audit
+   search path in LEAN_PATH, which Lean reads before its sysroot, a
+   `Lean.olean` in an audited directory replaced the program's `import Lean`,
+   and a probe program printed a forged marker and exited 0.) The search path
+   (Mathlib, then each library's `_oleans/`) and each module's manifest
+   `.olean` reach the program as arguments; `main` installs the path at run
+   time, toolchain `lib/lean` first. Before running it, the gate refuses (3)
+   any module whose root name is `Lean`/`Init`/`Std`/`Lake`, is listed in
+   the toolchain's `lib/lean`, or is provided by any other search-path entry
+   (Mathlib's `Batteries`, `Aesop`, `Qq`, ...), and any module whose manifest
+   `.olean` is not `<entry>/<A/B/C>.olean`: `findOLean` resolves by root,
+   first entry wins, so a shared root would audit another library's olean in
+   the module's place. The program then checks that `findOLean` resolved each
+   module to its manifest `.olean` (`realPath` on both) and refuses (3)
+   otherwise. For each module it reads the olean
    (`readModuleData`), imports the module's own imports, replays the
    module's constants through the kernel, and runs `collectAxioms` per
-   constant. A kernel rejection is a Fail (exit 1) and is reported once; a
-   `native_decide` lands here (measured: replay has no compiled code for
-   `Lean.reduceBool`), so it can never be admitted to the ledger. It refuses
+   constant. A kernel rejection is a Fail (exit 1) and is reported once; the
+   measured `native_decide` plant (oracle P4) landed here: replay has no
+   compiled code for `Lean.reduceBool`, so the kernel replay rejected its
+   auxiliary and it was not ledgered. That is one measured case, not a proof
+   that every `native_decide` use is rejected. It refuses
    a module-system olean (its private part is another
    file). It runs under the toolchain's own `lean --run`.
 3. **Output.** Hex-encoded UTF-8 names, tab-separated, one record per
    constant, a per-run nonce on `begin`/`end`, and a count trailer checked
    against both the printed records and the olean's own constant count, so
    names like `«#x] [»` or a U+00A0 cannot break the parser and a truncated
-   or replayed transcript is refused.
+   transcript is refused. The gate captures stdout from the process it
+   started, so the nonce guards against truncation and a mixed-up or stale
+   transcript only; it does not authenticate the program. What the program
+   prints is trusted because of how it is elaborated (item 2), not because
+   of the nonce: the program prints the nonce itself.
 4. **Twice-compile tolerance.** Only the `lean_library` oleans are audited,
    not the `lean_proof_test` copies.
 5. **No recorded logs.** The checkers run on every invocation, outside
@@ -167,7 +192,12 @@ fired. K3 (an unstable R2 driver): not tested; R2 is not built in this lane.
 - Lean `example` declarations (no constant), unsafe and partial constants
   (listed, not replayed), and the imported Lean modules (Mathlib, core: loaded,
   not replayed);
-- vstd's axioms (Verus).
+- vstd's axioms (Verus);
+- which `.vo` rocqchk actually checked: it is given the library's logical
+  name and `-Q` load paths, not a `.vo` path, and the manifest records no
+  `.vo` path to compare with. A same-named `.vo` reachable through an earlier
+  `-Q` mapping would be checked instead. The Lean side checks the resolved
+  olean against the manifest; the Rocq side does not (not built).
 
 ## Test suite: bypass classes from L11 (each must exit 1; controls exit 0)
 
@@ -216,8 +246,8 @@ Section `Hypothesis bad : False` in mutex_proofs.v (trust-ledger 1 via
 P4 `native_decide` in Atomic.lean (axioms-audit 1: measured, the kernel
 replay REJECTS the `zz_plant_arith._nativeDecide_1_1` auxiliary --
 `(kernel) (interpreter) unknown declaration` -- because replay loads no
-compiled code for `Lean.reduceBool`; so a native_decide is never ledgered,
-not reported as `Lean.ofReduceBool` as the plan expected;
+compiled code for `Lean.reduceBool`; so this native_decide plant was not
+ledgered (rejected by the kernel replay), nor reported as `Lean.ofReduceBool` as the plan expected;
 trust-ledger 1; control by `decide` 0 / 0), P6 an audit target with no
 library (axioms-audit 3). On origin/main it is RED: the gate does not exist
 (exit 2), and the trust ledger there stays green on P1, P3 and P4.
