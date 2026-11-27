@@ -296,6 +296,28 @@ jobs:
         run: cargo xtask check axioms-audit --self-test
         timeout-minutes: 10
 
+      # The first Linux run (gale#558) lost the hosted runner 10 min in, with
+      # no output: the xtask step captures bazel's output. Reclaim the image's
+      # unused toolchains, then build the two audit targets in a visible step
+      # with a disk/memory sample every minute, so a resource death leaves
+      # evidence. The verdict stays in xtask, which finds the build cached.
+      - name: Reclaim disk on the hosted image
+        run: |
+          df -h / | tail -1; free -m | sed -n 2p
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h / | tail -1
+
+      - name: Build the audit targets (visible, with resource samples)
+        run: |
+          ( while true; do echo "[sample] $(date -u +%H:%M:%S) disk=$(df -h / | awk 'NR==2{print $3"/"$2}') mem=$(free -m | awk 'NR==2{print $3"/"$2}')MiB swap=$(free -m | awk 'NR==3{print $3}')MiB"; sleep 60; done ) &
+          sampler=$!
+          rc=0
+          bazel build --remote_download_outputs=all //proofs:axioms_audit //proofs/lean:axioms_audit || rc=$?
+          kill "$sampler"
+          df -h / | tail -1; free -m | sed -n 2p
+          exit "$rc"
+        timeout-minutes: 30
+
       - name: Every compiled library's axioms equal the ledger
         run: cargo xtask check axioms-audit
         timeout-minutes: 35
