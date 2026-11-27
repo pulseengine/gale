@@ -318,6 +318,16 @@ jobs:
           exit "$rc"
         timeout-minutes: 30
 
+      # The second run built in 4 min, then this step outlived its own 35-min
+      # timeout until the job was cancelled, and the log was lost. Sample the
+      # largest process every minute, and stop the step at 25 min with a loud
+      # non-zero exit instead of a hang.
       - name: Every compiled library's axioms equal the ledger
-        run: cargo xtask check axioms-audit
-        timeout-minutes: 35
+        run: |
+          ( while true; do echo "[sample] $(date -u +%H:%M:%S) mem=$(free -m | awk 'NR==2{print $3"/"$2}')MiB swap=$(free -m | awk 'NR==3{print $3}')MiB top=$(ps -eo rss=,comm= --sort=-rss | head -1 | awk '{print $2" "int($1/1024)"MiB"}')"; sleep 60; done ) &
+          sampler=$!
+          rc=0
+          timeout --kill-after=30s 25m cargo xtask check axioms-audit || rc=$?
+          kill "$sampler"
+          exit "$rc"
+        timeout-minutes: 30

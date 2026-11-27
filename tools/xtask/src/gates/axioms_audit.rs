@@ -831,11 +831,16 @@ fn observe(repo: &Path) -> Result<(RocqManifest, LeanManifest, Observed, Vec<Str
             args.extend(["-Q".to_string(), p.clone(), l.clone()]);
         }
         args.push(lib.module.clone());
+        // Progress on stderr, live: the first Linux runs (gale#558) lost the
+        // runner or timed out inside this loop with nothing in the log.
+        eprintln!("axioms-audit: rocqchk {} ({} -Q paths) ...", lib.module, lib.q.len());
+        let t0 = std::time::Instant::now();
         let out = Command::new(exec.join(&rm.checker))
             .current_dir(&exec)
             .args(&args)
             .output()
             .map_err(|e| format!("cannot run {}: {e}", rm.checker))?;
+        eprintln!("axioms-audit: rocqchk {} done in {:.1}s ({})", lib.module, t0.elapsed().as_secs_f64(), out.status);
         if !out.status.success() {
             fails.push(format!("{}: rocqchk did not accept the library ({}): {}", lib.module, out.status, tail(&[out.stdout.as_slice(), out.stderr.as_slice()].concat(), 6)));
             continue;
@@ -873,6 +878,8 @@ fn observe(repo: &Path) -> Result<(RocqManifest, LeanManifest, Observed, Vec<Str
             cmd.env_remove(k);
         }
     }
+    eprintln!("axioms-audit: lean --run {} over {} modules ...", PROGRAM, lm.mods.len());
+    let t0 = std::time::Instant::now();
     let out = cmd
         .current_dir(&exec)
         .arg("--run")
@@ -882,6 +889,7 @@ fn observe(repo: &Path) -> Result<(RocqManifest, LeanManifest, Observed, Vec<Str
         .args(lm.mods.iter().map(|m| format!("{}={}", m.module, exec.join(&m.olean).display())))
         .output()
         .map_err(|e| format!("cannot run {}: {e}", lm.lean))?;
+    eprintln!("axioms-audit: lean done in {:.1}s ({})", t0.elapsed().as_secs_f64(), out.status);
     let text = String::from_utf8_lossy(&out.stdout);
     match (out.status.code(), parse_lean_output(&text, &nonce, &mods)) {
         (Some(0), Ok(LeanRun::Ok(r))) => o.lean = r,
