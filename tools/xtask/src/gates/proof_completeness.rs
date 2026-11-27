@@ -3,7 +3,7 @@
 //! `coqc` SUCCEEDS on a file whose every theorem ends in `Admitted.` -- an admit
 //! is a deferral, not an error. So `bazel test //proofs:..._test` is green
 //! whether a theorem is proven or merely stated, and the job named
-//! "Rocq Proofs (14 files)" cannot tell the two apart. At the original audit:
+//! "Rocq Proofs" cannot tell the two apart. At the original audit:
 //!
 //! ```text
 //! 10 files fully discharged

@@ -82,6 +82,7 @@ jobs:
           cd drivers
           python3 check-wcet-evt.py ../os/gust/silicon/RESULTS-wcet-evt-f100.txt
 
+  # Required context (.github/required-contexts.txt).
   proof-completeness:
     name: "a Rocq proof that is merely STATED cannot pass as proven"
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","rust-cpu"]') || 'ubuntu-24.04' }}
@@ -95,7 +96,7 @@ jobs:
           toolchain: 1.100.0
 
       # `coqc` succeeds on a file whose every theorem ends in `Admitted.` — an
-      # admit is a deferral, not an error. So the "Rocq Proofs (14 files)" job is
+      # admit is a deferral, not an error. So the "Rocq Proofs" job is
       # green whether a theorem is proven or merely stated. Prove this check can
       # tell the difference before trusting its green.
       - name: Negative control — an admitted proof must be distinguishable
@@ -346,6 +347,7 @@ jobs:
       - name: The archive builds twice identically, and alone
         run: cargo xtask check zephyr-module-archive
 
+  # Required context (.github/required-contexts.txt).
   vacuous-lemmas:
     name: "no proof fn proves nothing, and no new contract is assumed"
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-24.04' }}
@@ -369,6 +371,7 @@ jobs:
       - name: Vacuous and assumed proofs only ever decrease
         run: cargo xtask check vacuous-lemmas
 
+  # Required context (.github/required-contexts.txt).
   trusted-base:
     name: "the honesty doc states the measured trusted base (gale#467)"
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","light"]') || 'ubuntu-24.04' }}
@@ -417,12 +420,28 @@ jobs:
       # through `admit` rows (item, exact amount, the baseline it is written
       # against, issue, reason) -- recorded, not proof of review or approval. The self-test carries the
       # plan's planted inputs and the reformat that must stay stable.
-      # A required context since gale#546 (owner, 2026-11-24): .github/required-contexts.txt.
+      # Equality alone passes a change that grows a row and its code together,
+      # so on a pull request the last step also holds every row (and the tree)
+      # to the ledger at the merge-base with the base branch: a row may shrink;
+      # growth, a narrowed bound or a new row fails unless an `admit` row new in
+      # the change covers it exactly. Push and merge_group runs skip that step
+      # (with no ceiling an admit row grants nothing there; it is listed). A required context
+      # since gale#546 (owner, 2026-11-24): .github/required-contexts.txt.
       - name: Negative control -- an added assume, a lowered bound, an added Admitted and an unrecorded shrink must fail
         run: cargo xtask check trust-ledger --self-test
 
       - name: Every assumption spelling equals its ledger row
         run: cargo xtask check trust-ledger
+
+      - name: On a pull request, no row grows over the merge-base ledger without an admit
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          base="$(git merge-base HEAD "origin/$BASE_REF")"
+          echo "merge-base with origin/$BASE_REF: $base"
+          cargo xtask check trust-ledger --base "$base"
 
   kani-coverage:
     name: "every crate with a Kani harness is run by a CI cargo kani that can fail"

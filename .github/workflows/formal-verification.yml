@@ -15,7 +15,7 @@
 #   harness crate is run by some invocation that can fail; the figures in this
 #   comment are not gated.
 #
-# Rocq: 13 proof files (the job name says 14; it is a required context).
+# Rocq: 13 proof files, 13 bazel test targets in the job below.
 #   74 Admitted in 3 of them, as `cargo xtask check trust-ledger` prints
 #   (rocq:Admitted); 164 `Qed.`/`Defined.` terminators in 10 of them, a grep
 #   count (`grep -oE '\b(Qed|Defined)\.' proofs/*.v`, 2026-11-22) that no
@@ -204,7 +204,7 @@ jobs:
         timeout-minutes: 30
 
   rocq:
-    name: Rocq Proofs (14 files)
+    name: Rocq Proofs
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:

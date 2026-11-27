@@ -13,7 +13,7 @@ Binary size comparison
 proofs needed?
 Verus SMT (39 modules)
 Kani BMC (185 harnesses)
-Rocq Proofs (14 files)
+Rocq Proofs
 Lean Proofs
 V-closure needed?
 no requirement lags its closed V
@@ -25,3 +25,6 @@ every lock committed and current (Cargo + Bazel)
 Kani BMC (driver crates)
 every crate with a Kani harness is run by a CI cargo kani that can fail
 the trust ledger counts every assumption spelling it can see (v0.11.0 bet 3)
+a Rocq proof that is merely STATED cannot pass as proven
+no proof fn proves nothing, and no new contract is assumed
+the honesty doc states the measured trusted base (gale#467)
