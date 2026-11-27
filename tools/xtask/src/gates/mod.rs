@@ -28,6 +28,7 @@ pub mod toolchain_pin;
 pub mod trust_ledger;
 pub mod trusted_base;
 pub mod vacuous_lemmas;
+pub mod verus_strip_wasm;
 pub mod wit_resolve;
 pub mod yaml;
 pub mod zephyr_module_archive;
@@ -186,6 +187,12 @@ pub const GATES: &[Gate] = &[
         about: "no proof fn proves nothing (ratchet over a ledger, gale#462)",
         run: vacuous_lemmas::run,
         self_test: vacuous_lemmas::self_test,
+    },
+    Gate {
+        name: verus_strip_wasm::NAME,
+        about: "verus-strip as a WASI component is byte-identical to native (needs --native --wasm --runtime)",
+        run: verus_strip_wasm::run,
+        self_test: verus_strip_wasm::self_test,
     },
     Gate {
         name: wit_resolve::NAME,
