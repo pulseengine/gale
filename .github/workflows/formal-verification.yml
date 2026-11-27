@@ -324,10 +324,16 @@ jobs:
       # non-zero exit instead of a hang.
       - name: Every compiled library's axioms equal the ledger
         run: |
-          ( while true; do echo "[sample] $(date -u +%H:%M:%S) mem=$(free -m | awk 'NR==2{print $3"/"$2}')MiB swap=$(free -m | awk 'NR==3{print $3}')MiB top=$(ps -eo rss=,comm= --sort=-rss | head -1 | awk '{print $2" "int($1/1024)"MiB"}')"; sleep 60; done ) &
+          # Run 3 outlived both `timeout 25m` and the step timeout: the VM
+          # stopped responding, the signature of swap thrash. With swap off the
+          # kernel OOM killer acts at once, and the gate reports the killed
+          # checker by library name (exit 1) instead of the VM hanging.
+          sudo swapoff -a
+          cargo build --locked --quiet --manifest-path tools/xtask/Cargo.toml
+          ( while true; do echo "[sample] $(date -u +%H:%M:%S) mem=$(free -m | awk 'NR==2{print $3"/"$2}')MiB top=$(ps -eo rss=,comm= --sort=-rss | head -1 | awk '{print $2" "int($1/1024)"MiB"}')"; sleep 30; done ) &
           sampler=$!
           rc=0
-          timeout --kill-after=30s 25m cargo xtask check axioms-audit || rc=$?
+          timeout --kill-after=30s 25m tools/xtask/target/debug/xtask check axioms-audit || rc=$?
           kill "$sampler"
           exit "$rc"
         timeout-minutes: 30
