@@ -164,6 +164,70 @@ jobs:
           --wasm target/wasm32-wasip2/release/verus-strip.wasm
           --runtime "$(command -v wasmtime)"
 
+  # gust-target-gen built as a WASI p2 component must write the same files,
+  # with the same exit code and stderr, as the native binary for every board
+  # targets/regen.sh regenerates. The comparison and the verdict live in
+  # `cargo xtask check gust-target-gen-wasm`; this job only builds and calls it.
+  # Not a required context.
+  gust-target-gen-wasm:
+    name: gust-target-gen runs as a WASI component (wasmtime)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
+          targets: wasm32-wasip2
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: tgwasm-${{ runner.os }}-${{ hashFiles('tools/gust-target-gen/Cargo.lock', 'tools/xtask/Cargo.lock') }}
+          restore-keys: tgwasm-${{ runner.os }}-
+
+      # wasmtime v42.0.1, the same official release tarball and sha256 as the
+      # verus-strip-wasm job above.
+      - name: Install wasmtime (pinned by sha256)
+        env:
+          WASMTIME_TARBALL: wasmtime-v42.0.1-x86_64-linux.tar.xz
+          WASMTIME_SHA256: dd5253f3cb521bb094f9951c3d2c45c746b31e5723b07ce56f162ec9bab44d59
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o "$WASMTIME_TARBALL" \
+            "https://github.com/bytecodealliance/wasmtime/releases/download/v42.0.1/$WASMTIME_TARBALL"
+          echo "$WASMTIME_SHA256  $WASMTIME_TARBALL" | sha256sum -c -
+          tar -xJf "$WASMTIME_TARBALL"
+          echo "$RUNNER_TEMP/wasmtime-v42.0.1-x86_64-linux" >> "$GITHUB_PATH"
+
+      - name: Build gust-target-gen (native and wasm32-wasip2)
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --manifest-path tools/gust-target-gen/Cargo.toml
+          cargo build --locked --release --target wasm32-wasip2 --manifest-path tools/gust-target-gen/Cargo.toml
+
+      - name: gate self-test (planted inputs)
+        run: >-
+          cargo xtask check gust-target-gen-wasm --self-test
+          --native target/release/gust-target-gen
+          --wasm target/wasm32-wasip2/release/gust-target-gen.wasm
+          --runtime "$(command -v wasmtime)"
+
+      - name: gate (wasm output byte-identical to native)
+        run: >-
+          cargo xtask check gust-target-gen-wasm
+          --native target/release/gust-target-gen
+          --wasm target/wasm32-wasip2/release/gust-target-gen.wasm
+          --runtime "$(command -v wasmtime)"
+
   feature-sizes:
     name: FFI Feature Sizes
     runs-on: ubuntu-22.04

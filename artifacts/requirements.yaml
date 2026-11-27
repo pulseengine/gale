@@ -6030,3 +6030,41 @@ artifacts:
       created-by: ai-assisted
       model: claude-opus-5-5
       timestamp: 2026-11-27T12:00:00Z
+
+  - id: REQ-CI-GUST-TARGET-GEN-WASM-001
+    type: sw-req
+    title: gust-target-gen built as a WASI p2 component writes the same files, exit code and stderr as the native binary for every board targets/regen.sh regenerates, checked in CI under a pinned wasmtime
+    status: implemented
+    description: "gale's own tools are to run as WASI components on a wasm runtime; gust-target-gen (REQ-TARGET-MODEL-001) is the second after verus-strip (REQ-CI-VERUS-STRIP-WASM-001). SHALL: (1) `cargo xtask check gust-target-gen-wasm --native <bin> --wasm <component.wasm> --runtime <wasmtime>` takes its board list by parsing the `for BOARD in` loop of targets/regen.sh and refuses (exit 3) when fewer than 5 boards are listed, or when regen.sh no longer contains the fixture path, the STEM derivation and the `--items/--board/--out/--reference/--board-reference` arguments the gate reproduces; (2) for each board it runs the native binary and `<runtime> run -S cli-exit-with-code --dir <root>::. --dir <scratch>/out::out <component>` with regen.sh's arguments, the same relative input paths and `--out out` on both sides, each into its own empty out dir, and compares the exit code, stdout, stderr raw and unnormalised, the set of files written and every file byte for byte; (3) it prints the denominator (boards, files compared, identical, differ, exit codes and stderr equal per board); exit 0 only when every board ran, at least one file was compared and nothing differed; exit 1 on any difference, naming the board and the file or stream with the first differing byte offset (or the two exit codes); (4) a binary or runtime that cannot be spawned or exits by a signal refuses (exit 3), and so does a run that compared zero files and saw no difference; a difference is reported even when no file was written; (5) `--self-test` runs planted cases on the real binaries in a temp dir with a positive control, including a failure-path control (the same reference mismatch on both sides is identical) and a panic path on both sides whose differing exit codes must be reported, not hidden; (6) a job in .github/workflows/bazel-tests.yml, not a required context, builds both binaries with the pinned Rust 1.100.0 plus wasm32-wasip2, installs wasmtime v42.0.1 from the official release tarball checked by sha256, runs the self-test and then the real check. Out of scope: whether the output equals the committed targets/generated/ (that is regen.sh plus the drift gate); this gate only requires the two builds to agree. Kill criterion: the component and the native binary differ on a board's output, exit code or stderr and the job passes, or a missing runtime, a short board list or an all-empty run exits 0."
+    tags: [ci, gate, wasm, gust-target-gen, target-model]
+    fields:
+      priority: should
+      req-type: constraint
+      verification-criteria: "`cargo xtask check gust-target-gen-wasm --self-test` passes with each plant giving its verdict and the positive control passing: identical staged inputs -> exit 0; (a) the component reads a perturbed items JSON -> exit 1 naming a file and byte offset; (a') the component reads a perturbed reference TSV -> exit 1 on the exit code (native 0, wasm 1); (b) a runtime path that does not exist -> exit 3; (c) a reference mismatch on both sides -> exit 0 (identical, exit 1 on both); (d) a missing --items file on both sides (panic) -> exit 1 on the exit code; (e) 4 boards against the floor of 5 -> exit 3; (f) every board mismatching on both sides (zero files, no difference) -> exit 3. The real check on the tree exits 0 with 5 boards and 15 files identical."
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: traces-to
+        target: REQ-TARGET-MODEL-001
+      - type: related-to
+        target: REQ-CI-VERUS-STRIP-WASM-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-27T15:00:00Z
+
+  - id: VER-CI-GUST-TARGET-GEN-WASM-001
+    type: sw-verification
+    title: "gust-target-gen as a wasmtime component matches native on 5/5 boards and 15/15 files; every plant gives its verdict; the panic path differs (101 vs 134) and is reported"
+    status: implemented
+    description: "Implementation: tools/xtask/src/gates/gust_target_gen_wasm.rs (`cargo xtask check gust-target-gen-wasm`), sharing tools/xtask/src/gates/wasi_component.rs (path anchoring, spawn, first_diff, the wasmtime command) with verus-strip-wasm, whose self-test (9/9) and real check (56 identical, 0 differ) still pass after the move; job `gust-target-gen runs as a WASI component (wasmtime)` in .github/workflows/bazel-tests.yml (wasmtime v42.0.1, wasmtime-v42.0.1-x86_64-linux.tar.xz, sha256 dd5253f3cb521bb094f9951c3d2c45c746b31e5723b07ce56f162ec9bab44d59). Measured locally (macOS arm64, wasmtime 42.0.1, Rust 1.100.0, component 424,487 B): real check `5 boards, 15 files compared: 15 identical, 0 differ; exit codes equal on 5/5, stderr equal on 5/5`, exit 0; the same with relative `target/...` paths as CI passes them. `--self-test`: 10/10 held, exit 0 -- control exit 0 (15 identical); (a) perturbed Vrefint_Ch in the wasm side's items JSON exit 1 (`gust_target_stm32f100.rs differs at byte 569 (native 3122 B, wasm 3124 B)`); (a') perturbed stm32f100.peripherals.tsv on the wasm side exit 1 (`exit code native=0 wasm=1`); (b) missing runtime exit 3; (c) reference mismatch on both sides exit 0 (STM32F100 exit 1 on both, 0 files, stderr equal); (d) missing --items on both sides exit 1 (`exit code native=101 wasm=134`); (e) 4 boards against a floor of 5 exit 3; (f) every board mismatching on both sides exit 3; plus the regen.sh parse and a regen.sh without `--board-reference` refusing. Finding (d): a panic in gust-target-gen exits 101 natively but the component traps and wasmtime exits 134; the stderr also differs (host thread id vs thread 1, `os error 2` vs the WASI `os error 44`, and wasmtime's trap report). The gate reports this as a difference; gust-target-gen was not changed to hide it, and the real check never reaches that path. Manual plant: verus-strip.wasm passed as --wasm -> exit 1, `0 identical, 15 differ`. Missing --native/--wasm/--runtime -> exit 3. `cargo test --locked --no-fail-fast` in tools/xtask: 64 + 19 passed. actionlint findings unchanged at 36. Not verified here: the job on an Actions runner (Linux x86_64) before it has run there."
+    tags: [ci, gate, wasm, gust-target-gen, verification]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-CI-GUST-TARGET-GEN-WASM-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-27T15:00:00Z

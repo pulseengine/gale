@@ -8,6 +8,7 @@ pub mod binary_ledger;
 pub mod criticality_axis;
 pub mod data_overlap;
 pub mod graph_env;
+pub mod gust_target_gen_wasm;
 pub mod job_timeouts;
 pub mod kani_coverage;
 pub mod lex;
@@ -29,6 +30,7 @@ pub mod trust_ledger;
 pub mod trusted_base;
 pub mod vacuous_lemmas;
 pub mod verus_strip_wasm;
+pub mod wasi_component;
 pub mod wit_resolve;
 pub mod yaml;
 pub mod zephyr_module_archive;
@@ -79,6 +81,12 @@ pub const GATES: &[Gate] = &[
         about: "no raw `env` import survives in the composed graph (VER-DRV-GRAPH-001)",
         run: graph_env::run,
         self_test: graph_env::self_test,
+    },
+    Gate {
+        name: gust_target_gen_wasm::NAME,
+        about: "gust-target-gen as a WASI component writes the same files as native on every board (needs --native --wasm --runtime)",
+        run: gust_target_gen_wasm::run,
+        self_test: gust_target_gen_wasm::self_test,
     },
     Gate {
         name: job_timeouts::NAME,

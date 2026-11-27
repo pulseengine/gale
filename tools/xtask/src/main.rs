@@ -24,6 +24,7 @@ fn usage() -> String {
          USAGE:\n  \
            cargo xtask check <gate> [--self-test] [--module PATH] [--format json]\n  \
            cargo xtask check verus-strip-wasm --native BIN --wasm COMPONENT --runtime WASMTIME [--self-test]\n  \
+           cargo xtask check gust-target-gen-wasm --native BIN --wasm COMPONENT --runtime WASMTIME [--self-test]\n  \
            cargo xtask check            list the gates\n  \
            cargo xtask silicon ...      gust firmware on physical boards (see `xtask silicon`)\n  \
            cargo xtask renode-elfs              build the Renode test images from source (os/gust/renode-test)\n  \
@@ -140,7 +141,7 @@ fn main() {
     let mut self_test = false;
     let mut gate_name: Option<String> = None;
     let mut target: Option<String> = None;
-    // verus-strip-wasm's three paths; all or none.
+    // the WASI-component gates' three paths; all or none.
     let mut vs: [Option<PathBuf>; 3] = [None, None, None];
     let mut rest = args[1..].iter();
     while let Some(a) = rest.next() {
@@ -197,7 +198,7 @@ fn main() {
     match vs {
         [None, None, None] => {}
         [Some(native), Some(wasm), Some(runtime)] => {
-            gates::verus_strip_wasm::set_opts(gates::verus_strip_wasm::Opts { native, wasm, runtime })
+            gates::wasi_component::set_opts(gates::wasi_component::Opts { native, wasm, runtime })
         }
         _ => {
             eprintln!("xtask: --native, --wasm and --runtime go together");
