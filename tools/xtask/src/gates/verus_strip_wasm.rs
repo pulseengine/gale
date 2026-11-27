@@ -33,8 +33,24 @@ pub struct Opts {
 
 static OPTS: OnceLock<Opts> = OnceLock::new();
 
+/// Every spawn runs with the input root as its working directory, so a
+/// relative `--native target/release/verus-strip` would resolve there and not
+/// where it was given. Paths with a separator are made absolute against the
+/// caller's directory; a bare name (`wasmtime`) is left for the PATH lookup.
+fn anchor(p: PathBuf) -> PathBuf {
+    if p.components().count() > 1 || p.is_absolute() {
+        std::path::absolute(&p).unwrap_or(p)
+    } else {
+        p
+    }
+}
+
 pub fn set_opts(o: Opts) {
-    let _ = OPTS.set(o);
+    let _ = OPTS.set(Opts {
+        native: anchor(o.native),
+        wasm: anchor(o.wasm),
+        runtime: anchor(o.runtime),
+    });
 }
 
 fn opts() -> Result<&'static Opts, String> {
@@ -334,5 +350,16 @@ mod tests {
         };
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         assert!(matches!(compare(&o, &root, &root, 1), Verdict::Refused(_)));
+    }
+
+    /// CI passes `target/release/verus-strip`; the spawns run in the input
+    /// root, so a relative path must be anchored first (gale#556, first run).
+    #[test]
+    fn relative_paths_are_anchored_bare_names_are_not() {
+        let rel = anchor("target/release/verus-strip".into());
+        assert!(rel.is_absolute());
+        assert!(rel.ends_with("target/release/verus-strip"));
+        assert_eq!(anchor("wasmtime".into()), PathBuf::from("wasmtime"));
+        assert_eq!(anchor("/opt/rt".into()), PathBuf::from("/opt/rt"));
     }
 }
