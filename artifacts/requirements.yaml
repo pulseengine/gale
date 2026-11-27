@@ -5994,3 +5994,39 @@ artifacts:
       created-by: ai-assisted
       model: claude-opus-5-5
       timestamp: 2026-11-24T12:00:00Z
+
+  - id: REQ-CI-VERUS-STRIP-WASM-001
+    type: sw-req
+    title: verus-strip built as a WASI p2 component produces the same bytes and exit codes as the native binary on every src/*.rs, checked in CI under a pinned wasmtime
+    status: implemented
+    description: "gale's own tools are to run as WASI components on a wasm runtime; verus-strip (REQ-TRACTOR-002) is the first. SHALL: (1) `cargo xtask check verus-strip-wasm --native <bin> --wasm <component.wasm> --runtime <wasmtime>` enumerates src/*.rs in sorted order and refuses (exit 3) when the count is 0 or smaller than the `const FILES` list of tools/verus-strip/tests/gate.rs; (2) for each file it runs the native binary and `<runtime> run -S cli-exit-with-code --dir .::. <component> src/<file>`, both with the input root as working directory and the same relative path, and compares stdout bytes and exit code; it compares the `--check src plain/src` report bytes and exit code the same way; (3) it prints the denominator (compared, identical, differ); exit 0 only when every input was compared and all were identical; exit 1 on any difference, naming the input and the first differing byte offset (or the two exit codes); (4) a native binary or runtime that cannot be spawned, or that exits by a signal, refuses (exit 3), never a pass and never counted as a difference; (5) `--self-test` runs planted cases on the real binaries in a temp dir, each with a positive control; (6) a job in .github/workflows/bazel-tests.yml, not a required context, builds both binaries with the pinned Rust 1.100.0 plus wasm32-wasip2, installs wasmtime v42.0.1 from the official release tarball checked by sha256, runs the self-test and then the real check. kiln as a second, advisory runtime follows separately: kiln >= 0.9 runs a meld-fused wasip2 component (`meld fuse --reproducible`, then `kiln run`), but it ships in varve layer 2026.11.43 and gale pins covalent 2026.11.7. Out of scope: whether plain/src matches src (that is the Verus-Strip Gate; this gate only requires the two builds to agree, including on the existing divergence). Kill criterion: the component and the native binary differ on an input in src/ and the job passes, or a missing runtime or empty input set exits 0."
+    tags: [ci, gate, wasm, verus-strip]
+    fields:
+      priority: should
+      req-type: constraint
+      verification-criteria: "`cargo xtask check verus-strip-wasm --self-test` passes with each plant giving its verdict and its positive control passing: identical staged inputs -> exit 0; (a) the component reads a perturbed copy of one input -> exit 1 naming it with a byte offset; (b) a runtime path that does not exist -> exit 3; (c) an empty src dir -> exit 3; (d) fewer inputs than the floor -> exit 3. The real check on the tree exits 0 with every input identical."
+    links:
+      - type: derives-from
+        target: SYSREQ-BYOOS-001
+      - type: traces-to
+        target: REQ-TRACTOR-002
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-27T12:00:00Z
+
+  - id: VER-CI-VERUS-STRIP-WASM-001
+    type: sw-verification
+    title: "verus-strip as a wasmtime component matches native on 55/55 src files and the --check report; every plant gives its verdict"
+    status: implemented
+    description: "Implementation: tools/xtask/src/gates/verus_strip_wasm.rs (`cargo xtask check verus-strip-wasm`), job `verus-strip runs as a WASI component (wasmtime)` in .github/workflows/bazel-tests.yml (wasmtime v42.0.1, wasmtime-v42.0.1-x86_64-linux.tar.xz, sha256 dd5253f3cb521bb094f9951c3d2c45c746b31e5723b07ce56f162ec9bab44d59, equal to the asset digest the release API reports). Measured locally (macOS arm64, wasmtime 42.0.1, Rust 1.100.0, component 1.48 MB): real check `56 compared (55 src files + the --check report): 56 identical, 0 differ`, exit 0. The `--check src plain/src` report reads `Checked 55 files: 53 OK, 2 diverged` (cbprintf.rs, zms.rs) with exit 1 on both sides; that divergence exists on main, is outside the 43-file list of tools/verus-strip/tests/gate.rs, and is not this gate's property. `--self-test`: 9/9 held, exit 0 -- identical staged inputs exit 0; (a) perturbed src/sem.rs on the wasm side exit 1 (`stdout differs at byte ...`); (b) missing runtime exit 3; (c) empty src dir exit 3; (d) 3 inputs against a floor of 4 exit 3; plus first_diff and gate.rs-list checks. The first version of plant (a) appended its item after `} // verus!`, which verus-strip does not emit: the self-test caught that (a) passed (exit 0, WRONG) and the plant now goes inside the block. Manual plant: a component built from a strip_file that appends one comment line after formatting -> exit 1, `1 identical, 55 differ`; restored component -> exit 0, 56 identical. (A first manual plant that prepended the comment before prettyplease was a no-op, since prettyplease drops it: 56 identical, exit 0, and the altered component's bytes differed only in code that does not reach the output.) Usage: missing --native/--wasm/--runtime -> exit 3; only some of them -> exit 2. `cargo test --locked --no-fail-fast` in tools/xtask: 58 + 19 passed. Not verified here: the job on an Actions runner (Linux x86_64) before it has run there."
+    tags: [ci, gate, wasm, verus-strip, verification]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-CI-VERUS-STRIP-WASM-001
+    provenance:
+      created-by: ai-assisted
+      model: claude-opus-5-5
+      timestamp: 2026-11-27T12:00:00Z

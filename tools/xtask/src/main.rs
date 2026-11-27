@@ -23,6 +23,7 @@ fn usage() -> String {
         "xtask — gale's verdict-bearing gates\n\n\
          USAGE:\n  \
            cargo xtask check <gate> [--self-test] [--module PATH] [--format json]\n  \
+           cargo xtask check verus-strip-wasm --native BIN --wasm COMPONENT --runtime WASMTIME [--self-test]\n  \
            cargo xtask check            list the gates\n  \
            cargo xtask silicon ...      gust firmware on physical boards (see `xtask silicon`)\n  \
            cargo xtask renode-elfs              build the Renode test images from source (os/gust/renode-test)\n  \
@@ -139,10 +140,22 @@ fn main() {
     let mut self_test = false;
     let mut gate_name: Option<String> = None;
     let mut target: Option<String> = None;
+    // verus-strip-wasm's three paths; all or none.
+    let mut vs: [Option<PathBuf>; 3] = [None, None, None];
     let mut rest = args[1..].iter();
     while let Some(a) = rest.next() {
         match a.as_str() {
             "--self-test" => self_test = true,
+            f @ ("--native" | "--wasm" | "--runtime") => {
+                let i = ["--native", "--wasm", "--runtime"].iter().position(|x| x == &f).unwrap_or(0);
+                match rest.next() {
+                    Some(v) => vs[i] = Some(PathBuf::from(v)),
+                    None => {
+                        eprintln!("xtask: {f} needs a path");
+                        exit(EXIT_USAGE);
+                    }
+                }
+            }
             "--module" => match rest.next() {
                 Some(v) => target = Some(v.clone()),
                 None => {
@@ -181,6 +194,16 @@ fn main() {
         eprintln!("xtask: not a git repository");
         exit(EXIT_USAGE);
     };
+    match vs {
+        [None, None, None] => {}
+        [Some(native), Some(wasm), Some(runtime)] => {
+            gates::verus_strip_wasm::set_opts(gates::verus_strip_wasm::Opts { native, wasm, runtime })
+        }
+        _ => {
+            eprintln!("xtask: --native, --wasm and --runtime go together");
+            exit(EXIT_USAGE);
+        }
+    }
 
     let v: Verdict = if self_test {
         (gate.self_test)(&root, target.as_deref())
