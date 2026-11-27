@@ -16,67 +16,12 @@
 //! `--dir .::.`, and both sides get the same relative paths. A report that
 //! prints paths then reads the same on both sides, whatever the root is.
 
+use super::wasi_component::{exec, first_diff, opts, wasmtime, Opts, Out};
 use crate::verdict::Verdict;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::OnceLock;
 
 pub const NAME: &str = "verus-strip-wasm";
-
-/// The three paths the gate needs, set by `main` from
-/// `--native`, `--wasm` and `--runtime`.
-pub struct Opts {
-    pub native: PathBuf,
-    pub wasm: PathBuf,
-    pub runtime: PathBuf,
-}
-
-static OPTS: OnceLock<Opts> = OnceLock::new();
-
-/// Every spawn runs with the input root as its working directory, so a
-/// relative `--native target/release/verus-strip` would resolve there and not
-/// where it was given. Paths with a separator are made absolute against the
-/// caller's directory; a bare name (`wasmtime`) is left for the PATH lookup.
-fn anchor(p: PathBuf) -> PathBuf {
-    if p.components().count() > 1 || p.is_absolute() {
-        std::path::absolute(&p).unwrap_or(p)
-    } else {
-        p
-    }
-}
-
-pub fn set_opts(o: Opts) {
-    let _ = OPTS.set(Opts {
-        native: anchor(o.native),
-        wasm: anchor(o.wasm),
-        runtime: anchor(o.runtime),
-    });
-}
-
-fn opts() -> Result<&'static Opts, String> {
-    OPTS.get()
-        .ok_or_else(|| "needs --native <bin> --wasm <component.wasm> --runtime <wasmtime>".into())
-}
-
-/// One run's observable behaviour.
-struct Out {
-    stdout: Vec<u8>,
-    code: i32,
-}
-
-/// Spawn failure or death by signal is an `Err`: the run did not answer.
-fn exec(mut cmd: Command, what: &str) -> Result<Out, String> {
-    let o = cmd
-        .output()
-        .map_err(|e| format!("cannot spawn {what}: {e}"))?;
-    match o.status.code() {
-        Some(code) => Ok(Out {
-            stdout: o.stdout,
-            code,
-        }),
-        None => Err(format!("{what} was killed by a signal ({})", o.status)),
-    }
-}
 
 fn native(bin: &Path, root: &Path, args: &[&str]) -> Result<Out, String> {
     let mut c = Command::new(bin);
@@ -85,25 +30,9 @@ fn native(bin: &Path, root: &Path, args: &[&str]) -> Result<Out, String> {
 }
 
 fn wasm(rt: &Path, comp: &Path, root: &Path, args: &[&str]) -> Result<Out, String> {
-    let mut c = Command::new(rt);
-    c.current_dir(root)
-        .args(["run", "-S", "cli-exit-with-code", "--dir", ".::."])
-        .arg(comp)
-        .args(args);
+    let mut c = wasmtime(rt, comp, root, &[(Path::new("."), ".")]);
+    c.args(args);
     exec(c, &format!("runtime {}", rt.display()))
-}
-
-/// Offset of the first differing byte, or `None` if equal.
-fn first_diff(a: &[u8], b: &[u8]) -> Option<usize> {
-    if a == b {
-        return None;
-    }
-    Some(
-        a.iter()
-            .zip(b)
-            .position(|(x, y)| x != y)
-            .unwrap_or(a.len().min(b.len())),
-    )
 }
 
 /// Entries of `const FILES` in tools/verus-strip/tests/gate.rs: the floor on
@@ -335,13 +264,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn first_diff_offsets() {
-        assert_eq!(first_diff(b"", b""), None);
-        assert_eq!(first_diff(b"x", b""), Some(0));
-        assert_eq!(first_diff(b"abc", b"abd"), Some(2));
-    }
-
-    #[test]
     fn missing_binaries_refuse() {
         let o = Opts {
             native: "/nonexistent/native".into(),
@@ -350,16 +272,5 @@ mod tests {
         };
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         assert!(matches!(compare(&o, &root, &root, 1), Verdict::Refused(_)));
-    }
-
-    /// CI passes `target/release/verus-strip`; the spawns run in the input
-    /// root, so a relative path must be anchored first (gale#556, first run).
-    #[test]
-    fn relative_paths_are_anchored_bare_names_are_not() {
-        let rel = anchor("target/release/verus-strip".into());
-        assert!(rel.is_absolute());
-        assert!(rel.ends_with("target/release/verus-strip"));
-        assert_eq!(anchor("wasmtime".into()), PathBuf::from("wasmtime"));
-        assert_eq!(anchor("/opt/rt".into()), PathBuf::from("/opt/rt"));
     }
 }
