@@ -33,4 +33,4 @@ jobs:
             echo "::error::sieve on PATH is '${got:-<none>}', not the pinned $SIEVE_PINNED_DIR/sieve"
             exit 1
           fi
-      - uses: pulseengine/temper/.github/actions/gate-probe@5f6e9609b0a0ef0e190919d8c6d09aae1f88bbff
+      - uses: pulseengine/temper/.github/actions/gate-probe@dcf00ce0eb57b41e803a272f7f7006cafbaa7907
