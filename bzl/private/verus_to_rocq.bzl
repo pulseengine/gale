@@ -227,7 +227,7 @@ def rocq_module(name, src, rocq_of_rust_lib = None):
         rocq_of_rust_lib: RocqOfRust library target
     """
     if rocq_of_rust_lib == None:
-        rocq_of_rust_lib = "@rocq_of_rust_source//:rocq_of_rust_main"
+        rocq_of_rust_lib = "@rocq_of_rust_build//:rocq_of_rust_main"
 
     # Step 1: Strip Verus annotations → standalone .rs (with inlined stubs)
     _verus_strip_standalone_rule(
