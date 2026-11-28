@@ -1,0 +1,55 @@
+diff --git a/coq_of_rust/private/rust_toolchain_repo.bzl b/coq_of_rust/private/rust_toolchain_repo.bzl
+index 15970fe..cfe90f6 100644
+--- a/coq_of_rust/private/rust_toolchain_repo.bzl
++++ b/coq_of_rust/private/rust_toolchain_repo.bzl
+@@ -225,6 +225,11 @@ toolchain(
+     name = "rust_nightly",
+     exec_compatible_with = {compat},
+     target_compatible_with = {compat},
++    # Only on the nightly channel: a consumer that registers its own stable
++    # rules_rust toolchain first (channel:stable) must not hand rocq-of-rust a
++    # sysroot without rustc-dev. rocq_of_rust_toolchain transitions its binary
++    # to channel=nightly (coq_of_rust/private/toolchain.bzl).
++    target_settings = ["@rules_rust//rust/toolchain/channel:nightly"],
+     toolchain = ":rust_nightly_impl",
+     toolchain_type = "@rules_rust//rust:toolchain_type",
+ )
+diff --git a/coq_of_rust/private/toolchain.bzl b/coq_of_rust/private/toolchain.bzl
+index baa222b..bfea2cd 100644
+--- a/coq_of_rust/private/toolchain.bzl
++++ b/coq_of_rust/private/toolchain.bzl
+@@ -6,7 +6,8 @@ def _rocq_of_rust_toolchain_impl(ctx):
+     """Implementation of rocq_of_rust_toolchain rule."""
+     toolchain_info = platform_common.ToolchainInfo(
+         rocq_of_rust_info = RocqOfRustToolchainInfo(
+-            rocq_of_rust_binary = ctx.attr.rocq_of_rust_binary,
++            # A Starlark transition on the attr makes it a one-element list.
++            rocq_of_rust_binary = ctx.attr.rocq_of_rust_binary[0],
+             rocq_of_rust_lib = ctx.attr.rocq_of_rust_lib,
+             lib_include_path = ctx.attr.lib_include_path,
+             rust_sysroot = ctx.attr.rust_sysroot,
+@@ -14,11 +15,24 @@ def _rocq_of_rust_toolchain_impl(ctx):
+     )
+     return [toolchain_info]
+ 
++def _nightly_channel_impl(_settings, _attr):
++    return {"@rules_rust//rust/toolchain/channel": "nightly"}
++
++# rocq-of-rust is a rustc_private driver: it must be built by the hermetic
++# nightly + rustc-dev toolchain, never by a consumer's stable toolchain that
++# happens to be registered first.
++_nightly_channel = transition(
++    implementation = _nightly_channel_impl,
++    inputs = [],
++    outputs = ["@rules_rust//rust/toolchain/channel"],
++)
++
+ rocq_of_rust_toolchain = rule(
+     implementation = _rocq_of_rust_toolchain_impl,
+     attrs = {
+         "rocq_of_rust_binary": attr.label(
+             mandatory = True,
++            cfg = _nightly_channel,
+             doc = "The rocq-of-rust executable (a rules_rust rust_binary).",
+         ),
+         "rocq_of_rust_lib": attr.label_list(

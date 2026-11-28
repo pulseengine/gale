@@ -1,0 +1,4 @@
+# Patches applied to Bazel module dependencies through git_override in
+# MODULE.bazel. Each patch names the upstream change that would retire it.
+
+exports_files(glob(["*.patch"]))

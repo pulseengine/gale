@@ -38,13 +38,14 @@ disk cache and builds them locally, so it does not hit this. Rebuilt with
 every transitive object as an output, and the gate builds with
 `--remote_download_outputs=all`, so the audit does not depend on that luck.
 The root cause is rules_rocq_rust#53, fixed upstream by #54 (cfbfcf3,
-2026-10-13: `RocqInfo.compiled` is transitive). Moving gale's pin past it is a
-separate lane, because the same range also moves nixpkgs, rocq-of-rust and
-the toolchain pin. Until then, and after it as defense in depth, the gate keeps
-its own transitive aspect and `--remote_download_outputs=all`.
+2026-10-13: `RocqInfo.compiled` is transitive). gale's pin now includes it
+(5efbb756; the RocqOfRust library repo is `@rocq_of_rust_build`, built by
+rules_rust, no longer `@rocq_of_rust_source`). As defense in depth the gate
+keeps its own transitive aspect and `--remote_download_outputs=all`.
 
 1. **The checker binary.** The pinned toolchain (`@rocq_toolchains`, Rocq
-   9.0.1 from nixpkgs 88d3861a) ships both `bin/rocqchk` (a symlink to
+   9.0.1 from rules_rocq_rust's own nixpkgs pin 6201e203, not gale's
+   `@nixpkgs` 88d3861a) ships both `bin/rocqchk` (a symlink to
    `rocq-9.0.1/bin/rocqchk`) and `bin/coqchk`; both print `The Rocq Proof
    Checker, version 9.0.1`. The audit uses `rocqchk`.
 2. **`-o` prints axioms AND theory flags.** `rocqchk -o -silent -Q ...

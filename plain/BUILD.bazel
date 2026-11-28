@@ -23,7 +23,7 @@ filegroup(
 # RocqOfRust library alias
 alias(
     name = "rocq_of_rust_lib",
-    actual = "@rocq_of_rust_source//:rocq_of_rust_main",
+    actual = "@rocq_of_rust_build//:rocq_of_rust_main",
 )
 
 # ── Gate: verify plain/src/*.rs matches verus-strip output of src/*.rs ──────
