@@ -114,6 +114,9 @@ never_skip_jobs = [
   "Lean Proofs",
   # Not a required context (owner's call), but a proof job: it never skips either.
   "Kani BMC (driver crates)",
+  # Not a required context either (owner's call): the axiom audit reads the
+  # compiled proof objects, so it is a proof job and never skips.
+  "axiom audit reads the compiled objects (Rocq + Lean)",
 ]
 # Leaf-workflow scoping (sieve REQ-030, REQ-035, REQ-036; docs/ci/sieve.md).
 # An edit to one file directly under .github/workflows/ that changes only job

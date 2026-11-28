@@ -9,6 +9,7 @@
 #   - Priority queue invariants (sorted-list model)
 
 load("@rules_lean//lean:defs.bzl", "lean_library", "lean_proof_test")
+load("//bzl:defs.bzl", "lean_axiom_audit")
 
 # ── Rate Monotonic Scheduling ──────────────────────────────────────────
 
@@ -120,4 +121,25 @@ lean_proof_test(
     name = "partition_supply_test",
     srcs = ["PartitionSupply.lean"],
     deps = [":partition_supply", "@mathlib//:Mathlib"],
+)
+
+# ── Axiom audit (REQ-HONESTY-AXIOMS-001) ──────────────────────────────────
+#
+# A manifest of the 8 libraries above (their .olean, LEAN_PATH and the
+# toolchain's lean). `cargo xtask check axioms-audit` runs the trusted program
+# tools/xtask/axioms/AxiomAudit.lean over it. The gate holds this list equal to
+# `git ls-files 'proofs/lean/*.lean'`.
+
+lean_axiom_audit(
+    name = "axioms_audit",
+    libs = [
+        ":atomic",
+        ":mpu_region",
+        ":partition_supply",
+        ":priority_ceiling",
+        ":priority_queue",
+        ":ring_buf",
+        ":scheduling",
+        ":systick",
+    ],
 )

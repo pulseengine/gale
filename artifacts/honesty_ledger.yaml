@@ -1,8 +1,8 @@
 # v0.11.0 bet 3, lane L11: the trust ledger and Kani coverage of the driver
 # crates. REQ-HONESTY-LEDGER-001, VER-HONESTY-LEDGER-001 and
 # REQ-HONESTY-AXIOMS-001 live in artifacts/release_v0_11_0.yaml. The axiom
-# audit (REQ-HONESTY-AXIOMS-001) is NOT in this lane: no axioms gate exists;
-# a follow-up lane owns it (docs/design/axioms-trusted-audit.md).
+# audit (REQ-HONESTY-AXIOMS-001) is the follow-up lane lane/axioms-audit:
+# VER-HONESTY-AXIOMS-GATE-001 below (docs/design/axioms-trusted-audit.md).
 artifacts:
   - id: REQ-HONESTY-KANI-COVERAGE-001
     type: sw-req
@@ -99,7 +99,16 @@ artifacts:
       spelling count; 471 are compiled). Also counted, all 0 today:
       kani::any_where, `axiom fn`, Rocq top-level Variable/Hypothesis and Admit
       Obligations, Lean sorryAx, and the cfg_attr forms of kani::proof,
-      kani::unwind and external_body. Shrink-only mode reads the ledger at the
+      kani::unwind and external_body. Added 2026-11-25 for the axiom audit
+      (lane/axioms-audit), all 0 today and all forgeable source spellings:
+      rocq:Section-Variable (Variable/Hypothesis/Context INSIDE a Section -- a
+      discharged premise no compiled-object audit reports), rocq:unset-guard
+      (`Unset Guard|Positivity|Universe Checking`, `bypass_check`),
+      lean:native_decide (`native_decide`, `decide +native`, `ofReduceBool`
+      written out), lean:implemented_by (`implemented_by`, `extern`) and
+      lean:unsafe; the self-test plants a Section `Hypothesis bad : False`
+      and a `native_decide` and controls a Section with only `Let` and a
+      `decide`. Shrink-only mode reads the ledger at the
       baseline commit (one a v* tag points at, an ancestor of HEAD) as the
       ceiling (the newest v* release by version, not counting a tag on HEAD),
       plus `admit` rows (one per item, exactly the growth, a #NNN or
@@ -144,3 +153,63 @@ artifacts:
       created-by: ai-assisted
       model: claude-opus-5-5
       timestamp: 2026-11-25T07:30:00Z
+
+  - id: VER-HONESTY-AXIOMS-GATE-001
+    type: sw-verification
+    title: The axiom audit reads the compiled Rocq libraries and Lean constants against a ledger, and its planted axioms fail
+    status: proposed
+    release: v0.11.0
+    description: >
+      Oracle for REQ-HONESTY-AXIOMS-001 (design: docs/design/axioms-trusted-audit.md).
+      `cargo xtask check axioms-audit` builds //proofs:axioms_audit and
+      //proofs/lean:axioms_audit (manifests of the compiled objects, their
+      load paths and the pinned checkers; bzl/private/axiom_audit.bzl), runs
+      `rocqchk -o` per Rocq library and the trusted program
+      tools/xtask/axioms/AxiomAudit.lean (imports only Lean; kernel replay +
+      collectAxioms per constant) per Lean module, and holds the result equal
+      to tools/xtask/axioms-audit.ledger: per library the theory (Set
+      predicative or impredicative, rewrite rules), the axioms (a shared set
+      of 92, named once, plus 155 per-library rows: the Admitted lemmas of
+      poll 22, sched 13 (Stdlib only, predicative Set, after #553), thread_lifecycle 29, and 91 axioms of the generated
+      translation plain.sem that sem_proofs imports) and any kernel-check
+      bypass; per Lean module the constant, theorem and unreplayed counts and
+      how many constants depend on each axiom. Seeded 2026-11-25 on darwin
+      arm64; the sched_proofs rows were updated from the Linux CI run of 2026-11-28 (gale#558). It also holds the audited sources equal to the tracked .v and
+      .lean files, and bridges to the trust ledger (own-module axioms =
+      Admitted/Axiom/Parameter/Variable spellings; Lean axiom constants =
+      `axiom` spellings). `--self-test` (pure, recorded outputs): an empty,
+      header-less, truncated or reshaped rocqchk output, an empty manifest, a
+      truncated or wrong-nonce Lean transcript, a `refuse` record (wrong
+      search path), and an audited Lean module named `Lean`, under a
+      toolchain root, sharing a Mathlib root (`Batteries`) or at an olean
+      that is not its search-path location are each REFUSED (the trusted
+      program runs with no LEAN_* variable, so audited oleans cannot shadow
+      its `import Lean`); planted classical axiom, removed axiom,
+      impredicative Set, unsafe fixpoint, Lean.ofReduceBool, added theorem,
+      lost library, unledgered library, stale set and unknown artifact ID each
+      fail. `cargo xtask axioms-oracle --tree <checkout>` applies plants and
+      controls to a real checkout: a classical import (axioms-audit 1, its
+      `tauto` control 0), a Section `Hypothesis bad : False` (trust-ledger 1,
+      axioms-audit 0 by design), a native_decide (axioms-audit 1 --
+      measured: the kernel replay rejected that plant's `_nativeDecide`
+      auxiliary, so it was not ledgered -- and trust-ledger 1, its
+      `decide` control 0), an audit target with no
+      library (3); RED on origin/main, GREEN on the lane. The `axioms-audit`
+      CI job runs the gate and its self-test on every PR, not required;
+      FIND-HONESTY-AXIOMS-001 (another branch) records the
+      unsupported "axiom-free per its Print Assumptions" claim this audit
+      now checks for executor_proofs. NOT SHOWN: which theorem uses which
+      Rocq axiom (per library only; R2 not built); discharged Section
+      hypotheses; Lean `example` declarations; unsafe and partial Lean
+      constants (counted, not replayed); Mathlib and Lean core (loaded, not
+      replayed); which .vo rocqchk checked (it is given -Q paths and a
+      logical name, not a .vo path); vstd; the kernels; equality only (the
+      shrink-only ratchet is not implemented).
+    tags: [honesty, axioms, rocq, lean, gate, v0.11.0]
+    fields:
+      method: automated-test
+    links:
+      - type: verifies
+        target: REQ-HONESTY-AXIOMS-001
+      - type: related-to
+        target: VER-HONESTY-LEDGER-GATE-001

@@ -113,11 +113,20 @@ pub const CLASSES: &[(&str, &str, &str)] = &[
     ("rocq:Axiom", "v", "`Axiom` / `Axioms` / `Conjecture`"),
     ("rocq:Parameter", "v", "`Parameter` / `Parameters`"),
     ("rocq:Variable", "v", "`Variable(s)` / `Hypothesis` / `Hypotheses` / `Context` outside a Section (an axiom there)"),
+    // The five classes below are source SPELLINGS, as forgeable as the rest of
+    // this gate (a notation, a plugin or a generated file can hide them). The
+    // axiom audit (`cargo xtask check axioms-audit`) reads the compiled objects
+    // instead; these rows are the cheap tripwire beside it.
+    ("rocq:Section-Variable", "v", "`Variable(s)` / `Hypothesis` / `Hypotheses` / `Context` INSIDE a Section: a premise of every lemma that uses it, discharged at `End` (not an axiom, so no axiom audit reports it)"),
+    ("rocq:unset-guard", "v", "kernel-check bypasses: `Unset Guard Checking`, `Unset Positivity Checking`, `Unset Universe Checking`, and a `bypass_check` attribute"),
     ("rocq:impredicative-set", "bazel", "Rocq targets built with `-impredicative-set` (a changed logic): per literal, times a `for x in [...]` list, plus each call of a .bzl macro that sets it"),
     ("lean:sorry", "lean", "`sorry`"),
     ("lean:sorryAx", "lean", "`sorryAx` written out"),
     ("lean:admit", "lean", "the `admit` tactic"),
     ("lean:axiom", "lean", "`axiom` declarations"),
+    ("lean:native_decide", "lean", "`native_decide`, `decide +native`, and `ofReduceBool` / `ofReduceNat` written out (trust the compiler: axiom `Lean.ofReduceBool`)"),
+    ("lean:implemented_by", "lean", "`implemented_by` and `extern` attributes (the compiled code is not the checked definition)"),
+    ("lean:unsafe", "lean", "`unsafe` (unsafe declarations are not sent to the kernel)"),
 ];
 
 pub const CANNOT_SEE: &[&str] = &[
@@ -131,8 +140,8 @@ pub const CANNOT_SEE: &[&str] = &[
     "Kani contracts and stubs: `#[kani::stub]`, `#[kani::requires]`, `#[kani::proof_for_contract]`",
     "harnesses or assumptions produced by macros, and `include!` of a non-.rs file",
     "unwind bounds given on the command line (`--default-unwind`, `--unwind`) or a non-literal `#[kani::unwind(CONST)]` bound (recorded as `?`)",
-    "Rocq `Hypothesis`/`Variable` inside a Section, `Opaque`, `Unset Guard Checking`, `#[bypass_check]`, and axioms of external libraries (RocqOfRust, Stdlib) -- no gate in this repo reads them yet (an axiom audit from outside the file is designed in docs/design/axioms-trusted-audit.md)",
-    "Lean `@[implemented_by]`, `unsafe`, `native_decide`, `stop` -- no gate in this repo reads their axioms yet (docs/design/axioms-trusted-audit.md)",
+    "axioms of external libraries (RocqOfRust, Stdlib, Mathlib) and axioms reached through them -- `cargo xtask check axioms-audit` reads those from the compiled objects (docs/design/axioms-trusted-audit.md); a kernel-check bypass or a Section premise spelled through a notation, a plugin or a generated file (the rocq:Section-Variable / rocq:unset-guard / lean:* rows count spellings only). `Opaque` is not counted: it changes how a term unfolds, it assumes nothing",
+    "Lean `stop`, `example` declarations (they leave no constant, so no compiled-object audit sees them either), `partial` definitions (not replayed through the kernel), and macros that expand to `native_decide`, `unsafe` or `implemented_by`",
     "`-impredicative-set` reaching a target through a variable, an aliased macro name, or a macro called from another .bzl",
     "files that are not tracked by git, and the excluded prefixes",
 ];
@@ -200,9 +209,9 @@ pub fn kani_contract_proofs(text: &str) -> usize {
 
 /// Rocq declarations outside a Section that a Section would scope:
 /// `Variable(s)`, `Hypothesis`, `Hypotheses`, `Context`.
-fn rocq_top_level_variables(code: &str) -> usize {
+fn rocq_variables(code: &str) -> (usize, usize) {
     let mut stack: Vec<(bool, String)> = Vec::new(); // (is_section, name)
-    let mut n = 0;
+    let (mut n, mut in_section) = (0, 0);
     for s in rocq_sentences(code) {
         let mut s = s.trim_start_matches(|c: char| c.is_whitespace() || "-+*{}".contains(c)).trim_end_matches('.').trim();
         while s.starts_with("#[") {
@@ -221,11 +230,43 @@ fn rocq_top_level_variables(code: &str) -> usize {
                     stack.pop();
                 }
             }
-            "Variable" | "Variables" | "Hypothesis" | "Hypotheses" | "Context" if !stack.iter().any(|(sec, _)| *sec) => n += 1,
+            "Variable" | "Variables" | "Hypothesis" | "Hypotheses" | "Context" => {
+                if stack.iter().any(|(sec, _)| *sec) {
+                    in_section += 1
+                } else {
+                    n += 1
+                }
+            }
             _ => {}
         }
     }
-    n
+    (n, in_section)
+}
+
+/// Kernel-check bypasses: `Unset Guard|Positivity|Universe Checking` (also
+/// `Local`/`Global`-prefixed: the token after `Unset` is what is read) and
+/// each `bypass_check` attribute token.
+fn rocq_unset_checks(code: &str) -> usize {
+    let unset = token_positions(code, "Unset")
+        .into_iter()
+        .filter(|&i| {
+            let mut w = code[i + "Unset".len()..].split_whitespace();
+            matches!(w.next(), Some("Guard" | "Positivity" | "Universe")) && w.next().is_some_and(|x| x.trim_end_matches('.') == "Checking")
+        })
+        .count();
+    unset + count_token(code, "bypass_check")
+}
+
+/// `decide +native` (Lean 4.27's spelling of `native_decide`): the token
+/// `native` right after a `+` that follows `decide` (whitespace allowed).
+fn lean_decide_native(code: &str) -> usize {
+    token_positions(code, "native")
+        .into_iter()
+        .filter(|&i| {
+            let before = code[..i].trim_end();
+            before.ends_with('+') && before[..before.len() - 1].trim_end().ends_with("decide")
+        })
+        .count()
 }
 
 /// Count every class over one file's text.
@@ -287,7 +328,10 @@ pub fn count_file(path: &str, text: &str) -> FileCounts {
                 &mut fc,
             );
             put("rocq:Parameter", count_token(&t, "Parameter") + count_token(&t, "Parameters"), &mut fc);
-            put("rocq:Variable", rocq_top_level_variables(&t), &mut fc);
+            let (top, sect) = rocq_variables(&t);
+            put("rocq:Variable", top, &mut fc);
+            put("rocq:Section-Variable", sect, &mut fc);
+            put("rocq:unset-guard", rocq_unset_checks(&t), &mut fc);
         }
         Some("lean") => {
             let t = lean_code(text);
@@ -295,6 +339,13 @@ pub fn count_file(path: &str, text: &str) -> FileCounts {
             put("lean:sorryAx", count_token(&t, "sorryAx"), &mut fc);
             put("lean:admit", count_token(&t, "admit"), &mut fc);
             put("lean:axiom", count_token(&t, "axiom"), &mut fc);
+            put(
+                "lean:native_decide",
+                count_token(&t, "native_decide") + lean_decide_native(&t) + count_token(&t, "ofReduceBool") + count_token(&t, "ofReduceNat"),
+                &mut fc,
+            );
+            put("lean:implemented_by", count_token(&t, "implemented_by") + count_token(&t, "extern"), &mut fc);
+            put("lean:unsafe", count_token(&t, "unsafe"), &mut fc);
         }
         Some("bazel") => {
             let n: usize = bazel_statements(text).iter().map(|s| flag_targets(s)).sum();
@@ -543,7 +594,7 @@ pub struct Ledger {
 }
 
 /// `#123` or `owner/repo#123` (GitHub's issue reference forms; not fetched).
-fn is_issue_ref(s: &str) -> bool {
+pub(crate) fn is_issue_ref(s: &str) -> bool {
     let Some((repo, num)) = s.rsplit_once('#') else { return false };
     let num_ok = !num.is_empty() && num.chars().all(|c| c.is_ascii_digit()) && !num.starts_with('0');
     let repo_ok = repo.is_empty()
@@ -588,7 +639,7 @@ fn fmt_bounds(b: &[Option<u64>]) -> String {
     b.iter().map(|x| x.map_or("?".to_string(), |n| n.to_string())).collect::<Vec<_>>().join(",")
 }
 
-fn is_artifact_id(s: &str) -> bool {
+pub(crate) fn is_artifact_id(s: &str) -> bool {
     let parts: Vec<&str> = s.split('-').collect();
     parts.len() >= 2
         && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()))
@@ -1070,9 +1121,9 @@ fn git(repo: &Path, args: &[&str]) -> Result<std::process::Output, String> {
 
 /// One git query: (exit 0, stdout). Injected so the self-test can drive every
 /// branch of the baseline rules without a repository of its own.
-type GitQuery<'a> = &'a dyn Fn(&[&str]) -> Result<(bool, String), String>;
+pub(crate) type GitQuery<'a> = &'a dyn Fn(&[&str]) -> Result<(bool, String), String>;
 
-fn real_git(repo: &Path) -> impl Fn(&[&str]) -> Result<(bool, String), String> + '_ {
+pub(crate) fn real_git(repo: &Path) -> impl Fn(&[&str]) -> Result<(bool, String), String> + '_ {
     move |args: &[&str]| git(repo, args).map(|o| (o.status.success(), String::from_utf8_lossy(&o.stdout).into_owned()))
 }
 
@@ -1110,7 +1161,7 @@ pub fn baseline_ledger_with(g: GitQuery, sha: &str) -> Result<Ledger, String> {
 }
 
 /// A release tag's version: exactly `vMAJOR.MINOR.PATCH`. Anything else is None.
-fn release_version(tag: &str) -> Option<(u64, u64, u64)> {
+pub(crate) fn release_version(tag: &str) -> Option<(u64, u64, u64)> {
     // A pre-release (`v1.0.0-rc.10`) is not a release and is never a
     // baseline: it is skipped by `newest_release_with` (a string comparison of
     // the suffix ordered rc.10 below rc.9; refusing pre-releases outright is
@@ -1173,7 +1224,7 @@ pub fn newest_release_with(g: GitQuery) -> Result<String, String> {
 /// "history missing" look the same and the ceiling would be silently
 /// forgotten (round 11, F5), so a shallow repository -- or one that cannot
 /// say -- is refused.
-fn full_history_with(g: GitQuery) -> Result<(), String> {
+pub(crate) fn full_history_with(g: GitQuery) -> Result<(), String> {
     match g(&["rev-parse", "--is-shallow-repository"])? {
         (true, s) if s.trim() == "false" => Ok(()),
         (true, s) if s.trim() == "true" => Err("a shallow clone: the ceiling is read from history (fetch-depth: 0 and the tags), refusing rather than forget it".into()),
@@ -1560,6 +1611,28 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
     ck("rocq: the `Admitted.` inside `(* \"*)\" ... *)` is in the comment", g2("rocq:Admitted") == 1);
     ck("rocq: top-level Variable, Hypothesis and a Module's Hypotheses count (3); a Section's do not", g2("rocq:Variable") == 3);
     ck("rocq: `Admit Obligations` counts", g2("rocq:Admit-Obligations") == 1);
+    ck("rocq:Section-Variable: the Section's Variable and Context count (2), the top-level ones do not", g2("rocq:Section-Variable") == 2);
+    // The axiom-audit plant: a Section Hypothesis False is discharged at `End`,
+    // so no compiled-object audit reports it; only this spelling class does.
+    let sec = |s: &str| count_file("s.v", s).counts.get("rocq:Section-Variable").copied().unwrap_or(0);
+    ck("PLANTED a `Section S. Hypothesis bad : False. ... End S.` is rocq:Section-Variable 1",
+        sec("Section S.\nHypothesis bad : False.\nLemma l : 1 = 2. Proof. destruct bad. Qed.\nEnd S.\n") == 1);
+    ck("CONTROL a Section with only Let/Definition is rocq:Section-Variable 0 (and rocq:Variable 0)",
+        sec("Section S.\nLet k := 1.\nDefinition d := k.\nLemma l : d = 1. Proof. reflexivity. Qed.\nEnd S.\n") == 0
+            && count_file("s.v", "Section S.\nLet k := 1.\nEnd S.\n").counts.is_empty());
+    let ug = |s: &str| count_file("g.v", s).counts.get("rocq:unset-guard").copied().unwrap_or(0);
+    ck("rocq:unset-guard: `Unset Guard Checking.`, `Local Unset Positivity Checking.`, `#[bypass_check(guard)]` count (3); a comment does not",
+        ug("Unset Guard Checking.\nLocal Unset Positivity Checking.\n#[bypass_check(guard)] Fixpoint f (n : nat) : nat := f n.\n(* Unset Universe Checking. *)\n") == 3);
+    ck("rocq:unset-guard: `Unset Printing All.` is not a bypass", ug("Unset Printing All.\nUnset Guard.\n") == 0);
+    let ln = |s: &str| count_file("n.lean", s);
+    let gn = |s: &str, k: &str| ln(s).counts.get(k).copied().unwrap_or(0);
+    ck("PLANTED lean:native_decide: `by native_decide`, `by decide +native`, `Lean.ofReduceBool` written out (3); a comment and `native_decide_like` not",
+        gn("theorem a : 2 + 2 = 4 := by native_decide\ntheorem b : 3 = 3 := by decide  +native\n-- native_decide\ndef c := Lean.ofReduceBool\ndef native_decide_like := 1\n", "lean:native_decide") == 3);
+    ck("CONTROL lean:native_decide: `by decide` and `by norm_num` are 0",
+        gn("theorem a : 2 + 2 = 4 := by decide\ntheorem b : 2 + 2 = 4 := by norm_num\n", "lean:native_decide") == 0);
+    ck("lean:implemented_by: `@[implemented_by f]` and `@[extern \"c\"]` (2)",
+        gn("@[implemented_by fImpl] def f := 1\n@[extern \"c_f\"] opaque g : Nat\n", "lean:implemented_by") == 2);
+    ck("lean:unsafe: `unsafe def` (1); `unsafeCast_like` is another name", gn("unsafe def u := 1\ndef unsafeCast_like := 2\n", "lean:unsafe") == 1);
 
     let lean = "-- sorry\n/- axiom /- nested sorry -/ -/\ntheorem a : True := by sorry\naxiom foo : False\ntheorem b : True := by admit\ndef sorry' := 1\n\
                 def q := '\"'\ntheorem f : False := sorry\ndef h' := 'x'\nexample : False := sorryAx False\n";

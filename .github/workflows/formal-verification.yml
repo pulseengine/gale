@@ -260,3 +260,80 @@ jobs:
         run: |
           bazel test //proofs/lean:all --test_output=errors
         timeout-minutes: 45
+
+  # The axiom audit (REQ-HONESTY-AXIOMS-001, VER-HONESTY-AXIOMS-GATE-001,
+  # docs/design/axioms-trusted-audit.md). Reads the COMPILED objects, never
+  # the source: rocqchk -o per Rocq library (13), and the trusted program
+  # tools/xtask/axioms/AxiomAudit.lean (imports only Lean; kernel replay +
+  # collectAxioms) per Lean module (8), against tools/xtask/axioms-audit.ledger.
+  # Its own job (owner, 2026-11-25), NOT a required context: making it one is
+  # the owner's call (.github/required-contexts.txt is unchanged). Proofs never
+  # skip: listed in sieve.toml never_skip_jobs, no `if:`, no `needs:`.
+  # The ledger was seeded on darwin arm64; this Linux job is its second
+  # platform. On a difference the gate prints every differing row (`- ` ledger
+  # only, `+ ` observed only) in the log.
+  # Same setup as the Rocq and Lean jobs above (nix for the Rocq toolchain,
+  # rules_lean's Lean + Mathlib). It rebuilds the libraries itself (cold: the
+  # RocqOfRust build plus the Mathlib download), then runs the checkers.
+  # Expected wall time about 10-15 min (the Rocq job takes ~2 min and the Lean
+  # job ~4 min on this runner; rocqchk over 13 libraries took 2-3 min and the
+  # Lean program 1 min on a laptop): an estimate until the first run measures it.
+  axioms-audit:
+    name: "axiom audit reads the compiled objects (Rocq + Lean)"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: cachix/install-nix-action@bb0495a1086c46893eee56f32fd192dfe4a15bb9 # v31
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # installs 1.100.0 (stable-branch SHA)
+        with:
+          toolchain: 1.100.0
+
+      - name: Negative control -- planted axioms, a vacuous or truncated run and a reshaped checker output must fail
+        run: cargo xtask check axioms-audit --self-test
+        timeout-minutes: 10
+
+      # The first Linux run (gale#558) lost the hosted runner 10 min in, with
+      # no output: the xtask step captures bazel's output. Reclaim the image's
+      # unused toolchains, then build the two audit targets in a visible step
+      # with a disk/memory sample every minute, so a resource death leaves
+      # evidence. The verdict stays in xtask, which finds the build cached.
+      - name: Reclaim disk on the hosted image
+        run: |
+          df -h / | tail -1; free -m | sed -n 2p
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h / | tail -1
+
+      - name: Build the audit targets (visible, with resource samples)
+        run: |
+          ( while true; do echo "[sample] $(date -u +%H:%M:%S) disk=$(df -h / | awk 'NR==2{print $3"/"$2}') mem=$(free -m | awk 'NR==2{print $3"/"$2}')MiB swap=$(free -m | awk 'NR==3{print $3}')MiB"; sleep 60; done ) &
+          sampler=$!
+          rc=0
+          bazel build --remote_download_outputs=all //proofs:axioms_audit //proofs/lean:axioms_audit || rc=$?
+          kill "$sampler"
+          df -h / | tail -1; free -m | sed -n 2p
+          exit "$rc"
+        timeout-minutes: 30
+
+      # The second run built in 4 min, then this step outlived its own 35-min
+      # timeout until the job was cancelled, and the log was lost. Sample the
+      # largest process every minute, and stop the step at 25 min with a loud
+      # non-zero exit instead of a hang.
+      - name: Every compiled library's axioms equal the ledger
+        run: |
+          # Run 3 outlived both `timeout 25m` and the step timeout: the VM
+          # stopped responding, the signature of swap thrash. With swap off the
+          # kernel OOM killer acts at once, and the gate reports the killed
+          # checker by library name (exit 1) instead of the VM hanging.
+          sudo swapoff -a
+          cargo build --locked --quiet --manifest-path tools/xtask/Cargo.toml
+          ( while true; do echo "[sample] $(date -u +%H:%M:%S) mem=$(free -m | awk 'NR==2{print $3"/"$2}')MiB top=$(ps -eo rss=,comm= --sort=-rss | head -1 | awk '{print $2" "int($1/1024)"MiB"}')"; sleep 30; done ) &
+          sampler=$!
+          rc=0
+          timeout --kill-after=30s 25m tools/xtask/target/debug/xtask check axioms-audit || rc=$?
+          kill "$sampler"
+          exit "$rc"
+        timeout-minutes: 30
