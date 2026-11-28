@@ -21,11 +21,10 @@
 //! empty `out`; the component gets `--dir <root>::.` and `--dir <scratch>/out::out`.
 //! Every path the tool prints (`--reference`, `out/<file>`) is therefore the
 //! same string on both sides, and stderr is compared raw, without
-//! normalisation. Where stderr cannot match it is reported, not hidden: on a
-//! panic the native message carries the host thread id and errno (os error 2)
-//! where the component prints thread id 1 and the WASI errno (os error 44),
-//! and wasmtime appends its trap report; the exit codes differ too (101 vs the
-//! runtime's trap code). Those are real differences of the two builds.
+//! normalisation. Where stderr cannot match it is reported, not hidden: on an
+//! unreadable input both sides exit 3 (I/O error), but the native message
+//! carries the host errno (os error 2) where the component prints the WASI
+//! errno (os error 44). That is a real difference of the two builds.
 
 use super::wasi_component::{exec, first_diff, opts, wasmtime, Opts, Out};
 use crate::verdict::Verdict;
@@ -510,17 +509,18 @@ pub fn self_test(repo: &Path, _t: Option<&str>) -> Verdict {
         matches!(v, Verdict::Pass(_)) && has(&v, &[&boards[0], "exit native=1 wasm=1, 0 file(s)"]),
     );
 
-    // (d) panic path on both sides: a missing --items file. The two builds
-    // die differently (native unwinds to 101, the component traps); the gate
-    // must report that, not hide it.
+    // (d) I/O-error path on both sides: a missing --items file. Both exit 3,
+    // but the errno in the message differs (host 2, WASI 44); the gate must
+    // report that, not hide it.
     let v = compare(o, &panic, &panic, &boards, MIN_BOARDS);
-    let codes = line(&v, "exit code");
+    let codes = line(&v, "stderr differs");
     ck(
         &format!(
-            "(d) missing --items (panic) on both sides FAILS ({}; {codes})",
+            "(d) missing --items (I/O error) on both sides FAILS on stderr ({}; {codes})",
             show(&v)
         ),
-        matches!(v, Verdict::Fail(_)) && has(&v, &["DIFF", "exit code native=101"]),
+        matches!(v, Verdict::Fail(_)) && has(&v, &["DIFF", "stderr differs"])
+            && has(&v, &[&boards[0], "exit native=3 wasm=3, 0 file(s)"]),
     );
 
     // (e) fewer boards than the floor refuses.

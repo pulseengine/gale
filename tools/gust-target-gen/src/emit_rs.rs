@@ -23,24 +23,25 @@ fn hex(v: u32) -> String {
     format!("0x{:04X}_{:04X}", v >> 16, v & 0xFFFF)
 }
 
-fn device<'a>(t: &'a Target, name: &str) -> &'a Device {
+fn device<'a>(t: &'a Target, name: &str) -> Result<&'a Device, String> {
     t.devices
         .iter()
         .find(|d| d.name == name)
-        .unwrap_or_else(|| panic!("gust-target-gen: target `{}` has no `{name}` device", t.name))
+        .ok_or_else(|| format!("target `{}` has no `{name}` device", t.name))
 }
 
-/// Like `device`, but returns `None` instead of panicking when the target's
+/// Like `device`, but returns `None` instead of an error when the target's
 /// model has no device of that name — for peripherals not every board has
 /// (e.g. `Adc`), so their consts are emitted only when the model carries them.
 fn device_opt<'a>(t: &'a Target, name: &str) -> Option<&'a Device> {
     t.devices.iter().find(|d| d.name == name)
 }
 
-fn rcc_prop(rcc: &Device, key: &str) -> u32 {
-    *rcc.props
+fn rcc_prop(rcc: &Device, key: &str) -> Result<u32, String> {
+    rcc.props
         .get(key)
-        .unwrap_or_else(|| panic!("gust-target-gen: Rcc device missing `{key}` property"))
+        .copied()
+        .ok_or_else(|| format!("Rcc device missing `{key}` property"))
 }
 
 /// Optional peripheral devices and the constants each contributes:
@@ -83,12 +84,12 @@ const PERIPHERALS: &[(&str, &str, Regs)] = &[
 ];
 
 /// Emit the per-target constants module (IWDG/RCC/memory) as Rust source.
-pub fn emit_rs(t: &Target) -> String {
-    let iwdg = device(t, "Iwdg");
-    let rcc = device(t, "Rcc");
-    let csr_off = rcc_prop(rcc, "Csr_Offset");
-    let iwdgrstf = rcc_prop(rcc, "Iwdgrstf_Bit");
-    let rmvf = rcc_prop(rcc, "Rmvf_Bit");
+pub fn emit_rs(t: &Target) -> Result<String, String> {
+    let iwdg = device(t, "Iwdg")?;
+    let rcc = device(t, "Rcc")?;
+    let csr_off = rcc_prop(rcc, "Csr_Offset")?;
+    let iwdgrstf = rcc_prop(rcc, "Iwdgrstf_Bit")?;
+    let rmvf = rcc_prop(rcc, "Rmvf_Bit")?;
     let stem = model_stem(&t.name);
     let board = stem.to_uppercase();
     let mut out = format!(
@@ -142,17 +143,17 @@ pub fn emit_rs(t: &Target) -> String {
     // REQUIRED, not optional. A target that simply omits the device would emit no
     // const at all, and a consumer asking "can this target isolate?" would get a
     // compile error it could paper over rather than an answer. Same stance as
-    // interfaces_for()'s unknown-class panic: a new board must SAY, and "no MPU" is
+    // interfaces_for()'s unknown-class rejection: a new board must SAY, and "no MPU" is
     // a perfectly good thing to say (the STM32F100 says it).
-    let mpu = device_opt(t, "Mpu").unwrap_or_else(|| {
-        panic!(
-            "gust-target-gen: target `{}` declares no Mpu device. MPU presence decides \
+    let mpu = device_opt(t, "Mpu").ok_or_else(|| {
+        format!(
+            "target `{}` declares no Mpu device. MPU presence decides \
              whether it can host REQ-OS-MPU-001 / REQ-OS-UNPRIV-001 / \
              REQ-OS-MULTITENANT-001 at all, so it must be declared explicitly — \
              `Present => false; Dregion => 0;` if the part has none.",
             t.name
         )
-    });
+    })?;
     {
         let dregion = mpu.props.get("Dregion").copied().unwrap_or(0);
         out.push_str(&format!(
@@ -234,7 +235,7 @@ pub fn emit_rs(t: &Target) -> String {
         }
     }
 
-    out
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -248,18 +249,18 @@ mod tests {
 
     #[test]
     fn emits_f100_consts_matching_golden() {
-        let t = parse_items(ITEMS, "STM32F100::Board.vldiscovery");
+        let t = parse_items(ITEMS, "STM32F100::Board.vldiscovery").unwrap();
         assert_eq!(
-            emit_rs(&t),
+            emit_rs(&t).unwrap(),
             include_str!("../tests/golden/gust_target_stm32f100.rs.expected")
         );
     }
 
     #[test]
     fn emits_g474_consts_matching_golden() {
-        let t = parse_items(ITEMS, "STM32G474::Board.nucleo");
+        let t = parse_items(ITEMS, "STM32G474::Board.nucleo").unwrap();
         assert_eq!(
-            emit_rs(&t),
+            emit_rs(&t).unwrap(),
             include_str!("../tests/golden/gust_target_stm32g474.rs.expected")
         );
     }
@@ -271,13 +272,13 @@ mod tests {
     ///   F1: IWDG_BASE=0x40003000, RCC_CSR=0x40021024, IWDGRSTF bit 29, RMVF bit 24
     #[test]
     fn generated_consts_equal_prior_handwritten_firmware_values() {
-        let g = emit_rs(&parse_items(ITEMS, "STM32G474::Board.nucleo"));
+        let g = emit_rs(&parse_items(ITEMS, "STM32G474::Board.nucleo").unwrap()).unwrap();
         assert!(g.contains("IWDG_BASE: u32 = 0x4000_3000;"), "g474 IWDG_BASE");
         assert!(g.contains("RCC_CSR: u32 = 0x4002_1094;"), "g474 RCC_CSR");
         assert!(g.contains("IWDGRSTF: u32 = 1 << 29;"), "g474 IWDGRSTF");
         assert!(g.contains("RMVF: u32 = 1 << 23;"), "g474 RMVF");
 
-        let f = emit_rs(&parse_items(ITEMS, "STM32F100::Board.vldiscovery"));
+        let f = emit_rs(&parse_items(ITEMS, "STM32F100::Board.vldiscovery").unwrap()).unwrap();
         assert!(f.contains("IWDG_BASE: u32 = 0x4000_3000;"), "f100 IWDG_BASE");
         assert!(f.contains("RCC_CSR: u32 = 0x4002_1024;"), "f100 RCC_CSR");
         assert!(f.contains("IWDGRSTF: u32 = 1 << 29;"), "f100 IWDGRSTF");
@@ -296,7 +297,7 @@ mod tests {
     ///   SPI1_*      0x40013000  gust_spi.rs / drivers/spi-thin (CR1, SR, DR)
     #[test]
     fn f100_peripheral_consts_equal_the_intree_hardcoded_addresses() {
-        let f = emit_rs(&parse_items(ITEMS, "STM32F100::Board.vldiscovery"));
+        let f = emit_rs(&parse_items(ITEMS, "STM32F100::Board.vldiscovery").unwrap()).unwrap();
         for expected in [
             "pub const RCC_APB2ENR: u32 = 0x4002_1018;",
             "pub const USART1_BASE: u32 = 0x4001_3800;",
@@ -325,7 +326,7 @@ mod tests {
     /// G4 module must carry no peripheral constants at all.
     #[test]
     fn g474_gets_no_unproven_peripheral_consts() {
-        let g = emit_rs(&parse_items(ITEMS, "STM32G474::Board.nucleo"));
+        let g = emit_rs(&parse_items(ITEMS, "STM32G474::Board.nucleo").unwrap()).unwrap();
         for absent in [
             "RCC_APB2ENR",
             "USART1_",

@@ -59,7 +59,7 @@ mod tests {
 
     #[test]
     fn emits_f100_memory_x_matching_golden() {
-        let t = parse_items(ITEMS, "STM32F100::Board.vldiscovery");
+        let t = parse_items(ITEMS, "STM32F100::Board.vldiscovery").unwrap();
         assert_eq!(
             emit_ld(&t),
             include_str!("../tests/golden/memory-f100.x.expected")
@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn emits_g474_memory_x_matching_golden() {
-        let t = parse_items(ITEMS, "STM32G474::Board.nucleo");
+        let t = parse_items(ITEMS, "STM32G474::Board.nucleo").unwrap();
         assert_eq!(
             emit_ld(&t),
             include_str!("../tests/golden/memory-g474re.x.expected")
