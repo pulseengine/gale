@@ -4,7 +4,7 @@
 # wasm-ld, loom, synth, arm-zephyr-eabi-nm on PATH (or via $TC).
 set -euo pipefail
 SCOUT="${SCOUT:-/tmp/gust-wasm-scout}"   # the pointer-passing kernel crate (gust_poll/gust_mix)
-TC="${TC:-/Volumes/Home/zephyr-sdk/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi}"
+TC="${TC:-${ZEPHYR_SDK_INSTALL_DIR:?set ZEPHYR_SDK_INSTALL_DIR to the Zephyr SDK 1.0.1 root}/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi}"
 sz() { "$TC-nm" --print-size --size-sort "$1" 2>/dev/null | grep -iE 'gust_poll|gust_mix' \
   | python3 -c 'import sys
 for l in sys.stdin:

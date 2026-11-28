@@ -13,9 +13,9 @@
 #   test_complex_inversion AND test_mutex_recursive pass, "PROJECT EXECUTION SUCCESSFUL", no FAULT.
 set -u
 SYNTH="${SYNTH:-synth}"; CLANG="${CLANG:-/opt/homebrew/opt/llvm/bin/clang}"; WASMLD="${WASMLD:-/opt/homebrew/bin/wasm-ld}"
-SDK=/Volumes/Home/zephyr-sdk/zephyr-sdk-1.0.1; TC="$SDK/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi"
-GALE=/Volumes/Home/git/pulseengine/gale
-export ZEPHYR_BASE=/Volumes/Home/git/pulseengine/zephyr ZEPHYR_SDK_INSTALL_DIR=$SDK
+SDK="${ZEPHYR_SDK_INSTALL_DIR:?set ZEPHYR_SDK_INSTALL_DIR to the Zephyr SDK 1.0.1 root}"; TC="$SDK/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi"
+GALE="$(git rev-parse --show-toplevel)"
+export ZEPHYR_BASE="${ZEPHYR_BASE:?set ZEPHYR_BASE to the gale Zephyr fork}" ZEPHYR_SDK_INSTALL_DIR=$SDK
 export PATH="$(dirname "$CLANG"):$TC/..:$PATH"
 echo "== verify mutex module (synth $($SYNTH --version|head -1|awk '{print $2}'), --native-pointer-abi) =="
 t=$(mktemp -d); WD=$(mktemp -d)

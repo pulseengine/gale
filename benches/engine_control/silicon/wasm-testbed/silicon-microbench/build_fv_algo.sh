@@ -4,7 +4,7 @@
 # SYNTH_RANGE_REALLOC=1 may be exported to build the flag-on variant.
 set -euo pipefail
 SYNTH="${SYNTH:-synth}"; CLANG=/opt/homebrew/opt/llvm/bin/clang; WASMLD=/opt/homebrew/bin/wasm-ld
-TC=/Volumes/Home/zephyr-sdk/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi
+TC="${ZEPHYR_SDK_INSTALL_DIR:?set ZEPHYR_SDK_INSTALL_DIR to the Zephyr SDK 1.0.1 root}/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi"
 HERE=$(cd "$(dirname "$0")" && pwd); mkdir -p /tmp/wasm-algo-poc; cd /tmp/wasm-algo-poc
 $CLANG --target=wasm32-unknown-unknown -O2 -nostdlib -c "$HERE/fv_algo.c" -o fv.o
 $WASMLD --no-entry --export=full --export=nodiv --export=div --allow-undefined --gc-sections fv.o -o fv.wasm

@@ -3,7 +3,7 @@
 # Regenerates control.loom.wasm from shared sources, compiles with the riscv backend, links + runs.
 # WORKING: filter_axis (direct) + control_step (s11=&gale_tables-0x10000 tramp). controller/flat_flight pending #226/v0.11.25.
 set -u
-RV="${RV:-/Volumes/Home/git/zephyr/zephyr-sdk-0.17.4/riscv64-zephyr-elf/bin/riscv64-zephyr-elf-gcc}"
+RV="${RV:-${ZEPHYR_SDK_0174:?set ZEPHYR_SDK_0174 to a Zephyr SDK 0.17.4 root}/riscv64-zephyr-elf/bin/riscv64-zephyr-elf-gcc}"
 CLANG="${CLANG:-/opt/homebrew/opt/llvm/bin/clang}"; WASMLD="${WASMLD:-/opt/homebrew/bin/wasm-ld}"
 QEMU="${QEMU:-/opt/homebrew/bin/qemu-system-riscv32}"; SRC=../..; t=$(mktemp -d)
 synth riscv-runtime -t rv32imac --flash-origin 0x80000000 --ram-origin 0x80010000 --linear-memory-size 4096 --stack-size 8192 -o . >/dev/null 2>&1

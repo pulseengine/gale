@@ -297,12 +297,12 @@ int z_impl_k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 
 Run:
 ```bash
-source /Volumes/Home/git/zephyr/.venv/bin/activate
-export ZEPHYR_BASE=/Volumes/Home/git/zephyr/zephyr
-cd /Volumes/Home/git/zephyr
+source <zephyr-workspace>/.venv/bin/activate
+export ZEPHYR_BASE=<zephyr-workspace>/zephyr
+cd <zephyr-workspace>
 west build -b qemu_cortex_m3 -s zephyr/tests/kernel/semaphore/semaphore \
-  -- -DZEPHYR_EXTRA_MODULES=/Volumes/Home/git/zephyr/gale \
-     -DOVERLAY_CONFIG=/Volumes/Home/git/zephyr/gale/zephyr/gale_overlay.conf
+  -- -DZEPHYR_EXTRA_MODULES=<gale> \
+     -DOVERLAY_CONFIG=<gale>/zephyr/gale_overlay.conf
 ```
 Expected: Build succeeds
 

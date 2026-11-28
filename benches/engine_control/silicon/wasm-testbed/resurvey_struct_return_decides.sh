@@ -10,8 +10,8 @@ set -u
 SYNTH="${SYNTH:-synth}"; CLANG=/opt/homebrew/opt/llvm/bin/clang
 WASMLD=/opt/homebrew/bin/wasm-ld; OBJDUMP=/opt/homebrew/opt/llvm/bin/llvm-objdump
 SIZE=/opt/homebrew/opt/llvm/bin/llvm-size
-STACK_SHIM=/Volumes/Home/git/pulseengine/gale-smart-data/benches/engine_control/silicon/boards/nucleo_g474re/wasm_stack_push_shim_poc.c
-GALE=/Volumes/Home/git/pulseengine/gale
+STACK_SHIM="${GALE_SMART_DATA:?set GALE_SMART_DATA to a gale-smart-data checkout}/benches/engine_control/silicon/boards/nucleo_g474re/wasm_stack_push_shim_poc.c"
+GALE="$(git rev-parse --show-toplevel)"
 LIBFFI="$GALE/ffi/target/wasm32-unknown-unknown/release/libgale_ffi.a"
 [ -f "$LIBFFI" ] || ( cd "$GALE/ffi" && cargo rustc --release --target wasm32-unknown-unknown --all-features --crate-type=staticlib >/dev/null 2>&1 )
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT; fail=0

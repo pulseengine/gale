@@ -7,7 +7,7 @@
 # Tools: clang+wasm-ld, loom, synth, riscv64-*-gcc, qemu-system-riscv32.
 set -u
 CLANG="${CLANG:-/opt/homebrew/opt/llvm/bin/clang}"; WASMLD="${WASMLD:-/opt/homebrew/bin/wasm-ld}"
-RV="${RV:-/Volumes/Home/git/zephyr/zephyr-sdk-0.17.4/riscv64-zephyr-elf/bin/riscv64-zephyr-elf-gcc}"
+RV="${RV:-${ZEPHYR_SDK_0174:?set ZEPHYR_SDK_0174 to a Zephyr SDK 0.17.4 root}/riscv64-zephyr-elf/bin/riscv64-zephyr-elf-gcc}"
 QEMU="${QEMU:-/opt/homebrew/bin/qemu-system-riscv32}"
 SRC=../..; t=$(mktemp -d)
 echo "== RV32 funccheck (synth $(synth --version|head -1|awk '{print $2}'), loom $(loom --version|head -1|awk '{print $2}')) =="
