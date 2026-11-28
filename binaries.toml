@@ -381,7 +381,7 @@ regenerate = "os/gust/README.md"
 
 [[binary]]
 path = "os/gust/wasm-kernel/fused.wasm"
-sha256 = "fb9773af92c5459b145e6caee9a7575ec88bf2d8efb210cf7ae49f2501e20859"
+sha256 = "6098e714555970ed587d77efbe03b1c647eadb6bfad5c68334a9be0c3c02b1ec"
 kind = "wasm-input"
 consumer = ".github/workflows/pages.yml"
 needle = "fused.wasm"

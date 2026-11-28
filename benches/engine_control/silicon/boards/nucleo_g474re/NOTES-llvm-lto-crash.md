@@ -43,16 +43,16 @@ Renode's `stm32f4_disco` simulation lane passes because Renode does not model th
 Toolchain matched at LLVM 21.1.8 (rustc 1.94.1 + brew `llvm@21` + brew `lld@21`):
 
 ```sh
-SDK_DIR=/Volumes/Home/zephyr-sdk/zephyr-sdk-1.0.1
+SDK_DIR=<zephyr-sdk-1.0.1>
 ARM_BIN="${SDK_DIR}/gnu/arm-zephyr-eabi"
 GCC_LIB_DIR=$(dirname $("${ARM_BIN}/bin/arm-zephyr-eabi-gcc" -print-libgcc-file-name -mcpu=cortex-m4 -mthumb -mfloat-abi=soft))
 PICOLIBC_DIR="${ARM_BIN}/arm-zephyr-eabi/lib/thumb/v7e-m/nofp"
 LLD_LIBS="-L${GCC_LIB_DIR} -L${PICOLIBC_DIR}"
 
 export PATH=/opt/homebrew/opt/llvm@21/bin:/opt/homebrew/opt/lld@21/bin:${ARM_BIN}/bin:$PATH
-export ZEPHYR_BASE=/Volumes/Home/git/pulseengine/zephyr
+export ZEPHYR_BASE=<zephyr-fork>
 export ZEPHYR_SDK_INSTALL_DIR=${SDK_DIR}
-GALE_ROOT=/Volumes/Home/git/pulseengine/gale-smart-data
+GALE_ROOT=<gale-smart-data>
 
 west build -b nucleo_g474re -d /tmp/silicon-lto -s "$GALE_ROOT/benches/engine_control" -- \
     -DZEPHYR_TOOLCHAIN_VARIANT=llvm \

@@ -6,7 +6,7 @@
 # dissolved wasm with `synth compile <fn>.loom.wasm -b riscv -t rv32imac` and link its .o in place of the
 # native obj (s11 = linear-memory base; trampoline analogous to ARM's r11).
 set -u
-RV="${RV:-/Volumes/Home/git/zephyr/zephyr-sdk-0.17.4/riscv64-zephyr-elf/bin/riscv64-zephyr-elf-gcc}"
+RV="${RV:-${ZEPHYR_SDK_0174:?set ZEPHYR_SDK_0174 to a Zephyr SDK 0.17.4 root}/riscv64-zephyr-elf/bin/riscv64-zephyr-elf-gcc}"
 QEMU="${QEMU:-/opt/homebrew/bin/qemu-system-riscv32}"
 SRC=../..
 synth riscv-runtime -t rv32imac --flash-origin 0x80000000 --ram-origin 0x80010000 \

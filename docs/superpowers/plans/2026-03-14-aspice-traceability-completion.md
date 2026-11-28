@@ -225,7 +225,7 @@ git commit -m "Add UV, IV, FV, SV verification artifacts for all primitives"
 - [ ] **Step 1: Run rivet validate**
 
 ```bash
-cd /Volumes/Home/git/zephyr/gale && rivet validate
+cd <gale> && rivet validate
 ```
 
 Expected: 0 errors, 0 warnings.
@@ -233,7 +233,7 @@ Expected: 0 errors, 0 warnings.
 - [ ] **Step 2: Run rivet coverage**
 
 ```bash
-cd /Volumes/Home/git/zephyr/gale && rivet coverage
+cd <gale> && rivet coverage
 ```
 
 Expected: 100% overall. All rules at 100% including sys2-has-verification.
@@ -241,7 +241,7 @@ Expected: 100% overall. All rules at 100% including sys2-has-verification.
 - [ ] **Step 3: Regenerate agent context**
 
 ```bash
-cd /Volumes/Home/git/zephyr/gale && rivet context
+cd <gale> && rivet context
 ```
 
 - [ ] **Step 4: Fix any validation errors**

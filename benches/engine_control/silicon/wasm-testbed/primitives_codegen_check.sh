@@ -19,8 +19,8 @@ CLANG="${CLANG:-/opt/homebrew/opt/llvm/bin/clang}"; WASMLD="${WASMLD:-/opt/homeb
 SYNTH="${SYNTH:-synth}"
 OBJDUMP="${OBJDUMP:-/opt/homebrew/opt/llvm/bin/llvm-objdump}"
 SIZE="${SIZE:-/opt/homebrew/opt/llvm/bin/llvm-size}"
-GALE=/Volumes/Home/git/pulseengine/gale
-GR=/Volumes/Home/git/pulseengine/gale-smart-data
+GALE="$(git rev-parse --show-toplevel)"
+GR="${GALE_SMART_DATA:?set GALE_SMART_DATA to a gale-smart-data checkout}"
 SEM_SHIM="$GALE/zephyr/wasm/sem_give_shim.c"
 MTX_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_mutex_shim_poc.c"
 PIPE_SHIM="$GR/benches/engine_control/silicon/boards/nucleo_g474re/wasm_pipe_write_shim_poc.c"

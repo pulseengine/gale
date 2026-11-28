@@ -110,7 +110,7 @@ scheduling specification. From the spar test data:
 
 ## 4. Properties of sched.c that should be verified
 
-Analysis of `/Volumes/Home/git/zephyr/zephyr/kernel/sched.c` (1605
+Analysis of `<zephyr-workspace>/zephyr/kernel/sched.c` (1605
 lines) and `kernel/include/priority_q.h` (355 lines) reveals these key
 verification targets:
 

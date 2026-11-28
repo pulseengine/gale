@@ -9,8 +9,8 @@
 #
 # Build command template (substitute BOARD):
 #   west build -b <board> -s zephyr/tests/kernel/<primitive>/<suite> \
-#     -- -DZEPHYR_EXTRA_MODULES=/Volumes/Home/git/zephyr/gale \
-#        -DOVERLAY_CONFIG=/Volumes/Home/git/zephyr/gale/zephyr/gale_overlay.conf
+#     -- -DZEPHYR_EXTRA_MODULES=<gale> \
+#        -DOVERLAY_CONFIG=<gale>/zephyr/gale_overlay.conf
 
 # ---------------------------------------------------------------------------
 # ARM Cortex-M targets

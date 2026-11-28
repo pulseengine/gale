@@ -236,8 +236,8 @@ to save/restore caller-saved registers for the FFI call.
 
 ```bash
 # Activate Zephyr environment
-source /Volumes/Home/git/zephyr/.venv/bin/activate
-export ZEPHYR_BASE=/Volumes/Home/git/zephyr/zephyr
+source <zephyr-workspace>/.venv/bin/activate
+export ZEPHYR_BASE=<zephyr-workspace>/zephyr
 
 # Build with Clang + LTO + cross-language LTO
 west build -b qemu_cortex_m3 \
@@ -246,8 +246,8 @@ west build -b qemu_cortex_m3 \
   -DZEPHYR_TOOLCHAIN_VARIANT=llvm \
   -DCONFIG_LTO=y \
   -DCONFIG_LLVM_USE_LLD=y \
-  -DZEPHYR_EXTRA_MODULES=/Volumes/Home/git/zephyr/gale \
-  -DOVERLAY_CONFIG=/Volumes/Home/git/zephyr/gale/zephyr/gale_overlay.conf
+  -DZEPHYR_EXTRA_MODULES=<gale> \
+  -DOVERLAY_CONFIG=<gale>/zephyr/gale_overlay.conf
 ```
 
 The Gale CMakeLists.txt detects `CONFIG_LTO` + Clang and passes the

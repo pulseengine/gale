@@ -14,12 +14,12 @@ fault. This lane turns that silent wrong-code into a red testbed line.
 import glob, os, struct, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TC = "/Volumes/Home/zephyr-sdk/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi"
+TC = os.environ["ZEPHYR_SDK_INSTALL_DIR"] + "/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi"
 CLANG = "/opt/homebrew/opt/llvm/bin/clang"
 WASMLD = "/opt/homebrew/bin/wasm-ld"
 SYNTH = os.environ.get("SYNTH", "synth")
 VECTORS = [((3, 4), 8), ((0, 0), 1), ((1000, 99), 1100), ((0xFFFF, 1), 0x10001)]
-RV = "/Volumes/Home/git/zephyr/zephyr-sdk-0.17.4/riscv64-zephyr-elf/bin/riscv64-zephyr-elf"
+RV = os.environ["ZEPHYR_SDK_0174"] + "/riscv64-zephyr-elf/bin/riscv64-zephyr-elf"
 
 def run(cmd, **kw):
     r = subprocess.run(cmd, capture_output=True, text=True, **kw)

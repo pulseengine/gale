@@ -507,12 +507,12 @@ clang --target=wasm32-unknown-unknown -O2 -nostdlib \
 
 # 2. Build gale-ffi as a wasm32 static archive (already produced by
 #    the bench's GALE_USE_SYNTH=ON path; can also build manually):
-( cd /Volumes/Home/git/pulseengine/gale-smart-data/ffi && \
+( cd <gale-smart-data>/ffi && \
   cargo rustc --release --target wasm32-unknown-unknown --crate-type=staticlib )
 
 # 3. wasm-ld static-links them into a single core wasm module.
 wasm-ld --no-entry --export-all --allow-undefined \
-  --whole-archive /Volumes/Home/git/pulseengine/gale-smart-data/ffi/target/wasm32-unknown-unknown/release/libgale_ffi.a \
+  --whole-archive <gale-smart-data>/ffi/target/wasm32-unknown-unknown/release/libgale_ffi.a \
   --no-whole-archive shim.wasm.o \
   -o merged.wasm
 
