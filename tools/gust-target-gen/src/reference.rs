@@ -90,7 +90,7 @@ fn port(letter: &str) -> Option<u32> {
 
 /// `P9`-style pin split into (port, pin): "A9" -> (0, 9).
 fn port_pin(s: &str) -> Option<(u32, u32)> {
-    Some((port(&s[..1])?, s[1..].parse().ok()?))
+    Some((port(s.get(..1)?)?, s.get(1..)?.parse().ok()?))
 }
 
 /// Cross-check the board-level devices against targets/reference/<soc>.board.tsv:
@@ -242,7 +242,7 @@ mod tests {
             ("STM32WB55::Board.nucleo", "stm32wb55"),
             ("STM32G031::Board.nucleo", "stm32g031"),
         ] {
-            let t = crate::model::parse_items(json, board);
+            let t = crate::model::parse_items(json, board).unwrap();
             let tsv = std::fs::read_to_string(format!(
                 "{}/../../targets/reference/{stem}.peripherals.tsv",
                 env!("CARGO_MANIFEST_DIR")

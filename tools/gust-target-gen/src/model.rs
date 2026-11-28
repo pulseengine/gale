@@ -105,13 +105,13 @@ fn resolve_classifier<'a>(
     packages: &'a [RawPackage],
     home_package: &'a RawPackage,
     classifier: &str,
-) -> &'a [RawProperty] {
+) -> Result<&'a [RawProperty], String> {
     let (pkg, local) = match classifier.split_once("::") {
         Some((pkg_name, local)) => (
             packages
                 .iter()
                 .find(|p| p.name == pkg_name)
-                .unwrap_or_else(|| panic!("gust-target-gen: unknown package `{pkg_name}` referenced by classifier `{classifier}`")),
+                .ok_or_else(|| format!("unknown package `{pkg_name}` referenced by classifier `{classifier}`"))?,
             local,
         ),
         None => (home_package, classifier),
@@ -120,17 +120,17 @@ fn resolve_classifier<'a>(
     // An impl name always contains a `.` (Type.impl); a bare type name never
     // does (AADL identifiers can't contain '.').
     if local.contains('.') {
-        &pkg.component_impls
+        Ok(&pkg.component_impls
             .iter()
             .find(|i| i.name == local)
-            .unwrap_or_else(|| panic!("gust-target-gen: unknown component impl `{local}` in package `{}` (classifier `{classifier}`)", pkg.name))
-            .properties
+            .ok_or_else(|| format!("unknown component impl `{local}` in package `{}` (classifier `{classifier}`)", pkg.name))?
+            .properties)
     } else {
-        &pkg.component_types
+        Ok(&pkg.component_types
             .iter()
             .find(|t| t.name == local)
-            .unwrap_or_else(|| panic!("gust-target-gen: unknown component type `{local}` in package `{}` (classifier `{classifier}`)", pkg.name))
-            .properties
+            .ok_or_else(|| format!("unknown component type `{local}` in package `{}` (classifier `{classifier}`)", pkg.name))?
+            .properties)
     }
 }
 
@@ -169,28 +169,27 @@ pub struct Target {
 /// `"<package>::<Type.impl>"`) into a `Target`: its `cpu`, `flash`/`sram`
 /// regions, and `device`-category subcomponents with their properties.
 ///
-/// Panics on any shape spar didn't actually produce (unknown package/board,
-/// unresolvable classifier, malformed JSON) — this is a build-time codegen
-/// tool, not a service, so a loud early failure beats a silently wrong
-/// `Target`.
-pub fn parse_items(json: &str, board_impl: &str) -> Target {
+/// Rejects (`Err`) any shape spar didn't actually produce (unknown
+/// package/board, unresolvable classifier, malformed JSON, a missing required
+/// property) — a loud early failure beats a silently wrong `Target`.
+pub fn parse_items(json: &str, board_impl: &str) -> Result<Target, String> {
     let packages: Vec<RawPackage> =
-        serde_json::from_str(json).expect("gust-target-gen: malformed spar items JSON");
+        serde_json::from_str(json).map_err(|e| format!("malformed spar items JSON: {e}"))?;
 
-    let (package_name, impl_local) = board_impl.split_once("::").unwrap_or_else(|| {
-        panic!("gust-target-gen: board_impl `{board_impl}` must be `<package>::<Type.impl>`")
-    });
+    let (package_name, impl_local) = board_impl
+        .split_once("::")
+        .ok_or_else(|| format!("board `{board_impl}` must be `<package>::<Type.impl>`"))?;
 
     let package = packages
         .iter()
         .find(|p| p.name == package_name)
-        .unwrap_or_else(|| panic!("gust-target-gen: unknown package `{package_name}`"));
+        .ok_or_else(|| format!("unknown package `{package_name}` (board `{board_impl}`)"))?;
 
     let board = package
         .component_impls
         .iter()
         .find(|i| i.name == impl_local)
-        .unwrap_or_else(|| panic!("gust-target-gen: unknown component impl `{impl_local}` in package `{package_name}`"));
+        .ok_or_else(|| format!("unknown component impl `{impl_local}` in package `{package_name}`"))?;
 
     let mut cpu = None;
     let mut flash = None;
@@ -198,46 +197,48 @@ pub fn parse_items(json: &str, board_impl: &str) -> Target {
     let mut devices = Vec::new();
 
     for sub in &board.subcomponents {
-        let properties = resolve_classifier(&packages, package, &sub.classifier);
+        let properties = resolve_classifier(&packages, package, &sub.classifier)?;
         let (base, present, props) = read_props(properties);
 
         match sub.category.as_str() {
             "processor" => cpu = Some(sub.classifier.clone()),
             "memory" => {
                 let region = Region {
-                    base: base.unwrap_or_else(|| {
-                        panic!(
-                            "gust-target-gen: memory subcomponent `{}` has no Base property",
-                            sub.name
-                        )
-                    }),
-                    len: *props.get("Length").unwrap_or_else(|| {
-                        panic!(
-                            "gust-target-gen: memory subcomponent `{}` has no Length property",
-                            sub.name
-                        )
-                    }),
+                    base: base.ok_or_else(|| {
+                        format!("memory subcomponent `{}` has no Base property", sub.name)
+                    })?,
+                    len: *props.get("Length").ok_or_else(|| {
+                        format!("memory subcomponent `{}` has no Length property", sub.name)
+                    })?,
                 };
                 match sub.name.as_str() {
                     "flash" => flash = Some(region),
                     "sram" => sram = Some(region),
-                    other => panic!("gust-target-gen: unexpected memory subcomponent `{other}` (expected flash/sram)"),
+                    other => {
+                        return Err(format!(
+                            "unexpected memory subcomponent `{other}` (expected flash/sram)"
+                        ))
+                    }
                 }
             }
             "device" => devices.push(Device {
                 name: sub.classifier.clone(),
                 // A board LED or button is a pin, not a memory-mapped peripheral: it
                 // alone may omit Base (recorded as 0). Every other device must carry one.
-                base: base.unwrap_or_else(|| {
-                    if props.get("Board_Led") == Some(&1) || props.get("Board_Button") == Some(&1) {
+                base: match base {
+                    Some(b) => b,
+                    None if props.get("Board_Led") == Some(&1)
+                        || props.get("Board_Button") == Some(&1) =>
+                    {
                         0
-                    } else {
-                        panic!(
-                            "gust-target-gen: device subcomponent `{}` has no Base property",
-                            sub.name
-                        )
                     }
-                }),
+                    None => {
+                        return Err(format!(
+                            "device subcomponent `{}` has no Base property",
+                            sub.name
+                        ))
+                    }
+                },
                 present,
                 props,
             }),
@@ -245,19 +246,13 @@ pub fn parse_items(json: &str, board_impl: &str) -> Target {
         }
     }
 
-    Target {
+    Ok(Target {
         name: board_impl.to_string(),
-        cpu: cpu.unwrap_or_else(|| {
-            panic!("gust-target-gen: board `{board_impl}` has no processor subcomponent")
-        }),
-        flash: flash.unwrap_or_else(|| {
-            panic!("gust-target-gen: board `{board_impl}` has no flash subcomponent")
-        }),
-        sram: sram.unwrap_or_else(|| {
-            panic!("gust-target-gen: board `{board_impl}` has no sram subcomponent")
-        }),
+        cpu: cpu.ok_or_else(|| format!("board `{board_impl}` has no processor subcomponent"))?,
+        flash: flash.ok_or_else(|| format!("board `{board_impl}` has no flash subcomponent"))?,
+        sram: sram.ok_or_else(|| format!("board `{board_impl}` has no sram subcomponent"))?,
         devices,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -268,7 +263,7 @@ mod tests {
     fn parses_iwdg_base_and_rcc_offset_from_spar_json() {
         // minimal spar `items --format json` shape: packages[].component_types[]
         let json = include_str!("../tests/golden/f100.items.json");
-        let t = parse_items(json, "STM32F100::Board.vldiscovery");
+        let t = parse_items(json, "STM32F100::Board.vldiscovery").unwrap();
         assert_eq!(t.flash.base, 0x0800_0000);
         assert_eq!(t.flash.len, 131072);
         let rcc = t.devices.iter().find(|d| d.name == "Rcc").unwrap();
